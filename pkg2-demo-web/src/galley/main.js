@@ -322,10 +322,12 @@ async function main() {
     app.local = { point: pm.toArray(), features: near.slice(0, 12), steps, focus: null };
     const n = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : null;
     player.startInspect(hit.point, n);
-    // окно «В этой точке» — справа от точки, лицом к сборщику
-    const right = V().crossVectors(cam.getWorldDirection(V()), V(0, 1, 0)).normalize();
-    const pos = hit.point.clone().addScaledVector(right, 0.38).add(V(0, 0.08, 0)).addScaledVector(n || V(0, 0, 1), 0.2);
-    panels.local.placeAt(pos, cam.position);
+    // окно «В этой точке» — справа от линии взгляда в позе осмотра, лицом к глазу
+    const I = player.inspect;
+    const fwd = hit.point.clone().sub(I.target).normalize();
+    const right = V().crossVectors(fwd, V(0, 1, 0)).normalize();
+    const pos = I.target.clone().addScaledVector(fwd, 0.62).addScaledVector(right, 0.27).add(V(0, 0.02, 0));
+    panels.local.placeAt(pos, I.target);
     mgr.toggle(panels.local, true);
     panels.local.state.scroll = 0; panels.local.dirty = true;
     viz.show(null, { features: near.slice(0, 6).map((x) => x.f.id), focus: pm.toArray() });
@@ -460,7 +462,14 @@ async function main() {
       }
     }
   });
-  window.__demo = { ready: true, scene, world, run, cam, player, eye, vision, app, mgr, panels, viz, finishIntro, inspectAtGaze };
+  window.__demo = {
+    ready: true, scene, world, run, cam, player, eye, vision, app, mgr, panels, viz, finishIntro, inspectAtGaze, sim, params,
+    // для проверок: перескочить к этапу сценария
+    jump(state) {
+      if (state === 'desk') { player.path = null; player.mode = 'walk'; player.place(-7.2, -3.3, Math.atan2(-(dx + 7.2), -(dz + 3.3)), -0.5); startPutOn(); }
+      if (state === 'toJig') { glasses.visible = false; sim.glasses = 1; sim.display = 1; sim.boot = 1; walkToJig(); }
+    },
+  };
 }
 
 main().catch((e) => { console.error(e); window.__demo = { ready: false, error: String(e) }; });

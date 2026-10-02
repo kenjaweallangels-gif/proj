@@ -26,6 +26,11 @@ const cases = [
   ['op070_split_step3', '?op=070&view=split&step=3'],
   ['op070_eye_step4', '?op=070&view=eye&step=4&panel=1'],
   ['op040_side_step2', '?op=040&view=side&step=2'],
+  // симулятор участка КМ-2 (galley.html): вступление, свободный режим, переход с голограммами, близорукость
+  ['galley_intro', 'galley.html'],
+  ['galley_free', 'galley.html?intro=0'],
+  ['galley_step_090', 'galley.html?step=090.02'],
+  ['galley_myopia', 'galley.html?intro=0&vision=myopia'],
 ];
 let failed = 0;
 for (const [name, qs] of cases) {
@@ -36,9 +41,9 @@ for (const [name, qs] of cases) {
   page.on('console', (m) => { if (m.type() === 'error' && !external(m.location()?.url)) errors.push(`${m.text()} ${m.location()?.url ?? ''}`); });
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(`http://localhost:${PORT}/${qs}`);
-  await page.waitForFunction(() => window.__demo && 'ready' in window.__demo, null, { timeout: 30000 });
+  await page.waitForFunction(() => window.__demo && 'ready' in window.__demo, null, { timeout: 180000 });
   await page.waitForTimeout(2500);
-  const st = await page.evaluate(() => ({ ready: window.__demo.ready, step: window.__demo.player?.index, err: window.__demo.error }));
+  const st = await page.evaluate(() => ({ ready: window.__demo.ready, step: window.__demo.player?.index ?? window.__demo.run?.index, err: window.__demo.error }));
   await page.screenshot({ path: `test-results/${name}.png` });
   const ok = st.ready && !errors.length;
   if (!ok) failed++;

@@ -67,12 +67,13 @@ export class StepViz {
     return this.world.cart.localToWorld(new THREE.Vector3(0, 1.0, 0));
   }
 
-  label(id, at, extra = []) {
+  label(id, at, extra = [], i = 0) {
     const f = S.featureById.get(id);
     if (!f) return;
     const pw = this.m2w(at);
-    const lab = holoLabel([f.designation || id, f.name || '', ...extra].filter(Boolean).slice(0, 3), { h: 0.028 });
-    const off = new THREE.Vector3(0.12, 0.1, 0.18);
+    const k = this.mode === 'local' ? 0.32 : 1;          // вблизи (осмотр узла) — мелкие выноски веером
+    const lab = holoLabel([f.designation || id, f.name || '', ...extra].filter(Boolean).slice(0, 3), { h: 0.042 * k });
+    const off = new THREE.Vector3((0.12 + 0.03 * (i % 3)) * k, (0.1 + 0.075 * i) * k, 0.18 * k);
     lab.position.copy(pw).add(off);
     this.labels.add(lab, holoLine([pw, lab.position.clone()], CYAN, 0.8));
   }
@@ -85,7 +86,7 @@ export class StepViz {
     const ids = features || step?.parts || [];
     const kind = features ? 'local' : step?.kind;
     let nLabels = 0;
-    const lab = (id, at, extra) => { if (nLabels++ < (features ? 8 : 5)) this.label(id, at, extra); };
+    const lab = (id, at, extra) => { if (nLabels < (features ? 6 : 5)) this.label(id, at, extra, nLabels++); };
 
     for (const id of ids) {
       const f = S.featureById.get(id);
@@ -245,7 +246,7 @@ export class StepViz {
         const done = fly >= 1;
         it.h.userData.holoFill.color.copy(done ? GREEN : CYAN);
         it.h.userData.holoLine.color.copy(done ? GREEN : CYAN);
-        it.h.userData.holoFill.opacity = done ? 0.12 + 0.08 * Math.sin(t * 6) : 0.16;
+        it.h.userData.holoFill.opacity = done ? 0.18 + 0.1 * Math.sin(t * 6) : 0.24;
       } else if (it.h && it.slide) {
         const s = 0.5 + 0.5 * Math.cos(t * 2.2);
         it.h.position.copy(it.slide).multiplyScalar(s);

@@ -533,7 +533,7 @@ export function buildGalley() {
       const src = items.get(id);
       if (!src) return null;
       const h = src.clone(true);
-      const fill = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
+      const fill = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.24, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
       const line = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
       const meshes = [];
       h.traverse((o) => { if (o.isMesh) meshes.push(o); });

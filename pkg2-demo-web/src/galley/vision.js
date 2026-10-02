@@ -166,7 +166,7 @@ void main(){
 
   // ---- реальность: расфокусировка по глубине + периферия + смаз при повороте ----
   float d = linDepth(texture(tDepth, vUv).r) * sqrt(1.0 + dot(tn, tn));
-  float dD = abs(1.0 / max(d, 0.05) - focusD);
+  float dD = max(0.0, abs(1.0 / max(d, 0.05) - focusD) - 0.25);          // глубина резкости глаза ≈ ±0,25 дптр
   float rDef = pupilMM * 1e-3 * dD * pxPerRad;
   float rPer = smoothstep(24.0, 75.0, ecc) * 2.2 * (res.y / 900.0);
   float r = sqrt(rDef * rDef + rPer * rPer) + fatigueBlur;
@@ -204,7 +204,7 @@ void main(){
   float wsd = sdBox(ac, disp.zw, 1.2);
   float wm = dispOn * glassesOn * (1.0 - smoothstep(-0.4, 0.4, wsd));
   if (wm > 0.0) {
-    float rH = pupilMM * 1e-3 * abs(dispD - focusD) * pxPerRad + fatigueBlur;
+    float rH = pupilMM * 1e-3 * max(0.0, abs(dispD - focusD) - 0.25) * pxPerRad + fatigueBlur;
     float edge = smoothstep(0.55, 1.0, length(ac / disp.zw));
     vec2 ca = (vUv - 0.5) * edge * 0.004;
     vec3 h;
