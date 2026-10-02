@@ -3,6 +3,8 @@ import * as THREE from 'three';
 
 export const LAYER_REAL = 0;
 export const LAYER_HOLO = 1;
+/** Подписи ячеек (спрайты): видны глазу и со стороны, но не участвуют в расчёте затенения AO. */
+export const LAYER_LABEL = 2;
 
 export const HOLO = {
   part: new THREE.Color('#58e6ff'),

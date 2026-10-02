@@ -2,10 +2,51 @@
 // размытие периферии, моргание. Шейдер — из эталонной страницы reference/vzglyad_sborshchika.html (упрощён).
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { LAYER_HOLO, LAYER_REAL } from './holo.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { LAYER_HOLO, LAYER_LABEL, LAYER_REAL } from './holo.js';
+
+/**
+ * Фотореалистичная цепочка: сцена (HDR, MSAA) → затенение в щелях и углах (GTAO) → ореол ярких источников (bloom)
+ * → тональная компрессия и sRGB (OutputPass). quality: 'high' — всё, 'low' — без AO и bloom (слабая графика).
+ * AO считается по отдельной камере-двойнику только со слоем реальности: голограммы, подписи и конусы его не портят.
+ */
+export class PhotoChain {
+  constructor(renderer, scene, camera, { quality = 'high' } = {}) {
+    this.camera = camera;
+    this.composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 }));
+    this.composer.addPass(new RenderPass(scene, camera));
+    this.aoCam = camera.clone();
+    if (quality !== 'low') {
+      this.ao = new GTAOPass(scene, this.aoCam, 4, 4);
+      this.ao.updateGtaoMaterial({ radius: 0.22, distanceExponent: 1.4, thickness: 1.2, scale: 1.1, samples: 16, distanceFallOff: 1 });
+      this.ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
+      this.ao.blendIntensity = 0.95;
+      this.composer.addPass(this.ao);
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(4, 4), 0.16, 0.55, 1.6);
+      this.composer.addPass(this.bloom);
+    }
+    this.composer.addPass(new OutputPass());
+  }
+
+  addPass(p) { this.composer.addPass(p); }
+
+  setSize(w, h, pr) {
+    this.composer.setPixelRatio(pr);
+    this.composer.setSize(w, h);
+  }
+
+  render(dt) {
+    if (this.ao) {
+      this.aoCam.copy(this.camera);
+      this.aoCam.layers.set(LAYER_REAL);
+    }
+    this.composer.render(dt);
+  }
+}
 
 /** Окно дисплея VITURE Luma Ultra: 52° по диагонали, 16:10 → ≈44,9° × 29,0°, центр чуть ниже взгляда. */
 export function glassesWindow(diagDeg = 52, aspect = 1.6, centerDeg = [0, -2]) {
@@ -74,12 +115,10 @@ const Shader = {
 };
 
 export class EyeView {
-  constructor(renderer, scene, camera, win = glassesWindow()) {
+  constructor(renderer, scene, camera, win = glassesWindow(), { quality = 'high' } = {}) {
     this.renderer = renderer; this.scene = scene; this.camera = camera; this.win = win;
     const rt = () => new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 });
-    this.composer = new EffectComposer(renderer, rt());
-    this.composer.addPass(new RenderPass(scene, camera));
-    this.composer.addPass(new OutputPass());
+    this.composer = new PhotoChain(renderer, scene, camera, { quality });
     this.pass = new ShaderPass(Shader);
     this.composer.addPass(this.pass);
     this.rtHolo = rt();
@@ -90,8 +129,7 @@ export class EyeView {
   }
 
   setSize(w, h, pr) {
-    this.composer.setPixelRatio(pr);
-    this.composer.setSize(w, h);
+    this.composer.setSize(w, h, pr);
     this.rtHolo.setSize(w * pr, h * pr);
     this.u.res.value.set(w * pr, h * pr);
     this.u.aspect.value = w / h;
@@ -130,6 +168,7 @@ export class EyeView {
     renderer.setRenderTarget(null);
     scene.background = bg; scene.fog = fog;
     camera.layers.set(LAYER_REAL);
+    camera.layers.enable(LAYER_LABEL);
     this.composer.render(dt);
   }
 

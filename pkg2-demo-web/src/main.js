@@ -1,11 +1,11 @@
 // Веб-демо AR-сборки: пакет операции (JSON) → сцена, шаги, голограммы, HUD.
 // Вид «глазами» — окно дисплея очков 52° (голограммы только в нём), вид «со стороны» — голова, конус окна, изделие.
-// Параметры адреса: ?op=040|070 &view=eye|side|split &step=N &auto=1 &full=1
+// Параметры адреса: ?op=040|070 &view=eye|side|split &step=N &auto=1 &full=1 &quality=high|low
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { AUTO_REPLIES, DEMO_CHAT } from './demo_script.js';
-import { EyeView, glassesWindow } from './engine/composite.js';
-import { HOLO, LAYER_HOLO, LAYER_REAL, arcPoint, setHoloColor, stepPhase } from './engine/holo.js';
+import { EyeView, PhotoChain, glassesWindow } from './engine/composite.js';
+import { HOLO, LAYER_HOLO, LAYER_LABEL, LAYER_REAL, arcPoint, setHoloColor, stepPhase } from './engine/holo.js';
 import { Hud } from './engine/hud.js';
 import { loadPackage, stepFocus } from './engine/package.js';
 import { State, StepPlayer } from './engine/steps.js';
@@ -21,6 +21,8 @@ const opId = OPS[q.get('op')] ? q.get('op') : '040';
 const ui = {
   view: ['eye', 'side', 'split'].includes(q.get('view')) ? q.get('view') : 'split',
   full: q.get('full') === '1', auto: q.get('auto') === '1',
+  // фотореализм: high — тени, AO, bloom; low — для слабой встроенной графики (без AO и bloom)
+  quality: q.get('quality') === 'low' ? 'low' : 'high',
 };
 const $ = (id) => document.getElementById(id);
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -41,23 +43,26 @@ async function main() {
 
   // ---------- рендер и сцена ----------
   const renderer = new THREE.WebGLRenderer({ canvas: $('view'), antialias: true, preserveDrawingBuffer: q.has('shot') });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, ui.quality === 'low' ? 1.25 : 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.95;
+  renderer.toneMapping = THREE.AgXToneMapping;            // мягкий «плёночный» переход в светах, как у фотокамеры
+  renderer.toneMappingExposure = 1.15;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;            // мягкость — shadow.radius у источника
   const scene = new THREE.Scene();
-  const ws = buildWorkshop(scene, renderer, P);
+  const ws = buildWorkshop(scene, renderer, P, { quality: ui.quality });
   const parts = await buildParts(scene, P, { onWarn: note });
   const win = glassesWindow();
 
   const eyeCam = new THREE.PerspectiveCamera(75, 1, 0.03, 40);      // глаз: ~75° по вертикали
   eyeCam.layers.set(LAYER_REAL);
-  const eye = new EyeView(renderer, scene, eyeCam, win);
+  eyeCam.layers.enable(LAYER_LABEL);
+  const eye = new EyeView(renderer, scene, eyeCam, win, { quality: ui.quality });
   eye.u.uFull.value = ui.full ? 1 : 0;
   const tpCam = new THREE.PerspectiveCamera(45, 1, 0.05, 60);
   tpCam.layers.enable(LAYER_HOLO);
+  tpCam.layers.enable(LAYER_LABEL);
+  const tpChain = new PhotoChain(renderer, scene, tpCam, { quality: ui.quality });
   const worker = buildWorker(scene, win);
 
   // ---------- голова сборщика ----------
@@ -70,10 +75,10 @@ async function main() {
   const head = { pos: base.clone(), focus: c.clone(), dragYaw: 0, dragPitch: 0, yaw: 0, pitch: 0 };
   const tpTarget = P.isFixture ? c.clone() : tb.getCenter(V());
   if (P.isFixture) tpCam.position.copy(base.clone().add(V(1.7, 0.7, 1.5)));
-  else {      // внутри фюзеляжа: между шпангоутами (шаг 0,5 м от центра), сзади-сбоку от сборщика
-    const z = c.z + Math.round((base.z + 1.7 - c.z - 0.25) / 0.5) * 0.5 + 0.25;
-    tpCam.position.set(base.x + 0.6, P.floorY + 1.85, z);
-    tpTarget.y -= 0.25;
+  else {      // внутри фюзеляжа (ось вдоль X): сзади-сбоку от сборщика, у противоположного борта, между шпангоутами
+    tpCam.fov = 62;                     // в тесной секции — шире, чтобы в кадр вошли и сборщик, и полка
+    tpCam.position.set(base.x + 0.75, P.floorY + 1.95, Math.min(base.z + 1.05, 1.3));
+    tpTarget.y -= 0.2;
   }
   const orbit = new OrbitControls(tpCam, $('tpCtl'));
   orbit.target.copy(tpTarget);
@@ -208,7 +213,7 @@ async function main() {
       eye.setSize(fp.w, fp.h, renderer.getPixelRatio());
       hud.layout(eye.windowRect(fp.w, fp.h));
     }
-    if (rects.tp) { tpCam.aspect = tp.w / tp.h; tpCam.updateProjectionMatrix(); }
+    if (rects.tp) { tpCam.aspect = tp.w / tp.h; tpCam.updateProjectionMatrix(); tpChain.setSize(tp.w, tp.h, renderer.getPixelRatio()); }
   }
   addEventListener('resize', layout);
   new ResizeObserver(layout).observe(stage);
@@ -304,7 +309,7 @@ async function main() {
       renderer.setViewport(r.x, H - r.y - r.h, r.w, r.h);
       renderer.setScissor(r.x, H - r.y - r.h, r.w, r.h);
       worker.visible = true;
-      renderer.render(scene, tpCam);
+      tpChain.render(dt);
     }
     renderer.setScissorTest(false);
   }

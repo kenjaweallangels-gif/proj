@@ -3,10 +3,11 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { HOLO, LAYER_HOLO, holoMaterial, setLayer, toHologram } from '../engine/holo.js';
+import { bevelIfBox, partMaterial } from './materials.js';
 
 function fallbackMesh(fb) {
   const [sx, sy, sz] = fb.size;
-  const g = fb.type === 'cylinder' ? new THREE.CylinderGeometry(sx / 2, sx / 2, sy, 24) : new THREE.BoxGeometry(sx, sy, sz);
+  const g = fb.type === 'cylinder' ? new THREE.CylinderGeometry(sx / 2, sx / 2, sy, 32) : new THREE.BoxGeometry(sx, sy, sz);
   const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: fb.color, roughness: 0.55, metalness: 0.25 }));
   m.castShadow = m.receiveShadow = true;
   return m;
@@ -53,9 +54,17 @@ export async function buildParts(scene, P, { onWarn = console.warn } = {}) {
     }
     r.name = `R_${p.id}`;
     const T = { position: r.position.clone(), quaternion: r.quaternion.clone() };
+    // голограмма — из исходной геометрии (острые рёбра дают чистый контур); clone() делит материалы — toHologram их заменит
     const h = toHologram(r.clone(true));
     h.name = `H_${p.id}`;
-    // clone() делит материалы — у голограммы свои (toHologram заменил), у реальной оставляем исходные
+    // реальная деталь: физический материал по имени материала CAD / наименованию и скруглённые рёбра
+    r.traverse((o) => {
+      if (!o.isMesh) return;
+      const cad = Array.isArray(o.material) ? o.material[0]?.name : o.material?.name;
+      o.material = partMaterial(p, cad);
+      bevelIfBox(o, 1.5);
+      o.castShadow = o.receiveShadow = true;
+    });
     target.set(p.id, T);
     src.set(p.id, p.src ? new THREE.Vector3(...p.src) : T.position.clone().add(new THREE.Vector3(0, 0.25, 0)));
     group.add(r, h);
