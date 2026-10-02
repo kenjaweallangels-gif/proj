@@ -1,0 +1,132 @@
+# Доска задач. Статусы: todo → running → review → gate → done | blocked
+# gate: none | story | build | art | perf — решение человека через `orchestrator.py approve <ID>`
+sprint: "S1 — блокаут и базовые системы"
+tasks:
+  - id: T-001
+    title: "Спецификация механик: шум шагов, червь, жара/вода"
+    role: game-designer
+    deps: []
+    inputs: [docs/00_GDD.md]
+    acceptance: "docs/design/mechanics.md с таблицами параметров и дефолтами; DataTable-CSV для параметров"
+    gate: story
+    status: todo
+  - id: T-002
+    title: "Диалоги сцены и лай толпы (RU/EN)"
+    role: game-designer
+    deps: []
+    inputs: [docs/01_scenario.md]
+    acceptance: "Content/Rakis/Data/Dialogue_S1.csv (≥40 реплик) и Barks.csv (≥60 реплик, 8 архетипов)"
+    gate: story
+    status: todo
+  - id: T-003
+    title: "Схема уровня и блокаут-скрипт пустыни и скалы"
+    role: level-designer
+    deps: []
+    inputs: [docs/00_GDD.md]
+    acceptance: "docs/level/layout.md + Tools/unreal_python/level_blockout_desert.py, идемпотентный"
+    gate: build
+    status: todo
+  - id: T-004
+    title: "Блокаут-скрипт сиетча (шлюз, галерея, проходы, цистерна, религиозный зал)"
+    role: level-designer
+    deps: [T-003]
+    inputs: [docs/00_GDD.md]
+    acceptance: "Tools/unreal_python/level_blockout_sietch.py; маршрут 3:30–3:50 по оценке в layout.md"
+    gate: build
+    status: todo
+  - id: T-005
+    title: "C++ модуль Rakis: персонаж 1/3 лица, переключение камеры"
+    role: gameplay-programmer
+    deps: []
+    inputs: [docs/04_standards.md]
+    acceptance: "Source/Rakis компилируется; ARakisCharacter с бесшовным FP/TP; тест Automation"
+    gate: build
+    status: todo
+  - id: T-006
+    title: "Системы шума и червя (StateTree) по спецификации"
+    role: gameplay-programmer
+    deps: [T-001, T-005]
+    inputs: [docs/design/mechanics.md]
+    acceptance: "URakisNoiseComponent, ARakisWorm, StateTree-задачи; параметры из DataAsset"
+    gate: build
+    status: todo
+  - id: T-007
+    title: "Гидратация и жара"
+    role: gameplay-programmer
+    deps: [T-001, T-005]
+    inputs: [docs/design/mechanics.md]
+    acceptance: "URakisHydrationComponent, тень/солнце через трассировку к Directional Light"
+    gate: none
+    status: todo
+  - id: T-008
+    title: "Мастер-материал песка (RVT, рябь, следы) и марево"
+    role: tech-artist
+    deps: []
+    inputs: [docs/04_standards.md]
+    acceptance: "docs/tech-art/sand.md + mat_*.py создающий материал и инстансы; .usf для марева"
+    gate: art
+    status: todo
+  - id: T-009
+    title: "Niagara: позёмка, песчаная волна червя, пыль в луче"
+    role: tech-artist
+    deps: [T-008]
+    inputs: []
+    acceptance: "fx_*.py создаёт системы с параметрами; бюджет частиц в docs/tech-art/fx.md"
+    gate: art
+    status: todo
+  - id: T-010
+    title: "Процедурные дюны и скала «Коготь Шайтана» (Blender/Houdini)"
+    role: environment-artist
+    deps: [T-003]
+    inputs: [docs/level/layout.md]
+    acceptance: "Tools/blender/env_dunes.py, env_rock.py; экспорт heightmap 16-bit и FBX"
+    gate: art
+    status: todo
+  - id: T-011
+    title: "Модульный кит сиетча: спецификация и заготовки"
+    role: environment-artist
+    deps: [T-004]
+    inputs: []
+    acceptance: "docs/art/environment/sietch_kit.md (≥30 модулей) + Tools/blender/env_sietch_kit.py"
+    gate: art
+    status: todo
+  - id: T-012
+    title: "Карточки персонажей и модульная одежда толпы"
+    role: character-artist
+    deps: []
+    inputs: [docs/00_GDD.md]
+    acceptance: "docs/art/characters/*.md; CrowdArchetypes.csv; char_crowd_variants.py"
+    gate: art
+    status: todo
+  - id: T-013
+    title: "Анимационный список и сплайн-риг червя"
+    role: animator
+    deps: [T-001]
+    inputs: [docs/design/mechanics.md]
+    acceptance: "docs/animation/animlist.md; спецификация Control Rig червя; anim_import.py"
+    gate: none
+    status: todo
+  - id: T-014
+    title: "Звуковая карта, адаптивная музыка, таблица событий"
+    role: audio-designer
+    deps: [T-002]
+    inputs: [docs/01_scenario.md]
+    acceptance: "docs/audio/soundmap.md; AudioEvents.csv; ТЗ композитору; tts_batch.py"
+    gate: story
+    status: todo
+  - id: T-015
+    title: "NPC: Smart Objects, расписания, реакции на игрока, поток к залу"
+    role: gameplay-programmer
+    deps: [T-002, T-004, T-005]
+    inputs: []
+    acceptance: "Компоненты и StateTree NPC; Mass-толпа 40–80 агентов; тест в карте блокаута"
+    gate: build
+    status: todo
+  - id: T-016
+    title: "Интеграционный прогон S1 и отчёт по бюджету кадра"
+    role: qa-reviewer
+    deps: [T-006, T-007, T-009, T-015]
+    inputs: []
+    acceptance: "docs/qa/S1_report.md: чек-лист прохождения, fps, баги с приоритетами"
+    gate: perf
+    status: todo

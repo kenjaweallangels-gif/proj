@@ -1,0 +1,8 @@
+---
+description: Дизайн-документы, диалоги, лор
+globs: docs/**/*.md,Content/Rakis/Data/*.csv
+alwaysApply: false
+---
+- Механика: цель → правила → параметры (таблица) → состояния → граничные случаи → телеметрия.
+- Диалоговые CSV: `DialogueID,Speaker,Line_RU,Line_EN,Condition,Emotion,VO_File`, UTF-8.
+- Канон «Еретиков Дюны»; сиетч — община возрожденцев (допущение).

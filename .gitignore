@@ -1,0 +1,13 @@
+Binaries/
+Build/
+DerivedDataCache/
+Intermediate/
+Saved/
+.vs/
+*.sln
+*.VC.db
+.venv/
+__pycache__/
+orchestrator/logs/
+Export/
+.env
