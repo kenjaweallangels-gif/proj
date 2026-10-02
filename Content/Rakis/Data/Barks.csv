@@ -1,0 +1,89 @@
+BarkID,Archetype,Context,Line_RU,Line_EN,VO_File,Weight,Cooldown
+BRK_TRD_Idle_01,Trader,Idle,Ткань из Кина — нет. Ткань наша — да. Смотри сам.,Cloth from Keen — no. Our cloth — yes. See for yourself.,/Game/Rakis/Audio/VO/Barks/BRK_TRD_Idle_01,1.0,45
+BRK_TRD_Stranger_02,Trader,Stranger,Городской. Платишь вдвое — сам виноват.,A townsman. You pay double — your own fault.,/Game/Rakis/Audio/VO/Barks/BRK_TRD_Stranger_02,1.5,90
+BRK_TRD_Market_03,Trader,Market,"Пряжки, ремни, заплаты! Дешевле, чем в Кине, и честнее.","Buckles, straps, patches! Cheaper than Keen, and more honest.",/Game/Rakis/Audio/VO/Barks/BRK_TRD_Market_03,1.2,40
+BRK_TRD_Market_04,Trader,Market,"Меняю кофе на нить, нить на кофе. Слово — даром.","Coffee for thread, thread for coffee. Words are free.",/Game/Rakis/Audio/VO/Barks/BRK_TRD_Market_04,1.2,40
+BRK_TRD_Water_05,Trader,Water,"За воду не торгуюсь. Вода — по мерке, остальное — по сговору.","I don't haggle over water. Water by the measure, the rest by bargain.",/Game/Rakis/Audio/VO/Barks/BRK_TRD_Water_05,1.0,60
+BRK_TRD_Shiana_06,Trader,Shiana,"Ленты Шианы! Синие, как её глаза… говорят.",Sheeana ribbons! Blue as her eyes... so they say.,/Game/Rakis/Audio/VO/Barks/BRK_TRD_Shiana_06,0.8,120
+BRK_TRD_Kin_07,Trader,Kin,В Кине за такую пряжку просят кувшин. Здесь — улыбку.,In Keen a buckle like this costs a jar. Here — a smile.,/Game/Rakis/Audio/VO/Barks/BRK_TRD_Kin_07,1.0,90
+BRK_TRD_WormNear_08,Trader,WormNear,Чуешь дрожь? Прошёл под нами. Добрая примета для торга.,Feel the tremor? He passed beneath us. A good omen for trade.,/Game/Rakis/Audio/VO/Barks/BRK_TRD_WormNear_08,2.0,30
+BRK_TRD_Ritual_09,Trader,Ritual,Лоток подождёт. Жрица ждать не станет.,The stall can wait. The priestess won't.,/Game/Rakis/Audio/VO/Barks/BRK_TRD_Ritual_09,1.5,60
+BRK_TRD_Offworld_10,Trader,Offworld,Чужая монета? Покажи. …Нет. Звенит не так.,Offworld coin? Show me. ...No. It rings wrong.,/Game/Rakis/Audio/VO/Barks/BRK_TRD_Offworld_10,0.6,120
+BRK_TRD_Idle_11,Trader,Idle,"Пыль на товаре — значит, товар отсюда.",Dust on the goods means the goods are from here.,/Game/Rakis/Audio/VO/Barks/BRK_TRD_Idle_11,1.0,45
+BRK_ART_Idle_01,Artisan,Idle,"Шов к шву, капля к капле.","Seam to seam, drop to drop.",/Game/Rakis/Audio/VO/Barks/BRK_ART_Idle_01,1.0,45
+BRK_ART_Stranger_02,Artisan,Stranger,Дай гляну на твой костюм. …Кто тебе это шил — враг?,"Let me see your suit. ...Who sewed this, an enemy?",/Game/Rakis/Audio/VO/Barks/BRK_ART_Stranger_02,1.5,90
+BRK_ART_Stranger_03,Artisan,Stranger,Маску ниже. Нос внутрь. Вот так. Не благодари.,Mask lower. Nose inside. Like that. Don't thank me.,/Game/Rakis/Audio/VO/Barks/BRK_ART_Stranger_03,1.5,90
+BRK_ART_Market_04,Artisan,Market,Насосы в пятках чиню до заката. После — только молюсь.,Heel pumps mended till sunset. After that I only pray.,/Game/Rakis/Audio/VO/Barks/BRK_ART_Market_04,1.2,40
+BRK_ART_Water_05,Artisan,Water,"Костюм, который течёт, — это вор, которого носишь на себе.",A leaking suit is a thief you carry on your back.,/Game/Rakis/Audio/VO/Barks/BRK_ART_Water_05,1.0,60
+BRK_ART_Shiana_06,Artisan,Shiana,"Говорят, Шиана ходит по песку без костюма. Я бы ей всё равно сшил.",They say Sheeana walks the sand with no suit. I'd stitch her one anyway.,/Game/Rakis/Audio/VO/Barks/BRK_ART_Shiana_06,0.8,120
+BRK_ART_Kin_07,Artisan,Kin,"В Кине шьют костюмы для парада, не для песка.","Keen sews suits for parades, not for sand.",/Game/Rakis/Audio/VO/Barks/BRK_ART_Kin_07,1.0,90
+BRK_ART_WormNear_08,Artisan,WormNear,Тише. Даже игла сейчас слишком громкая.,Quiet. Even a needle is too loud now.,/Game/Rakis/Audio/VO/Barks/BRK_ART_WormNear_08,2.0,30
+BRK_ART_Ritual_09,Artisan,Ritual,Отложу иглу. Сегодня шьёт голос жрицы.,I'll set the needle down. Tonight the priestess's voice does the stitching.,/Game/Rakis/Audio/VO/Barks/BRK_ART_Ritual_09,1.5,60
+BRK_ART_Offworld_10,Artisan,Offworld,Чужая ткань не дышит. И ничего не отдаёт.,Offworld cloth doesn't breathe. And gives nothing back.,/Game/Rakis/Audio/VO/Barks/BRK_ART_Offworld_10,0.6,120
+BRK_ART_Idle_11,Artisan,Idle,Ещё одна трубка лопнула. Песок грызёт всё.,Another tube split. Sand gnaws at everything.,/Game/Rakis/Audio/VO/Barks/BRK_ART_Idle_11,1.0,45
+BRK_WAT_Idle_01,WaterCarrier,Idle,"Кувшин тяжёлый — значит, день добрый.",A heavy jar means a good day.,/Game/Rakis/Audio/VO/Barks/BRK_WAT_Idle_01,1.0,45
+BRK_WAT_Idle_02,WaterCarrier,Idle,Пустой кувшин звенит. Полный молчит. Как люди.,An empty jar rings. A full one keeps quiet. Like people.,/Game/Rakis/Audio/VO/Barks/BRK_WAT_Idle_02,1.0,45
+BRK_WAT_Water_03,WaterCarrier,Water,Мерка — три пальца. Не больше и не меньше.,"The measure is three fingers. No more, no less.",/Game/Rakis/Audio/VO/Barks/BRK_WAT_Water_03,1.0,60
+BRK_WAT_Water_04,WaterCarrier,Water,"Капля — на язык, не на землю.","A drop goes on the tongue, not on the ground.",/Game/Rakis/Audio/VO/Barks/BRK_WAT_Water_04,1.0,60
+BRK_WAT_Stranger_05,WaterCarrier,Stranger,"Отойди от кувшина, чужак. Твоя тень пьёт.","Step back from the jar, stranger. Your shadow is drinking.",/Game/Rakis/Audio/VO/Barks/BRK_WAT_Stranger_05,1.5,90
+BRK_WAT_Market_06,WaterCarrier,Market,Кто просил воду к кофе? Отмерено и благословлено.,Who asked for water for coffee? Measured and blessed.,/Game/Rakis/Audio/VO/Barks/BRK_WAT_Market_06,1.2,40
+BRK_WAT_Kin_07,WaterCarrier,Kin,"Кин берёт десятину водой, а возвращает проповедью.",Keen takes its tithe in water and pays it back in sermons.,/Game/Rakis/Audio/VO/Barks/BRK_WAT_Kin_07,1.0,90
+BRK_WAT_Shiana_08,WaterCarrier,Shiana,"Говорят, где прошла Шиана, песок влажнеет. Сказки. Но хорошие.","They say where Sheeana walks the sand turns damp. Tales. Good ones, though.",/Game/Rakis/Audio/VO/Barks/BRK_WAT_Shiana_08,0.8,120
+BRK_WAT_WormNear_09,WaterCarrier,WormNear,Держи кувшин крепче. Дрогнет пол — не урони.,"Hold your jar tight. If the floor shivers, don't drop it.",/Game/Rakis/Audio/VO/Barks/BRK_WAT_WormNear_09,2.0,30
+BRK_WAT_Ritual_10,WaterCarrier,Ritual,Последняя мерка — для чаши. Остальное завтра.,"The last measure is for the bowl. The rest, tomorrow.",/Game/Rakis/Audio/VO/Barks/BRK_WAT_Ritual_10,1.5,60
+BRK_WAT_Offworld_11,WaterCarrier,Offworld,"Чужие пьют так, будто вода растёт на камнях.",Offworlders drink as if water grew on stones.,/Game/Rakis/Audio/VO/Barks/BRK_WAT_Offworld_11,0.6,120
+BRK_CHL_Idle_01,Child,Idle,"Я червь! Ты наездник! Нет, теперь я наездник!","I'm the worm! You're the rider! No, now I'm the rider!",/Game/Rakis/Audio/VO/Barks/BRK_CHL_Idle_01,1.0,45
+BRK_CHL_Idle_02,Child,Idle,"Бум! Бум! Я тампер! Иди сюда, червяк!","Boom! Boom! I'm a thumper! Come here, wormy!",/Game/Rakis/Audio/VO/Barks/BRK_CHL_Idle_02,1.0,45
+BRK_CHL_Stranger_03,Child,Stranger,У тебя глаза не синие. Ты из Кина?,Your eyes aren't blue. Are you from Keen?,/Game/Rakis/Audio/VO/Barks/BRK_CHL_Stranger_03,1.5,90
+BRK_CHL_Stranger_04,Child,Stranger,"Мама, а он умеет ходить по песку?","Mama, can he walk the sand?",/Game/Rakis/Audio/VO/Barks/BRK_CHL_Stranger_04,1.5,90
+BRK_CHL_Market_05,Child,Market,"Дай финик — скажу, где самая прохладная ниша.",Give me a date and I'll tell you the coolest niche.,/Game/Rakis/Audio/VO/Barks/BRK_CHL_Market_05,1.2,40
+BRK_CHL_Water_06,Child,Water,Я не трогал воду! Я только смотрел!,I didn't touch the water! I was only looking!,/Game/Rakis/Audio/VO/Barks/BRK_CHL_Water_06,1.0,60
+BRK_CHL_Shiana_07,Child,Shiana,Вырасту — буду как Шиана. Червь меня послушается!,When I grow up I'll be like Sheeana. The worm will listen to me!,/Game/Rakis/Audio/VO/Barks/BRK_CHL_Shiana_07,0.8,120
+BRK_CHL_WormNear_08,Child,WormNear,Чувствуешь? Пол щекочется!,Feel that? The floor's tickling!,/Game/Rakis/Audio/VO/Barks/BRK_CHL_WormNear_08,2.0,30
+BRK_CHL_Ritual_09,Child,Ritual,"Тсс! Жрица поёт. Смеяться нельзя… ну, чуть-чуть можно.","Shh! The priestess is singing. No laughing... well, a little.",/Game/Rakis/Audio/VO/Barks/BRK_CHL_Ritual_09,1.5,60
+BRK_CHL_Kin_10,Child,Kin,В Кине у детей твёрдые подошвы. Они стучат!,Kids in Keen have hard soles. They knock!,/Game/Rakis/Audio/VO/Barks/BRK_CHL_Kin_10,1.0,90
+BRK_CHL_Offworld_11,Child,Offworld,"А там, наверху, тоже есть песок?",Is there sand up there too?,/Game/Rakis/Audio/VO/Barks/BRK_CHL_Offworld_11,0.6,120
+BRK_GRD_Idle_01,Guard,Idle,Смотрю на тени. Тени не врут.,I watch the shadows. Shadows don't lie.,/Game/Rakis/Audio/VO/Barks/BRK_GRD_Idle_01,1.0,45
+BRK_GRD_Idle_02,Guard,Idle,"Нож на поясе, глаза на двери.","Knife at the belt, eyes on the door.",/Game/Rakis/Audio/VO/Barks/BRK_GRD_Idle_02,1.0,45
+BRK_GRD_Stranger_03,Guard,Stranger,"Руки на виду, гость.","Hands where I can see them, guest.",/Game/Rakis/Audio/VO/Barks/BRK_GRD_Stranger_03,1.5,90
+BRK_GRD_Stranger_04,Guard,Stranger,Мы тебя не звали. Раз впустили — ходи тихо.,We didn't call you. Since we let you in — walk quiet.,/Game/Rakis/Audio/VO/Barks/BRK_GRD_Stranger_04,1.5,90
+BRK_GRD_Market_05,Guard,Market,"Торгуйтесь, но без крика. Крик — для пустыни.","Haggle, but don't shout. Shouting is for the desert.",/Game/Rakis/Audio/VO/Barks/BRK_GRD_Market_05,1.2,40
+BRK_GRD_Water_06,Guard,Water,Отойди от решётки. Второй раз не скажу.,Step away from the grate. I won't say it twice.,/Game/Rakis/Audio/VO/Barks/BRK_GRD_Water_06,1.0,60
+BRK_GRD_Kin_07,Guard,Kin,Кинский запах. Ладан и страх.,The smell of Keen. Incense and fear.,/Game/Rakis/Audio/VO/Barks/BRK_GRD_Kin_07,1.0,90
+BRK_GRD_WormNear_08,Guard,WormNear,Он близко. Все — прочь от внешних стен.,He's close. Everyone away from the outer walls.,/Game/Rakis/Audio/VO/Barks/BRK_GRD_WormNear_08,2.0,30
+BRK_GRD_Shiana_09,Guard,Shiana,Шиана не наша. Шиана ничья. Так для неё безопаснее.,Sheeana isn't ours. She's no one's. Safer for her that way.,/Game/Rakis/Audio/VO/Barks/BRK_GRD_Shiana_09,0.8,120
+BRK_GRD_Ritual_10,Guard,Ritual,К залу. Не толкаться. Бог не торопится.,To the hall. No shoving. God is in no hurry.,/Game/Rakis/Audio/VO/Barks/BRK_GRD_Ritual_10,1.5,60
+BRK_GRD_Offworld_11,Guard,Offworld,Сядет чужой корабль на эрг — песок его съест. Без нашей помощи.,"If an offworld ship lands on the erg, the sand will eat it. No help needed.",/Game/Rakis/Audio/VO/Barks/BRK_GRD_Offworld_11,0.6,120
+BRK_PLG_Idle_01,Pilgrim,Idle,Я шёл из Кина три ночи. Ноги помнят каждую.,I walked from Keen for three nights. My feet remember every one.,/Game/Rakis/Audio/VO/Barks/BRK_PLG_Idle_01,1.0,45
+BRK_PLG_Idle_02,Pilgrim,Idle,"Разделённый Бог — значит, и мне достанется частица.",A Divided God means there's a piece for me as well.,/Game/Rakis/Audio/VO/Barks/BRK_PLG_Idle_02,1.0,45
+BRK_PLG_Shiana_03,Pilgrim,Shiana,"Она говорит с Ним, как дочь с отцом. Я видел. Издали.",She speaks to Him like a daughter to her father. I saw. From afar.,/Game/Rakis/Audio/VO/Barks/BRK_PLG_Shiana_03,0.8,120
+BRK_PLG_Shiana_04,Pilgrim,Shiana,Шиана… только шёпотом. Имена тоже слышат.,Sheeana... only in a whisper. Names are heard too.,/Game/Rakis/Audio/VO/Barks/BRK_PLG_Shiana_04,0.8,120
+BRK_PLG_Kin_05,Pilgrim,Kin,Жрецы продали мне благословение. Здесь мне его подарили.,The priests sold me a blessing. Here they gave me one.,/Game/Rakis/Audio/VO/Barks/BRK_PLG_Kin_05,1.0,90
+BRK_PLG_Stranger_06,Pilgrim,Stranger,Ты тоже ушёл от них? Не отвечай. По глазам вижу.,You left them too? Don't answer. I can see it in your eyes.,/Game/Rakis/Audio/VO/Barks/BRK_PLG_Stranger_06,1.5,90
+BRK_PLG_Ritual_07,Pilgrim,Ritual,Скоро. Скоро запоёт. Сердце уже слышит.,Soon. Soon she'll sing. My heart already hears it.,/Game/Rakis/Audio/VO/Barks/BRK_PLG_Ritual_07,1.5,60
+BRK_PLG_WormNear_08,Pilgrim,WormNear,"Он рядом. Не его бойся — бойся того, что в тебе.",He's near. Don't fear him — fear what's in you.,/Game/Rakis/Audio/VO/Barks/BRK_PLG_WormNear_08,2.0,30
+BRK_PLG_Water_09,Pilgrim,Water,Я отдал свою воду у входа. И стал легче.,I gave up my water at the gate. I've grown lighter.,/Game/Rakis/Audio/VO/Barks/BRK_PLG_Water_09,1.0,60
+BRK_PLG_Market_10,Pilgrim,Market,Святыни не продаются. Но этот камешек — с Её следа. Почти даром.,Holy things aren't for sale. But this pebble is from Her footprint. Nearly free.,/Game/Rakis/Audio/VO/Barks/BRK_PLG_Market_10,1.2,40
+BRK_PLG_Offworld_11,Pilgrim,Offworld,Рассеяние возвращается домой. Только дом уже не тот.,The Scattering is coming home. Only home isn't what it was.,/Game/Rakis/Audio/VO/Barks/BRK_PLG_Offworld_11,0.6,120
+BRK_ELD_Idle_01,Elder,Idle,Этот камень гладили мои деды. Гладь и ты.,My grandfathers polished this stone with their palms. You polish it too.,/Game/Rakis/Audio/VO/Barks/BRK_ELD_Idle_01,1.0,45
+BRK_ELD_Idle_02,Elder,Idle,Мы не фримены. Мы их эхо. Но эхо — тоже голос.,We are not the Fremen. We are their echo. But an echo is still a voice.,/Game/Rakis/Audio/VO/Barks/BRK_ELD_Idle_02,1.0,45
+BRK_ELD_Idle_03,Elder,Idle,"Ритм — враг. Запомни, пока молод.",Rhythm is the enemy. Remember it while you're young.,/Game/Rakis/Audio/VO/Barks/BRK_ELD_Idle_03,1.0,45
+BRK_ELD_Stranger_04,Elder,Stranger,"Ходишь как городской: пятка, носок, пятка, носок. Сбей. Ещё. Вот.","You walk like a townsman: heel, toe, heel, toe. Break it. Again. There.",/Game/Rakis/Audio/VO/Barks/BRK_ELD_Stranger_04,1.5,90
+BRK_ELD_Kin_05,Elder,Kin,Был Арракин. Потом Кин. Потом будет пыль. Имена недолговечны.,It was Arrakeen. Then Keen. Next it will be dust. Names don't last.,/Game/Rakis/Audio/VO/Barks/BRK_ELD_Kin_05,1.0,90
+BRK_ELD_Water_06,Elder,Water,"Мой дед знал, сколько воды в каждом из нас. Я знаю только, сколько её нет.",My grandfather knew how much water was in each of us. I only know how much is missing.,/Game/Rakis/Audio/VO/Barks/BRK_ELD_Water_06,1.0,60
+BRK_ELD_Shiana_07,Elder,Shiana,"Девочка говорит с Шайтаном. А мы думали, разучились даже слушать.",A girl speaks with Shaitan. And we thought we'd forgotten how even to listen.,/Game/Rakis/Audio/VO/Barks/BRK_ELD_Shiana_07,0.8,120
+BRK_ELD_WormNear_08,Elder,WormNear,"Не бегите. Старый закон, а всё ещё дышит.","Don't run. An old law, and still breathing.",/Game/Rakis/Audio/VO/Barks/BRK_ELD_WormNear_08,2.0,30
+BRK_ELD_Ritual_09,Elder,Ritual,"Садись ниже, молодой. Свод любит, когда ему кланяются.","Sit lower, young one. The vault likes a bow.",/Game/Rakis/Audio/VO/Barks/BRK_ELD_Ritual_09,1.5,60
+BRK_ELD_Market_10,Elder,Market,"Кофе с пряностью — три глотка. За жизнь, за песок и за того, кто не дошёл.","Spice coffee — three sips. For life, for the sand, and for the one who didn't make it.",/Game/Rakis/Audio/VO/Barks/BRK_ELD_Market_10,1.2,40
+BRK_ELD_Offworld_11,Elder,Offworld,Звёзды теперь ходят. Это корабли. Раньше было тише.,The stars move now. Those are ships. It used to be quieter.,/Game/Rakis/Audio/VO/Barks/BRK_ELD_Offworld_11,0.6,120
+BRK_WEA_Idle_01,Weaver,Idle,"Нить к нити, как шаг к шагу. Только здесь ритм дозволен.","Thread to thread, like step to step. Only here is rhythm allowed.",/Game/Rakis/Audio/VO/Barks/BRK_WEA_Idle_01,1.0,45
+BRK_WEA_Idle_02,Weaver,Idle,"Мать учила: рвётся нить — значит, песок слушает. Сбавь.","Mother taught me: when the thread breaks, the sand is listening. Ease off.",/Game/Rakis/Audio/VO/Barks/BRK_WEA_Idle_02,1.0,45
+BRK_WEA_Idle_03,Weaver,Idle,Узор старше сиетча. Мы только вспоминаем его.,The pattern is older than the sietch. We only remember it.,/Game/Rakis/Audio/VO/Barks/BRK_WEA_Idle_03,1.0,45
+BRK_WEA_Market_04,Weaver,Market,Синий дорог. Синий — для зала. Охра — на каждый день.,Blue is dear. Blue is for the hall. Ochre is for every day.,/Game/Rakis/Audio/VO/Barks/BRK_WEA_Market_04,1.2,40
+BRK_WEA_Stranger_05,Weaver,Stranger,"Не трогай основу, гость. Она натянута на наше терпение.","Don't touch the warp, guest. It's strung on our patience.",/Game/Rakis/Audio/VO/Barks/BRK_WEA_Stranger_05,1.5,90
+BRK_WEA_Shiana_06,Weaver,Shiana,Вышиваю червя для Шианы. Она не увидит. Не важно.,I'm stitching a worm for Sheeana. She'll never see it. No matter.,/Game/Rakis/Audio/VO/Barks/BRK_WEA_Shiana_06,0.8,120
+BRK_WEA_Kin_07,Weaver,Kin,Кин ткёт знамёна. Мы — пологи. Знамя от бури не укроет.,Keen weaves banners. We weave awnings. A banner won't shelter you from a storm.,/Game/Rakis/Audio/VO/Barks/BRK_WEA_Kin_07,1.0,90
+BRK_WEA_Water_08,Weaver,Water,Мокрая нить — пропащая нить. Краску здесь разводят по капле.,Wet thread is wasted thread. Here we thin dye a drop at a time.,/Game/Rakis/Audio/VO/Barks/BRK_WEA_Water_08,1.0,60
+BRK_WEA_WormNear_09,Weaver,WormNear,Станок дрожит. Опять он рядом. Узел выдержит.,The loom is shaking. He's near again. The knot will hold.,/Game/Rakis/Audio/VO/Barks/BRK_WEA_WormNear_09,2.0,30
+BRK_WEA_Ritual_10,Weaver,Ritual,Полог над чашей готов. Пусть свет ляжет на него ровно.,The canopy over the bowl is ready. Let the light fall on it evenly.,/Game/Rakis/Audio/VO/Barks/BRK_WEA_Ritual_10,1.5,60
+BRK_WEA_Offworld_11,Weaver,Offworld,Купцы с неба просили наш узор. Узор не продают — его поют.,Sky-merchants asked for our pattern. A pattern isn't sold — it's sung.,/Game/Rakis/Audio/VO/Barks/BRK_WEA_Offworld_11,0.6,120

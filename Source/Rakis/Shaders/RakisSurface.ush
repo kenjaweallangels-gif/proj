@@ -1,0 +1,107 @@
+// =====================================================================================
+// RakisSurface.ush — процедурные маски для мастер-материалов Rakis.
+// Каждая функция вызывается из своей Custom-ноды (Include: /Project/Rakis/RakisSurface.ush).
+//
+//   RakisMacroVariation   — M_Landscape_Sand, M_Rock_Master: две шкалы мировой вариации
+//   RakisRockStrata       — M_Rock_Master: осадочные слои по Z с изгибом
+//   RakisChitin           — M_Worm_Chitin: кольца, трещины пластин, бороздки
+//   RakisGlowFlicker      — M_Glowglobe, M_LF_GlowglobeFlicker: живое мерцание светошара
+//   RakisDripRipples      — M_Water_Still: редкие капли на неподвижной воде цистерны
+//   RakisClothWear        — M_Cloth_Worn / M_Spice_Fabric: потёртость + пыль подола
+// =====================================================================================
+#pragma once
+#include "/Project/Rakis/RakisNoise.ush"
+
+// ---------------------------------------------------------------- вариация
+// Возврат: x — макро (-1..1, масштаб MacroScale), y — микро (-1..1, MicroScale).
+float2 RakisMacroVariation(float3 WorldPos, float MacroScale, float MicroScale)
+{
+	const float2 P = WorldPos.xy;
+	const float Macro = RakisFbm2(P / max(MacroScale, 1.0), 4);
+	const float Micro = RakisFbm2(P / max(MicroScale, 1.0) + 31.7, 3);
+	return float2(Macro, Micro);
+}
+
+// ---------------------------------------------------------------- скалы
+// Возврат: x — маска слоя 0..1 (светлый/тёмный пласт), y — тонкие прожилки 0..1.
+float2 RakisRockStrata(float3 WorldPos, float StrataScale, float Warp)
+{
+	const float Z = WorldPos.z / max(StrataScale, 1.0);
+	const float Bend = RakisFbm2(WorldPos.xy / 6000.0, 3) * Warp;
+	const float Layer = RakisValueNoise2(float2(Z + Bend, 0.37)) ;
+	const float Fine = RakisValueNoise2(float2((Z + Bend) * 7.3, 1.91));
+	return float2(smoothstep(0.3, 0.7, Layer), smoothstep(0.75, 0.95, Fine));
+}
+
+// ---------------------------------------------------------------- червь
+// UV — UV0 сегмента (V вдоль тела). Возврат:
+//   x — бороздка между кольцами 0..1 (1 = глубина бороздки, туда набивается песок)
+//   y — трещины пластин 0..1
+//   z — id пластины 0..1 (вариация цвета)
+//   w — «износ» гребня кольца 0..1 (светлее, глаже)
+float4 RakisChitin(float2 UV, float RingsPerSegment, float PlatesAround, float CrackWidth)
+{
+	const float V = UV.y * RingsPerSegment;
+	const float Ring = frac(V);
+	const float Groove = 1.0 - smoothstep(0.0, 0.12, Ring) * (1.0 - smoothstep(0.88, 1.0, Ring));
+	const float Crest = smoothstep(0.35, 0.5, Ring) * (1.0 - smoothstep(0.5, 0.65, Ring));
+
+	const float2 PlateUV = float2(UV.x * PlatesAround, V * 1.3);
+	const float3 Vor = RakisVoronoi2(PlateUV);
+	const float Crack = 1.0 - smoothstep(0.0, max(CrackWidth, 1e-3), Vor.y - Vor.x);
+	return float4(Groove, Crack, Vor.z, Crest);
+}
+
+// ---------------------------------------------------------------- светошар
+// Множитель яркости ~ (1 - Amount) .. 1. Seed — разный для каждого шара (из ObjectPositionWS).
+// Мерцание не «стробоскоп»: медленное дыхание + редкие короткие провалы.
+float RakisGlowFlicker(float Time, float Seed, float Speed, float Amount)
+{
+	const float T = Time * max(Speed, 0.01) + Seed * 113.0;
+	const float Breath = RakisValueNoise2(float2(T * 0.35, Seed * 7.0)) * 2.0 - 1.0;
+	const float Jitter = RakisValueNoise2(float2(T * 3.1, Seed * 3.0 + 5.0)) * 2.0 - 1.0;
+	const float DipGate = step(0.93, RakisValueNoise2(float2(T * 0.9, Seed * 11.0)));
+	const float Dip = DipGate * (RakisValueNoise2(float2(T * 9.0, Seed)) * 0.6 + 0.4);
+	const float Flicker = Breath * 0.45 + Jitter * 0.2 - Dip * 0.9;
+	return saturate(1.0 + Flicker * Amount);
+}
+
+// ---------------------------------------------------------------- вода цистерны
+// Возврат: xyz — касательная нормаль (почти плоская), w — маска колец.
+float4 RakisDripRipples(float3 WorldPos, float Time, float DropsPerCell, float CellSize, float Strength)
+{
+	const float2 P = WorldPos.xy / max(CellSize, 1.0);
+	const float2 Cell = floor(P);
+	float2 Grad = 0.0;
+	float RingMask = 0.0;
+	[unroll] for (int y = -1; y <= 1; ++y)
+	[unroll] for (int x = -1; x <= 1; ++x)
+	{
+		const float2 C = Cell + float2(x, y);
+		const float2 R = RakisHash22(C);
+		const float Period = lerp(6.0, 14.0, R.x) / max(DropsPerCell, 0.01);
+		const float Age = frac(Time / Period + R.y);       // 0..1 жизненного цикла кольца
+		const float2 D = P - (C + RakisHash22(C + 7.0));
+		const float Dist = length(D);
+		const float Radius = Age * 1.2;
+		const float Wave = sin((Dist - Radius) * 40.0) * exp(-abs(Dist - Radius) * 18.0) * (1.0 - Age);
+		Grad += (D / max(Dist, 1e-4)) * Wave;
+		RingMask = max(RingMask, abs(Wave));
+	}
+	const float3 N = normalize(float3(-Grad * Strength, 1.0));
+	return float4(N, RingMask);
+}
+
+// ---------------------------------------------------------------- ткань
+// Возврат: x — потёртость 0..1 (по маске из вершинного цвета + шум), y — пыль 0..1.
+float2 RakisClothWear(float3 WorldPos, float3 Normal, float LocalZ, float VertexWear, float WearAmount,
+                      float DustAmount, float HemHeight)
+{
+	const float N = RakisValueNoise2(WorldPos.xy * 0.35 + WorldPos.z * 0.21);
+	const float Wear = saturate(VertexWear * WearAmount * lerp(0.6, 1.4, N));
+	// Пыль: подол (низ одежды) + верхние грани (плечи, капюшон).
+	const float Hem = 1.0 - RakisLinearStep(0.0, max(HemHeight, 1.0), LocalZ);
+	const float Up = saturate(Normal.z * 1.5 - 0.3);
+	const float Dust = saturate((Hem * 0.8 + Up * 0.5) * DustAmount * lerp(0.7, 1.3, N));
+	return float2(Wear, Dust);
+}

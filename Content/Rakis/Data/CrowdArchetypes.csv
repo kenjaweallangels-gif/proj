@@ -1,0 +1,9 @@
+Archetype,DisplayName_RU,DisplayName_EN,BaseMesh,WalkSpeed,SmartObjectTags,ClothPalette,Accessories,SpawnWeight,AgeGroup
+Trader,Торговец,Trader,,110,Stall;Bench,#8A5A2B;#C9A46A;#3B2A1E;#2C3E57,Mod_Hood_Wrap;Mod_Belt_Pouches;Mod_Apron_Leather;Mod_Satchel_Cross;Mod_Beads_Coins,1.4,Adult
+Artisan,Мастер дистикомбов,Stillsuit Artisan,,105,StillsuitRepair;Bench;Stall,#5E4B3C;#7A6A55;#2B2420;#9C7C52,Mod_Apron_Leather;Mod_Belt_Tools;Mod_Tool_Roll;Mod_Loupe_Brow;Mod_Patches_Heavy,1.0,Adult
+WaterCarrier,Водонос,Water Carrier,,95,WaterJar;Bench,#3F5E7A;#B89A6A;#6B4F36;#D8C8A8,Mod_Jar_Shoulder;Mod_Yoke_Carry;Mod_Hood_Wrap;Mod_Water_Rings;Mod_Belt_Pouches,1.1,Adult
+Child,Ребёнок,Child,,150,Bench;Niche,#C9A46A;#8A5A2B;#2C3E57;#E0CDA6,Mod_Headband_Child;Mod_Toy_Worm;Mod_Toy_Thumper;Mod_Scarf_Blue,0.9,Child
+Guard,Страж сиетча,Sietch Guard,,125,Niche;Bench,#4A3B2C;#6B5A44;#1F2A36;#8C7355,Mod_Hood_Mask;Mod_Kris_Sheath;Mod_Cloak_Long;Mod_Belt_Tools;Mod_Bracer_Leather,0.7,Adult
+Pilgrim,Паломник-отступник,Renegade Pilgrim,,90,PrayerMat;Niche;Bench,#B8AE9C;#7E7466;#C9A46A;#3F5E7A,Mod_Shawl_Pilgrim;Mod_Staff_Walking;Mod_Beads_Prayer;Mod_Satchel_Cross;Mod_Patches_Heavy,0.9,Adult
+Elder,Старейшина,Elder,,75,Bench;PrayerMat;Niche,#6B4F36;#3B2A1E;#A88A5E;#2C3E57,Mod_Cloak_Long;Mod_Staff_Walking;Mod_Beads_Prayer;Mod_Hood_Wrap;Mod_Water_Rings,0.6,Elder
+Weaver,Ткачиха,Weaver,,100,Loom;Bench;Stall,#2C3E57;#9C3D2E;#C9A46A;#6B4F36,Mod_Scarf_Blue;Mod_Bracer_Weaver;Mod_Thread_Spools;Mod_Hood_Wrap;Mod_Apron_Cloth,1.0,Adult
