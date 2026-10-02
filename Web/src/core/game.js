@@ -47,7 +47,8 @@ export function createGame(canvas, settings) {
     shake: 0,
     /** Земля текущего пространства: пустыня (game.world) или сиетч (game.sietch). */
     ground() { return game.space === 'sietch' ? game.sietch : game.world; },
-    heightAt(x, z) { return game.ground()?.heightAt?.(x, z) ?? 0; },
+    /** y — текущая высота ступней (для многоуровневых полов сиетча); можно не передавать. */
+    heightAt(x, z, y) { return game.ground()?.heightAt?.(x, z, y) ?? 0; },
     surfaceAt(x, z) { return game.ground()?.surfaceAt?.(x, z) ?? 'sand'; },
     /** Выталкивает позицию (Vector3) из препятствий радиуса r; возвращает true, если было столкновение. */
     collide(pos, r) { return game.ground()?.collide?.(pos, r) ?? false; },

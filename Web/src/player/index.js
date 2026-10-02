@@ -149,7 +149,7 @@ export function create(game) {
       if (game.collide(position, CFG.radius) && dt > 0) {
         velocity.x = (position.x - ox) / dt - slide.x; velocity.z = (position.z - oz) / dt - slide.z;
       }
-      const gy = game.heightAt(position.x, position.z);
+      const gy = game.heightAt(position.x, position.z, position.y);
       position.y = Math.abs(gy - position.y) > 1.2 ? gy : damp(position.y, gy, CFG.groundLambda, dt);
       const rawSpeed = dt > 0 ? Math.hypot(position.x - ox, position.z - oz) / dt : 0;
       p.speed = damp(p.speed, rawSpeed, 20, dt);

@@ -82,12 +82,23 @@ export function create(game) {
       trailTip = { x: pl.position.x, z: pl.position.z };
       list.forEach((c, i) => {
         const d = C.spacing * (i + 1);
-        c.position.set(pl.position.x - fx * d, 0, pl.position.z - fz * d);
+        // Смещение вбок (поочерёдно), чтобы не вставать на ось камеры третьего лица.
+        const lat = (i % 2 === 0 ? 1 : -1) * 1.3;
+        c.position.set(pl.position.x - fx * d - fz * lat, 0, pl.position.z - fz * d + fx * lat);
         game.collide(c.position, CFG.radius);
         c.position.y = game.heightAt(c.position.x, c.position.z);
         c.yaw = pl.yaw; c.speed = 0; c.vel.set(0, 0, 0);
         sync(c);
       });
+    },
+    /** Не загораживать камеру: фигура ближе ~1 м к камере скрывается. */
+    lateUpdate() {
+      const cam = game.camera.position;
+      for (const c of list) {
+        const dx = c.position.x - cam.x, dz = c.position.z - cam.z;
+        const dy = c.position.y + 1.2 - cam.y;
+        c.figure.group.visible = dx * dx + dz * dz + dy * dy > 1.1 * 1.1;
+      }
     },
   };
 
@@ -175,7 +186,7 @@ export function create(game) {
           }
         }
         game.collide(c.position, CFG.radius);
-        const gy = game.heightAt(c.position.x, c.position.z);
+        const gy = game.heightAt(c.position.x, c.position.z, c.position.y);
         c.position.y = Math.abs(gy - c.position.y) > 1.2 ? gy : damp(c.position.y, gy, 16, dt);
       }
       c.speed = damp(c.speed, dt > 0 ? Math.hypot(c.position.x - ox, c.position.z - oz) / dt : 0, 15, dt);

@@ -74,7 +74,8 @@ export function createCameraRig(game, p) {
         const k = i / 10;
         probe.lerpVectors(head, want, k);
         let bad = probe.y < game.heightAt(probe.x, probe.z) + C.groundClearance;
-        if (!bad && i > 1) { const q = probe.clone(); bad = game.collide(q, 0.25); }
+        // Стены проверяем на уровне ступней игрока: многоуровневые полы (сиетч) выбирают этаж по y.
+        if (!bad && i > 1) { const q = probe.clone(); q.y = pivot.y + 0.1; bad = game.collide(q, 0.25); }
         if (bad) { frac = Math.max(0.12, (i - 1) / 10); break; }
       }
       armFrac = frac < armFrac ? frac : damp(armFrac, frac, C.armOutLambda, dt);
