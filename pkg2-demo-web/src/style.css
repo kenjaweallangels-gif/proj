@@ -1,0 +1,93 @@
+:root {
+  --bg: #15191d; --panel: #1d2329; --line: #2f3841; --ink: #e6edf2; --mute: #93a1ad;
+  --accent: #58e6ff; --ok: #5dffa8; --warn: #ffc845;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --cond: "IBM Plex Sans Condensed", var(--sans);
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.4 var(--sans); }
+body { display: grid; grid-template-rows: auto 1fr auto; overflow: hidden; }
+button, select, input { font: inherit; color: inherit; }
+button {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer;
+  min-height: 34px;
+}
+button:hover { border-color: #4b5a66; }
+button[aria-pressed="true"] { background: #23404c; border-color: var(--accent); color: #dffaff; }
+button.primary { background: #1f6e86; border-color: #2a95b3; font-weight: 600; }
+select, input { background: #11161a; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-height: 34px; }
+
+.top { display: flex; gap: 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.brand { display: flex; gap: 10px; align-items: baseline; flex: 1; min-width: 0; }
+.brand b { font-family: var(--cond); color: var(--accent); letter-spacing: .02em; }
+.brand span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand small { color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seg { display: flex; }
+.seg button { border-radius: 0; margin-left: -1px; }
+.seg button:first-child { border-radius: 6px 0 0 6px; }
+.seg button:last-child { border-radius: 0 6px 6px 0; }
+
+#stage { position: relative; min-height: 0; }
+#view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.ctl { position: absolute; overflow: hidden; touch-action: none; }
+.ctl[hidden] { display: none; }
+#fpCtl { cursor: grab; }
+.tag { position: absolute; left: 10px; bottom: 8px; font: 12px var(--mono); color: #c4d0d8; background: rgba(10,14,18,.55);
+  padding: 2px 8px; border-radius: 4px; pointer-events: none; }
+#tpCtl { border-left: 1px solid var(--line); }
+#notes { position: absolute; right: 10px; top: 10px; max-width: 420px; font-size: 12px; background: rgba(40,30,10,.9);
+  border: 1px solid #6b5520; border-radius: 6px; padding: 8px 10px; color: #ffe2a8; }
+
+.bar { display: flex; gap: 10px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.bar .steps, .bar .tools { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.bar .title { flex: 1; min-width: 160px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#val { width: 120px; }
+#heard { color: var(--mute); font-size: 12px; max-width: 220px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#chatIn { width: 220px; }
+
+/* ---------- HUD в окне дисплея очков ---------- */
+.hud { position: absolute; --u: 14px; color: #bff6ff; mix-blend-mode: screen; pointer-events: none;
+  font-family: var(--cond); text-shadow: 0 0 6px rgba(88,230,255,.45); }
+.hud[hidden] { display: none; }
+.hud-step { position: absolute; left: 3%; top: 3.5%; right: 38%; font-size: calc(var(--u) * 1.25); font-weight: 600;
+  display: flex; gap: .6em; align-items: baseline; }
+.hud-n { font-family: var(--mono); font-size: .8em; color: #7fe9ff; border: 1px solid rgba(127,233,255,.6); padding: 0 .35em; border-radius: 3px; }
+.hud-info { position: absolute; left: 3%; top: calc(3.5% + var(--u) * 2.1); right: 38%; font-size: var(--u); color: #9fe3f0; }
+.hud-bar { position: absolute; left: 3%; top: calc(3.5% + var(--u) * 3.7); width: 30%; height: 2px; background: rgba(127,233,255,.2); }
+.hud-bar i { display: block; height: 100%; width: 0; background: #7fe9ff; }
+.hud-status { position: absolute; left: 3%; bottom: 3.5%; right: 38%; font-size: calc(var(--u) * .9); color: #8fdcea; }
+.hud-status.warn { color: #ffd77a; text-shadow: 0 0 6px rgba(255,200,69,.5); }
+.hud-toast { position: absolute; left: 3%; bottom: calc(3.5% + var(--u) * 1.8); max-width: 58%; font-size: var(--u);
+  border-left: 2px solid var(--warn); padding-left: .5em; color: #ffe7a6; }
+.hud-toast[hidden] { display: none; }
+.hud-panel { position: absolute; right: 2.5%; top: 4%; bottom: 4%; width: 34%; pointer-events: auto;
+  border: 1px solid rgba(127,233,255,.45); background: rgba(40,140,170,.10); display: flex; flex-direction: column;
+  font-size: calc(var(--u) * .85); transition: transform .25s, opacity .25s; }
+.hud-panel[data-open="false"] { transform: translateX(85%); opacity: .55; }
+.hud-panel nav { display: flex; }
+.hud-panel nav button { flex: 1; min-height: 0; padding: .25em .3em; border: 0; border-bottom: 1px solid rgba(127,233,255,.35);
+  border-radius: 0; background: transparent; color: #9fe3f0; font: inherit; }
+.hud-panel nav button[aria-pressed="true"] { background: rgba(127,233,255,.16); color: #e6fbff; }
+.hud-panel section { flex: 1; overflow: auto; padding: .5em .6em; }
+.hud-panel section[hidden] { display: none; }
+.hud-steps { list-style: none; margin: 0; padding: 0; }
+.hud-steps li { padding: .18em 0; color: #79c6d6; }
+.hud-steps li span { display: inline-block; width: 1.5em; font-family: var(--mono); }
+.hud-steps li.done { color: #5aa98b; }
+.hud-steps li.cur { color: #e6fbff; font-weight: 600; }
+.hud-steps em { color: var(--warn); font-style: normal; font-size: .85em; }
+.hud-kd { position: relative; }
+.hud-kd img { width: 100%; display: block; filter: invert(1) hue-rotate(180deg) brightness(1.1); opacity: .9; }
+.hud-kd-pos { position: absolute; border: 2px solid var(--warn); box-shadow: 0 0 10px rgba(255,200,69,.7); }
+.hud-kd-pos[hidden] { display: none; }
+.hud-kd-title { margin: .4em 0 0; color: #9fe3f0; }
+.hud-chat { list-style: none; margin: 0; padding: 0; }
+.hud-chat li { padding: .2em 0; color: #b8eef7; }
+.hud-chat li b { color: #7fe9ff; font-weight: 600; margin-right: .3em; }
+.hud-chat li.me { color: #9fe3c0; }
+
+@media (max-width: 700px) {
+  .brand small, #heard, #chatForm, .bar .title { display: none; }
+  .tag { font-size: 10px; }
+}

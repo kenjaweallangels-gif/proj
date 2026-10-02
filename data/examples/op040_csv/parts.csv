@@ -1,0 +1,5 @@
+﻿id;designation;name;model;node;fallback_type;fx;fy;fz;color;tx;ty;tz;qx;qy;qz;qw;source_kind;source_cell;sx;sy;sz;kd_sheet;kd_pos;mass_kg
+K204;К-204;Кронштейн левый;m_shelf;K204;box;100;70;60;#a8a45a;-400;30;-120;0;0;0;1;bin;B3;830;20;-20;kd3;1;0.12
+K205;К-205;Кронштейн правый;m_shelf;K205;box;100;70;60;#a8a45a;400;30;-120;0;0;0;1;bin;B4;970;20;-20;kd3;2;0.12
+P110;П-110;Петля крышки;m_shelf;P110;box;900;10;30;#b9bec4;0;30;-200;0;0;0;1;bench;;80;-20;-400;kd3;3;0.4
+Z31;З-31;Замок крышки;m_shelf;Z31;box;120;30;50;#2d3136;0;30;170;0;0;0;1;bin;C2;900;20;280;kd3;4;0.18

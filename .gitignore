@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+*.db
+# Данные и артефакты
+pkg1-sim-vm/out/
+pkg1-sim-vm/server_data/
+pkg1-sim-vm/vendor/viture/
+pkg1-sim-vm/calib/*.yaml
+rec/
+# Godot
+pkg1-sim-vm/godot/.godot/
+# Web
+pkg2-demo-web/node_modules/
+pkg2-demo-web/dist/
+pkg2-demo-web/test-results/
+# Реальные модели и КД изделий не коммитить без согласования (режим)
+data/real/
+pkg2-demo-web/public/data/
+pkg2-demo-web/public/markers/
