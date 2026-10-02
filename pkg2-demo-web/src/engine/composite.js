@@ -14,6 +14,16 @@ import { LAYER_HOLO, LAYER_LABEL, LAYER_REAL } from './holo.js';
  * → тональная компрессия и sRGB (OutputPass). quality: 'high' — всё, 'low' — без AO и bloom (слабая графика).
  * AO считается по отдельной камере-двойнику только со слоем реальности: голограммы, подписи и конусы его не портят.
  */
+// Защита от NaN/Inf: битая нормаль в чужом GLB даёт NaN в одном пикселе, а bloom и размытие растаскивают его на весь кадр.
+const Sanitize = {
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+  void main(){ vec4 c = texture2D(tDiffuse, vUv);
+    if (any(isnan(c)) || any(isinf(c))) c = vec4(0.0, 0.0, 0.0, 1.0);
+    gl_FragColor = vec4(min(c.rgb, vec3(64.0)), c.a); }`,
+};
+
 export class PhotoChain {
   constructor(renderer, scene, camera, { quality = 'high' } = {}) {
     this.camera = camera;
@@ -21,6 +31,7 @@ export class PhotoChain {
     this.composer.addPass(new RenderPass(scene, camera));
     this.aoCam = camera.clone();
     if (quality !== 'low') {
+      this.composer.addPass(new ShaderPass(Sanitize));
       this.ao = new GTAOPass(scene, this.aoCam, 4, 4);
       this.ao.updateGtaoMaterial({ radius: 0.22, distanceExponent: 1.4, thickness: 1.2, scale: 1.1, samples: 16, distanceFallOff: 1 });
       this.ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
@@ -80,6 +91,7 @@ const Shader = {
     float ecc = length(a - gaze);
     float r = uBlur * smoothstep(22.0, 72.0, ecc) * 3.2 * (res.y / 900.0);
     vec3 col = texture2D(tDiffuse, vUv).rgb;
+    if (any(isnan(col))) col = vec3(0.0);
     if (r > 0.35) { vec3 acc = col; for (int i = 0; i < 12; i++) acc += texture2D(tDiffuse, vUv + P[i] * r / res).rgb; col = acc / 13.0; }
     float l = dot(col, vec3(0.299, 0.587, 0.114));
     col = mix(col, vec3(l), uBlur * 0.25 * smoothstep(34.0, 72.0, ecc));

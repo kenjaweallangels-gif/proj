@@ -17,6 +17,14 @@ import './style.css';
 
 const OPS = { '040': 'op040_shelf_bench.json', '070': 'op070_bin_fuselage.json' };
 const q = new URLSearchParams(location.search);
+// те же параметры короткими метками в #: #op070-eye-step4-auto-low (для страниц, где адресная строка недоступна)
+for (const t of location.hash.slice(1).split(/[-_.~]/).filter(Boolean)) {
+  if (/^op\d{3}$/.test(t)) q.set('op', t.slice(2));
+  else if (['eye', 'side', 'split'].includes(t)) q.set('view', t);
+  else if (/^step\d+$/.test(t)) q.set('step', t.slice(4));
+  else if (t === 'auto' || t === 'full') q.set(t, '1');
+  else if (t === 'low' || t === 'high') q.set('quality', t);
+}
 const opId = OPS[q.get('op')] ? q.get('op') : '040';
 const ui = {
   view: ['eye', 'side', 'split'].includes(q.get('view')) ? q.get('view') : 'split',
@@ -161,7 +169,8 @@ async function main() {
   $('val').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('valOk').click(); e.stopPropagation(); });
   $('chatForm').onsubmit = (e) => { e.preventDefault(); const t = $('chatIn').value.trim(); if (t) { hud.chat('Вы', t, true); reply(); } $('chatIn').value = ''; };
   $('chatIn').addEventListener('keydown', (e) => e.stopPropagation());
-  $('opSel').onchange = (e) => { q.set('op', e.target.value); q.delete('step'); location.search = q.toString(); };
+  $('opSel').onchange = (e) => { location.hash = `op${e.target.value}-${ui.view}${ui.quality === 'low' ? '-low' : ''}`; };
+  addEventListener('hashchange', () => location.reload());
   document.querySelectorAll('[data-view]').forEach((b) => { b.onclick = () => { ui.view = b.dataset.view; syncUi(); }; });
   const voice = createBrowserListener(([cmd, v], text) => { $('heard').textContent = `«${text}»`; command(cmd, v); }, (t) => { $('heard').textContent = `«${t}»`; });
   $('btnVoice').onclick = () => {
