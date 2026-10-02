@@ -37,8 +37,8 @@ ARakisCharacter* URakisInteractionComponent::GetOwnerCharacter() const
 
 void URakisInteractionComponent::SetInteractionEnabled(bool bInEnabled)
 {
-	bEnabled = bInEnabled;
-	if (!bEnabled)
+	bInteractionEnabled = bInEnabled;
+	if (!bInteractionEnabled)
 	{
 		SetFocus(nullptr);
 	}
@@ -48,7 +48,7 @@ void URakisInteractionComponent::UpdateFocus()
 {
 	ARakisCharacter* Character = GetOwnerCharacter();
 	UWorld* World = GetWorld();
-	if (!bEnabled || !Character || !World || !Character->IsPlayerControlled() || Character->IsInputLocked())
+	if (!bInteractionEnabled || !Character || !World || !Character->IsPlayerControlled() || Character->IsInputLocked())
 	{
 		SetFocus(nullptr);
 		return;
@@ -106,7 +106,7 @@ bool URakisInteractionComponent::TryInteract()
 {
 	ARakisCharacter* Character = GetOwnerCharacter();
 	AActor* Target = Focused.Get();
-	if (!bEnabled || !Character || !Target)
+	if (!bInteractionEnabled || !Character || !Target)
 	{
 		return false;
 	}

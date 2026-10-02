@@ -18,7 +18,6 @@ public:
 
 	/** Вызывается ARakisHUD с частотой опроса (30 Гц). */
 	void SetValues(float InNoise01, float InThreat01, bool bInThreatActive, bool bInOnSand);
-	/** Внешний множитель видимости слоя (B-зоны и т.п.) обрабатывается корнем; здесь — только своя логика. */
 
 	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
 	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,

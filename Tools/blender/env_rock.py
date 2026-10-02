@@ -67,6 +67,16 @@ def frame(t):
 
 
 # ------------------------------------------------------------------ профиль сечения
+def h_eff(t):
+    """Высота с «зубчатой» линией горизонта: зазубрины, уступы, седловины (м)."""
+    from mathutils import noise, Vector
+    H = L.claw_height(t) / 100.0
+    n1 = noise.noise(Vector((t * 7.0, 0.3, 1.1)))
+    n2 = noise.noise(Vector((t * 23.0, 2.7, 0.4)))
+    notch = max(0.0, noise.noise(Vector((t * 11.0, 5.5, 3.3))) - 0.35) * 0.35
+    return H * (1.0 + 0.07 * n1 + 0.025 * n2 - notch)
+
+
 def side_profile(t, side, rng_seed, n):
     """[(r, z)] для одной стороны (side=+1 запад, −1 восток) снизу вверх; r — отступ от оси, м."""
     from mathutils import noise, Vector
@@ -74,6 +84,7 @@ def side_profile(t, side, rng_seed, n):
     H = L.claw_height(t) / 100.0
     end = L.claw_end_round(t)
     W = max(W, 1.5)
+    H = h_eff(t)
     talus_len = (8.0 + 10.0 * (0.5 + 0.5 * noise.noise(Vector((t * 9.0, side * 3.1, 0.3))))) * (0.4 + 0.6 * end)
     talus_h = 10.0 + 10.0 * (0.5 + 0.5 * noise.noise(Vector((t * 6.0, side * 1.7, 2.1))))
     under_d = (3.0 + 5.0 * max(0.0, noise.noise(Vector((t * 14.0, side * 5.3, 4.2))))) * min(1.0, W / 25.0)
@@ -105,7 +116,7 @@ def side_profile(t, side, rng_seed, n):
 def top_profile(t, n):
     """Шапка: точки поперёк вершины (r от +W до −W) с лёгким куполом."""
     W = max(1.5, L.claw_half_width(t) / 100.0)
-    H = L.claw_height(t) / 100.0
+    H = h_eff(t)
     cap = min(10.0, H * 0.06)
     rw = W * (1.0 - 0.11) - cap
     out = []
@@ -126,7 +137,7 @@ def build_body(nt, nside, seed):
         t = -0.995 + 1.99 * i / nt
         (cx, cy), _, (nx, ny) = frame(t)
         lean = L.claw_lean(t) / 100.0
-        H = L.claw_height(t) / 100.0
+        H = h_eff(t)
         west = side_profile(t, +1, seed, nside)
         east = side_profile(t, -1, seed, nside)
         ring = []
@@ -169,7 +180,7 @@ def build_cutters(scale_h):
     bm = bmesh.new()
     x0 = L.CREVICE_MOUTH[0] - 3000.0
     x1 = L.FALSE_ROCK[0] + 40.0
-    nx, nz = 24, 10
+    nx, nz = 24, 16
     ztop = scale_h + 30.0
     grid_l, grid_r = [], []
     for i in range(nx + 1):
@@ -177,7 +188,11 @@ def build_cutters(scale_h):
         col_l, col_r = [], []
         for k in range(nz + 1):
             z = SKIRT_M - 2.0 + (ztop - SKIRT_M + 2.0) * k / nz
-            hw = (L.CREVICE_WIDTH / 200.0) * (1.0 - 0.5 * min(1.0, max(0.0, z) / 120.0))   # 3 м → 1.5 м полуширина
+            zo = L.CREVICE_OPEN_H / 100.0
+            if z < zo:                                                      # 6 м по низу → 3 м на 50 м
+                hw = (L.CREVICE_WIDTH / 200.0) * (1.0 - 0.5 * max(0.0, z) / zo)
+            else:                                                           # выше — волосяная трещина (не читается со старта)
+                hw = 0.4
             zig = 1.4 * math.sin(xu / 900.0) + 0.8 * math.sin(z / 17.0 + xu / 1300.0)
             yc = L.CREVICE_MOUTH[1] + zig * 100.0
             a = ue_to_local(xu, yc - hw * 100.0, 0)

@@ -62,7 +62,6 @@ ARakisWorm::ARakisWorm()
 	BodySegments->SetGenerateOverlapEvents(false);
 	BodySegments->SetCanEverAffectNavigation(false);
 	BodySegments->SetCastShadow(true);
-	BodySegments->NumCustomDataFloats = 1; // 0..1 — позиция кольца вдоль тела (вариации материала)
 
 	HeadPivot = CreateDefaultSubobject<USceneComponent>(TEXT("HeadPivot"));
 	HeadPivot->SetupAttachment(SceneRoot);
@@ -675,7 +674,7 @@ void ARakisWorm::UpdateFeedback(float DeltaSeconds)
 	}
 
 	// Гул приближения: звучит во всех состояниях, кроме покоя.
-	if (ApproachAudio->GetSound())
+	if (ApproachAudio->Sound)
 	{
 		const bool bAudible = State != ERakisWormState::Dormant || Threat01 > 0.02f;
 		if (bAudible && !ApproachAudio->IsPlaying())
@@ -900,7 +899,7 @@ void ARakisWorm::UpdateSurfaceScript(float DeltaSeconds, const URakisWormTuning&
 				FX->SetVariableFloat(RakisWorm::IntensityParam, 1.f);
 			}
 		}
-		if (RoarAudio->GetSound())
+		if (RoarAudio->Sound)
 		{
 			RoarAudio->SetWorldLocation(BreachPoint + FVector(0.f, 0.f, Tuning.SurfaceHeight * 0.5f));
 			RoarAudio->Play();

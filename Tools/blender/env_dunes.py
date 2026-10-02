@@ -300,7 +300,10 @@ def height_m(B, xc, yc, seed=1977):
     # --- скала: осыпь, котловина, плиты A3, расщелина, провал под скалой
     sd, side = rock_sd(B, xc, yc)
     sdm = sd / 100.0                                          # м
-    talus = 6.0 * (1.0 - smoothstep(B, 0.0, 45.0, sdm))
+    mdx = xm - L.CREVICE_MOUTH[0] / 100.0
+    mdy = ym - L.CREVICE_MOUTH[1] / 100.0
+    near_mouth = smoothstep(B, 12.0, 38.0, B.sqrt(mdx * mdx + mdy * mdy))   # у устья осыпи нет — ровный порог
+    talus = 6.0 * (1.0 - smoothstep(B, 0.0, 45.0, sdm)) * near_mouth
     windward = B.clip(0.5 - 0.5 * side * WIND_X * 2.0, 0.0, 1.0)  # запад/север — наветренные
     scour = -7.0 * B.exp(-((sdm - 55.0) / 28.0) ** 2) * (0.4 + 0.6 * windward)
     # A3 — плиты подхода: ступенчатая «терраса» вдоль тропы

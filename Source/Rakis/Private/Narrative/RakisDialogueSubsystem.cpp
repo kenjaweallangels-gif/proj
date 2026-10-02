@@ -10,6 +10,7 @@
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/Pawn.h"
+#include "CoreGlobals.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformTime.h"
 #include "Internationalization/Culture.h"
@@ -470,8 +471,8 @@ AActor* URakisDialogueSubsystem::FindSpeakerActor(FName SpeakerID) const
 
 FText URakisDialogueSubsystem::GetSpeakerDisplayName(FName SpeakerID) const
 {
-	struct FName2 { const TCHAR* Id; const TCHAR* RU; const TCHAR* EN; };
-	static const FName2 Names[] =
+	struct FSpeakerName { const TCHAR* Id; const TCHAR* RU; const TCHAR* EN; };
+	static const FSpeakerName Names[] =
 	{
 		{ TEXT("Kair"),      TEXT("Кайр"),          TEXT("Kair") },
 		{ TEXT("Ilva"),      TEXT("Сестра Илва"),   TEXT("Sister Ilva") },
@@ -489,7 +490,7 @@ FText URakisDialogueSubsystem::GetSpeakerDisplayName(FName SpeakerID) const
 	{
 		return FText::GetEmpty();
 	}
-	for (const FName2& Entry : Names)
+	for (const FSpeakerName& Entry : Names)
 	{
 		if (SpeakerID == FName(Entry.Id))
 		{

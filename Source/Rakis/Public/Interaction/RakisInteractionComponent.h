@@ -36,7 +36,7 @@ public:
 
 	/** Включить/выключить поиск (кат-сцены). При выключении фокус сбрасывается. */
 	UFUNCTION(BlueprintCallable, Category = "Rakis|Interaction")
-	void SetInteractionEnabled(bool bEnabled);
+	void SetInteractionEnabled(bool bInEnabled);
 
 	/** Смена фокуса; Actor = nullptr и пустой Verb — фокуса нет. */
 	UPROPERTY(BlueprintAssignable, Category = "Rakis|Interaction")
@@ -73,6 +73,6 @@ private:
 
 	TWeakObjectPtr<AActor> Focused;
 	FText FocusedVerb;
-	bool bEnabled = true;
+	bool bInteractionEnabled = true;
 	FTimerHandle UpdateTimer;
 };
