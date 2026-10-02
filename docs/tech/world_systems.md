@@ -15,6 +15,7 @@ ARakisZoneVolume ──overlap──▶ URakisZoneSubsystem ──▶ URakisWeat
 ARakisWorm ──GetThreat01 / OnWormStateChanged──▶ URakisAudioDirector (WormThreat / WormReveal)
 ARakisCinematicTrigger ──▶ ULevelSequencePlayer | фоллбек: ARakisWorm.ForceSurface(Rakis.Worm.Reveal)
 ARakisCrowdSpawner ──▶ ARakisCitizen ×N ──▶ URakisCrowdSubsystem (точки, разговоры, лай, ритуал)
+                      │ (UStateTreeComponent: ST_Citizen | C++-фоллбек)  └─▶ USmartObjectSubsystem (слоты точек)
                                          └─▶ URakisDialogueSubsystem.PlayBark
 ARakisCompanion ── след игрока (крошки) ──▶ цепочка за игроком
 ```
@@ -92,10 +93,16 @@ ARakisCompanion ── след игрока (крошки) ──▶ цепоч
 
 ## 6. NPC
 
-### 6.1 `ARakisCitizen` (ACharacter + AAIController)
-- Логика — таймер `BehaviourHz` (5 Гц, фаза случайна), не Tick; дальше `SignificanceRadius` (40 м) от игрока — пропуск
-  (кроме ритуала). Tick включается только для плавного доворота корпуса. Поза меша — `OnlyTickPoseWhenRendered`, RVO включён.
-- Цикл: точка своего архетипа (75 %) → `UsingSpot` 10–30 с (лицом по ориентации точки, разговор с вероятностью 45 %,
+> С S2 (T-015) решения горожанина — StateTree `ST_Citizen` с C++-задачами, точки — Smart Objects, LOD 40/70 м;
+> прежний автомат остался фоллбеком. Подробно — **`docs/tech/crowd.md`**. Ниже — поведение, общее для обоих режимов.
+
+### 6.1 `ARakisCitizen` (ACharacter + AAIController + UStateTreeComponent)
+- Решения: `UStateTreeComponent` с `ST_Citizen` (если ассет есть) или C++-автомат на таймере `BehaviourHz` (5 Гц).
+  LOD (таймер 1 Гц): ≤ 40 м — полная частота; ≤ 70 м — StateTree тикает раз в 0.5 с / автомат решает раз в 1 с;
+  дальше — скрыт, движение и дерево на паузе (кроме пути на ритуал). Tick актора включается только для плавного
+  доворота корпуса. Поза меша — `OnlyTickPoseWhenRendered`, RVO включён.
+- Цикл: точка своего архетипа (75 %; Smart Object слот: FindSmartObjects → Claim → Occupy → Free) → `UsingSpot`
+  (длительность из поведения слота SOD или 10–30 с; лицом по повороту слота, разговор 45 % × множитель слота,
   ×1.6 если на точке уже кто-то) → прогулка по навмешу → пауза 2–7 с. Без навмеша — прямое движение.
 - Look-at: ≤ 6 м, `LookAtTarget` (голова игрока) + `bLookAtPlayer`; стоящий доворачивает корпус, если угол > 70°.
 - Уступить дорогу: игрок ≤ 1.5 м и идёт на NPC (или NPC идёт на игрока) → шаг 1.4 м вбок, затем возврат к цели.
@@ -123,7 +130,8 @@ ARakisCompanion ── след игрока (крошки) ──▶ цепоч
   `SpawnWeight`, точка `Rakis.CrowdSpawn.<Archetype>` (75 %) или `Rakis.CrowdSpawn`, разброс 1.8 м, приземление трассой;
   спавн пачками по 6 каждые 0.05 с, `SpawnActorDeferred` → `InitCitizen` → `FinishSpawning`, уровень = уровень спавнера.
 - Подсистема: архетипы (DT или 8 встроенных), кэш точек `Rakis.SmartObject.<Type>` (алиасы Prayer→PrayerMat,
-  Water→WaterJar, Repair→StillsuitRepair, Market→Stall), ёмкость точек (Bench 3, Stall/WaterJar 2, прочие 1),
+  Water→WaterJar, Repair→StillsuitRepair, Market→Stall); маркерам добавляется `USmartObjectComponent`
+  (SOD_<Type> или рантайм-определение, слоты = ёмкость: Bench 3, Stall/WaterJar 2, прочие 1; фоллбек — теговое резервирование),
   реестр разговоров, окно лая, `StartRitual()` (точки сбора по имени, горожане от ближних к дальним, круговая раскладка
   «золотым углом» вокруг точки при нехватке точек, задержка 0.5 + 0.35·i + rand(0..1.5) с), `OnRitualStarted`,
   звук `CrowdRitual` в центре зала. Опоздавшие (подгрузились после старта) идут в зал сразу.
@@ -132,10 +140,14 @@ ARakisCompanion ── след игрока (крошки) ──▶ цепоч
   (`Rakis.Companions.AutoSpawn 0` — выкл; класс — `CompanionClass` в `[/Script/Rakis.RakisCrowdSubsystem]`).
 - Консоль: `Rakis.Crowd.StartRitual`.
 
-## 7. План апгрейда толпы на Mass / StateTree / Smart Objects
+## 7. Апгрейд толпы на Mass / StateTree / Smart Objects
 
-Срез держит акторную толпу (60 × ACharacter, логика 5 Гц, анимация только в кадре) — это укладывается в бюджет и
-отлаживается проще. GDD целится в Mass + StateTree + Smart Objects; переход без смены внешнего API:
+**Статус (S2, T-015):** пункты 1 (Smart Objects — рантайм-регистрация на маркерах, ассеты `ai_smart_objects.py`) и
+2 (StateTree — C++-узлы + `UStateTreeComponent` на горожанине, ассет `ST_Citizen` собирается в редакторе по
+`docs/tech/crowd.md` §3) **сделаны**; LOD 40/70 м — сделан (сон вместо Mass hand-off). Пункт 3 (Mass) — только
+разметка и инструкция (`ai_mass_crowd.py`, crowd.md §6), C++ Mass не писали. Отличия от плана ниже: компонент
+StateTree — на пешке (схема «StateTree Component»), а не на AAIController; маркеры остаются TargetPoint, компоненты
+SO вешаются в рантайме (скрипт разметки уровня не меняли). Исходный план:
 
 1. **Smart Objects.** Заменить теговые точки на `USmartObjectComponent` с `USmartObjectDefinition` на каждый тип
    (Loom, Stall, WaterJar, PrayerMat, Bench, Niche, StillsuitRepair); слоты = нынешняя ёмкость, Activity Tags = тип.
@@ -153,6 +165,7 @@ ARakisCompanion ── след игрока (крошки) ──▶ цепоч
    (look-at, лай, уступить дорогу, разговоры остаются в акторе) — стандартная схема Mass LOD → Actor.
    `URakisCrowdSubsystem` остаётся фасадом: `StartRitual`, реестр разговоров, окно лая; для Mass ритуал = сигнал
    `UMassSignalSubsystem` всем сущностям с фрагментом `FRakisCitizenFragment`.
+   (S2: Mass не реализован; спящие > 70 м горожане просто скрыты.)
 5. **Порядок работ:** (а) SO-компоненты на точки, (б) ST_Citizen для актора, (в) Mass для зала (статичные ярусы),
    (г) Mass для галереи с LOD → Actor. Модули `MassEntity/MassCommon/MassSpawner/MassActors/SmartObjectsModule`
    уже в `Rakis.Build.cs`; понадобятся ещё `MassMovement`, `MassNavigation`, `MassLOD`, `MassRepresentation`,
@@ -164,4 +177,5 @@ ARakisCompanion ── след игрока (крошки) ──▶ цепоч
 - `Rakis.Weather Storm_Horizon 5`, `Rakis.TimeOfDay 6.5` / `18` — солнце уходит на восток/запад, туман и пыль меняются.
 - `Rakis.Crowd.StartRitual` — толпа идёт к `Rakis.HallGather`.
 - `Rakis.Crowd.AutoRitual 0`, `Rakis.Companions.AutoSpawn 0` — выключение автоматики.
+- `Rakis.Crowd.StateTree 0`, `Rakis.Crowd.SmartObjects 0`, `Rakis.Crowd.LOD 0` — откат толпы к поведению S1 (crowd.md §1).
 - Без контента: вместо людей — цилиндры, музыка молчит с одним предупреждением, кат-сцена червя — фоллбек ForceSurface.

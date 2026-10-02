@@ -58,12 +58,14 @@ namespace RakisSandTrailPrivate
 	/** Квад штампа больше формы в 1.3 раза (вал помещается) — то же число, что в RakisTrailStampShape. */
 	static constexpr float StampQuadScale = 1.3f;
 
+	static constexpr float Ln2 = 0.69314718f;
+
 	static constexpr uint32 Bit(ERakisStampType Type) { return 1u << static_cast<uint32>(Type); }
 
 	static TAutoConsoleVariable<int32> CVarSandTrails(
 		TEXT("Rakis.SandTrails"), 1,
 		TEXT("Следы на песке (URakisSandTrailSubsystem): 1 — вкл, 0 — выкл (RT не обновляются, ландшафт их не читает)."),
-		ECVF_Scalability | ECVF_RenderThreadSafe);
+		ECVF_Scalability);
 
 	static void ClearForWorld(UWorld* World)
 	{
@@ -294,7 +296,7 @@ FVector2D URakisSandTrailSubsystem::WorldToPixel(const FVector2D& World, const F
 
 float URakisSandTrailSubsystem::SnapToTexel(float SnapCm, float TexelCm)
 {
-	const float Texel = FMath::Max(TexelCm, KINDA_SMALL_NUMBER);
+	const float Texel = FMath::Max(TexelCm, UE_KINDA_SMALL_NUMBER);
 	return FMath::Max(1.f, FMath::RoundToFloat(SnapCm / Texel)) * Texel;
 }
 
@@ -317,8 +319,9 @@ float URakisSandTrailSubsystem::ComputeFadeAlpha(float DeltaSeconds, float WindS
 		return 0.f;
 	}
 	const float WindTerm = 1.f + FMath::Max(WindSpeed, 0.f) / FMath::Max(InWindReferenceMs, 0.1f);
-	const float Rate = UE_LN2 / FMath::Max(InCalmHalfLifeSec, 0.1f) * WindTerm
-		+ FMath::Clamp(StormIntensity, 0.f, 1.f) * UE_LN2 / FMath::Max(InStormHalfLifeSec, 0.1f);
+	using RakisSandTrailPrivate::Ln2;
+	const float Rate = Ln2 / FMath::Max(InCalmHalfLifeSec, 0.1f) * WindTerm
+		+ FMath::Clamp(StormIntensity, 0.f, 1.f) * Ln2 / FMath::Max(InStormHalfLifeSec, 0.1f);
 	return FMath::Clamp(1.f - FMath::Exp(-Rate * DeltaSeconds), 0.f, 1.f);
 }
 
@@ -527,12 +530,12 @@ void URakisSandTrailSubsystem::WriteWindowToMPC(const FRakisTrailCascade& Cascad
 
 float URakisSandTrailSubsystem::ReadMPCScalar(FName Name, float Default) const
 {
-	const UWorld* World = GetWorld();
+	UWorld* World = GetWorld();
 	if (!World || !WeatherMPC)
 	{
 		return Default;
 	}
-	const UMaterialParameterCollectionInstance* Instance = World->GetParameterCollectionInstance(WeatherMPC);
+	UMaterialParameterCollectionInstance* Instance = World->GetParameterCollectionInstance(WeatherMPC);
 	float Value = Default;
 	return (Instance && Instance->GetScalarParameterValue(Name, Value)) ? Value : Default;
 }
@@ -888,6 +891,13 @@ void URakisSandTrailSubsystem::UpdateWorm(const FVector& Focus)
 	const FVector Head = WormActor->GetHeadLocation();
 	const float GroundZ = WormActor->GetGroundZ();
 	const FVector2D Head2D(Head.X, Head.Y);
+	if (FVector2D::DistSquared(Head2D, FVector2D(Focus.X, Focus.Y)) > FMath::Square(static_cast<double>(FarWorldSizeCm)))
+	{
+		// Далеко от окон: штамп всё равно отсечётся. Колея продолжится с места входа в окно.
+		LastWormState = static_cast<uint8>(State);
+		bWormStampValid = false;
+		return;
+	}
 
 	// Выход на поверхность — кратер (один раз на вход в Surface).
 	if (State == ERakisWormState::Surface && LastWormState != static_cast<uint8>(ERakisWormState::Surface))

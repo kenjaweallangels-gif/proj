@@ -22,14 +22,24 @@
 | WindDirection | vector | (0.574, 0.819, 0) | WeatherSubsystem | единичный, **куда** дует |
 | SunDirection | vector | рассвет (0.125, 0.963, 0.238) | WeatherSubsystem | единичный, **на** солнце |
 | SandTint | vector | (1, 0.97, 0.95) | WeatherSubsystem | множитель цвета песка/пыли |
-| PlayerPosition | vector | 0 | персонаж/WeatherSubsystem | см, для следов/RVT |
+| PlayerPosition | vector | 0 | персонаж/WeatherSubsystem | см, для RVT/эффектов у игрока |
+| TrailOrigin | vector | (0, 0, 4096, 0) | URakisSandTrailSubsystem | **T-017**: окно RT_SandTrail — (центр X, Y, размер окна, активен 0/1), см |
+| TrailOriginFar | vector | (0, 0, 20480, 0) | URakisSandTrailSubsystem | **T-017**: то же для RT_SandTrail_Far (колея червя) |
 
 Повторный запуск скрипта сохраняет GUID существующих параметров (ссылки в материалах и C++ не ломаются) и удаляет параметры вне контракта.
 
 ## Мастер-материалы (`/Game/Rakis/Materials/Master/`)
 
 ### M_Landscape_Sand — см. `sand.md`
-Ландшафт/Nanite. Рябь (`SandRipples.ush`), искры (`SandSparkle.ush`), макро/микро вариация, склон рыхлый/плотный, выбеливание дали, RVT-выход, Nanite displacement, крючок следов. **~290 инструкций**, 0 текстур (процедурно).
+Ландшафт/Nanite. Рябь (`SandRipples.ush`), искры (`SandSparkle.ush`), макро/микро вариация, склон рыхлый/плотный, выбеливание дали, RVT-выход, Nanite displacement, следы и колея червя (`SandTrail.ush`, два RT, `UseTrails`, T-017). **~290 инструкций** (+45 и 10 выборок RT с `UseTrails`), 0 текстур (процедурно).
+
+### Служебные материалы следов (`/Game/Rakis/Materials/RT/`, `mat_sand_trails.py`)
+`M_SandTrail_Stamp` (Unlit Additive: StampType, StampDepthCm, StampRimCm), `M_SandTrail_Fade` (Unlit Translucent: FadeAlpha), `M_SandTrail_Copy` (Unlit Opaque: Source, UVOffset) — только для `DrawMaterialToRenderTarget`/Canvas; RT `RT_SandTrail` (2048², RG16f), `RT_SandTrail_Far` (1024², RG16f). См. `sand.md` §4.
+
+### Ограничения Python API UE 5.6 (проверено по документации 5.6)
+- `unreal.MaterialProperty` не содержит скрытых значений `MP_DISPLACEMENT`, `MP_CUSTOM_DATA0/1`, `MP_PIXEL_DEPTH_OFFSET`. `mat_graph_lib.Graph.out` пробует числовое значение enum; если сборка его не принимает — нода помечается комментарием «-> Displacement»/«-> CustomData0» и в лог пишется, что её нужно соединить с выходом вручную (песок: Displacement; ткань: Cloth = CustomData0).
+- У `MaterialInstanceConstantFactoryNew` нет экспортированного `initial_parent` — родитель ставится `set_material_instance_parent`.
+- `WorldPositionIncludedOffsets.WPT_CAMERA_RELATIVE` (не `…_WORLD_POSITION`). У `DotProduct`/`AppendVector` нет `const_a/const_b` — числа подаются нодой Constant.
 
 ### M_Rock_Master
 Скала «Коготь Шайтана» и россыпь камней. Nanite, ISM.
