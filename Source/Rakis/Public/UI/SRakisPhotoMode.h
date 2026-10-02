@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "InputCoreTypes.h"
 #include "Widgets/SCompoundWidget.h"
 
 class STextBlock;
