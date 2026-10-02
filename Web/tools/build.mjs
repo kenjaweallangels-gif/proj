@@ -21,7 +21,13 @@ async function bundle() {
   const js = res.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
   const html = readFileSync(join(root, 'tools', 'index.template.html'), 'utf8').replace('/*__APP__*/', () => js);
   writeFileSync(join(dist, outName), html);
-  if (outName === 'rakis_demo.html') writeFileSync(join(dist, 'index.html'), html);
+  if (outName === 'rakis_demo.html') {
+    writeFileSync(join(dist, 'index.html'), html);
+    // Вариант для публикации как Artifact: без doctype/html/head/body (их добавляет платформа).
+    const head = /<head>([\s\S]*?)<\/head>/.exec(html)[1].replace(/<meta[^>]*>\s*/g, '');
+    const body = /<body>([\s\S]*)<\/body>/.exec(html)[1];
+    writeFileSync(join(dist, 'rakis_artifact.html'), head.trim() + '\n' + body.trim() + '\n');
+  }
   console.log(`dist/${outName} — ${(html.length / 1024 / 1024).toFixed(2)} МБ`);
 }
 
