@@ -26,7 +26,7 @@ struct FRakisPhotoModeTexts;
  *
  * Публичное API для других ролей:
  *  - SetCinematicMode(bool) — леттербокс 2.35:1 и скрытие игрового HUD (вызывает ARakisCinematicTrigger / StoryDirector);
- *  - FadeToBlack / FadeFromBlack, ShowTitleCard, ShowHint, ShowInscription, ShowEndCard;
+ *  - FadeToBlack / FadeFromBlack, ShowTitleCard, ShowCutCard (поверх чёрного), ShowHint, ShowInscription, ShowEndCard;
  *  - OpenPauseMenu / EnterPhotoMode.
  */
 UCLASS()
@@ -59,6 +59,14 @@ public:
 	/** HoldSeconds <= 0 — авто по длине. */
 	UFUNCTION(BlueprintCallable, Category = "Rakis|UI")
 	void ShowHint(const FText& InHint, float HoldSeconds = 0.f);
+
+	/** Титр-«склейка» эллипсиса: по центру, ПОВЕРХ затемнения (появление 0.5 с, удержание, угасание 0.6 с). */
+	UFUNCTION(BlueprintCallable, Category = "Rakis|UI")
+	void ShowCutCard(const FText& InText, float HoldSeconds = 1.4f);
+
+	/** Экран (почти) чёрный или затемнение в процессе. */
+	UFUNCTION(BlueprintPure, Category = "Rakis|UI")
+	bool IsScreenFaded() const;
 
 	/** Надпись-лор по центру экрана. */
 	UFUNCTION(BlueprintCallable, Category = "Rakis|UI")

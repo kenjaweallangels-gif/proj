@@ -139,6 +139,20 @@ void SRakisHUDRoot::Construct(const FArguments& InArgs)
 		[
 			SAssignNew(Fade, SRakisScreenFX)
 		]
+		// Титр-склейка эллипсиса: поверх чёрного, по центру (docs/ui/ui_design.md §12).
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Center)
+		.VAlign(VAlign_Center)
+		[
+			SAssignNew(CutCard, SRakisTitleCard)
+			.FontRole(ERakisFontRole::Title)
+			.FontSize(30.f)
+			.LetterSpacing(300)
+			.bShowRule(false)
+			.FadeIn(0.5f)
+			.FadeOut(0.6f)
+			.MaxWidth(1000.f)
+		]
 		+ SOverlay::Slot()
 		.HAlign(HAlign_Center)
 		.VAlign(VAlign_Center)

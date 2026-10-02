@@ -19,7 +19,7 @@ class SRakisPhotoMode;
 /**
  * Корень HUD (добавляется в вьюпорт ARakisHUD). Слои снизу вверх:
  *   [HUD: игровой слой (рябь, засечки, капля) · подсказка взаимодействия · лай · леттербокс · субтитры · подсказка · титр · надпись]
- *   затемнение · концовка · меню паузы · фоторежим.
+ *   затемнение · титр-склейка (эллипсис) · концовка · меню паузы · фоторежим.
  * Сам не опрашивает игру — значения задаёт ARakisHUD (docs/ui/ui_design.md §4, §6).
  */
 class RAKIS_API SRakisHUDRoot : public SCompoundWidget
@@ -51,6 +51,8 @@ public:
 	TSharedPtr<SRakisTitleCard> TitleCard;
 	TSharedPtr<SRakisTitleCard> Inscription;
 	TSharedPtr<SRakisScreenFX> Fade;
+	/** Титр-«склейка» эллипсиса — над затемнением. */
+	TSharedPtr<SRakisTitleCard> CutCard;
 	TSharedPtr<SRakisTitleCard> EndCard;
 	TSharedPtr<SRakisPauseMenu> PauseMenu;
 	TSharedPtr<SRakisPhotoMode> PhotoMode;

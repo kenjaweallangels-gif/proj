@@ -289,7 +289,7 @@
 | `ARakisInspectable` (core) | в `Interact()`: `URakisDialogueSubsystem::Get(this)->ShowLore(LoreID)` (надпись по центру; строка DT_Dialogue со Speaker = Lore) |
 | Двери/фальшивый камень/POI (core) | ничего: триггер `Interact:<Tag>` срабатывает автоматически по `URakisInteractionComponent::OnInteracted` для всех тегов актора; вручную — `ARakisStoryDirector::Find(this)->NotifyInteract(Tag)` |
 | Компаньоны/NPC (world) | `URakisDialogueSubsystem::Get(this)->RegisterSpeaker("Ilva", this)`; лай: `PlayBark(Archetype, Context, this)` |
-| Любой | `ARakisHUD::FadeToBlack/FadeFromBlack`, `ShowHint`, `ShowTitleCard` |
+| Любой | `ARakisHUD::FadeToBlack/FadeFromBlack`, `ShowHint`, `ShowTitleCard`, `ShowCutCard` (титр поверх чёрного), `IsScreenFaded` |
 
 ## 11. Сюжет и данные (для сценариста)
 
@@ -298,5 +298,42 @@
   Если в `DT_Dialogue_S1` есть строка с тем же ID — берётся она (можно заменить текст/VO, не трогая биты).
 - Титры и подсказки в `Param` — формат `RU|EN`.
 - `Speaker = Lore` → строка показывается надписью по центру, а не субтитром.
-- `Condition` реплики — имя флага: `Beat:<BeatID>` (ставится по завершении бита) или `WormState:<State>` (текущее состояние червя). Невыполненное условие — строка пропускается, цепочка идёт дальше по `NextID`.
+- `Condition` реплики (S2, `URakisDialogueSubsystem::IsConditionMet`): флаг (`Beat:<BeatID>` — по завершении бита, `Interact:<Tag>` — после взаимодействия, `WormState:<State>`) **или** живое состояние: `ZoneEnter:<Zone>` (игрок сейчас в зоне), `WormState:<State>`, `NoiseAbove:<x>`, `SandWalk:Regular|Irregular` (>0.75 / <0.3 при походке), `Surface:<ERakisSurface>`, `MoistureBelow:<x>`. Невыполненное условие — строка пропускается, цепочка идёт дальше по `NextID`.
+- **Первая реплика цепочки, запрошенной `PlayLine` (бит `PlayDialogue`), играет всегда** — условие проверяется только у реплик, достигнутых по `NextID`. Так сценарный «Стоять. Не бежать.» (`DLG_WRM_L01`, Condition `WormState:Listening`) звучит в сценарный момент, даже если червь ещё спит. Реакции спутников проверяют `IsConditionMet` сами перед `PlayLine`.
 - Отладка: `Rakis.Story.List`, `Rakis.Story.Fire ZoneEnter:B5_Hall`, `Rakis.Lang RU|EN`.
+
+## 12. Эллипсис — склейка золотого пути (S2)
+
+Сценарий (`01_scenario.md`, 3:40) прыгает по времени суток 06:40 → 08:30 → 11:30, а золотой путь в уровне — 1.87 км (~14 мин).
+Две «склейки», как монтажный переход в кино: затемнение → перенос группы к точке `Rakis.Ellipsis.A2|A3` → титр-время поверх
+чёрного → картинка возвращается уже в новом месте и времени. Исполняет `ARakisStoryDirector`, действие `Ellipsis`.
+
+**Формат `Param`:** `<ТегЦели>[,<FadeSec>[,<AdvanceHours>]][,window=<сек>][,pull=<BeatID>@<сек>]...[|<RU титр>|<EN титр>]`
+
+| Поле | По умолчанию | Смысл |
+|---|---|---|
+| `ТегЦели` | — | актор-цель (TargetPoint): позиция и курс (yaw) переноса; спутники встают цепочкой за спиной |
+| `FadeSec` | 1.2 (`EllipsisFadeSeconds`) | затемнение и возврат, с |
+| `AdvanceHours` | 0 | сдвиг времени суток (`URakisWeatherSubsystem::SetTimeOfDay(Get + h)`) в чёрном |
+| `window=` | 20 (`EllipsisOfferWindow`) | сколько секунд склейка ждёт «золотого момента»; не дождалась — отказ (свободная игра) |
+| `pull=<BeatID>@<с>` | — | сжатие времени: после склейки бит исполнится не позже, чем через N с (ещё не сработавший — запускается) |
+| `\|RU\|EN` | нет титра | короткий титр-время по центру **поверх** чёрного (`SRakisHUDRoot::CutCard`, Cormorant 30, разрядка 300, 0.5 / 1.4 / 0.6 с) |
+
+**Когда предлагается** (опрос 4 Гц, всё одновременно): `Rakis.Story.Ellipsis 1`; нет кат-сцены/кинорежима, паузы, фоторежима;
+червь не в `Listening/Approach/Surface`; не звучит сюжетная реплика (субтитры под чёрным не видны); игрок **позади** цели
+(≥ 15 м по её курсу) и **идёт к ней** (скорость ≥ 60 см/с, отклонение ≤ 55°). Игрок, свернувший к комбайну или скелету,
+просто не получает склейку — это и есть свободная игра 15–20 мин.
+
+**Порядок:** затемнение (ввод заблокирован) → перенос игрока (`TeleportTo` + поворот контроллера + `SetGameCameraCutThisFrame`)
+и группы (следующие за игроком + спутники ближе 80 м: Оссана после червя; `ResetTrail()`) → время суток → титр → возврат картинки:
+бит завершается (`Beat:<ID>`), «проглатываются» биты зон, через которые перепрыгнули (`ZoneEnter:A3_Approach` при склейке A2 → A4),
+исполняются отложенные `ZoneEnter` зоны прибытия, применяются `pull` → ввод возвращается.
+**Безопасность:** одна склейка за раз; отказ до переноса — без следов (`Beat:<ID>` не срабатывает); пропажа цели/кат-сцена во время
+затемнения — откат (картинка возвращается, ввод разблокирован); `EndPlay` разблокирует ввод; фоторежим в затемнении недоступен.
+
+**Отключение без меню:** консоль `Rakis.Story.Ellipsis 0` или `DefaultEngine.ini`:
+```
+[ConsoleVariables]
+Rakis.Story.Ellipsis=0
+```
+Отладка: `Rakis.Story.Fire Beat:SB_A1_04_Hint` (предложить склейку 1), лог `LogRakis: RakisStory: Ellipsis ... declined — <причина>`.

@@ -394,9 +394,9 @@ def build_vault():
 
 
 def main():
+    LC.ensure_persistent_with_sublevels()   # до транзакции: загрузка карты сбрасывает буфер undo
+    LC.make_current(MAP_SIETCH)
     with transaction("Rakis: blockout sietch"):
-        LC.ensure_persistent_with_sublevels()
-        LC.make_current(MAP_SIETCH)
         n = delete_generated(GEN)
         log(f"{GEN}: удалено {n}")
         for fn in (build_b1, build_b2, build_b3, build_b4, build_b5):
@@ -404,8 +404,8 @@ def main():
                 fn()
             except Exception as e:  # noqa: BLE001
                 warn(f"{fn.__name__}: {e}")
-        LC.save_all()
-        log("level_blockout_sietch: готово")
+    LC.save_all()
+    log("level_blockout_sietch: готово")
 
 
 if __name__ == "__main__":

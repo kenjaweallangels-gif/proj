@@ -131,7 +131,8 @@ bool FRakisInputDeviceDetector::HandleAnalogInputEvent(FSlateApplication& SlateA
 
 bool FRakisInputDeviceDetector::HandleMouseMoveEvent(FSlateApplication& SlateApp, const FPointerEvent& MouseEvent)
 {
-	if (MouseEvent.GetCursorDelta().SizeSquared() > 4.0)
+	const FVector2D Delta = MouseEvent.GetCursorDelta();	// FDeprecateVector2DResult → FVector2D явно
+	if (Delta.SizeSquared() > 4.0)
 	{
 		FRakisUIStyle::SetGamepadActive(false);
 	}

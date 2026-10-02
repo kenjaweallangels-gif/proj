@@ -45,7 +45,7 @@ WEATHER = {"Dawn_Ridge", "Morning_Erg", "Worm_Tension", "Worm_Reveal", "Noon_App
            "Crevice_Shade", "Sietch_Interior", "Hall_Ritual"}
 CINEMATICS = {"/Game/Rakis/Cinematics/LS_WormReveal", "/Game/Rakis/Cinematics/LS_HallFinale"}
 ACTIONS = {"PlayDialogue", "PlayCinematic", "SetWeather", "SetMusic", "TitleCard", "ForceWorm", "CrowdRitual",
-           "Hint", "FadeOut", "EndDemo"}
+           "Hint", "FadeOut", "EndDemo", "Ellipsis"}
 LORE_IDS = ["LORE_Carving_Fremen", "LORE_Quizarate_Sigil", "LORE_Revivalist_Mural", "LORE_Cistern_Grate",
             "LORE_Thumper_Rack", "LORE_Shiana_Shrine", "LORE_Water_Rings", "LORE_Maker_Hooks"]
 # Словарь Condition диалогов: триггеры StoryBeats + реактивные условия компаньонов (docs/design/mechanics.md §6)

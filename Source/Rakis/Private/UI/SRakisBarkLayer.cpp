@@ -51,8 +51,8 @@ void SRakisBarkLayer::Remeasure()
 	{
 		return;
 	}
-	const auto Size = FSlateApplication::Get().GetRenderer()->GetFontMeasureService()->Measure(LineString, Font);
-	TextSize = FVector2f(static_cast<float>(Size.X), static_cast<float>(Size.Y));
+	const FVector2D Measured = FSlateApplication::Get().GetRenderer()->GetFontMeasureService()->Measure(LineString, Font);
+	TextSize = FVector2f(static_cast<float>(Measured.X), static_cast<float>(Measured.Y));
 }
 
 void SRakisBarkLayer::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)

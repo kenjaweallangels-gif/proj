@@ -5,6 +5,7 @@ SB_A1_02_Title,30,Start,TitleCard,Ракис. Гребень Шайтана. Р�
 SB_A1_03_RaynStep,40,Beat:SB_A1_02_Title,PlayDialogue,DLG_A1_001,3.0
 SB_A1_04_Hint,50,Beat:SB_A1_03_RaynStep,Hint,Удерживайте Alt / LB — походка по песку. Сбивайте ритм: Пробел / A.|Hold Alt / LB to sand-walk. Break the rhythm: Space / A.,1.0
 SB_A1_05_Banter,60,Beat:SB_A1_04_Hint,PlayDialogue,DLG_A1_005,20.0
+SB_A1_06_EllipsisA2,65,Beat:SB_A1_04_Hint,Ellipsis,"Rakis.Ellipsis.A2,1.0,1.8333,window=15,pull=SB_A2_10_Tension@22|Два часа спустя|Two hours later",5.0
 SB_A2_00_Title,70,ZoneEnter:A2_Erg,TitleCard,Открытый эрг|The Open Erg,1.0
 SB_A2_01_Weather,80,ZoneEnter:A2_Erg,SetWeather,"Morning_Erg,25",0
 SB_A2_02_Music,90,ZoneEnter:A2_Erg,SetMusic,DesertDrone,4.0
@@ -26,6 +27,9 @@ SB_A2_19_RevealMusic,240,Beat:SB_A2_17_TitleWorm,SetMusic,WormReveal,0
 SB_A2_20_After,250,Beat:SB_A2_18_Cinematic,SetMusic,Silence,0
 SB_A2_21_Gone,260,Beat:SB_A2_18_Cinematic,PlayDialogue,DLG_WRM_P01,2.5
 SB_A2_22_Drone,270,Beat:SB_A2_21_Gone,SetMusic,DesertDrone,6.0
+SB_A2_23_EllipsisA3,275,Beat:SB_A2_21_Gone,Ellipsis,"Rakis.Ellipsis.A3,1.2,3,window=30,pull=SB_A2_22_Drone@0|Три часа спустя|Three hours later",1.0
+SB_A3_G0_ClawTitle,276,Beat:SB_A2_23_EllipsisA3,TitleCard,Коготь|The Claw,0.8
+SB_A3_G1_Ossana,277,Beat:SB_A2_23_EllipsisA3,PlayDialogue,DLG_A3_001,1.5
 SB_A3_00_Title,280,ZoneEnter:A3_Approach,TitleCard,Коготь|The Claw,0.5
 SB_A3_01_Weather,290,ZoneEnter:A3_Approach,SetWeather,"Noon_Approach,30",0
 SB_A3_02_Ossana,300,ZoneEnter:A3_Approach,PlayDialogue,DLG_A3_001,4.0

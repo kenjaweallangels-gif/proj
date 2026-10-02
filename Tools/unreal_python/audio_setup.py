@@ -166,7 +166,7 @@ def setup_attenuation() -> None:
         _try(s, "spatialize", True)
         if name == "ATT_Worm_Huge":
             _try(s, "enable_listener_focus", False)
-            _try(s, "enable_air_absorption", True)  # высокие гаснут на дистанции — остаётся гул
+            _try(s, "attenuate_with_lpf", True)  # «Enable Air Absorption» = bAttenuateWithLPF: высокие гаснут, остаётся гул
         _try(att, "attenuation", s)
         unreal.EditorAssetLibrary.save_loaded_asset(att)
 

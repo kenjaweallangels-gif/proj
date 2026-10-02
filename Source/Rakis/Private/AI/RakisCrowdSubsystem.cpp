@@ -3,6 +3,8 @@
 #include "Rakis.h"
 #include "AI/RakisCitizen.h"
 #include "AI/RakisCompanion.h"
+#include "AI/RakisSmartObjects.h"
+#include "RakisAIVisuals.h"
 #include "Audio/RakisAudioDirector.h"
 #include "Core/RakisSettings.h"
 #include "World/RakisZoneSubsystem.h"
@@ -15,6 +17,12 @@
 #include "GameFramework/Pawn.h"
 #include "HAL/IConsoleManager.h"
 #include "Kismet/GameplayStatics.h"
+#include "Misc/PackageName.h"
+#include "SmartObjectComponent.h"
+#include "SmartObjectDefinition.h"
+#include "SmartObjectRequestTypes.h"
+#include "SmartObjectSubsystem.h"
+#include "StateTree.h"
 #include "TimerManager.h"
 
 namespace RakisCrowdPrivate
@@ -26,6 +34,10 @@ namespace RakisCrowdPrivate
 	static TAutoConsoleVariable<int32> CVarAutoRitual(
 		TEXT("Rakis.Crowd.AutoRitual"), 1,
 		TEXT("1 — запускать ритуал автоматически при входе в B3 или через N сек в B2 (docs/06 §1.3)."));
+
+	static TAutoConsoleVariable<int32> CVarSmartObjects(
+		TEXT("Rakis.Crowd.SmartObjects"), 1,
+		TEXT("1 — точки толпы через USmartObjectSubsystem (Claim/Occupy/Free); 0 — теговое резервирование. Действует на новые резервы."));
 
 	static TAutoConsoleVariable<int32> CVarAutoSpawnCompanions(
 		TEXT("Rakis.Companions.AutoSpawn"), 1,
@@ -102,6 +114,11 @@ void URakisCrowdSubsystem::Deinitialize()
 	SpotsByType.Reset();
 	SpotTypes.Reset();
 	SpotUsers.Reset();
+	SmartObjectClaims.Reset();
+	SmartObjectRecords.Reset();
+	SmartObjectDefinitions.Reset();
+	CachedCitizenTree = nullptr;
+	bCitizenTreeLookupDone = false;
 	Talking.Reset();
 	ArchetypeTable = nullptr;
 	Super::Deinitialize();
@@ -271,6 +288,7 @@ void URakisCrowdSubsystem::RegisterCitizen(ARakisCitizen* Citizen)
 
 void URakisCrowdSubsystem::UnregisterCitizen(ARakisCitizen* Citizen)
 {
+	ReleaseSmartObjectClaim(Citizen);
 	Citizens.Remove(Citizen);
 	Talking.Remove(Citizen);
 	for (TPair<TWeakObjectPtr<AActor>, TArray<TWeakObjectPtr<ARakisCitizen>>>& Pair : SpotUsers)
@@ -281,12 +299,7 @@ void URakisCrowdSubsystem::UnregisterCitizen(ARakisCitizen* Citizen)
 
 int32 URakisCrowdSubsystem::GetSpotCapacity(FName Type)
 {
-	static const FName Bench(TEXT("Bench"));
-	static const FName Stall(TEXT("Stall"));
-	static const FName WaterJar(TEXT("WaterJar"));
-	if (Type == Bench) { return 3; }
-	if (Type == Stall || Type == WaterJar) { return 2; }
-	return 1;
+	return RakisSmartObjects::GetSpotCapacity(Type);
 }
 
 void URakisCrowdSubsystem::RebuildSpotCache()
@@ -294,12 +307,15 @@ void URakisCrowdSubsystem::RebuildSpotCache()
 	bSpotCacheDirty = false;
 	SpotsByType.Reset();
 	SpotTypes.Reset();
+	SmartObjectRecords.Reset();
 
 	UWorld* World = GetWorld();
 	if (!World)
 	{
 		return;
 	}
+	USmartObjectSubsystem* SOSubsystem = (bUseSmartObjects && RakisCrowdPrivate::CVarSmartObjects.GetValueOnGameThread() != 0)
+		? GetSmartObjectSubsystem() : nullptr;
 	int32 Count = 0;
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
@@ -316,6 +332,10 @@ void URakisCrowdSubsystem::RebuildSpotCache()
 				const FName Type(*TagStr.RightChop(RakisCrowdPrivate::SmartObjectPrefix.Len()));
 				SpotsByType.FindOrAdd(Type).Add(Actor);
 				SpotTypes.Add(Actor, Type);
+				if (SOSubsystem)
+				{
+					EnsureSmartObject(Actor, Type, *SOSubsystem);
+				}
 				++Count;
 				break;
 			}
@@ -329,7 +349,261 @@ void URakisCrowdSubsystem::RebuildSpotCache()
 			It.RemoveCurrent();
 		}
 	}
-	UE_LOG(LogRakis, Log, TEXT("Crowd: точек Smart Object: %d (типов %d)"), Count, SpotsByType.Num());
+	UE_LOG(LogRakis, Log, TEXT("Crowd: точек Smart Object: %d (типов %d), зарегистрировано в USmartObjectSubsystem: %d"),
+		Count, SpotsByType.Num(), SmartObjectRecords.Num());
+}
+
+// ---------------------------------------------------------------------------------------------
+// Smart Objects (USmartObjectSubsystem, UE 5.6)
+// ---------------------------------------------------------------------------------------------
+
+USmartObjectSubsystem* URakisCrowdSubsystem::GetSmartObjectSubsystem() const
+{
+	const UWorld* World = GetWorld();
+	return World ? World->GetSubsystem<USmartObjectSubsystem>() : nullptr;
+}
+
+bool URakisCrowdSubsystem::IsUsingSmartObjects() const
+{
+	return bUseSmartObjects && RakisCrowdPrivate::CVarSmartObjects.GetValueOnGameThread() != 0
+		&& SmartObjectRecords.Num() > 0 && GetSmartObjectSubsystem() != nullptr;
+}
+
+void URakisCrowdSubsystem::EnsureSmartObject(AActor* Spot, FName Type, USmartObjectSubsystem& SOSubsystem)
+{
+	if (!Spot)
+	{
+		return;
+	}
+	USmartObjectComponent* Comp = Spot->FindComponentByClass<USmartObjectComponent>();
+	if (!Comp)
+	{
+		USmartObjectDefinition* Definition = nullptr;
+		if (const TObjectPtr<USmartObjectDefinition>* Cached = SmartObjectDefinitions.Find(Type))
+		{
+			Definition = Cached->Get();
+		}
+		else
+		{
+			bool bFromAsset = false;
+			Definition = RakisSmartObjects::LoadOrBuildDefinition(this, Type, bFromAsset);
+			SmartObjectDefinitions.Add(Type, Definition);
+			UE_LOG(LogRakis, Log, TEXT("Crowd SO: тип %s — %s"), *Type.ToString(),
+				Definition ? (bFromAsset ? TEXT("ассет SOD") : TEXT("рантайм-определение")) : TEXT("нет определения (тип неизвестен)"));
+		}
+		if (!Definition)
+		{
+			return;
+		}
+
+		Comp = NewObject<USmartObjectComponent>(Spot, MakeUniqueObjectName(Spot, USmartObjectComponent::StaticClass(), TEXT("RakisSmartObject")), RF_Transient);
+		// Определение — до регистрации компонента: OnRegister/BeginPlay компонента регистрирует SO в подсистеме.
+		Comp->SetDefinition(Definition);
+		if (USceneComponent* Root = Spot->GetRootComponent())
+		{
+			Comp->SetupAttachment(Root);
+		}
+		Spot->AddInstanceComponent(Comp);
+		Comp->RegisterComponent();
+	}
+
+	if (!Comp->GetRegisteredHandle().IsValid())
+	{
+		// Компонент сам не зарегистрировался (например, мир ещё не начал игру) — регистрируем явно.
+		SOSubsystem.RegisterSmartObject(*Comp);
+	}
+
+	const FSmartObjectHandle Handle = Comp->GetRegisteredHandle();
+	if (!Handle.IsValid())
+	{
+		RakisAIVisuals::WarnOnce(FString::Printf(TEXT("SO.RegisterFailed.%s"), *Type.ToString()),
+			FString::Printf(TEXT("Crowd: Smart Object %s (%s) не зарегистрирован — точка доступна только в теговом режиме."),
+				*Spot->GetName(), *Type.ToString()));
+		return;
+	}
+	FRakisSmartObjectRecord& Record = SmartObjectRecords.AddDefaulted_GetRef();
+	Record.Handle = Handle;
+	Record.Spot = Spot;
+	Record.Type = Type;
+}
+
+AActor* URakisCrowdSubsystem::ReserveSmartObjectSlot(ARakisCitizen* User, const TArray<FName>& Types, const FVector& Near, float MaxDistance, FRandomStream& Rng, FName& OutType)
+{
+	USmartObjectSubsystem* SOSubsystem = GetSmartObjectSubsystem();
+	if (!SOSubsystem || !User)
+	{
+		return nullptr;
+	}
+	ReleaseSmartObjectClaim(User);
+
+	FGameplayTagContainer Wanted;
+	for (const FName& Type : Types)
+	{
+		const FGameplayTag Tag = RakisAITags::GetSpotTypeTag(Type);
+		if (Tag.IsValid())
+		{
+			Wanted.AddTag(Tag);
+		}
+	}
+	if (Wanted.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	FSmartObjectRequestFilter Filter;
+	Filter.ActivityRequirements = FGameplayTagQuery::MakeQuery_MatchAnyTags(Wanted);
+	// Высота коробки — с запасом на балконы/ярусы (6 м) и спуски B3 (до 20 м).
+	const FVector Extent(MaxDistance, MaxDistance, 2000.f);
+	const FSmartObjectRequest Request(FBox(Near - Extent, Near + Extent), Filter);
+
+	TArray<FSmartObjectRequestResult> Results;
+	if (!SOSubsystem->FindSmartObjects(Request, Results, static_cast<const AActor*>(User)) || Results.Num() == 0)
+	{
+		return nullptr;
+	}
+
+	struct FCandidate { FSmartObjectRequestResult Result; AActor* Spot; FName Type; float Weight; };
+	TArray<FCandidate> Candidates;
+	float TotalWeight = 0.f;
+	const float MaxDistSq = FMath::Square(MaxDistance);
+	for (const FSmartObjectRequestResult& Result : Results)
+	{
+		const FRakisSmartObjectRecord* Record = SmartObjectRecords.FindByPredicate(
+			[&Result](const FRakisSmartObjectRecord& R) { return R.Handle == Result.SmartObjectHandle; });
+		AActor* Spot = Record ? Record->Spot.Get() : nullptr;
+		if (!Spot)
+		{
+			continue;
+		}
+		const TOptional<FVector> SlotLoc = SOSubsystem->GetSlotLocation(Result.SlotHandle);
+		const FVector Loc = SlotLoc.IsSet() ? SlotLoc.GetValue() : Spot->GetActorLocation();
+		const float DistSq = FVector::DistSquared(Loc, Near);
+		if (DistSq > MaxDistSq)
+		{
+			continue;
+		}
+		// Ближние точки вероятнее, но не всегда — толпа перемешивается.
+		const float W = 1.f / (1.f + FMath::Sqrt(DistSq) / 1000.f);
+		Candidates.Add({ Result, Spot, Record->Type, W });
+		TotalWeight += W;
+	}
+
+	// Пара попыток: слот мог занять кто-то в этом же кадре.
+	for (int32 Attempt = 0; Attempt < 3 && Candidates.Num() > 0 && TotalWeight > 0.f; ++Attempt)
+	{
+		float Pick = Rng.FRandRange(0.f, TotalWeight);
+		int32 ChosenIndex = Candidates.Num() - 1;
+		for (int32 i = 0; i < Candidates.Num(); ++i)
+		{
+			Pick -= Candidates[i].Weight;
+			if (Pick <= 0.f)
+			{
+				ChosenIndex = i;
+				break;
+			}
+		}
+		const FCandidate Chosen = Candidates[ChosenIndex];
+		TotalWeight -= Chosen.Weight;
+		Candidates.RemoveAtSwap(ChosenIndex);
+
+		const FSmartObjectActorUserData UserData(User);
+		const FSmartObjectClaimHandle Claim = SOSubsystem->MarkSlotAsClaimed(Chosen.Result.SlotHandle,
+			ESmartObjectClaimPriority::Normal, FConstStructView::Make(UserData));
+		if (!Claim.IsValid())
+		{
+			continue;
+		}
+		FRakisSmartObjectClaim& Entry = SmartObjectClaims.FindOrAdd(User);
+		Entry.Claim = Claim;
+		Entry.Spot = Chosen.Spot;
+		Entry.bOccupied = false;
+		SpotUsers.FindOrAdd(Chosen.Spot).AddUnique(User);
+		OutType = Chosen.Type;
+		return Chosen.Spot;
+	}
+	return nullptr;
+}
+
+void URakisCrowdSubsystem::ReleaseSmartObjectClaim(const ARakisCitizen* User)
+{
+	FRakisSmartObjectClaim Entry;
+	if (!SmartObjectClaims.RemoveAndCopyValue(const_cast<ARakisCitizen*>(User), Entry))
+	{
+		return;
+	}
+	USmartObjectSubsystem* SOSubsystem = GetSmartObjectSubsystem();
+	if (SOSubsystem && Entry.Claim.IsValid() && SOSubsystem->IsClaimedSmartObjectValid(Entry.Claim))
+	{
+		SOSubsystem->MarkSlotAsFree(Entry.Claim);
+	}
+}
+
+bool URakisCrowdSubsystem::GetReservedSlotTransform(const ARakisCitizen* User, FTransform& OutTransform) const
+{
+	const FRakisSmartObjectClaim* Entry = SmartObjectClaims.Find(const_cast<ARakisCitizen*>(User));
+	const USmartObjectSubsystem* SOSubsystem = GetSmartObjectSubsystem();
+	if (!Entry || !SOSubsystem || !Entry->Claim.IsValid())
+	{
+		return false;
+	}
+	const TOptional<FTransform> SlotTM = SOSubsystem->GetSlotTransform(Entry->Claim);
+	if (!SlotTM.IsSet())
+	{
+		return false;
+	}
+	OutTransform = SlotTM.GetValue();
+	return true;
+}
+
+const URakisSmartObjectBehaviorDefinition* URakisCrowdSubsystem::MarkSpotInUse(ARakisCitizen* User)
+{
+	FRakisSmartObjectClaim* Entry = SmartObjectClaims.Find(User);
+	USmartObjectSubsystem* SOSubsystem = GetSmartObjectSubsystem();
+	if (!Entry || !SOSubsystem || !Entry->Claim.IsValid() || !SOSubsystem->IsClaimedSmartObjectValid(Entry->Claim))
+	{
+		return nullptr;
+	}
+	if (Entry->bOccupied)
+	{
+		return Cast<URakisSmartObjectBehaviorDefinition>(
+			SOSubsystem->GetBehaviorDefinition(Entry->Claim, URakisSmartObjectBehaviorDefinition::StaticClass()));
+	}
+	Entry->bOccupied = true;
+	return Cast<URakisSmartObjectBehaviorDefinition>(
+		SOSubsystem->MarkSlotAsOccupied(Entry->Claim, URakisSmartObjectBehaviorDefinition::StaticClass()));
+}
+
+// ---------------------------------------------------------------------------------------------
+// StateTree
+// ---------------------------------------------------------------------------------------------
+
+UStateTree* URakisCrowdSubsystem::GetCitizenStateTree(const TSoftObjectPtr<UStateTree>& Asset)
+{
+	if (Asset.IsNull())
+	{
+		return nullptr;
+	}
+	const FSoftObjectPath Path = Asset.ToSoftObjectPath();
+	if (bCitizenTreeLookupDone && CachedCitizenTreePath == Path)
+	{
+		return CachedCitizenTree;
+	}
+	bCitizenTreeLookupDone = true;
+	CachedCitizenTreePath = Path;
+	CachedCitizenTree = nullptr;
+	if (FPackageName::DoesPackageExist(Path.GetLongPackageName()))
+	{
+		CachedCitizenTree = Cast<UStateTree>(Path.TryLoad());
+	}
+	if (CachedCitizenTree)
+	{
+		UE_LOG(LogRakis, Log, TEXT("Crowd: горожане работают от StateTree %s."), *Path.ToString());
+	}
+	else
+	{
+		UE_LOG(LogRakis, Log, TEXT("Crowd: StateTree %s не найден — горожане на C++-фоллбеке (см. docs/tech/crowd.md §4)."), *Path.ToString());
+	}
+	return CachedCitizenTree;
 }
 
 int32 URakisCrowdSubsystem::GetSpotOccupancy(const AActor* Spot) const
@@ -351,6 +625,10 @@ AActor* URakisCrowdSubsystem::ReserveSpot(ARakisCitizen* User, const TArray<FNam
 	if (bSpotCacheDirty)
 	{
 		RebuildSpotCache();
+	}
+	if (IsUsingSmartObjects())
+	{
+		return ReserveSmartObjectSlot(User, Types, Near, MaxDistance, Rng, OutType);
 	}
 
 	struct FCandidate { AActor* Spot; FName Type; float Weight; };
@@ -407,6 +685,7 @@ AActor* URakisCrowdSubsystem::ReserveSpot(ARakisCitizen* User, const TArray<FNam
 
 void URakisCrowdSubsystem::ReleaseSpot(ARakisCitizen* User, AActor* Spot)
 {
+	ReleaseSmartObjectClaim(User);
 	if (!Spot)
 	{
 		return;
@@ -497,7 +776,11 @@ void URakisCrowdSubsystem::UpdateConversations()
 				}
 				else if (Now - *Since >= ResumeDelay)
 				{
-					for (ARakisCitizen* M : Members) { M->SetConversationSilenced(false); }
+					for (ARakisCitizen* M : Members)
+					{
+						// Горожанином со StateTree-задачей FallSilent управляет задача.
+						if (!M->IsSilenceDrivenByStateTree()) { M->SetConversationSilenced(false); }
+					}
 					SilencedGroups.Remove(Group);
 					GroupClearSince.Remove(Group);
 				}
@@ -509,7 +792,10 @@ void URakisCrowdSubsystem::UpdateConversations()
 		}
 		else if (D < SilenceRadius)
 		{
-			for (ARakisCitizen* M : Members) { M->SetConversationSilenced(true); }
+			for (ARakisCitizen* M : Members)
+			{
+				if (!M->IsSilenceDrivenByStateTree()) { M->SetConversationSilenced(true); }
+			}
 			SilencedGroups.Add(Group);
 			GroupClearSince.Remove(Group);
 

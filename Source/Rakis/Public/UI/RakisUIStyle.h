@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Fonts/SlateFontInfo.h"
 #include "Framework/Application/IInputProcessor.h"
+#include "Input/Events.h"
 
 struct FSlateBrush;
 
@@ -80,5 +81,5 @@ public:
 	virtual bool HandleAnalogInputEvent(FSlateApplication& SlateApp, const FAnalogInputEvent& InAnalogInputEvent) override;
 	virtual bool HandleMouseMoveEvent(FSlateApplication& SlateApp, const FPointerEvent& MouseEvent) override;
 	virtual bool HandleMouseButtonDownEvent(FSlateApplication& SlateApp, const FPointerEvent& MouseEvent) override;
-	virtual const TCHAR* GetDebugName() const override { return TEXT("RakisInputDeviceDetector"); }
+	// GetDebugName() не переопределяем: необязателен, а его const-квалификация менялась между версиями.
 };

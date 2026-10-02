@@ -38,6 +38,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/PlatformTime.h"
+#include "Math/RotationMatrix.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Widgets/SWeakWidget.h"
@@ -110,7 +111,7 @@ void ARakisHUD::BeginPlay()
 	Viewport->AddViewportWidgetContent(ViewportWidget.ToSharedRef(), 10);
 
 	InputDetector = MakeShared<FRakisInputDeviceDetector>();
-	FSlateApplication::Get().RegisterInputPreProcessor(InputDetector);
+	FSlateApplication::Get().RegisterInputPreProcessor(StaticCastSharedPtr<IInputProcessor>(InputDetector));
 
 	// Старт уровня: из чёрного.
 	Root->Fade->SetFadeImmediate(1.f);
@@ -147,7 +148,7 @@ void ARakisHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 	if (InputDetector.IsValid() && FSlateApplication::IsInitialized())
 	{
-		FSlateApplication::Get().UnregisterInputPreProcessor(InputDetector);
+		FSlateApplication::Get().UnregisterInputPreProcessor(StaticCastSharedPtr<IInputProcessor>(InputDetector));
 	}
 	InputDetector.Reset();
 
@@ -418,14 +419,14 @@ void ARakisHUD::UpdateBarkAnchor()
 		FVector ViewLocation;
 		FRotator ViewRotation;
 		PC->GetPlayerViewPoint(ViewLocation, ViewRotation);
-		const float Side = FVector::DotProduct(FRotationMatrix(ViewRotation).GetUnitAxis(EAxis::Y), (Head - ViewLocation).GetSafeNormal());
+		const float Side = static_cast<float>(FVector::DotProduct(FRotationMatrix(ViewRotation).GetUnitAxis(EAxis::Y), (Head - ViewLocation).GetSafeNormal()));
 		Normalized = FVector2f(Side >= 0.f ? 0.9f : 0.1f, 0.7f);
 	}
 
 	float Distance01 = 1.f;
 	if (const APawn* Pawn = PC->GetPawn())
 	{
-		Distance01 = FVector::Dist(Pawn->GetActorLocation(), Speaker->GetActorLocation()) / URakisDialogueSubsystem::BarkSubtitleRadius;
+		Distance01 = static_cast<float>(FVector::Dist(Pawn->GetActorLocation(), Speaker->GetActorLocation())) / URakisDialogueSubsystem::BarkSubtitleRadius;
 	}
 	Root->Barks->SetAnchor(Normalized, Distance01);
 }
@@ -575,6 +576,19 @@ void ARakisHUD::ShowTitleCard(const FText& Title, float HoldSeconds)
 	{
 		Root->TitleCard->Show(Title, HoldSeconds);
 	}
+}
+
+void ARakisHUD::ShowCutCard(const FText& InText, float HoldSeconds)
+{
+	if (Root.IsValid() && Root->CutCard.IsValid() && !InText.IsEmpty())
+	{
+		Root->CutCard->Show(InText, HoldSeconds);
+	}
+}
+
+bool ARakisHUD::IsScreenFaded() const
+{
+	return Root.IsValid() && Root->Fade.IsValid() && (Root->Fade->GetFadeAlpha() > 0.02f || Root->Fade->IsFading());
 }
 
 void ARakisHUD::ShowHint(const FText& InHint, float HoldSeconds)
@@ -855,7 +869,8 @@ float ARakisHUD::ReadGlobalExposureBias() const
 
 void ARakisHUD::EnterPhotoMode()
 {
-	if (bPhotoMode || bCinematicMode || !bShowHUD || bEndDemo || !Root.IsValid())
+	// Нечего снимать: кат-сцена, конец демо, затемнение/склейка-эллипсис.
+	if (bPhotoMode || bCinematicMode || !bShowHUD || bEndDemo || !Root.IsValid() || IsScreenFaded())
 	{
 		return;
 	}

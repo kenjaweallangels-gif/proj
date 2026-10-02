@@ -245,7 +245,7 @@ P7/P7b ближе к скале (сократить A3) или сделать A2
 | LORE_Worm_Throat | 164400 | 72500 | −4000 | B5: рельеф «глотка Бога» за помостом наиба |
 
 ## 11. Объёмы: зоны, звук, навигация, стриминг
-### 11.1 ARakisZoneVolume (Persistent; кисть по умолчанию 200 см, масштаб = размер/200)
+### 11.1 ARakisZoneVolume (Persistent; кисть-куб фабрики объёмов 200 см, масштаб = размер / фактический размер кисти — `rakis_common.fit_box_volume`)
 | Зона | Боксы (X0…X1, Y0…Y1, Z0…Z1) | WeatherPreset | Music | bInterior | LevelsToLoad | LevelsToUnload |
 |---|---|---|---|---|---|---|
 | A1 | −60000…24000, −70000…90000, −10000…30000 | Dawn_Ridge | DesertCalm | нет | Desert | Sietch |
@@ -295,20 +295,38 @@ P0…P8 с полями 60 м, Z −2000…8000. Вся пустыня не на
 ## 13. Ландшафт и генераторы
 | Параметр | Значение |
 |---|---|
-| Heightmap | `Export/heightmap_desert_r16.png`, 16 bit, **4033²**, 1 м/px (4.03 × 4.03 км) |
-| Landscape Location | **(−131600, −151600, 0)** (ядро 2×2 км в центре) |
+| Heightmap | `Export/heightmap_desert_r16.png`, 16 bit, **4033²**, 1 м/px (4.03 × 4.03 км); те же данные — `Export/heightmap_desert.r16` (uint16 little-endian, строка за строкой Y↓/X→, без заголовка) |
+| Landscape Location | актор (угол, вершина 0,0) **(−131600, −151600, 0)**; в поле *Location* окна New Landscape вводится **центр (70000, 50000, 0)** — ядро 2×2 км в центре |
 | Landscape Scale | **(100, 100, 100)** → Z = (v − 32768)/128 м, диапазон ±256 м |
 | Секции | 63×63 quads, 2×2 секции/компонент, 32×32 компонента |
 | Высоты | −80 (под скалой) … ~+60 м (сейфы фона); такыры 0…6 м; гребень A1 35 м |
 | Генератор | `python3 Tools/blender/env_dunes.py` (или Blender) → также `Export/heightmap_desert.json` |
 | Скала | `blender -b -P Tools/blender/env_rock.py -- --preset default` → `Export/SM_Rock_ShaitanClaw.fbx` (+ `SM_Rock_FalseSlab.fbx`) |
-**Ручной шаг (Python UE 5.6 не создаёт Landscape из файла):** открыть L_Rakis_Persistent, сделать текущим L_Rakis_Desert →
-Landscape Mode ▸ Manage ▸ New ▸ *Import from File* → PNG выше, параметры из таблицы → Import. Затем повторить
-`env_import.py` (назначит материал, удалит фолбэк-землю и дюны-примитивы) и `level_blockout_desert.py`.
+### 13.1 Импорт ландшафта (`landscape_import.py`, шаг build_demo сразу после `env_import`)
+Python API UE 5.6 не создаёт Landscape из файла: у `unreal.Landscape`/`LandscapeProxy` нет импорта heightmap и создания
+компонентов, `LandscapeEditorSubsystem` в Python нет; `LandscapeProxy.landscape_import_heightmap_from_render_target()` работает
+только для уже существующего ландшафта и через render target (ненадёжно на 4033²). Поэтому `landscape_import.py`:
+1. ищет в рантайме API импорта (hasattr-пробы `LandscapeEditorSubsystem` и др.) — если будущая версия/плагин его даст, создаёт
+   ландшафт сам;
+2. иначе печатает в лог пошаговую инструкцию (ниже) и не падает — демо играбельно на фолбэк-земле `env_import.py`;
+3. когда Landscape есть — идемпотентно ставит **точный** угол/масштаб из `heightmap_desert.json` (через
+   `EditorActorSubsystem.set_actor_transform`), материал `MI_Sand_Erg_Dry` (без LandscapeLayerBlend — LayerInfo не нужны),
+   метку `Landscape_Desert`, папку `Rakis/Desert/Landscape`, тег `gen:landscape_import` (маркер «управляется скриптом»;
+   ландшафт скрипт **не удаляет**), удаляет фолбэк-плиты и дюны-примитивы (`gen:env_import`, `Ground_*`/`Dune_*`).
+
+**Ручной шаг (≈2 мин):**
+1. Открыть `L_Rakis_Persistent`; Window ▸ Levels → двойной клик по `L_Rakis_Desert` (текущий уровень).
+2. Режим **Landscape** (список режимов на тулбаре или Shift+2) ▸ вкладка **Manage** ▸ **New** ▸ **Import from File**.
+3. *Heightmap File*: `Export/heightmap_desert.r16` (или `heightmap_desert_r16.png` — равноценно).
+4. *Location* **70000, 50000, 0** (центр), *Rotation* 0, *Scale* **100, 100, 100**.
+5. *Section Size* 63×63 Quads, *Sections Per Component* 2×2, *Number of Components* 32×32 → *Overall Resolution* 4033×4033.
+6. *Material* `MI_Sand_Erg_Dry`; *Layers* пусто; *Enable Edit Layers* — по умолчанию. **Import**, затем File ▸ Save All.
+7. Запустить `landscape_import.py` и `level_blockout_desert.py` (или `build_demo.py --only landscape_import,level_blockout_desert`).
+Если в окне ввели угол вместо центра или другой масштаб — скрипт исправит трансформ сам (данные высот не меняются).
 
 ## 14. Порядок запуска (часть build_demo §2.7)
-1. Вне UE: `python3 Tools/blender/env_dunes.py`; `blender -b -P Tools/blender/env_rock.py`; `… env_worm.py`; `… env_sietch_kit.py`.
-2. `env_import.py` → `level_blockout_desert.py` → `level_blockout_sietch.py` → `level_markup.py` → (light/fx) → `env_dress_sietch.py`, `env_scatter_desert.py`.
+1. Вне UE: `python3 Tools/blender/env_dunes.py` (PNG + `.r16` + JSON); `blender -b -P Tools/blender/env_rock.py`; `… env_worm.py`; `… env_sietch_kit.py`.
+2. `env_import.py` → `landscape_import.py` → `level_blockout_desert.py` → `level_blockout_sietch.py` → `level_markup.py` → (light/fx) → `env_dress_sietch.py`, `env_scatter_desert.py`.
 Все скрипты повторно запускаемы (удаляют своих акторов по `gen:<script>`).
 
 ## 15. Открытые вопросы

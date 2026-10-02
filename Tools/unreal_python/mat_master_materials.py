@@ -3,7 +3,8 @@ mat_master_materials.py — MPC_RakisWeather, мастер-материалы и
 Шаг 2 сборки демо (docs/06_demo_contract.md §2.7). Задача T-008.
 
 Создаёт (пути по контракту §2.5):
-  /Game/Rakis/Materials/Functions/MPC_RakisWeather
+  /Game/Rakis/Materials/Functions/MPC_RakisWeather  (+ TrailOrigin/TrailOriginFar, T-017)
+  /Game/Rakis/Materials/RT/       RT_SandTrail, RT_SandTrail_Far, M_SandTrail_Stamp/Fade/Copy (mat_sand_trails.py)
   /Game/Rakis/Materials/Master/   M_Landscape_Sand, M_Rock_Master, M_Sietch_Stone, M_Cloth_Worn,
                                   M_Worm_Chitin, M_Worm_Teeth, M_Glowglobe, M_Water_Still,
                                   M_Decal_Carving, M_Decal_Paint, M_Spice_Fabric,
@@ -38,6 +39,9 @@ from rakis_common import create_or_load, eal, ensure_dir, load_or_none, log, sav
 #   SunDirection  — единичный вектор НА солнце (мировые координаты, +X север, +Y восток)
 #   SandTint      — множитель цвета песка (рассвет — розоватый, буря — желтее), A не используется
 #   PlayerPosition— мировая позиция игрока, см (следы/RVT-деформация рядом с игроком)
+#   TrailOrigin   — (T-017, добавлено с разрешения orchestrator) окно ближнего RT следов RT_SandTrail:
+#                   x, y — мировой центр окна, см; z — размер окна, см; w — 1, если каскад активен (иначе 0).
+#   TrailOriginFar— то же для дальнего каскада RT_SandTrail_Far (колея червя). Пишет URakisSandTrailSubsystem.
 # =====================================================================================
 MPC_SCALARS = [
     ("WindSpeed", 3.5),
@@ -65,6 +69,9 @@ def mpc_vectors() -> list:
         ("SunDirection", _dawn_sun_dir()),
         ("SandTint", lin(1.0, 0.97, 0.95, 1.0)),
         ("PlayerPosition", lin(0.0, 0.0, 0.0, 0.0)),
+        # T-017: окна RT следов (w = 0 — неактивно, материал не сэмплирует RT).
+        ("TrailOrigin", lin(0.0, 0.0, 4096.0, 0.0)),
+        ("TrailOriginFar", lin(0.0, 0.0, 20480.0, 0.0)),
     ]
 
 
@@ -98,10 +105,11 @@ def build_mpc() -> unreal.MaterialParameterCollection | None:
             warn(f"MPC: удаляю параметры вне контракта: {extra}")
         set_prop(mpc, prop, out)
 
+    vectors = mpc_vectors()
     merge("scalar_parameters", unreal.CollectionScalarParameter, MPC_SCALARS)
-    merge("vector_parameters", unreal.CollectionVectorParameter, mpc_vectors())
+    merge("vector_parameters", unreal.CollectionVectorParameter, vectors)
     eal.save_loaded_asset(mpc, only_if_is_dirty=False)
-    log("MPC_RakisWeather: 7 скаляров, 4 вектора")
+    log(f"MPC_RakisWeather: {len(MPC_SCALARS)} скаляров, {len(vectors)} векторов")
     return mpc
 
 
@@ -121,22 +129,84 @@ def _sand_tint_rgb(g: Graph):
 
 
 # =====================================================================================
+# Следы на песке (T-017): общий кусок графа M_Landscape_Sand
+# =====================================================================================
+def _sand_trails(g: Graph, wp) -> dict:
+    """Сэмплирует RT_SandTrail/RT_SandTrail_Far (SandTrail.ush) под статическим свитчем UseTrails.
+    Возвращает ноды: disturb (0..1), rim (0..1), normal (float3 TS), near_disp_cm, far_wpo_cm и параметры вида."""
+    try:
+        import mat_sand_trails as mst
+        rt_near, rt_far = mst.RT_NEAR_PATH, mst.RT_FAR_PATH
+        res_near, res_far = float(mst.NEAR_RES), float(mst.FAR_RES)
+    except Exception as ex:  # noqa: BLE001
+        warn(f"mat_sand_trails: {ex}")
+        rt_near = rt_far = ENGINE_TEX["black"]
+        res_near, res_far = 2048.0, 1024.0
+    grp = "08 Trails"
+    p_dark = g.scalar("TrailDarkening", 0.16, grp, 0, 0.6)
+    p_rim_light = g.scalar("TrailRimLighten", 0.05, grp, 0, 0.3)
+    p_rough = g.scalar("TrailRoughnessDelta", -0.08, grp, -0.4, 0.4)
+    p_nstr = g.scalar("TrailNormalStrength", 1.0, grp, 0, 4)
+    p_disp = g.scalar("TrailDisplacementScale", 1.0, grp, 0, 2)
+    p_wpo = g.scalar("TrailWPOScale", 1.0, grp, 0, 2)
+    p_dn = g.scalar("TrailMaxDepthNearCm", 7.5, grp, 0.5, 8)
+    p_df = g.scalar("TrailMaxDepthFarCm", 200.0, grp, 10, 250)
+    p_rn = g.scalar("TrailMaxRimNearCm", 2.5, grp, 0, 6)
+    p_rf = g.scalar("TrailMaxRimFarCm", 60.0, grp, 0, 120)
+    p_tn = g.scalar("TrailNearTexels", res_near, grp, 256, 4096)
+    p_tf = g.scalar("TrailFarTexels", res_far, grp, 256, 4096)
+    t_near = g.texture_object("SandTrailRT", rt_near, grp)
+    t_far = g.texture_object("SandTrailRTFar", rt_far, grp)
+    raw = g.custom(
+        "return RakisSandTrail(WorldPos, NearTex, NearTexSampler, NearOrigin, FarTex, FarTexSampler, FarOrigin, P0, P1);",
+        [("WorldPos", wp), ("NearTex", t_near), ("NearOrigin", g.mpc_param("TrailOrigin")),
+         ("FarTex", t_far), ("FarOrigin", g.mpc_param("TrailOriginFar")),
+         ("P0", g.append4(p_tn, p_tf, p_dn, p_df)), ("P1", g.append4(p_rn, p_rf, 0.0, 0.0))],
+        "float4", ["SandTrail.ush"], "Sand trails (RT cascades)")
+    # UseTrails = false → нули, ни одной выборки RT (статический свитч вырезает ветку при компиляции).
+    tr = g.switch("UseTrails", False, raw, g.const4(0.0, 0.0, 0.0, 0.0), grp)
+    slope = g.mask(tr, r=True, g=True)
+    h_near = g.mask(tr, b=True)
+    h_far = g.mask(tr, al=True)
+    # 1.5 см следа ноги или 25 см колеи = «полностью взрыхлено».
+    disturb = g.saturate(g.add(g.div(h_near, -1.5), g.div(h_far, -25.0)))
+    rim = g.saturate(g.add(g.div(h_near, 1.5), g.div(h_far, 25.0)))
+    normal = g.custom("return RakisTrailNormal(Slope, Strength);", [("Slope", slope), ("Strength", p_nstr)],
+                      "float3", ["SandTrail.ush"], "Trail normal")
+    return {
+        "disturb": disturb, "rim": rim, "normal": normal,
+        "near_disp_cm": g.mul(h_near, p_disp), "far_wpo_cm": g.mul(h_far, p_wpo),
+        "dark": p_dark, "rim_light": p_rim_light, "rough_delta": p_rough,
+    }
+
+
+# =====================================================================================
 # M_Landscape_Sand
 # =====================================================================================
+# Nanite displacement песка: значение 0..1, смещение = (d - center) * magnitude.
+# center 0.5 → ±8 см: рябь (до +1.5 см) и следы ног (вмятина до −7.5 см, вал до +2.5 см).
+DISP_MAGNITUDE_CM = 16.0
+DISP_CENTER = 0.5
+RIPPLE_HEIGHT_CM = 1.5
+# WPO (дальний каскад — колея/кратер червя, метровые формы) ограничивает bounds: глубина + вал.
+TRAIL_WPO_MAX_CM = 260.0
+
+
 def build_landscape_sand():
     mat, g = begin_material(f"{MASTER_DIR}/M_Landscape_Sand")
     set_usage(mat, "nanite")
-    # Nanite-тесселяция (UE 5.4+): displacement из ряби. Требует r.Nanite.Tessellation=1 (Config уже).
+    # Nanite-тесселяция (UE 5.4+): displacement из ряби и следов. Требует r.Nanite.Tessellation=1 (Config уже).
     set_first(mat, ["enable_tessellation"], True)
     ds = getattr(unreal, "DisplacementScaling", None)
     if ds is not None:
         try:
             d = ds()
-            d.set_editor_property("magnitude", 1.5)   # см: высота гребня ряби
-            d.set_editor_property("center", 0.0)
+            d.set_editor_property("magnitude", DISP_MAGNITUDE_CM)
+            d.set_editor_property("center", DISP_CENTER)
             set_prop(mat, "displacement_scaling", d)
         except Exception as ex:  # noqa: BLE001
             warn(f"DisplacementScaling: {ex}")
+    set_prop(mat, "max_world_position_offset_displacement", TRAIL_WPO_MAX_CM)
 
     wp = g.world_pos()
     depth = g.node("MaterialExpressionPixelDepth")
@@ -204,13 +274,11 @@ def build_landscape_sand():
     variation = g.add(1.0, g.add(g.mul(v_macro, p_macro_str), g.mul(v_micro, p_micro_str)))
     col = g.mul(g.mul(base_col, variation), _sand_tint_rgb(g))
 
-    # Следы/колея червя: маска из Render Target вокруг игрока (см. docs/tech-art/sand.md §Следы).
-    p_trail_ext = g.scalar("TrailExtentCm", 4096.0, "08 Trails", 512, 16384)
-    pp_xy = g.mask(g.mpc_param("PlayerPosition"), r=True, g=True)
-    trail_uv = g.add(g.div(g.sub(g.mask(wp, r=True, g=True), pp_xy), p_trail_ext), 0.5)
-    t_trail = g.texture("T_TrailMask", ENGINE_TEX["black"], "color", "08 Trails", uv=trail_uv)
-    trail = g.switch("UseTrails", False, (t_trail, "R"), 0.0, "08 Trails")
-    col = g.lerp(col, g.mul(col, 0.82), trail)  # вскопанный песок темнее (влажнее изнутри)
+    # --- следы и колея червя (T-017): два каскада RT, рисует URakisSandTrailSubsystem (sand.md §4).
+    tr = _sand_trails(g, wp)
+    col_static = col  # для RVT: без следов (RVT обновляется редко, следы в нём «застыли» бы)
+    col = g.mul(col, g.one_minus(g.mul(tr["disturb"], tr["dark"])))   # вскопанный песок темнее (влажнее)
+    col = g.mul(col, g.add(1.0, g.mul(tr["rim"], tr["rim_light"])))   # сухой выброс на валу чуть светлее
 
     bleach = g.mul(g.saturate(g.div(g.sub(depth, p_ds_start), p_ds_range)), p_ds_amt)
     col_final = g.lerp(col, g.mul(c_bleach, _sand_tint_rgb(g)), bleach)
@@ -224,12 +292,15 @@ def build_landscape_sand():
     rip_n = g.mask(ripple, r=True, g=True, b=True)
     rip_h = g.mask(ripple, al=True)
     rip_fade = g.one_minus(g.saturate(g.div(depth, p_rip_fade)))
-    rip_amt = g.mul(g.mul(p_rip_str, g.one_minus(loose)), g.mul(rip_fade, g.one_minus(trail)))
+    rip_amt = g.mul(g.mul(p_rip_str, g.one_minus(loose)), g.mul(rip_fade, g.one_minus(tr["disturb"])))
     flat = g.const3(0.0, 0.0, 1.0)
     n_rip = g.lerp(flat, rip_n, rip_amt)
     n_base = g.switch("UseTextures", False, (t_n, "RGB"), flat, "Textures")
-    n_final = g.custom("return normalize(float3(A.xy + B.xy, A.z * B.z));",
-                       [("A", n_base), ("B", n_rip)], "float3", desc="Whiteout normal blend")
+    # Whiteout-смешивание трёх нормалей: текстура/плоская, рябь, наклон следа (из градиента RT).
+    n_final = g.custom("float3 N = float3(A.xy + B.xy, A.z * B.z);\n"
+                       "N = float3(N.xy + C.xy, N.z * C.z);\n"
+                       "return normalize(N);",
+                       [("A", n_base), ("B", n_rip), ("C", tr["normal"])], "float3", desc="Whiteout normal blend")
     g.out(n_final, "Normal")
 
     # --- искры
@@ -242,18 +313,23 @@ def build_landscape_sand():
 
     rough_proc = g.lerp(p_rough_packed, p_rough_loose, loose)
     rough_base = _orm_switch(g, t_orm, "G", rough_proc)
-    rough = g.lerp(rough_base, p_sp_rough, sparkle)
+    rough = g.saturate(g.add(rough_base, g.mul(tr["disturb"], tr["rough_delta"])))  # утоптанное — глаже
+    rough = g.lerp(rough, p_sp_rough, sparkle)
     g.out(rough, "Roughness")
     g.out(g.lerp(p_spec, 1.0, sparkle), "Specular")
     g.out(_orm_switch(g, t_orm, "R", 1.0), "AO")
 
-    # --- displacement (Nanite tessellation): 0..1, center=0, magnitude=1.5 см
-    g.out(g.saturate(g.mul(g.mul(rip_h, rip_amt), p_disp)), "Displacement")
+    # --- displacement (Nanite tessellation): 0..1, center=0.5, magnitude=16 см → ±8 см.
+    # Рябь (как раньше, до +1.5 см) + ближний каскад следов (вмятины ног/тампера). Колея червя — в WPO.
+    disp_cm = g.add(g.mul(g.mul(g.mul(rip_h, rip_amt), p_disp), RIPPLE_HEIGHT_CM), tr["near_disp_cm"])
+    g.out(g.saturate(g.add(g.div(disp_cm, DISP_MAGNITUDE_CM), DISP_CENTER)), "Displacement")
+    # --- WPO: дальний каскад (колея и кратер червя: метры, гладкие — плотности вершин Nanite-ландшафта хватает).
+    g.out(g.mul(g.const3(0.0, 0.0, 1.0), tr["far_wpo_cm"]), "WPO")
 
     # --- RVT: статические данные (без анимации ряби) для смешивания мешей с ландшафтом
     rvt = g.node("MaterialExpressionRuntimeVirtualTextureOutput")
     if rvt is not None:
-        g.connect(col, rvt, "BaseColor")
+        g.connect(col_static, rvt, "BaseColor")
         g.connect(p_spec, rvt, "Specular")
         g.connect(rough_proc, rvt, "Roughness")
         g.connect(n_base, rvt, "Normal")
@@ -774,6 +850,24 @@ def _tex_set(prefix_names: dict) -> tuple[dict, bool]:
     return found, len(found) == len(prefix_names)
 
 
+def _trail_textures() -> dict:
+    """RT следов для инстансов песка ({} — RT нет, UseTrails выключается)."""
+    try:
+        import mat_sand_trails as mst
+    except Exception as ex:  # noqa: BLE001
+        warn(f"mat_sand_trails: {ex}")
+        return {}
+    out = {}
+    for param, path in (("SandTrailRT", mst.RT_NEAR_PATH), ("SandTrailRTFar", mst.RT_FAR_PATH)):
+        rt = load_or_none(path)
+        if rt is not None:
+            out[param] = rt
+    if len(out) != 2:
+        warn("RT_SandTrail / RT_SandTrail_Far не найдены — следы на песке выключены (UseTrails=false)")
+        return {}
+    return out
+
+
 def build_instances(masters: dict) -> list:
     I = INSTANCE_DIR
     ensure_dir(I)
@@ -800,16 +894,20 @@ def build_instances(masters: dict) -> list:
     sand, rock, stone = masters.get("sand"), masters.get("rock"), masters.get("stone")
     cloth, chitin, glow = masters.get("cloth"), masters.get("chitin"), masters.get("glow")
 
+    trail_tex = _trail_textures()
     made.append(make_instance(f"{I}/MI_Sand_Erg_Dry", sand,
                               scalars={"RippleStrength": 0.7, "SparkleDensity": 0.04, "LooseSlopeNormalZ": 0.92},
-                              textures=sand_tex if sand_ok else None,
-                              switches={"UseTextures": sand_ok}))
+                              textures={**(sand_tex if sand_ok else {}), **trail_tex},
+                              switches={"UseTextures": sand_ok, "UseTrails": bool(trail_tex)}))
+    # Плотный песок: следы мельче и ярче очерчены (меньше осыпается), вал ниже.
     made.append(make_instance(f"{I}/MI_Sand_Packed", sand,
                               scalars={"RippleStrength": 0.35, "SparkleDensity": 0.02, "LooseSlopeNormalZ": 0.6,
-                                       "Roughness_Packed": 0.74, "MicroStrength": 0.08},
+                                       "Roughness_Packed": 0.74, "MicroStrength": 0.08,
+                                       "TrailDisplacementScale": 0.6, "TrailDarkening": 0.10,
+                                       "TrailMaxRimNearCm": 1.2},
                               vectors={"SandColor_Packed": srgb("#AD8A63")},
-                              textures=sand_tex if sand_ok else None,
-                              switches={"UseTextures": sand_ok}))
+                              textures={**(sand_tex if sand_ok else {}), **trail_tex},
+                              switches={"UseTextures": sand_ok, "UseTrails": bool(trail_tex)}))
     made.append(make_instance(f"{I}/MI_Rock_Claw", rock,
                               scalars={"StrataStrength": 0.45, "StrataScale": 240.0, "MacroScale": 12000.0,
                                        "SandAccumulation": 0.55, "WindPolish": 0.4},
@@ -892,6 +990,12 @@ def build_all_masters() -> dict:
 def main() -> None:
     with unreal.ScopedEditorTransaction("Rakis: master materials"):
         build_mpc()
+        # T-017: RT следов и материалы штампа — до песка (M_Landscape_Sand ссылается на RT по умолчанию).
+        try:
+            import mat_sand_trails
+            mat_sand_trails.build_all()
+        except Exception as ex:  # noqa: BLE001
+            warn(f"mat_sand_trails: {ex}")
         masters = build_all_masters()
         made = build_instances(masters)
     save_dir("/Game/Rakis/Materials")

@@ -19,7 +19,7 @@ import random
 
 import unreal
 
-from rakis_common import MAP_DESERT, delete_generated, load_or_none, log, shape, spawn, transaction, warn
+from rakis_common import MAP_DESERT, delete_generated, fit_box_volume, load_or_none, log, shape, spawn, transaction, warn
 import level_common as LC
 import level_layout as L
 
@@ -56,8 +56,8 @@ def try_pcg() -> bool:
         vol = spawn(unreal.PCGVolume, (L.CORE_CENTER[0], L.CORE_CENTER[1], 0.0), label="PCG_DesertScatter",
                     tags=T("A2"), folder=FOLDER)
         size = (L.CORE_MAX[0] - L.CORE_MIN[0], L.CORE_MAX[1] - L.CORE_MIN[1], 60000.0)
-        vol.set_actor_scale3d(unreal.Vector(size[0] / 200.0, size[1] / 200.0, size[2] / 200.0))
-        comp = vol.get_component_by_class(unreal.PCGComponent)
+        fit_box_volume(vol, size)
+        comp = vol.get_editor_property("pcg_component") or vol.get_component_by_class(unreal.PCGComponent)
         comp.set_graph(graph)
         comp.generate(True)
         log("PCG_DesertScatter: сгенерирован")
@@ -251,9 +251,9 @@ def fx_markers(rnd):
 
 
 def main():
+    LC.ensure_persistent_with_sublevels()   # до транзакции: загрузка карты сбрасывает буфер undo
+    LC.make_current(MAP_DESERT)
     with transaction("Rakis: scatter desert"):
-        LC.ensure_persistent_with_sublevels()
-        LC.make_current(MAP_DESERT)
         n = delete_generated(GEN)
         log(f"{GEN}: удалено {n}")
         rnd = random.Random(SEED)
@@ -268,8 +268,8 @@ def main():
             except Exception as e:  # noqa: BLE001
                 warn(f"{fn.__name__}: {e}")
         fx_markers(rnd)
-        LC.save_all()
-        log("env_scatter_desert: готово")
+    LC.save_all()
+    log("env_scatter_desert: готово")
 
 
 if __name__ == "__main__":

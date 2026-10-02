@@ -113,7 +113,10 @@ def _pick(names: dict, keywords: list[str]) -> str | None:
 
 
 def _try_add_user_params(system) -> bool:
-    """Пытается добавить User.* через известные (в разных версиях) скриптовые API. Иначе — False."""
+    """Пытается добавить User.* через скриптовые API. Иначе — False.
+    Проверено по Python API UE 5.6: ни одной из этих библиотек в 5.6 НЕТ (у NiagaraSystem нет и метода
+    добавления User-параметров) — в 5.6 функция всегда возвращает False, параметры добавляются вручную.
+    Кандидаты оставлены на случай плагина/будущей версии."""
     candidates = [
         ("NiagaraSystemEditorLibrary", "add_user_parameter"),
         ("NiagaraEditorScriptingLibrary", "add_user_parameter"),
@@ -145,8 +148,21 @@ def _apply_system_props(system, name: str) -> None:
         r = props["fixed_bounds_cm"]
         try:
             box = unreal.Box(min=unreal.Vector(-r, -r, -r * 0.25), max=unreal.Vector(r, r, r * 0.75), is_valid=True)
-            if set_prop(system, "fixed_bounds", box):
-                set_prop(system, "fixed_bounds_enabled", True)  # имя флага зависит от версии — не критично
+            # UE 5.6: у NiagaraSystem ДВА свойства с Python-именем fixed_bounds — bool bFixedBounds и FBox
+            # FixedBounds (fixed_bounds_enabled не существует). Какое из них доступно по имени — зависит от
+            # порядка регистрации, поэтому пробуем оба типа; не получилось — включить в редакторе вручную.
+            box_ok = flag_ok = False
+            for val in (box, True):
+                try:
+                    system.set_editor_property("fixed_bounds", val)
+                    if val is True:
+                        flag_ok = True
+                    else:
+                        box_ok = True
+                except Exception:  # noqa: BLE001
+                    continue
+            if not (box_ok and flag_ok):
+                warn(f"{name}: Fixed Bounds выставьте вручную (System Properties → Fixed Bounds ±{r:.0f} см)")
         except Exception as ex:  # noqa: BLE001
             warn(f"{name}: fixed bounds: {ex}")
 
@@ -259,12 +275,11 @@ def ground_z(x: float, y: float, default: float = 0.0) -> float:
         hit = unreal.SystemLibrary.line_trace_single(
             world, unreal.Vector(x, y, 500000.0), unreal.Vector(x, y, -500000.0),
             unreal.TraceTypeQuery.TRACE_TYPE_QUERY1, False, [], unreal.DrawDebugTrace.NONE, True)
-        if hit is None:
+        if hit is None:  # 5.6: возвращает HitResult или None
             return default
-        parts = unreal.GameplayStatics.break_hit_result(hit)
-        # (blocking_hit, initial_overlap, time, distance, location, impact_point, ...)
-        if parts and parts[0]:
-            return float(parts[5].z)
+        # GameplayStatics.break_hit_result в Python 5.6 не экспортирован — читаем поля HitResult напрямую.
+        if bool(hit.get_editor_property("blocking_hit")):
+            return float(hit.get_editor_property("impact_point").z)
     except Exception:  # noqa: BLE001
         pass
     return default

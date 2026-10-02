@@ -36,7 +36,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FRakisOnSubtitleSettingsChanged);
 
 /**
  * Диалоги и лай (контракт §2.2 Narrative/).
- * - PlayLine: очередь цепочек (реплики не перекрываются), NextID, простое условие Condition (флаг),
+ * - PlayLine: очередь цепочек (реплики не перекрываются), NextID, Condition (флаг или живое состояние, IsConditionMet;
+ *   первая реплика запрошенной цепочки играет всегда, следующие по NextID — только при выполненном условии),
  *   VO 2D или прикреплённое к зарегистрированному актору говорящего.
  * - PlayBark: кулдаун строки + глобальный ограничитель (1 лай / 3 с; 1 лай-субтитр во время сюжетной реплики).
  * - ShowLore: надпись по LoreID (строка DT_Dialogue с Speaker = "Lore"); вызывает ARakisInspectable.
@@ -91,6 +92,14 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Rakis|Dialogue")
 	bool HasFlag(FName Flag) const { return Flags.Contains(Flag); }
+
+	/**
+	 * Условие реплики (docs/design/mechanics.md §5.3): флаг (Beat:/Interact:/WormState:) или живое состояние —
+	 * ZoneEnter:<Zone>, WormState:<State>, NoiseAbove:<x>, SandWalk:Regular|Irregular, Surface:<ERakisSurface>, MoistureBelow:<x>.
+	 * Пустое — всегда истинно. Для реакций спутников: проверить перед PlayLine.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Rakis|Dialogue")
+	bool IsConditionMet(FName Condition) const;
 
 	// --- Язык ---
 	UFUNCTION(BlueprintCallable, Category = "Rakis|Dialogue")
@@ -158,7 +167,8 @@ private:
 
 	const FRakisDialogueRow* FindDialogueRow(FName DialogueID) const;
 	void StartChain(FName FirstID);
-	void StartLine(FName DialogueID);
+	/** bIgnoreCondition — первая реплика цепочки, запрошенной PlayLine. */
+	void StartLine(FName DialogueID, bool bIgnoreCondition = false);
 	void HandleLineTimer();
 	void FinishChain();
 	void StartNextQueued();

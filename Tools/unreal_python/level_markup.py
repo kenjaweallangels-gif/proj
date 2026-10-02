@@ -18,7 +18,7 @@ import math
 
 import unreal
 
-from rakis_common import (MAP_DESERT, MAP_PERSISTENT, MAP_SIETCH, delete_generated, load_or_none, log,
+from rakis_common import (MAP_DESERT, MAP_PERSISTENT, MAP_SIETCH, delete_generated, fit_box_volume, load_or_none, log,
                           rakis_class, set_prop, spawn, transaction, warn)
 import level_common as LC
 import level_layout as L
@@ -133,7 +133,7 @@ def place_zones():
             vol = spawn(cls or unreal.TriggerVolume, c, label=f"Zone_{zid}_{i}", tags=[GEN], folder=f"{FOLDER}/Zones")
             if not vol:
                 continue
-            vol.set_actor_scale3d(unreal.Vector((x1 - x0) / 200.0, (y1 - y0) / 200.0, (z1 - z0) / 200.0))
+            fit_box_volume(vol, (x1 - x0, y1 - y0, z1 - z0))
             if not cls:
                 continue
             zv = LC.enum_value("RakisZone", enum_name)
@@ -364,7 +364,7 @@ def place_nav():
         v = spawn(unreal.NavMeshBoundsVolume, ((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), label=label,
                   tags=[GEN], folder=f"{FOLDER}/Nav")
         if v:
-            v.set_actor_scale3d(unreal.Vector((x1 - x0) / 200.0, (y1 - y0) / 200.0, (z1 - z0) / 200.0))
+            fit_box_volume(v, (x1 - x0, y1 - y0, z1 - z0))
     nav("Nav_Sietch", 140000, 165000, 66500, 77000, -5500, 1200)
     path = [(p[1], p[2]) for p in L.GOLDEN_PATH if p[4] in ("A1", "A2", "A3", "A4")]
     pad = 6000.0
@@ -402,7 +402,7 @@ def place_audio():
                        tags=[GEN], folder=f"{FOLDER}/Audio")
             if not av:
                 continue
-            av.set_actor_scale3d(unreal.Vector((x1 - x0) / 200.0, (y1 - y0) / 200.0, (z1 - z0) / 200.0))
+            fit_box_volume(av, (x1 - x0, y1 - y0, z1 - z0))
             set_prop(av, "priority", prio)
             try:
                 # Реверберация — одна: при наличии ARakisZoneVolume её включает AudioDirector (ZoneVolume.Reverb),
@@ -428,9 +428,9 @@ def place_audio():
 
 
 def main():
+    LC.ensure_persistent_with_sublevels()   # до транзакции: загрузка карты сбрасывает буфер undo
+    LC.make_current(MAP_PERSISTENT)
     with transaction("Rakis: markup"):
-        LC.ensure_persistent_with_sublevels()
-        LC.make_current(MAP_PERSISTENT)
         n = delete_generated(GEN)
         log(f"{GEN}: удалено {n}")
         _counts.clear()
@@ -440,10 +440,10 @@ def main():
                 fn()
             except Exception as e:  # noqa: BLE001
                 warn(f"{fn.__name__}: {e}")
-        LC.save_all()
-        for t in sorted(_counts):
-            log(f"  {t}: {_counts[t]}")
-        log("level_markup: готово")
+    LC.save_all()
+    for t in sorted(_counts):
+        log(f"  {t}: {_counts[t]}")
+    log("level_markup: готово")
 
 
 if __name__ == "__main__":

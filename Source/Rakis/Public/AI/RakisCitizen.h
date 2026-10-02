@@ -7,6 +7,8 @@
 class UStaticMeshComponent;
 class UMaterialInstanceDynamic;
 class UAnimInstance;
+class UStateTree;
+class UStateTreeComponent;
 class URakisCrowdSubsystem;
 
 /** Текущая активность горожанина (для AnimBP и отладки). */
@@ -22,11 +24,27 @@ enum class ERakisCitizenActivity : uint8
 	RitualGathered	UMETA(DisplayName = "Ritual Gathered")
 };
 
+/** Уровень детализации поведения по расстоянию до игрока (docs/tech/crowd.md §5). */
+UENUM(BlueprintType)
+enum class ERakisCitizenLOD : uint8
+{
+	Full		UMETA(DisplayName = "Full"),		// ≤ LowFrequencyRadius: полная частота
+	Low			UMETA(DisplayName = "Low"),			// ≤ DormantRadius: StateTree/логика редко
+	Dormant		UMETA(DisplayName = "Dormant")		// дальше: скрыт, движение и StateTree на паузе
+};
+
 /**
  * Горожанин сиетча «Табр-ан-Нур» (контракт §2.2 AI/, GDD §5 «NPC сиетча»).
- * Акторная реализация для среза (без Mass/StateTree — см. docs/tech/world_systems.md, план апгрейда).
  *
- * Поведение (таймер BehaviourHz, не Tick; вне SignificanceRadius от игрока — пропуск):
+ * Два режима решений (docs/tech/crowd.md):
+ *  1) StateTree: UStateTreeComponent (StateTreeComp) с ассетом StateTreeAsset (/Game/Rakis/AI/ST_Citizen,
+ *     схема «StateTree Component», контекст-актор ARakisCitizen) и C++-задачами из RakisCitizenStateTree.h;
+ *  2) C++-фоллбек (ассета нет, CVar Rakis.Crowd.StateTree 0 или дерево не запустилось) — прежний автомат ниже.
+ * Точки — Smart Objects через URakisCrowdSubsystem (Claim → Occupy → Free), с теговым фоллбеком.
+ * LOD (таймер 1 Гц): ≤ SignificanceRadius — полная частота; ≤ DormantRadius — StateTree/автомат редко;
+ * дальше — скрыт, движение и дерево на паузе (кроме пути на ритуал).
+ *
+ * Поведение (таймер BehaviourHz, не Tick):
  *  - бродит между точками Rakis.SmartObject.<Type> своего архетипа (DT_CrowdArchetypes.SmartObjectTags),
  *    стоит на точке случайное время, на части точек «разговаривает»;
  *  - look-at игрока ближе LookAtRadius (LookAtTarget/bLookAtPlayer для AnimBP), стоя — доворачивает корпус;
@@ -59,10 +77,60 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Rakis|Crowd")
 	void BeginRitualFlow(const FVector& GatherPoint);
 
-	/** Вызывает реестр разговоров URakisCrowdSubsystem. */
+	/** Вызывает реестр разговоров URakisCrowdSubsystem (или задача StateTree FallSilent). */
 	void SetConversationSilenced(bool bSilenced);
 
 	AActor* GetCurrentSpot() const { return CurrentSpot.Get(); }
+
+	/** Решения принимает StateTree (иначе — C++-фоллбек). */
+	UFUNCTION(BlueprintPure, Category = "Rakis|Crowd")
+	bool IsUsingStateTree() const { return bUsingStateTree; }
+
+	UFUNCTION(BlueprintPure, Category = "Rakis|Crowd")
+	ERakisCitizenLOD GetBehaviourLOD() const { return BehaviourLOD; }
+
+	// ---------- Примитивы поведения (C++: задачи StateTree и фоллбек) ----------
+
+	/** Время мира, сек. */
+	float GetWorldNow() const;
+	/** Игрок (пешка 0) и расстояние до него; nullptr — игрока нет (Dist = MAX). */
+	const APawn* GetPlayerAndDistance(float& OutDist) const;
+
+	/** Прогулка к случайной достижимой точке (Radius ≤ 0 — WanderRadius). Activity = Wandering. */
+	bool StartWander(float Radius);
+	/** Зарезервировать точку своего архетипа (SO-слот) и пойти к ней (SearchRadius ≤ 0 — SpotSearchRadius). */
+	bool ClaimSpotAndMove(float SearchRadius);
+	/** Движение закончено (путь завершён/сорван или вышел дедлайн). */
+	bool IsMoveFinished() const;
+	/** Стоим у цели текущего движения (2D, допуск 150 см). */
+	bool IsAtMoveGoal(float Tolerance = 150.f) const;
+	/** Встать на точку: Occupy слота, доворот, разговор; длительность ≤ 0 — по поведению слота/SpotIdleMin..Max. */
+	void ArriveAtSpot(float Now, float DurationMin = -1.f, float DurationMax = -1.f);
+	/** Сойти с точки: тишина, освобождение слота, Activity = Idle. */
+	void LeaveSpot();
+	/** Время окончания текущей активности (UsingSpot/Idle). */
+	float GetActivityEndTime() const { return ActivityEndTime; }
+	/** Постоять (Idle) Duration сек. */
+	void BeginIdle(float Duration);
+	void StopMoving();
+	void SetActivity(ERakisCitizenActivity NewActivity) { Activity = NewActivity; }
+
+	/** Look-at игрока / центра зала (AnimBP) и доворот корпуса стоящего. */
+	void UpdateLookAt(const APawn* Player, float DistToPlayer);
+	void ClearLookAt();
+	/** Нужно ли уступить дорогу (без побочных эффектов, учитывает кулдаун). */
+	bool ShouldYieldToPlayer(const APawn* Player, float DistToPlayer, float Now) const;
+	/** Шаг в сторону от игрока (Activity = SteppingAside). false — не нужно/не вышло. */
+	bool StepAsideFromPlayer(const APawn* Player, float DistToPlayer, float Now);
+
+	/** Ритуал: запрошен ли (BeginRitualFlow), начать путь к точке сбора и обновить его (true — пришёл). */
+	bool IsRitualRequested() const { return bRitualRequested; }
+	void BeginRitualWalk(float Now);
+	bool UpdateRitualWalk(float Now);
+
+	/** Тишину разговора ведёт StateTree-задача FallSilent (реестр URakisCrowdSubsystem её не трогает). */
+	bool IsSilenceDrivenByStateTree() const { return bSilenceDrivenByStateTree; }
+	void SetSilenceDrivenByStateTree(bool bDriven) { bSilenceDrivenByStateTree = bDriven; }
 
 	// ---------- Для AnimBP ----------
 
@@ -99,9 +167,33 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Rakis|Crowd|Behaviour", meta = (ClampMin = "1.0", ClampMax = "20.0"))
 	float BehaviourHz = 5.f;
 
-	/** Дальше этого от игрока поведение не обновляется (значимость), см. */
+	/** Дальше этого от игрока поведение обновляется редко (LOD Low), см. */
 	UPROPERTY(EditDefaultsOnly, Category = "Rakis|Crowd|Behaviour")
 	float SignificanceRadius = 4000.f;
+
+	/** Дальше этого — горожанин скрыт и «спит» (LOD Dormant), кроме пути на ритуал, см. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rakis|Crowd|LOD")
+	float DormantRadius = 7000.f;
+
+	/** Гистерезис LOD, см (чтобы не мигать на границе). */
+	UPROPERTY(EditDefaultsOnly, Category = "Rakis|Crowd|LOD")
+	float LODHysteresis = 300.f;
+
+	/** Интервал тика StateTree в LOD Low, сек. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rakis|Crowd|LOD", meta = (ClampMin = "0.05"))
+	float LowLODTickInterval = 0.5f;
+
+	/** Период пересчёта LOD, сек. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rakis|Crowd|LOD", meta = (ClampMin = "0.1"))
+	float LODUpdateInterval = 1.f;
+
+	/** Ассет StateTree (схема «StateTree Component», контекст-актор — этот класс). Нет ассета — C++-фоллбек. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rakis|Crowd|StateTree")
+	TSoftObjectPtr<UStateTree> StateTreeAsset = TSoftObjectPtr<UStateTree>(FSoftObjectPath(TEXT("/Game/Rakis/AI/ST_Citizen.ST_Citizen")));
+
+	/** Компонент StateTree (запускается в BeginPlay, если ассет найден). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Rakis|Crowd|StateTree")
+	TObjectPtr<UStateTreeComponent> StateTreeComp;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Rakis|Crowd|Behaviour")
 	float SpotSearchRadius = 3500.f;
@@ -209,19 +301,22 @@ protected:
 
 private:
 	void ApplyArchetype();
+	void TryStartStateTree();
+	void FallBackToCpp(const TCHAR* Reason);
 	void BehaviourUpdate();
+	void UpdateReactions(const APawn* Player, float Dist, float Now);
+	void UpdateLOD();
+	void SetLOD(ERakisCitizenLOD NewLOD);
 	void ChooseNextActivity(float Now);
-	void ArriveAtSpot(float Now);
 	void ReleaseCurrentSpot();
 	void SetTalking(bool bTalking);
 
 	bool MoveToPoint(const FVector& Destination, float AcceptanceRadius);
 	bool IsMoveDone() const;
-	void StopMoving();
 
+	bool ComputeStepAsideTarget(const APawn* Player, float DistToPlayer, float Now, FVector& OutTarget) const;
 	bool TryStepAside(const APawn* Player, float DistToPlayer, float Now);
 	void ResumeAfterStepAside(float Now);
-	void UpdateLookAt(const APawn* Player, float DistToPlayer);
 	void RequestTurnTo(float Yaw);
 	void UpdateBarks(const APawn* Player, float DistToPlayer, float Now);
 	bool PlayBark(FName Context);
@@ -231,8 +326,20 @@ private:
 
 	FRandomStream Rng;
 	FTimerHandle BehaviourTimer;
+	FTimerHandle LODTimer;
+
+	bool bUsingStateTree = false;
+	int32 StateTreeRestarts = 0;
+	float LastStateTreeRestartTime = -100.f;
+	/** Если StateTree не взял ритуал к этому времени — ритуал ведёт C++. */
+	float RitualStateTreeDeadline = 0.f;
+	bool bSilenceDrivenByStateTree = false;
+	ERakisCitizenLOD BehaviourLOD = ERakisCitizenLOD::Full;
+	uint32 LowLODCounter = 0;
 
 	TWeakObjectPtr<AActor> CurrentSpot;
+	/** Куда смотреть на точке (yaw слота SO или маркера). */
+	float CurrentSpotYaw = 0.f;
 	FVector MoveGoal = FVector::ZeroVector;
 	float ActivityEndTime = 0.f;
 	float MoveDeadline = 0.f;
@@ -243,6 +350,7 @@ private:
 	float NextStepAsideTime = 0.f;
 
 	FVector RitualGatherPoint = FVector::ZeroVector;
+	bool bRitualRequested = false;
 	float RitualRetryTime = 0.f;
 	FVector HallCentre = FVector::ZeroVector;
 	bool bHasHallCentre = false;

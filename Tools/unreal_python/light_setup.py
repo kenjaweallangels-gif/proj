@@ -222,7 +222,8 @@ def setup_sun(p: dict):
     set_prop(c, "contact_shadow_length_in_ws", False)
     set_prop(c, "shadow_source_angle_factor", 1.0)
     set_prop(c, "volumetric_scattering_intensity", 1.0)
-    set_prop(c, "light_shaft_occlusion", False)  # god rays дают объёмный туман, не screen-space
+    # god rays дают объёмный туман, не screen-space. UE 5.6: bEnableLightShaftOcclusion → enable_light_shaft_occlusion.
+    _set_first(c, ["enable_light_shaft_occlusion", "light_shaft_occlusion"], False)
     return a
 
 
@@ -244,7 +245,8 @@ def setup_sky_atmosphere():
     set_prop(c, "other_absorption_scale", 0.0006)                       # озон слабее → меньше «пурпура» в сумерках
     set_prop(c, "ground_albedo", unreal.Color(r=170, g=135, b=95, a=255))  # песок подсвечивает низ неба
     set_prop(c, "multi_scattering_factor", 1.0)
-    set_prop(c, "aerial_perspective_view_distance_scale", 1.2)
+    # Имя свойства в C++ с опечаткой Epic: AerialPespectiveViewDistanceScale (UE 5.6).
+    _set_first(c, ["aerial_pespective_view_distance_scale", "aerial_perspective_view_distance_scale"], 1.2)
     set_prop(c, "height_fog_contribution", 1.0)
     set_prop(c, "transmittance_min_light_elevation_angle", -90.0)
     return a
@@ -278,7 +280,7 @@ def setup_height_fog(p: dict):
     _set_first(c, ["fog_inscattering_luminance", "fog_inscattering_color"], _lc(p["FogInscatterColor"]))
     set_prop(c, "fog_max_opacity", 1.0)
     set_prop(c, "start_distance", 0.0)
-    set_prop(c, "volumetric_fog", True)
+    _set_first(c, ["enable_volumetric_fog", "volumetric_fog"], True)  # UE 5.6: bEnableVolumetricFog
     set_prop(c, "volumetric_fog_scattering_distribution", float(p["VolumetricFogScattering"]))
     set_prop(c, "volumetric_fog_albedo", unreal.Color(r=235, g=215, b=185, a=255))
     set_prop(c, "volumetric_fog_extinction_scale", 1.0 + float(p["DustDensity"]) * 4.0)

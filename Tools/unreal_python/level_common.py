@@ -18,8 +18,8 @@ import math
 
 import unreal
 
-from rakis_common import (MAP_DESERT, MAP_PERSISTENT, MAP_SIETCH, actor_ss, eal, level_ss, load_or_none,
-                          log, set_prop, shape, spawn, warn)
+from rakis_common import (MAP_DESERT, MAP_PERSISTENT, MAP_SIETCH, actor_ss, add_tags, eal, has_tag, level_ss,
+                          load_or_none, log, open_map, save_dirty_maps_if_ours, set_prop, shape, spawn, warn)
 
 MI_SAND = "/Game/Rakis/Materials/Instances/MI_Blockout_Sand"
 MI_ROCK = "/Game/Rakis/Materials/Instances/MI_Blockout_Rock"
@@ -54,35 +54,29 @@ def _save_current() -> None:
 
 
 def _create_empty_level(map_path: str) -> None:
-    """Создаёт пустой (не World Partition) уровень и сохраняет его."""
-    try:
-        level_ss.new_level(map_path, False)          # UE 5.1+: (asset_path, is_partitioned_world)
-    except TypeError:
-        level_ss.new_level(map_path)
+    """Создаёт пустой (не World Partition) уровень. LevelEditorSubsystem.new_level(asset_path,
+    is_partitioned_world=False) сам сохраняет карту по asset_path и открывает её."""
+    save_dirty_maps_if_ours()
+    if not level_ss.new_level(map_path, False):
+        warn(f"new_level({map_path}) вернул False")
     _save_current()
     log(f"создан уровень {map_path}")
 
 
-def streaming_levels(world=None) -> list:
-    world = world or editor_world()
-    try:
-        return list(world.get_editor_property("streaming_levels"))
-    except Exception:  # noqa: BLE001
-        return []
-
-
 def _streaming_package(ls) -> str:
+    """Пакет подуровня: LevelStreaming.get_world_asset_package_f_name() (UE 5.6), фолбэк — world_asset."""
     try:
-        return str(ls.get_editor_property("world_asset").get_path_name()).split(".")[0]
+        return str(ls.get_world_asset_package_f_name())
     except Exception:  # noqa: BLE001
         try:
-            return str(ls.get_world_asset_package_name())
+            return str(ls.get_editor_property("world_asset").get_path_name()).split(".")[0]
         except Exception:  # noqa: BLE001
             return ""
 
 
 def _find_streaming(world, map_path: str):
-    """LevelStreaming подуровня или None (UGameplayStatics::GetStreamingLevel, длинное и короткое имя)."""
+    """LevelStreaming подуровня или None. В Python у World нет свойства streaming_levels, поэтому —
+    GameplayStatics.get_streaming_level(world_context_object, package_name) (длинное, затем короткое имя)."""
     for name in (map_path, map_path.rsplit("/", 1)[-1]):
         try:
             ls = unreal.GameplayStatics.get_streaming_level(world, name)
@@ -99,41 +93,51 @@ def ensure_persistent_with_sublevels(sublevels=(MAP_DESERT, MAP_SIETCH)) -> None
         if not eal.does_asset_exist(sub):
             _create_empty_level(sub)
     if eal.does_asset_exist(MAP_PERSISTENT):
-        level_ss.load_level(MAP_PERSISTENT)
+        open_map(MAP_PERSISTENT)
     else:
         _create_empty_level(MAP_PERSISTENT)
     world = editor_world()
-    present = {_streaming_package(ls) for ls in streaming_levels(world)}
+    added = False
     for sub in sublevels:
-        if sub in present or _find_streaming(world, sub) is not None:
+        if _find_streaming(world, sub) is not None:
             continue
         try:
+            # EditorLevelUtils.add_level_to_world(world, level_package_name, level_streaming_class) -> LevelStreaming
             ls = unreal.EditorLevelUtils.add_level_to_world(world, sub, unreal.LevelStreamingDynamic)
             if ls:
                 loaded, visible = INITIAL_STATE.get(sub, (True, True))
-                set_prop(ls, "initially_loaded", loaded)
-                set_prop(ls, "initially_visible", visible)
+                set_prop(ls, "initially_loaded", loaded)    # LevelStreamingDynamic: bInitiallyLoaded
+                set_prop(ls, "initially_visible", visible)  # bInitiallyVisible
+                added = True
                 log(f"подуровень {sub} добавлен в {MAP_PERSISTENT}")
+            else:
+                warn(f"add_level_to_world({sub}) вернул None — добавьте подуровень вручную (Window ▸ Levels)")
         except Exception as e:  # noqa: BLE001
             warn(f"add_level_to_world({sub}): {e} — добавьте подуровень вручную (Window ▸ Levels)")
-    _save_current()
+    if added:
+        # add_level_to_world может сделать текущим добавленный уровень — сохраняем все грязные, не только текущий
+        save_all()
 
 
 def make_current(map_path: str) -> bool:
-    """Делает уровень текущим (спавн идёт в него)."""
+    """Делает уровень текущим (спавн идёт в него).
+    LevelEditorSubsystem.set_current_level_by_name(level_name: Name) — короткое имя пакета уровня;
+    фолбэк — EditorLevelUtils.make_level_current(streaming_level: LevelStreaming) (принимает именно
+    LevelStreaming, не ULevel). Persistent — только через set_current_level_by_name."""
     name = LEVEL_NAMES.get(map_path, map_path.rsplit("/", 1)[-1])
     try:
-        if level_ss.set_current_level_by_name(name):
+        if level_ss.set_current_level_by_name(unreal.Name(name)):
             return True
     except Exception as e:  # noqa: BLE001
         warn(f"set_current_level_by_name({name}): {e}")
-    try:  # фолбэк: найти ULevel по имени пакета
-        for lvl in unreal.EditorLevelUtils.get_levels(editor_world()):
-            if name in lvl.get_path_name():
-                unreal.EditorLevelUtils.make_level_current(lvl)
+    if map_path != MAP_PERSISTENT:
+        try:
+            ls = _find_streaming(editor_world(), map_path)
+            if ls is not None:
+                unreal.EditorLevelUtils.make_level_current(ls)
                 return True
-    except Exception as e:  # noqa: BLE001
-        warn(f"make_level_current({name}): {e}")
+        except Exception as e:  # noqa: BLE001
+            warn(f"make_level_current({name}): {e}")
     warn(f"не удалось сделать текущим {name} — акторы попадут в текущий уровень")
     return False
 
@@ -146,8 +150,7 @@ def save_all() -> None:
 
 
 def actors_in_level_with_tag(tag: str) -> list:
-    t = unreal.Name(tag)
-    return [a for a in actor_ss.get_all_level_actors() if t in a.tags]
+    return [a for a in actor_ss.get_all_level_actors() if has_tag(a, tag)]
 
 
 # ---------------------------------------------------------------- примитивы
@@ -206,8 +209,12 @@ def marker(location, tags, label=None, yaw=0.0, folder=None, cls=None):
 
 
 def enum_value(enum_name: str, value_name: str):
-    """unreal.<EnumName>.<VALUE>: пробует UPPER_SNAKE и исходное имя. None, если нет."""
+    """Значение C++ UENUM в Python. Правила генератора привязок UE: тип теряет префикс E
+    (ERakisZone → unreal.RakisZone), значения — UPPER_SNAKE (A1_Ridge → A1_RIDGE, DesertCalm → DESERT_CALM,
+    None → NONE). Сначала прямые кандидаты, затем поиск по имени без '_' и без регистра. None, если нет."""
     enum_cls = getattr(unreal, enum_name, None)
+    if enum_cls is None and enum_name.startswith("E"):
+        enum_cls = getattr(unreal, enum_name[1:], None)
     if enum_cls is None:
         warn(f"enum {enum_name} недоступен в Python (модуль Rakis не собран?)")
         return None
@@ -221,6 +228,10 @@ def enum_value(enum_name: str, value_name: str):
         v = getattr(enum_cls, c, None)
         if v is not None:
             return v
+    key = value_name.replace("_", "").lower()
+    for attr in dir(enum_cls):
+        if not attr.startswith("_") and attr.replace("_", "").lower() == key:
+            return getattr(enum_cls, attr)
     warn(f"{enum_name}.{value_name} не найден (пробовали {candidates})")
     return None
 
@@ -278,6 +289,11 @@ def make_transform(loc, rot=(0.0, 0.0, 0.0), scale=(1.0, 1.0, 1.0)):
 
 def ism_actor(label, mesh, transforms, tags, folder=None, material=None, max_fallback=400):
     """Один актор с HierarchicalInstancedStaticMeshComponent (через SubobjectDataSubsystem, UE 5.1+).
+    В Python нет Actor.add_component: SubobjectDataSubsystem (engine subsystem)
+    .k2_gather_subobject_data_for_instance(actor) → [handle актора, …];
+    .add_new_subobject(AddNewSubobjectParams(parent_handle, new_class, blueprint_context=None))
+    → (SubobjectDataHandle, fail_reason); объект — SubobjectDataBlueprintFunctionLibrary.get_object(get_data(h)).
+    add_instances(instance_transforms, should_return_indices, world_space=False, update_navigation=True).
     Если API недоступно — отдельные StaticMeshActor (не больше max_fallback)."""
     if not transforms or mesh is None:
         return None
@@ -312,7 +328,7 @@ def ism_actor(label, mesh, transforms, tags, folder=None, material=None, max_fal
             continue
         a.set_actor_scale3d(t.scale3d)
         a.set_actor_label(f"{label}_{i:03d}")
-        a.tags = [unreal.Name(x) for x in tags]
+        add_tags(a, tags)
         if folder:
             a.set_folder_path(folder)
         if mat:

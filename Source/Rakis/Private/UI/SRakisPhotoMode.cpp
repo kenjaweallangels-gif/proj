@@ -76,8 +76,9 @@ void SRakisPhotoMode::Activate(ARakisPhotoCamera* InCamera, const FVector& InSta
 	{
 		Location = Anchor + (Location - Anchor).GetSafeNormal() * MaxRadiusCm;
 	}
-	Pitch = FMath::Clamp(FRotator::NormalizeAxis(InRotation.Pitch), -89.f, 89.f);
-	Yaw = InRotation.Yaw;
+	// FRotator — double (LWC): сужаем явно.
+	Pitch = FMath::Clamp(static_cast<float>(FRotator::NormalizeAxis(InRotation.Pitch)), -89.f, 89.f);
+	Yaw = static_cast<float>(InRotation.Yaw);
 	StartFov = FMath::Clamp(InFov, RakisPhotoPrivate::MinFov, RakisPhotoPrivate::MaxFov);
 	ResetParameters();
 

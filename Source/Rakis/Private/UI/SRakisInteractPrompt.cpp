@@ -46,10 +46,10 @@ void SRakisInteractPrompt::RefreshMeasurements()
 		return;
 	}
 	const TSharedRef<FSlateFontMeasure> Measure = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
-	const auto Verb = Measure->Measure(VerbString, VerbFont);
-	const auto Key = Measure->Measure(KeyString, KeyFont);
-	VerbSize = FVector2f(static_cast<float>(Verb.X), static_cast<float>(Verb.Y));
-	KeySize = FVector2f(static_cast<float>(Key.X), static_cast<float>(Key.Y));
+	const FVector2D VerbMeasured = Measure->Measure(VerbString, VerbFont);
+	const FVector2D KeyMeasured = Measure->Measure(KeyString, KeyFont);
+	VerbSize = FVector2f(static_cast<float>(VerbMeasured.X), static_cast<float>(VerbMeasured.Y));
+	KeySize = FVector2f(static_cast<float>(KeyMeasured.X), static_cast<float>(KeyMeasured.Y));
 }
 
 void SRakisInteractPrompt::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)

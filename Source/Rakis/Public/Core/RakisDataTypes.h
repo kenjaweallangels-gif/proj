@@ -132,6 +132,9 @@ struct FRakisStoryBeatRow : public FTableRowBase
 	 * PlayDialogue(Param=DialogueID) | PlayCinematic(Param=/Game/... LevelSequence) | SetWeather(Param=PresetID[,BlendSec])
 	 * | SetMusic(Param=ERakisMusicState) | TitleCard(Param=RU|EN текст через '|') | ForceWorm(Param=ActorTag точки)
 	 * | CrowdRitual | Hint(Param=RU|EN) | FadeOut(Param=сек) | EndDemo
+	 * | Ellipsis(Param=<ТегЦели>[,<FadeSec>[,<AdvanceHours>]][,window=<сек>][,pull=<BeatID>@<сек>]...[|RU титр|EN титр]) —
+	 *   склейка золотого пути: затемнение → перенос игрока и спутников к актору с тегом → +часы → титр поверх чёрного →
+	 *   возврат; только если игрок на золотом пути (иначе отказ, Beat:<ID> не срабатывает). Консоль Rakis.Story.Ellipsis 0|1.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rakis|Story") FName Action;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rakis|Story") FString Param;

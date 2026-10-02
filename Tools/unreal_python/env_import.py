@@ -8,9 +8,13 @@ env_import.py — импорт результатов Blender-генератор
        Export/sietch/SM_Sietch_*.fbx                        → /Game/Rakis/Environment/Sietch/
   2. Назначает MI по имени слота (слот = имя MI из Blender) с цепочкой фолбэков.
   3. Ландшафт: если в L_Rakis_Desert уже есть Landscape — назначает материал и проверяет трансформ
-     по Export/heightmap_desert.json. Создать Landscape из PNG через Python в UE 5.6 нельзя
-     (нет API импорта heightmap) → лог с ручными шагами (docs/level/layout.md §11) и фолбэк:
-     плиты-земля + блокаут-дюны, расставленные по гребням той же процедурной функции env_dunes.py.
+     по Export/heightmap_desert.json. Создать Landscape из PNG/R16 через Python в UE 5.6 нельзя
+     (нет API импорта heightmap) → ручной шаг (docs/level/layout.md §13, его же печатает следующий шаг
+     сборки landscape_import.py) и фолбэк: плиты-земля + блокаут-дюны по гребням той же процедурной
+     функции env_dunes.py. landscape_import.py удаляет фолбэк, когда Landscape появится.
+  FBX: в UE 5.5+ FBX по умолчанию идёт через Interchange, который не обязан учитывать FbxImportUI —
+     импорт обёрнут в rakis_common.legacy_fbx_import() (CVar Interchange.FeatureFlags.Import.FBX=0 на время
+     импорта). Nanite дополнительно включается после импорта через StaticMesh.nanite_settings.enabled.
 Запуск: из build_demo.py или Tools ▸ Execute Python Script.
 """
 from __future__ import annotations
@@ -21,8 +25,8 @@ import os
 
 import unreal
 
-from rakis_common import (EXPORT_DIR, MAP_DESERT, delete_generated, eal, ensure_dir, load_or_none, log,
-                          set_prop, transaction, warn)
+from rakis_common import (EXPORT_DIR, MAP_DESERT, delete_generated, eal, ensure_dir, legacy_fbx_import, load_or_none,
+                          log, set_prop, transaction, warn)
 import level_common as LC
 
 GEN = "gen:env_import"
@@ -67,18 +71,24 @@ MASTER_FALLBACK = {   # если инстансов нет — мастер-ма
     "MI_Sietch": "/Game/Rakis/Materials/Master/M_Sietch_Stone",
     "MI_Metal": "/Game/Rakis/Materials/Master/M_Sietch_Stone",
 }
-LANDSCAPE_MATERIALS = [f"{MI_DIR}/MI_Landscape_Sand", f"{MI_DIR}/MI_Sand_Erg_Dry",
+# MI_Sand_Erg_Dry создаёт mat_master_materials.py (tech-artist); MI_Landscape_Sand — имя из rock_and_dunes.md
+LANDSCAPE_MATERIALS = [f"{MI_DIR}/MI_Sand_Erg_Dry", f"{MI_DIR}/MI_Landscape_Sand",
                        "/Game/Rakis/Materials/Master/M_Landscape_Sand"]
 
 
 # ------------------------------------------------------------------ FBX
 def _fbx_options(nanite: bool):
+    """FbxImportUI / FbxStaticMeshImportData (UE 5.6): import_mesh, import_as_skeletal, import_materials,
+    import_textures, import_animations, mesh_type_to_import; static_mesh_import_data.{combine_meshes,
+    generate_lightmap_u_vs, auto_generate_collision, import_uniform_scale, convert_scene, force_front_x_axis,
+    remove_degenerates, build_nanite}."""
     ui = unreal.FbxImportUI()
     ui.set_editor_property("import_mesh", True)
     ui.set_editor_property("import_as_skeletal", False)
     ui.set_editor_property("import_materials", False)
     ui.set_editor_property("import_textures", False)
     ui.set_editor_property("import_animations", False)
+    ui.set_editor_property("automated_import_should_detect_type", False)
     try:
         ui.set_editor_property("mesh_type_to_import", unreal.FBXImportType.FBXIT_STATIC_MESH)
     except Exception as e:  # noqa: BLE001
@@ -100,7 +110,8 @@ def import_fbx(path: str, dest: str, nanite: bool):
     task.set_editor_property("replace_existing", True)
     task.set_editor_property("save", False)
     task.set_editor_property("options", _fbx_options(nanite))
-    unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
+    with legacy_fbx_import():
+        unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
     out = []
     for p in task.get_editor_property("imported_object_paths") or []:
         a = eal.load_asset(p)
@@ -134,9 +145,11 @@ def postprocess_mesh(mesh, nanite: bool, complex_collision: bool) -> None:
     name = mesh.get_name()
     # Nanite
     try:
-        ns = mesh.get_editor_property("nanite_settings")
-        ns.set_editor_property("enabled", bool(nanite and name not in NO_NANITE))
-        mesh.set_editor_property("nanite_settings", ns)
+        ns = mesh.get_editor_property("nanite_settings")       # MeshNaniteSettings (копия структуры)
+        want = bool(nanite and name not in NO_NANITE)
+        if bool(ns.get_editor_property("enabled")) != want:
+            ns.set_editor_property("enabled", want)
+            mesh.set_editor_property("nanite_settings", ns)    # PostEditChange → пересборка меша
     except Exception as e:  # noqa: BLE001
         warn(f"{name}: nanite_settings — {e}")
     # материалы по именам слотов
@@ -209,14 +222,17 @@ def manual_landscape_steps(meta) -> str:
         return ("Нет Export/heightmap_desert.json — запустите: python3 Tools/blender/env_dunes.py "
                 "(или blender -b -P Tools/blender/env_dunes.py), затем повторите env_import.py.")
     ls = meta["landscape"]
+    loc, size = ls["location_cm"], ls.get("size_cm", [0.0, 0.0])
+    center = [loc[0] + size[0] * 0.5, loc[1] + size[1] * 0.5, loc[2]]   # поле Location окна New Landscape — центр
     return (
-        "РУЧНОЙ ШАГ (UE 5.6 не импортирует heightmap из Python): уровень L_Rakis_Desert текущий → "
+        "РУЧНОЙ ШАГ (UE 5.6 не импортирует heightmap из Python; пошагово — landscape_import.py / layout.md §13): "
+        "уровень L_Rakis_Desert текущий → "
         "Landscape Mode ▸ Manage ▸ New ▸ Import from File: "
         f"{meta['file']} | Section Size {ls.get('quads_per_section', 63)}×{ls.get('quads_per_section', 63)} quads, "
         f"Sections/Component {ls.get('sections_per_component', 2)}×{ls.get('sections_per_component', 2)}, "
-        f"Components {ls.get('components', '?')} | Location {ls['location_cm']} | Scale {ls['scale']} | "
-        "Material MI_Landscape_Sand → Import. Затем снова env_import.py (уберёт фолбэк-землю, назначит материал), "
-        "Landscape ▸ Add Tag gen:manual_landscape не нужен — скрипт находит Landscape сам.")
+        f"Components {ls.get('components', '?')} | Location (центр) {center} | Scale {ls['scale']} | "
+        "Material MI_Sand_Erg_Dry → Import. Затем landscape_import.py (выставит трансформ и материал, "
+        "уберёт фолбэк-землю) — скрипт находит Landscape сам.")
 
 
 def setup_landscape(meta) -> bool:
@@ -240,11 +256,11 @@ def setup_landscape(meta) -> bool:
 
 
 def main():
+    n = import_meshes()            # импорт ассетов — вне транзакции уровня (у ассетов свой undo не нужен)
+    log(f"импортировано мешей: {n}")
+    LC.ensure_persistent_with_sublevels()   # до транзакции: загрузка карты сбрасывает буфер undo
+    LC.make_current(MAP_DESERT)
     with transaction("Rakis: env_import"):
-        n = import_meshes()
-        log(f"импортировано мешей: {n}")
-        LC.ensure_persistent_with_sublevels()
-        LC.make_current(MAP_DESERT)
         removed = delete_generated(GEN)
         if removed:
             log(f"удалено {removed} акторов {GEN}")
@@ -254,7 +270,7 @@ def main():
             n_ground = LC.build_fallback_ground([GEN, "blockout:ground"])
             n_dunes = LC.build_fallback_dunes([GEN, "blockout:A2"])
             log(f"фолбэк-земля: {n_ground} плит, дюн: {n_dunes}")
-        LC.save_all()
+    LC.save_all()
 
 
 if __name__ == "__main__":

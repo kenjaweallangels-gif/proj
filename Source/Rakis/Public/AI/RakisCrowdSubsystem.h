@@ -4,12 +4,34 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "Core/RakisTypes.h"
 #include "Core/RakisDataTypes.h"
+#include "SmartObjectRuntime.h"
+#include "SmartObjectTypes.h"
 #include "RakisCrowdSubsystem.generated.h"
 
 class ARakisCitizen;
 class ARakisCompanion;
 class UDataTable;
 class ULevel;
+class UStateTree;
+class USmartObjectDefinition;
+class USmartObjectSubsystem;
+class URakisSmartObjectBehaviorDefinition;
+
+/** Зарегистрированный Smart Object маркера (внутренний кэш URakisCrowdSubsystem). */
+struct FRakisSmartObjectRecord
+{
+	FSmartObjectHandle Handle;
+	TWeakObjectPtr<AActor> Spot;
+	FName Type;
+};
+
+/** Активный резерв SO-слота горожанина (внутренний кэш URakisCrowdSubsystem). */
+struct FRakisSmartObjectClaim
+{
+	FSmartObjectClaimHandle Claim;
+	TWeakObjectPtr<AActor> Spot;
+	bool bOccupied = false;
+};
 
 /** Ритуал начался (толпа потянулась в зал B5). */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FRakisOnRitualStarted);
@@ -17,7 +39,11 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FRakisOnRitualStarted);
 /**
  * Реестр толпы сиетча (контракт §2.2 AI/).
  * - Регистрация горожан, кэш архетипов DT_CrowdArchetypes (+ встроенные 8 архетипов, если таблицы нет).
- * - «Smart-Object-подобные» точки: акторы с тегом Rakis.SmartObject.<Type>, резервирование с ёмкостью.
+ * - Точки Rakis.SmartObject.<Type>: при первом обращении маркеры получают USmartObjectComponent
+ *   (SOD_<Type> или рантайм-определение) и регистрируются в USmartObjectSubsystem; резервирование —
+ *   FindSmartObjects → MarkSlotAsClaimed → MarkSlotAsOccupied → MarkSlotAsFree. Фоллбек (нет SO / CVar
+ *   Rakis.Crowd.SmartObjects 0) — прежнее резервирование по тегам с ёмкостью. См. docs/tech/crowd.md.
+ * - Кэш ассета ST_Citizen для горожан (одна загрузка на мир).
  * - Реестр разговоров: группы у одной точки умолкают, когда игрок ближе SilenceRadius, и продолжают после.
  * - Арбитраж лая (не чаще MinGlobalBarkInterval на всю толпу).
  * - StartRitual(): все горожане — к точкам Rakis.HallGather по кругу со ступенчатыми задержками.
@@ -66,11 +92,22 @@ public:
 	TArray<FName> GetArchetypeSpotTypes(FName Archetype) const;
 
 	// --- Точки ---
-	/** Зарезервировать свободную точку одного из типов рядом с Near. */
+	/** Зарезервировать свободную точку одного из типов рядом с Near (Smart Object слот или теговая точка). */
 	AActor* ReserveSpot(ARakisCitizen* User, const TArray<FName>& Types, const FVector& Near, float MaxDistance, FRandomStream& Rng, FName& OutType);
 	void ReleaseSpot(ARakisCitizen* User, AActor* Spot);
 	/** Сколько горожан уже на точке. */
 	int32 GetSpotOccupancy(const AActor* Spot) const;
+
+	/** Трансформ зарезервированного SO-слота (позиция и куда смотреть); false — резерв не через SO. */
+	bool GetReservedSlotTransform(const ARakisCitizen* User, FTransform& OutTransform) const;
+	/** Горожанин дошёл до слота: MarkSlotAsOccupied. Возвращает поведение слота (длительность и т.п.) или nullptr. */
+	const URakisSmartObjectBehaviorDefinition* MarkSpotInUse(ARakisCitizen* User);
+	/** Работают ли точки через USmartObjectSubsystem (есть зарегистрированные SO и CVar включён). */
+	bool IsUsingSmartObjects() const;
+
+	// --- StateTree ---
+	/** ST_Citizen (кэш на мир; проверка пакета без загрузки, без спама в лог). nullptr — ассета нет. */
+	UStateTree* GetCitizenStateTree(const TSoftObjectPtr<UStateTree>& Asset);
 
 	// --- Разговоры и лай ---
 	void SetTalking(ARakisCitizen* Citizen, bool bTalking);
@@ -121,6 +158,10 @@ public:
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Rakis|Crowd|Ritual")
 	float AutoRitualGallerySeconds = 240.f;
 
+	/** Точки через USmartObjectSubsystem (иначе — теговое резервирование). Также CVar Rakis.Crowd.SmartObjects. */
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Rakis|Crowd|SmartObjects")
+	bool bUseSmartObjects = true;
+
 	/** Класс для автоспавна спутников (BP-наследник ARakisCompanion). Пусто — ARakisCompanion. */
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Rakis|Crowd|Companions")
 	TSoftClassPtr<ARakisCompanion> CompanionClass;
@@ -132,6 +173,10 @@ private:
 	void LoadArchetypes();
 	void BuildBuiltInArchetypes();
 	void RebuildSpotCache();
+	void EnsureSmartObject(AActor* Spot, FName Type, USmartObjectSubsystem& SOSubsystem);
+	AActor* ReserveSmartObjectSlot(ARakisCitizen* User, const TArray<FName>& Types, const FVector& Near, float MaxDistance, FRandomStream& Rng, FName& OutType);
+	void ReleaseSmartObjectClaim(const ARakisCitizen* User);
+	USmartObjectSubsystem* GetSmartObjectSubsystem() const;
 	void HandleLevelAddedToWorld(ULevel* InLevel, UWorld* InWorld);
 	void UpdateConversations();
 	void TickAutoRitual();
@@ -155,6 +200,18 @@ private:
 	/** Точка → кто на ней. */
 	TMap<TWeakObjectPtr<AActor>, TArray<TWeakObjectPtr<ARakisCitizen>>> SpotUsers;
 	bool bSpotCacheDirty = true;
+
+	TArray<FRakisSmartObjectRecord> SmartObjectRecords;
+	TMap<TWeakObjectPtr<ARakisCitizen>, FRakisSmartObjectClaim> SmartObjectClaims;
+
+	/** Определения по типу точки (ассет SOD_<Type> или рантайм) — держим от GC. */
+	UPROPERTY(Transient)
+	TMap<FName, TObjectPtr<USmartObjectDefinition>> SmartObjectDefinitions;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UStateTree> CachedCitizenTree;
+	FSoftObjectPath CachedCitizenTreePath;
+	bool bCitizenTreeLookupDone = false;
 
 	TSet<TWeakObjectPtr<ARakisCitizen>> Talking;
 	/** Группа (точка или сам горожанин) → время, когда игрок отошёл. */

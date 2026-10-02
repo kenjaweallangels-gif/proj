@@ -6,6 +6,7 @@
 #include "UI/RakisHUD.h"
 
 // API других ролей (контракт §2.2).
+#include "AI/RakisCompanion.h"
 #include "AI/RakisCrowdSubsystem.h"
 #include "Audio/RakisAudioDirector.h"
 #include "Interaction/RakisInteractionComponent.h"
@@ -16,12 +17,20 @@
 #include "World/RakisZoneSubsystem.h"
 #include "Worm/RakisWorm.h"
 
+#include "Camera/PlayerCameraManager.h"
+#include "Components/CapsuleComponent.h"
 #include "Engine/DataTable.h"
 #include "Engine/Engine.h"
+#include "Engine/HitResult.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/Controller.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
 #include "Kismet/GameplayStatics.h"
+#include "Math/RotationMatrix.h"
 #include "UObject/SoftObjectPath.h"
 
 namespace RakisStoryPrivate
@@ -38,6 +47,19 @@ namespace RakisStoryPrivate
 	static const FName Action_Hint(TEXT("Hint"));
 	static const FName Action_FadeOut(TEXT("FadeOut"));
 	static const FName Action_EndDemo(TEXT("EndDemo"));
+	static const FName Action_Ellipsis(TEXT("Ellipsis"));
+
+	/** Rakis.Story.Ellipsis 0|1 — склейки золотого пути (по умолчанию включены). Можно задать в DefaultEngine.ini [ConsoleVariables]. */
+	static TAutoConsoleVariable<int32> CVarStoryEllipsis(
+		TEXT("Rakis.Story.Ellipsis"), 1,
+		TEXT("Склейки-эллипсисы золотого пути: 1 — включены (сценарий ~3:40), 0 — выключены (свободная игра 15–20 мин)."),
+		ECVF_Default);
+
+	/** Период проверки «золотого момента» склейки, с. */
+	static constexpr float EllipsisPollSeconds = 0.25f;
+	/** Появление/угасание титра-склейки (SRakisHUDRoot::CutCard), с. */
+	static constexpr float CutCardFadeIn = 0.5f;
+	static constexpr float CutCardFadeOut = 0.6f;
 
 	template <typename TEnum>
 	static FString EnumShortName(TEnum Value)
@@ -157,6 +179,11 @@ namespace RakisStoryPrivate
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleListCommand));
 }
 
+bool ARakisStoryDirector::AreEllipsesEnabled()
+{
+	return RakisStoryPrivate::CVarStoryEllipsis.GetValueOnGameThread() != 0;
+}
+
 ARakisStoryDirector::ARakisStoryDirector()
 {
 	PrimaryActorTick.bCanEverTick = false;
@@ -227,6 +254,11 @@ void ARakisStoryDirector::BeginPlay()
 
 void ARakisStoryDirector::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (IsEllipsisInProgress())
+	{
+		SetPlayerInputLocked(false);
+	}
+	ResetEllipsis();
 	GetWorldTimerManager().ClearAllTimersForObject(this);
 	for (FRakisRuntimeBeat& Beat : Beats)
 	{
@@ -446,18 +478,33 @@ void ARakisStoryDirector::FireTrigger(FName TriggerKey)
 
 void ARakisStoryDirector::NotifyInteract(FName Tag)
 {
-	if (!Tag.IsNone())
+	if (Tag.IsNone())
 	{
-		FireTrigger(FName(*(TEXT("Interact:") + Tag.ToString())));
+		return;
 	}
+	const FName Key(*(TEXT("Interact:") + Tag.ToString()));
+	// Флаг для Condition реплик (docs/design/mechanics.md §5.3: Interact:<ActorTag>).
+	if (URakisDialogueSubsystem* Dialogue = URakisDialogueSubsystem::Get(this))
+	{
+		Dialogue->SetFlag(Key, true);
+	}
+	FireTrigger(Key);
 }
 
 void ARakisStoryDirector::HandleZoneChanged(ERakisZone OldZone, ERakisZone NewZone)
 {
-	if (NewZone != ERakisZone::None)
+	if (NewZone == ERakisZone::None)
 	{
-		FireTrigger(FName(*(TEXT("ZoneEnter:") + RakisStoryPrivate::EnumShortName(NewZone))));
+		return;
 	}
+	const FName Key(*(TEXT("ZoneEnter:") + RakisStoryPrivate::EnumShortName(NewZone)));
+	// Во время склейки зона меняется в чёрном — биты зоны прибытия исполняем после возврата картинки.
+	if (Ellipsis.Phase == ERakisEllipsisPhase::FadingOut || Ellipsis.Phase == ERakisEllipsisPhase::Black)
+	{
+		Ellipsis.DeferredTriggers.AddUnique(Key);
+		return;
+	}
+	FireTrigger(Key);
 }
 
 void ARakisStoryDirector::HandleWormStateChanged(ERakisWormState OldState, ERakisWormState NewState)
@@ -508,7 +555,7 @@ void ARakisStoryDirector::PollNoise()
 // ---------------------------------------------------------------------------------------------
 // Исполнение
 
-void ARakisStoryDirector::ScheduleBeat(int32 Index)
+void ARakisStoryDirector::ScheduleBeat(int32 Index, float OverrideDelay)
 {
 	if (!Beats.IsValidIndex(Index) || Beats[Index].bFired)
 	{
@@ -520,10 +567,11 @@ void ARakisStoryDirector::ScheduleBeat(int32 Index)
 		*Beat.BeatID.ToString(), *Beat.Row.Trigger.ToString(), *Beat.Row.Action.ToString(), *Beat.Row.Param, Beat.Row.Delay);
 	OnBeatFired.Broadcast(Beat.BeatID);
 
-	if (Beat.Row.Delay > 0.f)
+	const float BeatDelay = OverrideDelay >= 0.f ? OverrideDelay : Beat.Row.Delay;
+	if (BeatDelay > 0.f)
 	{
-		GetWorldTimerManager().SetTimer(Beat.DelayTimer,
-			FTimerDelegate::CreateUObject(this, &ARakisStoryDirector::ExecuteBeat, Index), Beat.Row.Delay, false);
+		GetWorldTimerManager().SetTimer(Beats[Index].DelayTimer,
+			FTimerDelegate::CreateUObject(this, &ARakisStoryDirector::ExecuteBeat, Index), BeatDelay, false);
 	}
 	else
 	{
@@ -565,6 +613,11 @@ void ARakisStoryDirector::ExecuteBeat(int32 Index)
 	if (Action == Action_FadeOut)
 	{
 		ActionFadeOut(Index);			// завершится после затемнения
+		return;
+	}
+	if (Action == Action_Ellipsis)
+	{
+		ActionEllipsis(Index);			// завершится в момент возврата картинки (или не завершится — отказ)
 		return;
 	}
 
@@ -879,5 +932,537 @@ void ARakisStoryDirector::ActionEndDemo()
 	else
 	{
 		UE_LOG(LogRakis, Warning, TEXT("RakisStory: EndDemo — ARakisHUD not found"));
+	}
+}
+
+// ---------------------------------------------------------------------------------------------
+// Эллипсис — склейка золотого пути (docs/design/demo_flow.md §5, docs/ui/ui_design.md §12)
+//
+// Param = <ТегЦели>[,<FadeSec>[,<AdvanceHours>]][,window=<сек>][,pull=<BeatID>@<сек>]...[|<RU титр>|<EN титр>]
+// Порядок: предложение (Offer, опрос 4 Гц, до window с) → затемнение → перенос игрока и группы, время суток,
+// титр поверх чёрного → возврат картинки: бит завершён, отложенные ZoneEnter исполнены, биты пропущенных зон
+// «проглочены», pull-биты подтянуты → конец (ввод возвращён). Отказ на любом шаге до переноса — свободная игра.
+
+bool ARakisStoryDirector::ParseEllipsisParam(const FString& Param, FRakisEllipsisState& OutState) const
+{
+	FString Spec = Param;
+	FString Card;
+	int32 BarIndex = INDEX_NONE;
+	if (Param.FindChar(TEXT('|'), BarIndex))
+	{
+		Spec = Param.Left(BarIndex);
+		Card = Param.Mid(BarIndex + 1);
+	}
+
+	TArray<FString> Tokens;
+	Spec.ParseIntoArray(Tokens, TEXT(","), true);
+	if (Tokens.Num() == 0 || Tokens[0].TrimStartAndEnd().IsEmpty())
+	{
+		return false;
+	}
+
+	OutState.TargetTag = FName(*Tokens[0].TrimStartAndEnd());
+	OutState.FadeSeconds = EllipsisFadeSeconds;
+	OutState.AdvanceHours = 0.f;
+	OutState.CardPipe = Card.TrimStartAndEnd();
+	float Window = EllipsisOfferWindow;
+
+	int32 Positional = 0;
+	for (int32 TokenIndex = 1; TokenIndex < Tokens.Num(); ++TokenIndex)
+	{
+		const FString Token = Tokens[TokenIndex].TrimStartAndEnd();
+		FString Key, Value;
+		if (Token.Split(TEXT("="), &Key, &Value))
+		{
+			Key.TrimStartAndEndInline();
+			Value.TrimStartAndEndInline();
+			if (Key.Equals(TEXT("window"), ESearchCase::IgnoreCase))
+			{
+				Window = FMath::Max(1.f, FCString::Atof(*Value));
+			}
+			else if (Key.Equals(TEXT("pull"), ESearchCase::IgnoreCase))
+			{
+				FString PullBeat, PullSeconds;
+				if (Value.Split(TEXT("@"), &PullBeat, &PullSeconds))
+				{
+					OutState.Pulls.Emplace(FName(*PullBeat.TrimStartAndEnd()), FMath::Max(0.f, FCString::Atof(*PullSeconds)));
+				}
+				else
+				{
+					UE_LOG(LogRakis, Warning, TEXT("RakisStory: Ellipsis pull '%s' — expected <BeatID>@<sec>"), *Value);
+				}
+			}
+			else
+			{
+				UE_LOG(LogRakis, Warning, TEXT("RakisStory: Ellipsis option '%s' unknown"), *Key);
+			}
+			continue;
+		}
+		if (Positional == 0)
+		{
+			OutState.FadeSeconds = FMath::Clamp(FCString::Atof(*Token), 0.1f, 10.f);
+		}
+		else if (Positional == 1)
+		{
+			OutState.AdvanceHours = FMath::Clamp(FCString::Atof(*Token), -24.f, 24.f);
+		}
+		++Positional;
+	}
+
+	const UWorld* World = GetWorld();
+	OutState.OfferDeadline = (World ? World->GetTimeSeconds() : 0.0) + Window;
+	return true;
+}
+
+AActor* ARakisStoryDirector::FindTaggedActor(FName Tag) const
+{
+	UWorld* World = GetWorld();
+	if (!World || Tag.IsNone())
+	{
+		return nullptr;
+	}
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		if (It->ActorHasTag(Tag))
+		{
+			return *It;
+		}
+	}
+	return nullptr;
+}
+
+ERakisZone ARakisStoryDirector::GetPlayerZone() const
+{
+	const UWorld* World = GetWorld();
+	const URakisZoneSubsystem* Zones = World ? World->GetSubsystem<URakisZoneSubsystem>() : nullptr;
+	return Zones ? Zones->GetPlayerZone() : ERakisZone::None;
+}
+
+void ARakisStoryDirector::SetPlayerInputLocked(bool bLocked) const
+{
+	if (ARakisCharacter* Character = Cast<ARakisCharacter>(UGameplayStatics::GetPlayerPawn(this, 0)))
+	{
+		Character->SetInputLocked(bLocked);
+	}
+}
+
+void ARakisStoryDirector::ResetEllipsis()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(EllipsisTimer);
+	}
+	Ellipsis = FRakisEllipsisState();
+}
+
+void ARakisStoryDirector::ActionEllipsis(int32 Index)
+{
+	const FRakisRuntimeBeat& Beat = Beats[Index];
+	if (Ellipsis.Phase != ERakisEllipsisPhase::None)
+	{
+		UE_LOG(LogRakis, Warning, TEXT("RakisStory: Ellipsis %s declined — another ellipsis is active"), *Beat.BeatID.ToString());
+		return;
+	}
+	if (!AreEllipsesEnabled())
+	{
+		UE_LOG(LogRakis, Log, TEXT("RakisStory: Ellipsis %s skipped (Rakis.Story.Ellipsis 0) — free play"), *Beat.BeatID.ToString());
+		return;
+	}
+
+	FRakisEllipsisState NewState;
+	if (!ParseEllipsisParam(Beat.Row.Param, NewState))
+	{
+		UE_LOG(LogRakis, Warning, TEXT("RakisStory: Ellipsis %s — bad Param '%s'"), *Beat.BeatID.ToString(), *Beat.Row.Param);
+		return;
+	}
+	NewState.BeatIndex = Index;
+	NewState.Phase = ERakisEllipsisPhase::Offer;
+	NewState.Target = FindTaggedActor(NewState.TargetTag);
+	Ellipsis = MoveTemp(NewState);
+
+	if (!Ellipsis.Target.IsValid())
+	{
+		DeclineEllipsis(FString::Printf(TEXT("no actor with tag '%s'"), *Ellipsis.TargetTag.ToString()));
+		return;
+	}
+
+	PollEllipsisOffer();
+	if (Ellipsis.Phase == ERakisEllipsisPhase::Offer)
+	{
+		GetWorldTimerManager().SetTimer(EllipsisTimer, FTimerDelegate::CreateUObject(this, &ARakisStoryDirector::PollEllipsisOffer),
+			RakisStoryPrivate::EllipsisPollSeconds, true);
+	}
+}
+
+bool ARakisStoryDirector::CheckEllipsisOffer(FString& OutReason) const
+{
+	const AActor* Target = Ellipsis.Target.Get();
+	if (!Target)
+	{
+		OutReason = TEXT("target gone");
+		return false;
+	}
+	const APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(this, 0);
+	if (!PlayerPawn)
+	{
+		OutReason = TEXT("no player pawn");
+		return false;
+	}
+	if (CinematicBeatIndex != INDEX_NONE)
+	{
+		OutReason = TEXT("cinematic playing");
+		return false;
+	}
+	if (const ARakisHUD* HUD = ARakisHUD::Get(this))
+	{
+		if (HUD->IsCinematicMode() || !HUD->bShowHUD)
+		{
+			OutReason = TEXT("cinematic mode");
+			return false;
+		}
+		if (HUD->IsPauseMenuOpen() || HUD->IsPhotoModeActive())
+		{
+			OutReason = TEXT("menu / photo mode");
+			return false;
+		}
+	}
+	if (UGameplayStatics::IsGamePaused(this))
+	{
+		OutReason = TEXT("paused");
+		return false;
+	}
+	if (const ARakisWorm* Worm = BoundWorm.Get())
+	{
+		const ERakisWormState State = Worm->GetState();
+		if (State == ERakisWormState::Listening || State == ERakisWormState::Approach || State == ERakisWormState::Surface)
+		{
+			OutReason = TEXT("worm threat");
+			return false;
+		}
+	}
+	if (const URakisDialogueSubsystem* Dialogue = URakisDialogueSubsystem::Get(this))
+	{
+		// Склейка — только в тишине: субтитры под чёрным не видны.
+		if (Dialogue->IsStoryLinePlaying())
+		{
+			OutReason = TEXT("story line playing");
+			return false;
+		}
+	}
+
+	// Золотой путь: игрок позади цели (по её направлению) и идёт к ней.
+	const FVector TargetLocation = Target->GetActorLocation();
+	const FVector PlayerLocation = PlayerPawn->GetActorLocation();
+	FVector ToTarget = TargetLocation - PlayerLocation;
+	ToTarget.Z = 0.0;
+	FVector TargetForward = Target->GetActorForwardVector();
+	TargetForward.Z = 0.0;
+	TargetForward = TargetForward.IsNearlyZero() ? ToTarget.GetSafeNormal() : TargetForward.GetSafeNormal();
+	const double Behind = FVector::DotProduct(TargetForward, ToTarget);
+	if (Behind < EllipsisMinBehindCm)
+	{
+		OutReason = TEXT("player is not behind the target");
+		return false;
+	}
+
+	FVector Velocity = PlayerPawn->GetVelocity();
+	Velocity.Z = 0.0;
+	if (Velocity.Size() < EllipsisMinSpeed)
+	{
+		OutReason = TEXT("player is not walking");
+		return false;
+	}
+	const double HeadingCos = FVector::DotProduct(Velocity.GetSafeNormal(), ToTarget.GetSafeNormal());
+	if (HeadingCos < FMath::Cos(FMath::DegreesToRadians(EllipsisMaxHeadingDeg)))
+	{
+		OutReason = TEXT("player is heading away from the golden path");
+		return false;
+	}
+	return true;
+}
+
+void ARakisStoryDirector::PollEllipsisOffer()
+{
+	if (Ellipsis.Phase != ERakisEllipsisPhase::Offer)
+	{
+		return;
+	}
+	FString Reason;
+	if (CheckEllipsisOffer(Reason))
+	{
+		GetWorldTimerManager().ClearTimer(EllipsisTimer);
+		BeginEllipsisCut();
+		return;
+	}
+	Ellipsis.LastRejectReason = Reason;
+
+	const UWorld* World = GetWorld();
+	if (!AreEllipsesEnabled())
+	{
+		DeclineEllipsis(TEXT("Rakis.Story.Ellipsis 0"));
+	}
+	else if (!Ellipsis.Target.IsValid())
+	{
+		DeclineEllipsis(TEXT("target gone"));
+	}
+	else if (World && World->GetTimeSeconds() >= Ellipsis.OfferDeadline)
+	{
+		DeclineEllipsis(FString::Printf(TEXT("offer window expired (%s)"), *Reason));
+	}
+}
+
+void ARakisStoryDirector::DeclineEllipsis(const FString& Reason)
+{
+	const FName BeatID = Beats.IsValidIndex(Ellipsis.BeatIndex) ? Beats[Ellipsis.BeatIndex].BeatID : NAME_None;
+	UE_LOG(LogRakis, Log, TEXT("RakisStory: Ellipsis %s declined — %s (free play continues)"), *BeatID.ToString(), *Reason);
+	// Бит остаётся несостоявшимся: Beat:<ID> не сработает, сюжет продолжается по зонам.
+	const TArray<FName> Deferred = MoveTemp(Ellipsis.DeferredTriggers);
+	ResetEllipsis();
+	// Зоны, в которые игрок успел войти во время прерванного затемнения, не теряются.
+	for (const FName& Key : Deferred)
+	{
+		FireTrigger(Key);
+	}
+}
+
+void ARakisStoryDirector::BeginEllipsisCut()
+{
+	Ellipsis.Phase = ERakisEllipsisPhase::FadingOut;
+	SetPlayerInputLocked(true);
+	if (ARakisHUD* HUD = ARakisHUD::Get(this))
+	{
+		HUD->FadeToBlack(Ellipsis.FadeSeconds);
+	}
+	UE_LOG(LogRakis, Log, TEXT("RakisStory: Ellipsis %s → %s (fade %.1f s, +%.2f h)"),
+		*Beats[Ellipsis.BeatIndex].BeatID.ToString(), *Ellipsis.TargetTag.ToString(), Ellipsis.FadeSeconds, Ellipsis.AdvanceHours);
+	// Небольшой запас: UI-затемнение идёт в реальном времени, таймер — в игровом.
+	GetWorldTimerManager().SetTimer(EllipsisTimer, FTimerDelegate::CreateUObject(this, &ARakisStoryDirector::PerformEllipsisCut),
+		Ellipsis.FadeSeconds + 0.1f, false);
+}
+
+void ARakisStoryDirector::AbortEllipsisAfterFade(const FString& Reason)
+{
+	if (ARakisHUD* HUD = ARakisHUD::Get(this))
+	{
+		HUD->FadeFromBlack(Ellipsis.FadeSeconds);
+	}
+	SetPlayerInputLocked(false);
+	DeclineEllipsis(Reason);
+}
+
+void ARakisStoryDirector::PerformEllipsisCut()
+{
+	AActor* Target = Ellipsis.Target.Get();
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(this, 0);
+	if (!Target || !PlayerPawn)
+	{
+		AbortEllipsisAfterFade(TEXT("target or player lost during fade"));
+		return;
+	}
+	if (CinematicBeatIndex != INDEX_NONE || !AreEllipsesEnabled())
+	{
+		AbortEllipsisAfterFade(TEXT("cinematic started or ellipses disabled during fade"));
+		return;
+	}
+
+	Ellipsis.Phase = ERakisEllipsisPhase::Black;
+	Ellipsis.SourceZone = GetPlayerZone();
+
+	// Перенос игрока: позиция и курс точки, затем поворот контроллера (камера за спиной смотрит по курсу).
+	const FVector OldLocation = PlayerPawn->GetActorLocation();
+	const FVector NewLocation = Target->GetActorLocation();
+	const FRotator NewRotation(0.f, Target->GetActorRotation().Yaw, 0.f);
+	if (!PlayerPawn->TeleportTo(NewLocation, NewRotation))
+	{
+		PlayerPawn->SetActorLocationAndRotation(NewLocation, NewRotation, false, nullptr, ETeleportType::TeleportPhysics);
+	}
+	if (ACharacter* PlayerCharacter = Cast<ACharacter>(PlayerPawn))
+	{
+		if (UCharacterMovementComponent* Movement = PlayerCharacter->GetCharacterMovement())
+		{
+			Movement->StopMovementImmediately();
+		}
+	}
+	if (AController* Controller = PlayerPawn->GetController())
+	{
+		Controller->SetControlRotation(NewRotation);
+	}
+	if (const APlayerController* PC = Cast<APlayerController>(PlayerPawn->GetController()))
+	{
+		if (PC->PlayerCameraManager)
+		{
+			PC->PlayerCameraManager->SetGameCameraCutThisFrame();
+		}
+	}
+
+	TeleportGroup(OldLocation, PlayerPawn->GetActorLocation(), NewRotation);
+
+	if (!FMath::IsNearlyZero(Ellipsis.AdvanceHours))
+	{
+		if (URakisWeatherSubsystem* Weather = URakisWeatherSubsystem::Get(this))
+		{
+			Weather->SetTimeOfDay(Weather->GetTimeOfDay() + Ellipsis.AdvanceHours);
+		}
+	}
+
+	float Hold = EllipsisBlackHold;
+	if (!Ellipsis.CardPipe.IsEmpty())
+	{
+		const URakisDialogueSubsystem* Dialogue = URakisDialogueSubsystem::Get(this);
+		const FText CardText = Dialogue ? Dialogue->PickPipeText(Ellipsis.CardPipe) : FText::FromString(Ellipsis.CardPipe);
+		if (ARakisHUD* HUD = ARakisHUD::Get(this))
+		{
+			HUD->ShowCutCard(CardText, EllipsisCardHold);
+			Hold = RakisStoryPrivate::CutCardFadeIn + EllipsisCardHold + RakisStoryPrivate::CutCardFadeOut + 0.15f;
+		}
+	}
+
+	GetWorldTimerManager().SetTimer(EllipsisTimer, FTimerDelegate::CreateUObject(this, &ARakisStoryDirector::BeginEllipsisFadeIn),
+		FMath::Max(Hold, 0.1f), false);
+}
+
+void ARakisStoryDirector::TeleportGroup(const FVector& OldPlayerLocation, const FVector& NewPlayerLocation, const FRotator& Rotation) const
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// Группа: следующие за игроком + все спутники рядом (Оссана после червя). Ждущие далеко (Оссана до A2) остаются.
+	TArray<ARakisCompanion*> Group;
+	for (TActorIterator<ARakisCompanion> It(World); It; ++It)
+	{
+		ARakisCompanion* Companion = *It;
+		if (Companion->IsFollowing() || FVector::DistSquared(Companion->GetActorLocation(), OldPlayerLocation) <= FMath::Square(EllipsisGroupRadius))
+		{
+			Group.Add(Companion);
+		}
+	}
+	auto ChainOrder = [](const ARakisCompanion* Companion) -> int32
+	{
+		if (Companion->ChainIndex > 0)
+		{
+			return Companion->ChainIndex;
+		}
+		static const FName Ilva(TEXT("Ilva"));
+		static const FName Rayn(TEXT("Rayn"));
+		static const FName Ossana(TEXT("Ossana"));
+		return Companion->CompanionId == Ilva ? 1 : Companion->CompanionId == Rayn ? 2 : Companion->CompanionId == Ossana ? 3 : 4;
+	};
+	Group.StableSort([&ChainOrder](const ARakisCompanion& A, const ARakisCompanion& B) { return ChainOrder(&A) < ChainOrder(&B); });
+
+	FVector Back = -Rotation.Vector();
+	Back.Z = 0.0;
+	Back = Back.GetSafeNormal();
+	const FVector Side = FRotationMatrix(Rotation).GetUnitAxis(EAxis::Y);
+
+	for (int32 Slot = 0; Slot < Group.Num(); ++Slot)
+	{
+		ARakisCompanion* Companion = Group[Slot];
+		// Цепочка 3.5 м за игроком со смещением ±60 см (docs/design/mechanics.md §5.2).
+		FVector Desired = NewPlayerLocation + Back * (EllipsisCompanionSpacing * (Slot + 1)) + Side * ((Slot % 2 == 0) ? 60.0 : -60.0);
+
+		const float HalfHeight = Companion->GetCapsuleComponent() ? Companion->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : 90.f;
+		FHitResult Hit;
+		FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(RakisEllipsisGround), false);
+		QueryParams.AddIgnoredActor(Companion);
+		const FVector TraceStart = Desired + FVector(0.0, 0.0, 800.0);
+		const FVector TraceEnd = Desired - FVector(0.0, 0.0, 3000.0);
+		if (World->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_Visibility, QueryParams))
+		{
+			Desired.Z = Hit.ImpactPoint.Z + HalfHeight + 2.0;
+		}
+
+		if (!Companion->TeleportTo(Desired, Rotation))
+		{
+			Companion->SetActorLocationAndRotation(Desired, Rotation, false, nullptr, ETeleportType::TeleportPhysics);
+		}
+		if (UCharacterMovementComponent* Movement = Companion->GetCharacterMovement())
+		{
+			Movement->StopMovementImmediately();
+		}
+		Companion->ResetTrail();
+	}
+}
+
+void ARakisStoryDirector::BeginEllipsisFadeIn()
+{
+	Ellipsis.Phase = ERakisEllipsisPhase::FadingIn;
+	if (ARakisHUD* HUD = ARakisHUD::Get(this))
+	{
+		HUD->FadeFromBlack(Ellipsis.FadeSeconds);
+	}
+
+	const int32 Index = Ellipsis.BeatIndex;
+	const TArray<FName> Deferred = MoveTemp(Ellipsis.DeferredTriggers);
+	Ellipsis.DeferredTriggers.Reset();
+
+	// 1) Зоны, через которые «перепрыгнули», не играют свои биты (Коготь A3 при склейке A2 → A4).
+	ConsumeSkippedZones(Ellipsis.SourceZone, GetPlayerZone());
+	// 2) Склейка состоялась — Beat:<ID> (биты золотого пути).
+	CompleteBeat(Index);
+	// 3) Биты зоны прибытия — после битов склейки (их реплики встают в очередь следом).
+	for (const FName& Key : Deferred)
+	{
+		FireTrigger(Key);
+	}
+	// 4) Сжатие времени: pull-биты.
+	ApplyEllipsisPulls();
+
+	GetWorldTimerManager().SetTimer(EllipsisTimer, FTimerDelegate::CreateUObject(this, &ARakisStoryDirector::EndEllipsis),
+		FMath::Max(Ellipsis.FadeSeconds, 0.1f), false);
+}
+
+void ARakisStoryDirector::EndEllipsis()
+{
+	SetPlayerInputLocked(false);
+	UE_LOG(LogRakis, Log, TEXT("RakisStory: Ellipsis to %s done"), *Ellipsis.TargetTag.ToString());
+	ResetEllipsis();
+}
+
+void ARakisStoryDirector::ConsumeSkippedZones(ERakisZone FromZone, ERakisZone ToZone)
+{
+	const uint8 From = static_cast<uint8>(FromZone);
+	const uint8 To = static_cast<uint8>(ToZone);
+	if (FromZone == ERakisZone::None || ToZone == ERakisZone::None || To <= From + 1)
+	{
+		return;
+	}
+	for (uint8 ZoneValue = From + 1; ZoneValue < To; ++ZoneValue)
+	{
+		const FName Key(*(TEXT("ZoneEnter:") + RakisStoryPrivate::EnumShortName(static_cast<ERakisZone>(ZoneValue))));
+		for (FRakisRuntimeBeat& Beat : Beats)
+		{
+			if (!Beat.bFired && Beat.Row.Trigger == Key)
+			{
+				Beat.bFired = true;	// «проглочен» склейкой: не исполняется и не завершается
+				UE_LOG(LogRakis, Log, TEXT("RakisStory: beat %s consumed by ellipsis (zone skipped)"), *Beat.BeatID.ToString());
+			}
+		}
+	}
+}
+
+void ARakisStoryDirector::ApplyEllipsisPulls()
+{
+	FTimerManager& Timers = GetWorldTimerManager();
+	for (const TPair<FName, float>& Pull : Ellipsis.Pulls)
+	{
+		const int32 Index = Beats.IndexOfByPredicate([&Pull](const FRakisRuntimeBeat& Beat) { return Beat.BeatID == Pull.Key; });
+		if (Index == INDEX_NONE)
+		{
+			UE_LOG(LogRakis, Warning, TEXT("RakisStory: Ellipsis pull — no beat '%s'"), *Pull.Key.ToString());
+			continue;
+		}
+		FRakisRuntimeBeat& Beat = Beats[Index];
+		if (!Beat.bFired)
+		{
+			ScheduleBeat(Index, Pull.Value);
+		}
+		else if (!Beat.bCompleted && Timers.IsTimerActive(Beat.DelayTimer) && Timers.GetTimerRemaining(Beat.DelayTimer) > Pull.Value)
+		{
+			Timers.SetTimer(Beat.DelayTimer, FTimerDelegate::CreateUObject(this, &ARakisStoryDirector::ExecuteBeat, Index),
+				FMath::Max(Pull.Value, 0.01f), false);
+		}
 	}
 }

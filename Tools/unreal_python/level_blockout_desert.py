@@ -18,8 +18,8 @@ import math
 
 import unreal
 
-from rakis_common import (MAP_DESERT, delete_generated, load_or_none, log, rakis_class, set_prop, shape, spawn,
-                          transaction, warn)
+from rakis_common import (MAP_DESERT, delete_generated, fit_box_volume, load_or_none, log, rakis_class, set_prop,
+                          shape, spawn, transaction, warn)
 import level_common as LC
 import level_layout as L
 
@@ -193,13 +193,14 @@ def build_bounds() -> None:
         v = spawn(unreal.BlockingVolume, (cx, cy, h * 0.5 - 10000.0), label=f"Bounds_{i}", tags=T("bounds"),
                   folder="Rakis/Desert/Bounds")
         if v:
-            v.set_actor_scale3d(unreal.Vector(sx / 200.0, sy / 200.0, h / 200.0))   # кисть по умолчанию 200 см
+            fit_box_volume(v, (sx, sy, h))   # кисть-куб фабрики объёмов (200 см) → масштаб по фактическим bounds
 
 
 def main():
+    # карты открываем ДО транзакции (загрузка карты сбрасывает буфер undo)
+    LC.ensure_persistent_with_sublevels()
+    LC.make_current(MAP_DESERT)
     with transaction("Rakis: blockout desert"):
-        LC.ensure_persistent_with_sublevels()
-        LC.make_current(MAP_DESERT)
         n = delete_generated(GEN)
         log(f"{GEN}: удалено {n}")
         build_ground()
@@ -211,8 +212,8 @@ def main():
         build_a4(have_mesh)
         build_far_mesas()
         build_bounds()
-        LC.save_all()
-        log("level_blockout_desert: готово")
+    LC.save_all()
+    log("level_blockout_desert: готово")
 
 
 if __name__ == "__main__":

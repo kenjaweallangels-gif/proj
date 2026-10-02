@@ -112,6 +112,8 @@ def _create_empty_dt(dt_name: str, struct):
 
 
 def _fill(dt, csv_path: str, struct) -> bool:
+    """UE 5.6: DataTableFunctionLibrary.fill_data_table_from_csv_file(data_table, csv_file_path,
+    import_row_struct=None) -> bool (editor-only)."""
     lib = unreal.DataTableFunctionLibrary
     try:
         return bool(lib.fill_data_table_from_csv_file(dt, csv_path, struct))
@@ -129,7 +131,7 @@ def import_table(csv_name: str, csv_path: str) -> str:
     if not eal.does_directory_exist(DEST):
         eal.make_directory(DEST)
     dt = eal.load_asset(asset_path) if eal.does_asset_exist(asset_path) else None
-    if dt is not None and dt.get_editor_property("row_struct") != struct:
+    if dt is not None and unreal.DataTableFunctionLibrary.get_data_table_row_struct(dt) != struct:
         unreal.log_warning(f"[Rakis] {dt_name}: другая row struct — пересоздаю")
         eal.delete_asset(asset_path)
         dt = None

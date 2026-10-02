@@ -28,6 +28,8 @@ except ImportError:
     IN_UE = False
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
 PROJ = os.path.abspath(os.path.join(HERE, "..", ".."))
 if IN_UE:
     PROJ = unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir())
@@ -120,7 +122,15 @@ def import_all(items) -> int:
         t.set_editor_property("options", _fbx_options(skel))
         tasks.append(t)
     if tasks:
-        unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks(tasks)
+        # UE 5.5+: FBX по умолчанию через Interchange — он игнорирует destination_name (префикс A_) и не обязан
+        # учитывать FbxImportUI.skeleton → на время импорта включаем классический FbxFactory.
+        try:
+            from rakis_common import legacy_fbx_import
+        except Exception:  # noqa: BLE001
+            import contextlib
+            legacy_fbx_import = contextlib.nullcontext
+        with legacy_fbx_import():
+            unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks(tasks)
     return len(tasks)
 
 
@@ -196,8 +206,10 @@ def batch_retarget(rtg) -> int:
         todo = [a for a in assets if not eal.does_asset_exist(f"{DEST}/{s}/{a.asset_name}")]
         if not todo:
             continue
+        # UE 5.6: duplicate_and_retarget(assets_to_retarget, source_mesh, target_mesh, ik_retarget_asset,
+        #         search='', replace='', prefix='', suffix='', include_referenced_assets=True) — 9 параметров
         op.duplicate_and_retarget(todo, eal.load_asset(src_mesh), eal.load_asset(tgt_mesh), rtg,
-                                  "", "", "", "", True, True)
+                                  "", "", "", "", True)
         n += len(todo)
     return n
 

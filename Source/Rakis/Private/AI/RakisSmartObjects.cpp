@@ -91,6 +91,11 @@ namespace RakisSmartObjects
 			{
 				return false;
 			}
+			// MarkSlotAsOccupied ищет поведение нашего класса — без него слот не «занять».
+			if (!Definition.GetBehaviorDefinition(Index, URakisSmartObjectBehaviorDefinition::StaticClass()))
+			{
+				return false;
+			}
 		}
 		return true;
 	}

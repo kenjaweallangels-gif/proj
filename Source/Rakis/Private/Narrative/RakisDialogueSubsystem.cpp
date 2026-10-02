@@ -3,12 +3,19 @@
 #include "Rakis.h"
 #include "Core/RakisSettings.h"
 #include "Gameplay/RakisInspectable.h"
+#include "Hydration/RakisHydrationComponent.h"
+#include "Noise/RakisNoiseComponent.h"
+#include "Noise/RakisSandWalkComponent.h"
+#include "Player/RakisCharacter.h"
+#include "World/RakisZoneSubsystem.h"
+#include "Worm/RakisWorm.h"
 #include "Components/AudioComponent.h"
 #include "Components/SceneComponent.h"
 #include "Engine/DataTable.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/Pawn.h"
 #include "CoreGlobals.h"
@@ -194,17 +201,84 @@ void URakisDialogueSubsystem::PlayLine(FName DialogueID)
 void URakisDialogueSubsystem::StartChain(FName FirstID)
 {
 	CurrentChainStart = FirstID;
-	StartLine(FirstID);
+	// Первую реплику цепочки явно запросил StoryDirector/скрипт — её Condition не проверяем
+	// (docs/design/mechanics.md §5.3: «пусто — реплику запускает StoryDirector»; реакции проверяют IsConditionMet сами).
+	StartLine(FirstID, /*bIgnoreCondition*/ true);
 }
 
-void URakisDialogueSubsystem::StartLine(FName DialogueID)
+bool URakisDialogueSubsystem::IsConditionMet(FName Condition) const
+{
+	if (Condition.IsNone() || Flags.Contains(Condition))
+	{
+		return true;
+	}
+	FString Key, Value;
+	if (!Condition.ToString().Split(TEXT(":"), &Key, &Value))
+	{
+		return false;
+	}
+	Value.TrimStartAndEndInline();
+
+	UWorld* World = GetGameWorld();
+	if (!World)
+	{
+		return false;
+	}
+	const ARakisCharacter* Character = Cast<ARakisCharacter>(UGameplayStatics::GetPlayerPawn(World, 0));
+
+	// Живые условия (docs/design/mechanics.md §5.3); Beat:/Interact: — только флаги.
+	if (Key == TEXT("ZoneEnter"))
+	{
+		const URakisZoneSubsystem* Zones = World->GetSubsystem<URakisZoneSubsystem>();
+		const UEnum* ZoneEnum = StaticEnum<ERakisZone>();
+		return Zones && ZoneEnum && ZoneEnum->GetNameStringByValue(static_cast<int64>(Zones->GetPlayerZone())).Equals(Value, ESearchCase::IgnoreCase);
+	}
+	if (Key == TEXT("WormState"))
+	{
+		const UEnum* WormEnum = StaticEnum<ERakisWormState>();
+		TActorIterator<ARakisWorm> It(World);
+		return It && WormEnum && WormEnum->GetNameStringByValue(static_cast<int64>(It->GetState())).Equals(Value, ESearchCase::IgnoreCase);
+	}
+	if (!Character)
+	{
+		return false;
+	}
+	if (Key == TEXT("NoiseAbove"))
+	{
+		const URakisNoiseComponent* Noise = Character->GetNoise();
+		return Noise && Noise->GetNoise01() > FCString::Atof(*Value);
+	}
+	if (Key == TEXT("SandWalk"))
+	{
+		const URakisSandWalkComponent* SandWalk = Character->GetSandWalk();
+		if (!SandWalk || !SandWalk->IsSandWalking())
+		{
+			return false;
+		}
+		return Value.Equals(TEXT("Regular"), ESearchCase::IgnoreCase) ? SandWalk->GetRhythmRegularity() > 0.75f
+			: Value.Equals(TEXT("Irregular"), ESearchCase::IgnoreCase) && SandWalk->GetRhythmRegularity() < 0.3f;
+	}
+	if (Key == TEXT("Surface"))
+	{
+		const UEnum* SurfaceEnum = StaticEnum<ERakisSurface>();
+		return SurfaceEnum && SurfaceEnum->GetNameStringByValue(static_cast<int64>(Character->GetCurrentSurface())).Equals(Value, ESearchCase::IgnoreCase);
+	}
+	if (Key == TEXT("MoistureBelow"))
+	{
+		const URakisHydrationComponent* Hydration = Character->GetHydration();
+		return Hydration && Hydration->GetMoisture01() < FCString::Atof(*Value);
+	}
+	return false;
+}
+
+void URakisDialogueSubsystem::StartLine(FName DialogueID, bool bIgnoreCondition)
 {
 	using namespace RakisDialoguePrivate;
 
 	// Пропускаем строки, чьё условие не выполнено (идём по NextID), с защитой от циклов.
 	const FRakisDialogueRow* Row = FindDialogueRow(DialogueID);
 	int32 Steps = 0;
-	while (Row && !Row->Condition.IsNone() && !Flags.Contains(Row->Condition) && Steps++ < MaxChainSteps)
+	while (!bIgnoreCondition && Row && !IsConditionMet(Row->Condition) && Steps++ < MaxChainSteps)
 	{
 		UE_LOG(LogRakis, Verbose, TEXT("RakisDialogue: '%s' skipped (condition %s)"), *DialogueID.ToString(), *Row->Condition.ToString());
 		DialogueID = Row->NextID;

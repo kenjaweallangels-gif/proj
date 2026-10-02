@@ -7,7 +7,10 @@ env_dunes.py — процедурная карта высот пустыни Р�
 
 Результат:
     Export/heightmap_desert_r16.png — 16-bit grayscale PNG, res×res (по умолчанию 4033² = 4.03×4.03 км, 1 м/px)
-    Export/heightmap_desert.json    — масштаб/смещение для импорта Landscape в UE (читает env_import.py)
+    Export/heightmap_desert.r16     — те же данные «сырыми»: uint16 little-endian, строка за строкой (Y↓, X→),
+                                      без заголовка; UE принимает .r16 в Import from File (--no-r16 — не писать)
+    Export/heightmap_desert.json    — масштаб/смещение для импорта Landscape в UE (читают env_import.py,
+                                      landscape_import.py)
 
 Что моделируется (метры, оси UE, ветер дует в сторону yaw 60°):
   * барханы-полумесяцы (рога по ветру) в ядре эрга A2, поперечные гряды с наветренным склоном ~10°
@@ -364,6 +367,26 @@ def write_png16(path, width, height, row_iter):
         f.write(chunk(b"IEND", b""))
 
 
+def r16_path_for(png_path):
+    """Export/heightmap_desert_r16.png → Export/heightmap_desert.r16"""
+    base = os.path.splitext(png_path)[0]
+    if base.endswith("_r16"):
+        base = base[:-4]
+    return base + ".r16"
+
+
+def tee_r16(rows, f):
+    """Пропускает строки PNG (big-endian uint16) дальше и пишет их же в .r16 (little-endian)."""
+    from array import array
+    for row in rows:
+        if f is not None:
+            a = array("H")
+            a.frombytes(row)
+            a.byteswap()   # big-endian → little-endian: перестановка байтов в каждой паре (не зависит от хоста)
+            f.write(a.tobytes())
+        yield row
+
+
 def to_u16(h_m, z_scale):
     """метры → значение 16 bit (UE: Z = (v−32768)/128·ZScale см)."""
     return 32768.0 + h_m * 100.0 * 128.0 / z_scale
@@ -388,6 +411,7 @@ def main():
     ap.add_argument("--erosion", type=int, default=12, help="итераций термоэрозии (только numpy)")
     ap.add_argument("--pure", action="store_true", help="принудительно чистый Python")
     ap.add_argument("--chunk", type=int, default=256, help="строк за проход (numpy)")
+    ap.add_argument("--no-r16", action="store_true", help="не писать .r16 рядом с PNG")
     args = env_common.parse_args(ap)
 
     res = args.res
@@ -397,6 +421,8 @@ def main():
     z_scale = L.LANDSCAPE_Z_SCALE
     out = env_common.out_path(args.out)
     js = env_common.out_path(args.json or os.path.join(os.path.dirname(args.out), "heightmap_desert.json"))
+    r16 = None if args.no_r16 else r16_path_for(out)
+    r16f = open(r16, "wb") if r16 else None
     t0 = time.time()
     use_np = np is not None and not args.pure
     print(f"[Rakis] heightmap {res}² шаг {step:.1f} см, backend={'numpy' if use_np else 'pure-python'}")
@@ -424,6 +450,8 @@ def main():
         u16 = np.clip(np.rint(to_u16(hm, z_scale)), 0, 65535).astype(">u2")
         rows = (u16[j].tobytes() for j in range(res))
         write_png16(out, res, res, rows)
+        if r16f is not None:
+            r16f.write(u16.astype("<u2").tobytes())
     else:
         from array import array
         B = PyBackend()
@@ -445,10 +473,14 @@ def main():
                 if j % max(1, res // 20) == 0:
                     print(f"  строка {j}/{res}  {time.time() - t0:.0f} с")
                 yield row.tobytes()
-        write_png16(out, res, res, rows())
+        write_png16(out, res, res, tee_r16(rows(), r16f))
+    if r16f is not None:
+        r16f.close()
 
     meta = {
         "file": os.path.relpath(out, env_common.PROJECT_DIR).replace("\\", "/"),
+        "file_r16": os.path.relpath(r16, env_common.PROJECT_DIR).replace("\\", "/") if r16 else None,
+        "r16_format": "uint16 little-endian, row-major, без заголовка" if r16 else None,
         "resolution": res,
         "bit_depth": 16,
         "landscape": {
@@ -470,6 +502,8 @@ def main():
     with open(js, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
     print(f"[Rakis] {out}  высоты {hmin:.1f}…{hmax:.1f} м  ({time.time() - t0:.0f} с)")
+    if r16:
+        print(f"[Rakis] {r16}")
     print(f"[Rakis] {js}")
 
 

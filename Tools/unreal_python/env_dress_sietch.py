@@ -260,9 +260,9 @@ def dress_glowglobe_brackets():
 
 
 def main():
+    LC.ensure_persistent_with_sublevels()   # до транзакции: загрузка карты сбрасывает буфер undo
+    LC.make_current(MAP_SIETCH)
     with transaction("Rakis: dress sietch"):
-        LC.ensure_persistent_with_sublevels()
-        LC.make_current(MAP_SIETCH)
         n = delete_generated(GEN)
         log(f"{GEN}: удалено {n}")
         rnd = random.Random(SEED)
@@ -272,8 +272,8 @@ def main():
                 fn(*args)
             except Exception as e:  # noqa: BLE001
                 warn(f"{fn.__name__}: {e}")
-        LC.save_all()
-        log("env_dress_sietch: готово")
+    LC.save_all()
+    log("env_dress_sietch: готово")
 
 
 if __name__ == "__main__":

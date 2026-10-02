@@ -118,6 +118,39 @@ MATERIAL_PROPERTY = {
     "Displacement": "MP_DISPLACEMENT",
 }
 
+# В Python-enum unreal.MaterialProperty (UE 5.6) есть ТОЛЬКО не скрытые значения: Emissive, Opacity, OpacityMask,
+# BaseColor, Metallic, Specular, Roughness, Anisotropy, Normal, Tangent, WPO, Subsurface, AO, Refraction,
+# FrontMaterial. CustomData0/1, PixelDepthOffset и Displacement помечены UMETA(Hidden) в SceneTypes.h и в Python
+# не экспортируются. Для них пробуем числовое значение EMaterialProperty (порядок enum в UE 5.4–5.6),
+# а если сборка его не примет — пишем в лог, что подключить вручную.
+HIDDEN_MATERIAL_PROPERTY = {
+    "MP_CUSTOM_DATA0": 16,
+    "MP_CUSTOM_DATA1": 17,
+    "MP_PIXEL_DEPTH_OFFSET": 28,
+    "MP_DISPLACEMENT": 32,
+}
+
+
+def material_property_candidates(mp_name: str) -> list:
+    """Значения unreal.MaterialProperty для connect_material_property (с фоллбеком для скрытых)."""
+    enum = getattr(unreal, "MaterialProperty", None)
+    if enum is None:
+        return []
+    v = getattr(enum, mp_name, None)
+    if v is not None:
+        return [v]
+    out = []
+    idx = HIDDEN_MATERIAL_PROPERTY.get(mp_name)
+    if idx is not None:
+        cast = getattr(enum, "cast", None)
+        if cast is not None:
+            try:
+                out.append(cast(idx))
+            except Exception:  # noqa: BLE001
+                pass
+        out.append(idx)
+    return out
+
 Src = Any  # MaterialExpression | (MaterialExpression, "OutputName") | float | tuple чисел
 
 
@@ -163,6 +196,12 @@ class Graph:
             self._consts[key] = self.node("MaterialExpressionConstant3Vector", constant=lin(r, g, b))
         return self._consts[key]
 
+    def const4(self, r: float, g: float, b: float, a: float):
+        key = ("c4", r, g, b, a)
+        if key not in self._consts:
+            self._consts[key] = self.node("MaterialExpressionConstant4Vector", constant=lin(r, g, b, a))
+        return self._consts[key]
+
     # ---------------------------------------------------------- параметры
     def scalar(self, name: str, default: float, group: str = "Rakis", lo: float | None = None,
                hi: float | None = None, priority: int = 0):
@@ -200,6 +239,26 @@ class Graph:
             set_prop(e, "sampler_type", stv)
         if uv is not None:
             self.connect(uv, e, "UVs")
+        return e
+
+    def texture_object(self, name: str, tex, group: str = "Textures", sampler: str | None = None):
+        """TextureObjectParameter (для Custom-нод: в HLSL приходит Texture2D <name> + SamplerState <name>Sampler).
+        tex — путь или объект. sampler=None — тип сэмплера выставит движок по текстуре (AutoSetSampleType)."""
+        t = load_or_none(tex) if isinstance(tex, str) else tex
+        if t is None:
+            t = load_or_none(ENGINE_TEX["black"])
+            sampler = sampler or "color"
+        e = self.node("MaterialExpressionTextureObjectParameter", parameter_name=name, group=group)
+        if e is None:
+            return None
+        if t is not None:
+            set_prop(e, "texture", t)
+        if sampler:
+            st = {"color": "SAMPLERTYPE_COLOR", "normal": "SAMPLERTYPE_NORMAL",
+                  "linear": "SAMPLERTYPE_LINEAR_COLOR", "masks": "SAMPLERTYPE_MASKS"}[sampler]
+            stv = enum_value("MaterialSamplerType", st)
+            if stv is not None:
+                set_prop(e, "sampler_type", stv)
         return e
 
     def mpc_param(self, name: str):
@@ -257,19 +316,30 @@ class Graph:
     def out(self, src: Src, prop: str) -> bool:
         expr, outname = self._src(src)
         mp_name = MATERIAL_PROPERTY.get(prop, prop)
-        mp = getattr(unreal.MaterialProperty, mp_name, None)
-        if mp is None or expr is None:
+        cands = material_property_candidates(mp_name)
+        if not cands or expr is None:
             warn(f"{_name(self.m)}: выход {prop} недоступен в этой версии UE")
             self.errors += 1
             return False
-        try:
-            ok = MEL.connect_material_property(expr, outname, mp)
-        except Exception as ex:  # noqa: BLE001
-            warn(f"{_name(self.m)}: connect_material_property({prop}): {ex}")
-            ok = False
-        if not ok:
-            self.errors += 1
-        return bool(ok)
+        last_ex = None
+        for mp in cands:
+            try:
+                if MEL.connect_material_property(expr, outname, mp):
+                    return True
+            except Exception as ex:  # noqa: BLE001
+                last_ex = ex
+        hidden = mp_name in HIDDEN_MATERIAL_PROPERTY
+        if hidden:
+            # Помечаем ноду комментарием-«пузырём», чтобы её было легко найти в графе и соединить руками.
+            try:
+                expr.set_editor_property("desc", f"-> {prop} (подключить вручную)")
+            except Exception:  # noqa: BLE001
+                pass
+        warn(f"{_name(self.m)}: не удалось подключить выход {prop}"
+             + (f" ({last_ex})" if last_ex else "")
+             + (f" — свойство скрыто от Python: подключите вручную ноду с комментарием «-> {prop}»" if hidden else ""))
+        self.errors += 1
+        return False
 
     # ---------------------------------------------------------- математика
     def _bin(self, cls: str, a: Src, b: Src, in_a: str = "A", in_b: str = "B"):
@@ -277,14 +347,15 @@ class Graph:
         if e is None:
             return None
         # Числа ставим как константы ноды (меньше нод), выражения — соединяем.
-        if isinstance(a, (int, float)) and not isinstance(a, bool):
-            set_prop(e, "const_a", float(a))
-        else:
-            self.connect(a, e, in_a)
-        if isinstance(b, (int, float)) and not isinstance(b, bool):
-            set_prop(e, "const_b", float(b))
-        else:
-            self.connect(b, e, in_b)
+        # У DotProduct/AppendVector нет const_a/const_b (UE 5.6) — тогда число идёт нодой Constant.
+        for val, pin, const in ((a, in_a, "const_a"), (b, in_b, "const_b")):
+            if isinstance(val, (int, float)) and not isinstance(val, bool):
+                try:
+                    e.set_editor_property(const, float(val))
+                    continue
+                except Exception:  # noqa: BLE001
+                    pass
+            self.connect(val, e, pin)
         return e
 
     def add(self, a, b):
@@ -388,7 +459,8 @@ class Graph:
     def world_pos(self, camera_relative: bool = False):
         e = self.node("MaterialExpressionWorldPosition")
         if e is not None and camera_relative:
-            v = enum_value("WorldPositionIncludedOffsets", "WPT_CAMERA_RELATIVE_WORLD_POSITION")
+            # UE 5.6: WPT_CAMERA_RELATIVE (старое имя WPT_CAMERA_RELATIVE_WORLD_POSITION не существует).
+            v = enum_value("WorldPositionIncludedOffsets", "WPT_CAMERA_RELATIVE", "WPT_CAMERA_RELATIVE_WORLD_POSITION")
             if v is not None:
                 set_prop(e, "world_position_shader_offset", v)
         return e
@@ -460,6 +532,7 @@ def begin_material(path: str, domain: str = "surface", blend: str = "opaque",
 
     dom = {
         "surface": ("MD_SURFACE",),
+        "ui": ("MD_UI",),
         "decal": ("MD_DEFERRED_DECAL",),
         "pp": ("MD_POST_PROCESS",),
         "light_function": ("MD_LIGHT_FUNCTION",),
@@ -470,7 +543,8 @@ def begin_material(path: str, domain: str = "surface", blend: str = "opaque",
         set_prop(mat, "material_domain", v)
 
     bm = enum_value("BlendMode", {"opaque": "BLEND_OPAQUE", "masked": "BLEND_MASKED",
-                                  "translucent": "BLEND_TRANSLUCENT", "additive": "BLEND_ADDITIVE"}[blend])
+                                  "translucent": "BLEND_TRANSLUCENT", "additive": "BLEND_ADDITIVE",
+                                  "modulate": "BLEND_MODULATE"}[blend])
     if bm is not None:
         set_prop(mat, "blend_mode", bm)
 
@@ -526,7 +600,12 @@ def make_instance(path: str, parent, scalars: dict | None = None, vectors: dict 
         warn(f"{path}: нет родителя — пропуск")
         return None
     factory = unreal.MaterialInstanceConstantFactoryNew()
-    set_prop(factory, "initial_parent", parent)
+    # InitialParent у фабрики в UE 5.6 не экспортирован в Python (нет в editor properties) — пробуем молча,
+    # родитель всё равно ставится ниже через MaterialEditingLibrary.set_material_instance_parent.
+    try:
+        factory.set_editor_property("initial_parent", parent)
+    except Exception:  # noqa: BLE001
+        pass
     mi = create_or_load(path, unreal.MaterialInstanceConstant, factory)
     if mi is None:
         warn(f"{path}: не создан")
@@ -602,6 +681,7 @@ def find_texture(*names: str, roots: Sequence[str] = ("/Game/Rakis", "/Game/Mega
 
 __all__ = [
     "MEL", "MAT_ROOT", "MASTER_DIR", "INSTANCE_DIR", "FUNCTIONS_DIR", "PP_DIR", "MPC_PATH", "ENGINE_TEX",
+    "HIDDEN_MATERIAL_PROPERTY", "material_property_candidates",
     "srgb", "lin", "enum_value", "set_first", "Graph", "load_mpc", "begin_material", "set_usage",
     "finish_material", "make_instance", "find_texture", "ensure_dir",
 ]
