@@ -14,6 +14,7 @@ class USkyAtmosphereComponent;
 class UExponentialHeightFogComponent;
 class UVolumetricCloudComponent;
 class UWindDirectionalSourceComponent;
+class UNiagaraComponent;
 class APostProcessVolume;
 class ULevel;
 
@@ -233,7 +234,7 @@ private:
 	TWeakObjectPtr<APostProcessVolume> GlobalPP;
 	TArray<TWeakObjectPtr<UWindDirectionalSourceComponent>> WindSources;
 	/** Niagara-компоненты акторов с тегом Rakis.FX.Wind (позёмка, вихри, стена бури). */
-	TArray<TWeakObjectPtr<class UNiagaraComponent>> WindFX;
+	TArray<TWeakObjectPtr<UNiagaraComponent>> WindFX;
 
 	TMap<FName, bool> MPCParamCache;
 	bool bWarnedNoMPC = false;

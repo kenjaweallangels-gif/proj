@@ -73,18 +73,13 @@ namespace RakisWeatherPrivate
 		return Default;
 	}
 
-	/** Материал облаков через рефлексию (свойство UVolumetricCloudComponent::Material). */
-	static UMaterialInterface* GetCloudMaterial(const UVolumetricCloudComponent* Cloud)
+	/**
+	 * Текущий материал облаков. В UE 5.6 свойство UVolumetricCloudComponent::Material — TSoftObjectPtr,
+	 * поэтому читаем через публичный (не const) GetMaterial(), а не рефлексией.
+	 */
+	static UMaterialInterface* GetCloudMaterial(UVolumetricCloudComponent* Cloud)
 	{
-		if (!Cloud)
-		{
-			return nullptr;
-		}
-		if (const FObjectPropertyBase* Prop = FindFProperty<FObjectPropertyBase>(Cloud->GetClass(), TEXT("Material")))
-		{
-			return Cast<UMaterialInterface>(Prop->GetObjectPropertyValue_InContainer(Cloud));
-		}
-		return nullptr;
+		return Cloud ? Cloud->GetMaterial() : nullptr;
 	}
 
 	static float WrapHours(float H)
@@ -351,7 +346,7 @@ void URakisWeatherSubsystem::RequestPreset(FName PresetId, float BlendSeconds)
 	TargetPresetId = PresetId;
 	BlendDuration = FMath::Max(0.f, BlendSeconds);
 	BlendElapsed = 0.f;
-	bBlending = BlendDuration > KINDA_SMALL_NUMBER && bHasPreset;
+	bBlending = BlendDuration > UE_KINDA_SMALL_NUMBER && bHasPreset;
 	if (!bBlending)
 	{
 		Current = Target;
@@ -378,7 +373,7 @@ void URakisWeatherSubsystem::SetTimeOfDay(float Hours)
 void URakisWeatherSubsystem::SetInterior(bool bInterior, float BlendSeconds)
 {
 	InteriorTarget = bInterior ? 1.f : 0.f;
-	InteriorRate = BlendSeconds > KINDA_SMALL_NUMBER ? 1.f / BlendSeconds : 1000.f;
+	InteriorRate = BlendSeconds > UE_KINDA_SMALL_NUMBER ? 1.f / BlendSeconds : 1000.f;
 }
 
 FRakisWeatherPresetRow URakisWeatherSubsystem::LerpPreset(const FRakisWeatherPresetRow& A, const FRakisWeatherPresetRow& B, float Alpha)
@@ -512,7 +507,7 @@ void URakisWeatherSubsystem::RefreshSceneActors()
 	if (UVolumetricCloudComponent* Cloud = Clouds.Get())
 	{
 		UMaterialInterface* CloudMat = RakisWeatherPrivate::GetCloudMaterial(Cloud);
-		if (CloudMat && CloudMat != CloudMID)
+		if (CloudMat && CloudMat != CloudMID.Get())
 		{
 			if (UMaterialInstanceDynamic* AsMID = Cast<UMaterialInstanceDynamic>(CloudMat))
 			{
@@ -542,7 +537,7 @@ void URakisWeatherSubsystem::Tick(float DeltaTime)
 	if (bBlending)
 	{
 		BlendElapsed += DeltaTime;
-		const float Alpha = FMath::Clamp(BlendElapsed / FMath::Max(BlendDuration, KINDA_SMALL_NUMBER), 0.f, 1.f);
+		const float Alpha = FMath::Clamp(BlendElapsed / FMath::Max(BlendDuration, UE_KINDA_SMALL_NUMBER), 0.f, 1.f);
 		Current = LerpPreset(FromPreset, ToPreset, FMath::SmoothStep(0.f, 1.f, Alpha));
 		if (Alpha >= 1.f)
 		{
@@ -582,7 +577,7 @@ void URakisWeatherSubsystem::UpdateSun()
 	const float SinEl = FMath::Sin(Lat) * FMath::Sin(Dec) + FMath::Cos(Lat) * FMath::Cos(Dec) * FMath::Cos(HourAngle);
 	const float Elevation = FMath::Asin(FMath::Clamp(SinEl, -1.f, 1.f));
 	// Азимут от севера по часовой (к востоку): утро => восток (90°), полдень => юг (180°).
-	const float Azimuth = FMath::Atan2(FMath::Sin(HourAngle), FMath::Cos(HourAngle) * FMath::Sin(Lat) - FMath::Tan(Dec) * FMath::Cos(Lat)) + PI;
+	const float Azimuth = FMath::Atan2(FMath::Sin(HourAngle), FMath::Cos(HourAngle) * FMath::Sin(Lat) - FMath::Tan(Dec) * FMath::Cos(Lat)) + UE_PI;
 
 	SunElevationDeg = FMath::RadiansToDegrees(Elevation);
 	const float SunYawDeg = FMath::RadiansToDegrees(Azimuth) + NorthYawDeg;
@@ -623,7 +618,7 @@ void URakisWeatherSubsystem::ApplyToScene(float DeltaTime, bool bApplyStatic)
 	// --- Солнце ---
 	if (UDirectionalLightComponent* Sun = SunLight.Get())
 	{
-		if (Sun->Mobility != EComponentMobility::Movable && !bWarnedSunStatic)
+		if (Sun->GetMobility() != EComponentMobility::Movable && !bWarnedSunStatic)
 		{
 			bWarnedSunStatic = true;
 			UE_LOG(LogRakis, Warning, TEXT("Weather: солнце '%s' не Movable — поворот/яркость могут не применяться."), *GetNameSafe(Sun->GetOwner()));

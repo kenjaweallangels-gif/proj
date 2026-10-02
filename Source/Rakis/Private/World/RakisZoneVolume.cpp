@@ -12,15 +12,16 @@
 ARakisZoneVolume::ARakisZoneVolume(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	if (UBrushComponent* Brush = GetBrushComponent())
+	if (UBrushComponent* BrushComp = GetBrushComponent())
 	{
+		// Имя BrushComp, а не Brush: ABrush::Brush (UModel*) — член базового класса, тень = ошибка C4458 в UE5.
 		// Профиль Trigger: перекрытия со всем, без блокировки.
-		Brush->SetCollisionProfileName(UCollisionProfile::CustomCollisionProfileName);
-		Brush->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-		Brush->SetCollisionObjectType(ECC_WorldDynamic);
-		Brush->SetCollisionResponseToAllChannels(ECR_Ignore);
-		Brush->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
-		Brush->SetGenerateOverlapEvents(true);
+		BrushComp->SetCollisionProfileName(UCollisionProfile::CustomCollisionProfileName);
+		BrushComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		BrushComp->SetCollisionObjectType(ECC_WorldDynamic);
+		BrushComp->SetCollisionResponseToAllChannels(ECR_Ignore);
+		BrushComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+		BrushComp->SetGenerateOverlapEvents(true);
 	}
 	// Игрок, уже стоящий в объёме при подгрузке уровня, тоже должен «войти».
 	bGenerateOverlapEventsDuringLevelStreaming = true;

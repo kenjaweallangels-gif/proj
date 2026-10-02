@@ -126,7 +126,7 @@ void ARakisCinematicTrigger::Play()
 
 	// --- Фоллбек для блокаута ---
 	RunFallbackWorm();
-	if (FallbackDuration > KINDA_SMALL_NUMBER)
+	if (FallbackDuration > UE_KINDA_SMALL_NUMBER)
 	{
 		World->GetTimerManager().SetTimer(FallbackTimer, this, &ARakisCinematicTrigger::Finish, FallbackDuration, false);
 	}
