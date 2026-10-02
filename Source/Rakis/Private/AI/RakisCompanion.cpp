@@ -3,6 +3,7 @@
 #include "Rakis.h"
 #include "RakisAIVisuals.h"
 #include "Audio/RakisAudioDirector.h"
+#include "Narrative/RakisDialogueSubsystem.h"
 
 #include "AIController.h"
 #include "Components/CapsuleComponent.h"
@@ -73,6 +74,12 @@ void ARakisCompanion::BeginPlay()
 
 	RakisAIVisuals::ApplyBody(this, HeroMeshPath, FallbackMesh, AnimClass, FallbackAnimClass, PlaceholderBody);
 	RakisAIVisuals::ApplyTint(this, PlaceholderBody, ClothTint, ClothTintParam, TintMIDs);
+
+	// Реплики спутника звучат из его позиции.
+	if (URakisDialogueSubsystem* Dialogue = URakisDialogueSubsystem::Get(this))
+	{
+		Dialogue->RegisterSpeaker(CompanionId, this);
+	}
 
 	const float Period = 1.f / FMath::Clamp(LogicHz, 1.f, 30.f);
 	GetWorldTimerManager().SetTimer(LogicTimer, this, &ARakisCompanion::LogicUpdate, Period, true);

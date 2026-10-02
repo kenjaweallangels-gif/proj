@@ -148,6 +148,9 @@ public:
 	static constexpr float BarkGlobalInterval = 3.f;
 
 private:
+	/** Подписка на ARakisInspectable::OnInspected. */
+	FDelegateHandle InspectHandle;
+
 	void LoadTables();
 	void BuildFallbackDialogue();
 	void LoadSettings();

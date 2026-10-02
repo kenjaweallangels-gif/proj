@@ -2,6 +2,7 @@
 
 #include "Rakis.h"
 #include "Core/RakisSettings.h"
+#include "Gameplay/RakisInspectable.h"
 #include "Components/AudioComponent.h"
 #include "Components/SceneComponent.h"
 #include "Engine/DataTable.h"
@@ -76,10 +77,15 @@ void URakisDialogueSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	LoadSettings();
 	BuildFallbackDialogue();
 	LoadTables();
+
+	// Точки интереса (ARakisInspectable) → центрированная надпись-лор.
+	InspectHandle = ARakisInspectable::OnInspected.AddUObject(this, &URakisDialogueSubsystem::ShowLore);
 }
 
 void URakisDialogueSubsystem::Deinitialize()
 {
+	ARakisInspectable::OnInspected.Remove(InspectHandle);
+	InspectHandle.Reset();
 	StopAll();
 	Super::Deinitialize();
 }

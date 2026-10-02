@@ -269,5 +269,110 @@ def try_load(*paths):
     return None
 
 
+# ---------------------------------------------------------------- фолбэк-земля и дюны (без Landscape)
+def _dunes_module():
+    """env_dunes.py (чистый Python) — та же функция высот, что и у heightmap."""
+    import os
+    import sys
+    from rakis_common import PROJECT_DIR
+    bl = os.path.join(PROJECT_DIR, "Tools", "blender")
+    if bl not in sys.path:
+        sys.path.insert(0, bl)
+    import env_dunes  # noqa: WPS433
+    return env_dunes
+
+
+def ground_rects():
+    """Плиты земли 200 м: ядро + 300 м поля, минус окно под сиетчем (B1-лестница уходит ниже Z=0)."""
+    import level_layout as LL
+    x0, y0 = LL.CORE_MIN[0] - 30000.0, LL.CORE_MIN[1] - 30000.0
+    x1, y1 = LL.CORE_MAX[0] + 30000.0, LL.CORE_MAX[1] + 30000.0
+    hole = (LL.B1["x0"], 169000.0, 67000.0, 78000.0)
+    tile = 20000.0
+    out = []
+    x = x0
+    while x < x1:
+        y = y0
+        while y < y1:
+            out += subtract_rect((x, min(x + tile, x1), y, min(y + tile, y1)), hole)
+            y += tile
+        x += tile
+    return out
+
+
+def build_fallback_ground(tags) -> int:
+    n = 0
+    for (x0, x1, y0, y1) in ground_rects():
+        if box(x0, x1, y0, y1, -100.0, 0.0, tags, f"Ground_{n:03d}", MI_SAND, "Rakis/Desert/Ground"):
+            n += 1
+    return n
+
+
+def dune_blobs(max_count: int = 420):
+    """Гребни дюн из процедурной функции env_dunes: [(x, y, h_cm, yaw, длина, ширина)] (см)."""
+    import level_layout as LL
+    E = _dunes_module()
+    B = E.PyBackend()
+    step = 2500.0
+    x0, y0 = LL.CORE_MIN[0] - 25000.0, LL.CORE_MIN[1] - 25000.0
+    nx = int((LL.CORE_MAX[0] + 25000.0 - x0) / step)
+    ny = int((LL.CORE_MAX[1] + 25000.0 - y0) / step)
+    H = [[E.height_m(B, x0 + i * step, y0 + j * step) for j in range(ny + 1)] for i in range(nx + 1)]
+    peaks = []
+    for i in range(1, nx):
+        for j in range(1, ny):
+            h = H[i][j]
+            if h < 4.0:
+                continue
+            if any(H[i + di][j + dj] > h for di in (-1, 0, 1) for dj in (-1, 0, 1) if di or dj):
+                continue
+            x, y = x0 + i * step, y0 + j * step
+            if LL.rock_signed_distance(x, y) < 3000.0:
+                continue
+            if E.ridge_a1(B, x / 100.0, y / 100.0)[0] > 0.5:   # гребень A1 строится отдельно (ridge_blobs)
+                continue
+            outside = x < LL.CORE_MIN[0] or x > LL.CORE_MAX[0] or y < LL.CORE_MIN[1] or y > LL.CORE_MAX[1]
+            vis = (h - 2.0) * 100.0
+            if outside:   # сейф — вытянут по ветру
+                peaks.append((x, y, vis, LL.WIND_YAW_DEG, 25000.0, max(3000.0, vis * 6.0)))
+            else:         # бархан/поперечная гряда — гребень поперёк ветра
+                peaks.append((x, y, vis, LL.WIND_YAW_DEG + 90.0, 7000.0 + vis * 3.0, max(2000.0, vis * 7.0)))
+    peaks.sort(key=lambda p: -p[2])
+    return peaks[:max_count]
+
+
+def ridge_blobs():
+    """Стартовый гребень A1: цепочка эллипсоидов по линии гребня (вершина 35 м в (0,0))."""
+    import level_layout as LL
+    E = _dunes_module()
+    B = E.PyBackend()
+    ax, ay = LL.A1_RIDGE_A
+    bx, by = LL.A1_RIDGE_B
+    yaw = math.degrees(math.atan2(by - ay, bx - ax))
+    out = []
+    for k in range(-2, 12):
+        s = k / 10.0
+        x, y = ax + (bx - ax) * s, ay + (by - ay) * s
+        r, _, _ = E.ridge_a1(B, x / 100.0, y / 100.0)
+        if r > 1.0:
+            out.append((x, y, r * 100.0, yaw, 9000.0, max(3000.0, r * 100.0 * 6.0)))
+    out.append((0.0, 0.0, LL.START[2], yaw, 9000.0, LL.START[2] * 6.0))   # точно под стартом
+    return out
+
+
+def build_fallback_dunes(tags) -> int:
+    n = 0
+    try:
+        blobs = ridge_blobs() + dune_blobs()
+    except Exception as e:  # noqa: BLE001
+        warn(f"env_dunes недоступен ({e}) — дюны блокаута не построены")
+        return 0
+    for (x, y, h, yaw, ln, wd) in blobs:
+        if shape("sphere", (x, y, 0.0), (ln, wd, 2.0 * h), rotation=(0, 0, yaw), material=MI_SAND,
+                 label=f"Dune_{n:03d}", tags=tags, folder="Rakis/Desert/Dunes"):
+            n += 1
+    return n
+
+
 if __name__ == "__main__":
     log("level_common: модуль помощников, сам по себе ничего не делает")

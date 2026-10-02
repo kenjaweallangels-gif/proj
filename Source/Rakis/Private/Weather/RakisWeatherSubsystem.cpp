@@ -22,6 +22,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialParameterCollection.h"
+#include "NiagaraComponent.h"
 #include "UObject/UnrealType.h"
 
 namespace RakisWeatherPrivate
@@ -424,6 +425,7 @@ void URakisWeatherSubsystem::RefreshSceneActors()
 	USkyLightComponent* FirstSky = nullptr;
 	USkyLightComponent* TaggedSky = nullptr;
 	WindSources.Reset();
+	WindFX.Reset();
 
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
@@ -431,6 +433,17 @@ void URakisWeatherSubsystem::RefreshSceneActors()
 		if (!IsValid(Actor))
 		{
 			continue;
+		}
+
+		// Расставленные fx_niagara.py эффекты, читающие ветер через User-параметры.
+		if (Actor->ActorHasTag(TEXT("Rakis.FX.Wind")))
+		{
+			TArray<UNiagaraComponent*> NiagaraComps;
+			Actor->GetComponents(NiagaraComps);
+			for (UNiagaraComponent* NC : NiagaraComps)
+			{
+				WindFX.Add(NC);
+			}
 		}
 
 		if (UDirectionalLightComponent* Dir = Actor->FindComponentByClass<UDirectionalLightComponent>())
@@ -685,6 +698,17 @@ void URakisWeatherSubsystem::ApplyWindSources()
 			Wind->SetSpeed(0.1f + GustedWindSpeed / 20.f);
 			Wind->SetMinimumGustAmount(0.1f + 0.3f * Current.StormIntensity);
 			Wind->SetMaximumGustAmount(0.3f + 0.6f * Current.StormIntensity);
+		}
+	}
+
+	// Niagara: User.WindDirection / User.WindSpeed / User.Intensity (контракт §2.5).
+	for (const TWeakObjectPtr<UNiagaraComponent>& WeakFX : WindFX)
+	{
+		if (UNiagaraComponent* NC = WeakFX.Get())
+		{
+			NC->SetVariableVec3(TEXT("User.WindDirection"), GustedWindDirection);
+			NC->SetVariableFloat(TEXT("User.WindSpeed"), GustedWindSpeed);
+			NC->SetVariableFloat(TEXT("User.Intensity"), FMath::Max(Current.DustDensity, Current.StormIntensity));
 		}
 	}
 }

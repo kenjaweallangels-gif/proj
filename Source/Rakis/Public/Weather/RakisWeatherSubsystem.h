@@ -232,6 +232,8 @@ private:
 	TWeakObjectPtr<UVolumetricCloudComponent> Clouds;
 	TWeakObjectPtr<APostProcessVolume> GlobalPP;
 	TArray<TWeakObjectPtr<UWindDirectionalSourceComponent>> WindSources;
+	/** Niagara-компоненты акторов с тегом Rakis.FX.Wind (позёмка, вихри, стена бури). */
+	TArray<TWeakObjectPtr<class UNiagaraComponent>> WindFX;
 
 	TMap<FName, bool> MPCParamCache;
 	bool bWarnedNoMPC = false;
