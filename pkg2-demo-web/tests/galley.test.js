@@ -105,6 +105,12 @@ describe('техпроцесс', () => {
     }
   });
 
+  it('каждый элемент конструкции устанавливается каким-либо переходом', () => {
+    const covered = new Set(STEPS.flatMap((st) => [...st.parts, ...st.fasteners]));
+    const kinds = ['panel', 'bracket', 'fitting', 'trim', 'equipment', 'light', 'door', 'hinge', 'latch', 'sink', 'faucet', 'valve', 'sheet', 'harness', 'water', 'film', 'retainer', 'turnbutton', 'placard', 'handle'];
+    for (const f of featureById.values()) if (kinds.includes(f.kind)) expect(covered.has(f.id), f.id).toBe(true);
+  });
+
   it('контроль значений: допуск, минимум, максимум', () => {
     expect(checkValue({ nominal: 1700, tol: 0.5 }, 1700.4)).toBe(true);
     expect(checkValue({ nominal: 1700, tol: 0.5 }, 1700.6)).toBe(false);

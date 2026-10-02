@@ -338,7 +338,6 @@ export const TRIMS = [
 export const DECOR = [
   { id: 'FILM-L', kind: 'film', designation: 'КМ2.000.000 СБ, ТТ п. 6', name: 'Плёнка декоративная наружной стороны боковины Л', panel: 'SIDE-L', code: 'ДП-217 «Гранит светлый» (усл.)' },
   { id: 'FILM-R', kind: 'film', designation: 'КМ2.000.000 СБ, ТТ п. 6', name: 'Плёнка декоративная наружной стороны боковины П', panel: 'SIDE-R', code: 'ДП-217 «Гранит светлый» (усл.)' },
-  { id: 'FILM-DECK', kind: 'film', designation: 'КМ2.000.000 СБ, ТТ п. 6', name: 'Ламинат рабочей поверхности стола', panel: 'DECK', code: 'ЛП-04 «Сталь матовая» (усл.)' },
   { id: 'PAINT-INT', kind: 'paint', designation: 'КМ2.000.000 СБ, ТТ п. 5', name: 'Окраска внутренних поверхностей отсеков', code: 'Эмаль ПУ, RAL 9002 (усл.)' },
   ...[1, 2, 3, 4].map((n) => ({ id: `PL-T${n}`, kind: 'placard', designation: 'КМ2.600.010', name: `Табличка «ТЕЛЕЖКА ${n} · MAX 90 кг»`, bay: n })),
   { id: 'PL-W', kind: 'placard', designation: 'КМ2.600.020', name: 'Табличка «ОТХОДЫ»', bay: 0 },
@@ -355,13 +354,53 @@ export const EQUIPMENT = [
   { id: 'BEV-1', kind: 'equipment', designation: 'ИК-02 (вставка, усл.)', name: 'Кофеварка', pos: [-25, G.deckTop + 12, 30], size: [260, 340, 450], power: '115 В 400 Гц, 1,8 кВт' },
   { id: 'BOIL-1', kind: 'equipment', designation: 'ИВ-03 (вставка, усл.)', name: 'Кипятильник', pos: [213, G.deckTop + 12, 30], size: [150, 300, 380], power: '115 В 400 Гц, 1,2 кВт' },
   { id: 'CB-1', kind: 'equipment', designation: 'КМ2.500.100', name: 'Щиток автоматов защиты', pos: [569, 1395, G.tBack], size: [220, 90, 55], power: '' },
-  { id: 'LIGHT-1', kind: 'equipment', designation: 'КМ2.500.200', name: 'Светильник рабочей зоны (LED)', pos: [0, G.shelfTop - G.tShelf - 12, 545], size: [1500, 12, 30], power: '28 В' },
+  { id: 'LIGHT-1', kind: 'light', designation: 'КМ2.500.200', name: 'Светильник рабочей зоны (LED, под полкой)', pos: [0, G.shelfTop - G.tShelf - 12, 545], size: [1500, 12, 30], power: '28 В' },
+  { id: 'LIGHT-2', kind: 'light', designation: 'КМ2.500.210', name: 'Светильник подсветки прохода (LED, на крышке)', pos: [0, G.H - 8, 608], size: [1200, 12, 10], power: '28 В' },
+  { id: 'RET-1', kind: 'retainer', designation: 'КМ2.650.010', name: 'Планка-ограничитель отсека оборудования', pos: [566, 1250, 578], size: [500, 14, 14] },
 ];
 
 export const INSERTS_LOAD = [
   ...[1, 2, 3, 4].map((n) => ({ id: `TRL-${n}`, kind: 'trolley', name: `Тележка полного размера ${n}`, bay: n })),
   ...[0, 1, 2, 3].flatMap((c) => [0, 1].map((r) => ({ id: `SU-${c + 1}${r + 1}`, kind: 'stdunit', name: 'Контейнер стандартный', comp: c, row: r }))),
 ];
+
+// ---------- столешница, облицовка, раковина, кран, сифон ----------
+export const SINK = { x: -700, z: 735, w: 280, d: 200, depth: 150 };
+export const PLUMBING = [
+  { id: 'SHEET-DECK', kind: 'sheet', designation: 'КМ2.150.100', name: 'Лист облицовочный столешницы, 12Х18Н10Т δ0,6, с отбортовкой', panel: 'DECK',
+    pos: [0, G.deckTop, 440], size: [1650, 0.6, 850] },
+  { id: 'SHEET-BS', kind: 'sheet', designation: 'КМ2.130.100', name: 'Лист облицовочный задней стенки (фартук), 12Х18Н10Т δ0,5', panel: 'BACK',
+    pos: [0, (G.deckTop + G.shelfTop - G.tShelf) / 2, G.tBack + 0.3], size: [1650, G.shelfTop - G.tShelf - G.deckTop, 0.5] },
+  { id: 'SINK-1', kind: 'sink', designation: 'КМ2.710.010', name: 'Раковина штампованная 12Х18Н10Т с бортом и решёткой слива', pos: [SINK.x, G.deckTop, SINK.z],
+    size: [SINK.w, SINK.depth, SINK.d] },
+  { id: 'FAUCET-1', kind: 'faucet', designation: 'КМ2.710.020', name: 'Кран питьевой воды настольный (гусак, рычаг)', pos: [SINK.x, G.deckTop, 622], size: [50, 210, 160] },
+  { id: 'SIPHON-1', kind: 'water', designation: 'КМ2.710.030', name: 'Сифон с гидрозатвором и ревизией', d: 32, color: '#c9ccd0',
+    path: [[SINK.x, G.deckTop - SINK.depth, SINK.z], [SINK.x, 880, SINK.z], [SINK.x, 820, 700], [SINK.x, 850, 655], [SINK.x, 800, 620], [SINK.x, 760, 620]] },
+  { id: 'VALVE-1', kind: 'valve', designation: 'КМ2.710.040', name: 'Кран запорный подвода воды (шаровой, ручка-бабочка)', pos: [-760, 700, G.tBack + 18], size: [40, 60, 40] },
+  { id: 'WL-2', kind: 'water', designation: 'КМ2.700.030', name: 'Отвод воды к крану', d: 10, color: '#d9dde0',
+    path: [[-760, 1060, G.tBack + 18], [-760, 1060, 560], [SINK.x, 1060, 622], [SINK.x, G.deckTop, 622]] },
+];
+
+// ---------- дверцы, петли, защёлки ----------
+// верхние отсеки — дверцы на двух петлях с поворотной защёлкой; отсек отходов — дверца с откидным клапаном
+const UPPER = [[-838, -412], [-412, 0], [0, 412], [412, 838]];
+export const DOORS = [
+  ...UPPER.map(([a, b], i) => ({
+    id: `DOOR-U${i + 1}`, kind: 'door', designation: i === 0 ? 'КМ2.230.000' : `КМ2.230.000-0${i}`, name: `Дверца верхнего отсека ${i + 1}`,
+    x0: a + 2, x1: b - 2, y0: G.shelfTop + 3, y1: G.H - G.tTop - 3, z: 603, t: 10, hinge: i < 2 ? 'L' : 'R',
+  })),
+  { id: 'DOOR-W', kind: 'door', designation: 'КМ2.240.000', name: 'Дверца отсека отходов с откидным клапаном', x0: -823, x1: -509, y0: 30, y1: 1074, z: 848, t: 10, hinge: 'L', flap: true },
+];
+export const HINGES = DOORS.flatMap((d) => {
+  const x = d.hinge === 'L' ? d.x0 + 6 : d.x1 - 6;
+  const ys = d.y1 - d.y0 > 700 ? [d.y0 + 120, (d.y0 + d.y1) / 2, d.y1 - 120] : [d.y0 + 70, d.y1 - 70];
+  return ys.map((y, i) => ({ id: `HG-${d.id.slice(5)}-${i + 1}`, kind: 'hinge', designation: 'КМ2.630.010', name: 'Петля накладная 40×30, нерж.',
+    door: d.id, pos: [x, y, d.z + d.t], screws: 4, torqueNm: 1.2 }));
+});
+export const LATCHES = DOORS.map((d) => ({
+  id: `LT-${d.id.slice(5)}`, kind: 'latch', designation: 'КМ2.640.010', name: 'Защёлка поворотная (на ¼ оборота) с кнопкой',
+  door: d.id, pos: [d.hinge === 'L' ? d.x1 - 30 : d.x0 + 30, d.flap ? 960 : (d.y0 + d.y1) / 2, d.z + d.t],
+}));
 
 // бухты тележечных отсеков (центры по X) и отсек отходов
 export const BAYS = [
@@ -389,8 +428,8 @@ export const HARNESS = [
     path: [[660, 1440, zH], [760, 1470, zH], [790, 1490, 200], [790, 1490, 545]] },
   { id: 'WL-1', kind: 'water', designation: 'КМ2.700.010', name: 'Трубопровод подвода воды', d: 12, color: '#d9dde0',
     path: [[-760, -60, 60], [-760, 0, 60], [-760, 900, zH + 4], [-760, 1080, zH + 4], [-600, 1080, zH + 4], [-180, 1125, zH + 4], [213, 1125, zH + 4], [213, 1140, 60]] },
-  { id: 'DR-1', kind: 'water', designation: 'КМ2.700.020', name: 'Трубопровод дренажа', d: 22, color: '#8a9096',
-    path: [[-700, G.deckTop - G.tDeck, 720], [-700, 900, 600], [-700, 400, 300], [-700, 0, 200], [-700, -80, 200]] },
+  { id: 'DR-1', kind: 'water', designation: 'КМ2.700.020', name: 'Трубопровод дренажа', d: 32, color: '#8a9096',
+    path: [[-700, 760, 620], [-700, 600, 500], [-700, 300, 280], [-700, 0, 200], [-700, -80, 200]] },
 ];
 
 /** Хомуты P-образные на жгутах и трубах — по точкам излома путей (на задней стенке). */
@@ -401,6 +440,7 @@ export const CLAMPS = HARNESS.flatMap((h) => h.path.slice(1, -1).filter((p) => p
 export function featureCenter(f) {
   if (f.kind === 'panel') return center(panelBox(f));
   if (f.kind === 'bracket') return f.corner;
+  if (f.kind === 'door') return [(f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2, f.z + f.t / 2];
   if (f.pos) return f.kind === 'equipment' ? [f.pos[0], f.pos[1] + f.size[1] / 2, f.pos[2] + f.size[2] / 2] : f.pos;
   if (f.path) return f.path[Math.floor(f.path.length / 2)];
   if (f.kind === 'joint') return center(GROOVES.find((g) => g.joint === f.id));
@@ -411,6 +451,7 @@ export function featureCenter(f) {
 export const FEATURES = [
   ...PANELS, ...JOINTS.map((j) => ({ ...j, kind: 'joint', name: `Соединение шип-паз ${j.a} → ${j.b}`, designation: 'КМ2.000.000 СБ, узел А' })),
   ...BRACKETS, ...FASTENERS, ...FITTINGS, ...TRIMS, ...DECOR, ...EQUIPMENT, ...HARNESS, ...CLAMPS, ...INSERTS_LOAD,
+  ...PLUMBING, ...DOORS, ...HINGES, ...LATCHES,
 ];
 export const featureById = new Map(FEATURES.map((f) => [f.id, f]));
 
