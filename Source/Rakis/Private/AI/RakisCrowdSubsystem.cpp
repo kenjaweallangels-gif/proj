@@ -3,6 +3,7 @@
 #include "Rakis.h"
 #include "AI/RakisCitizen.h"
 #include "AI/RakisCompanion.h"
+#include "Audio/RakisAudioDirector.h"
 #include "Core/RakisSettings.h"
 #include "World/RakisZoneSubsystem.h"
 
@@ -16,7 +17,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
 
-namespace RakisCrowd
+namespace RakisCrowdPrivate
 {
 	static const FString SmartObjectPrefix(TEXT("Rakis.SmartObject."));
 	static const FString CompanionPrefix(TEXT("Rakis.Companion."));
@@ -142,7 +143,7 @@ void URakisCrowdSubsystem::HandleLevelAddedToWorld(ULevel* InLevel, UWorld* InWo
 
 void URakisCrowdSubsystem::BuildBuiltInArchetypes()
 {
-	using RakisCrowd::MakeArchetype;
+	using RakisCrowdPrivate::MakeArchetype;
 	BuiltInArchetypes.Reset();
 	// Палитры — выгоревшие охры, пыльный индиго, «синие» акценты (GDD §2), без чистых цветов.
 	BuiltInArchetypes.Add(TEXT("Trader"),       MakeArchetype(TEXT("Торговец"),      TEXT("Trader"),        115.f, TEXT("Stall;Bench"),            TEXT("#6B4F36;#8C6B45;#2C3E57"), 1.2f, TEXT("Adult")));
@@ -223,7 +224,7 @@ TArray<FName> URakisCrowdSubsystem::GetArchetypeSpotTypes(FName Archetype) const
 		Row->SmartObjectTags.ParseIntoArray(Parts, TEXT(";"), true);
 		for (const FString& Part : Parts)
 		{
-			const FName Type = RakisCrowd::ResolveSpotAlias(Part);
+			const FName Type = RakisCrowdPrivate::ResolveSpotAlias(Part);
 			if (!Type.IsNone())
 			{
 				Types.AddUnique(Type);
@@ -250,7 +251,7 @@ void URakisCrowdSubsystem::RegisterCitizen(ARakisCitizen* Citizen)
 	{
 		const AActor* Point = nullptr;
 		TArray<AActor*> Gather;
-		UGameplayStatics::GetAllActorsWithTag(this, RakisCrowd::TagHallGather, Gather);
+		UGameplayStatics::GetAllActorsWithTag(this, RakisCrowdPrivate::TagHallGather, Gather);
 		if (Gather.Num() > 0)
 		{
 			Point = Gather[(Citizens.Num() - 1) % Gather.Num()];
@@ -310,9 +311,9 @@ void URakisCrowdSubsystem::RebuildSpotCache()
 		for (const FName& Tag : Actor->Tags)
 		{
 			const FString TagStr = Tag.ToString();
-			if (TagStr.StartsWith(RakisCrowd::SmartObjectPrefix))
+			if (TagStr.StartsWith(RakisCrowdPrivate::SmartObjectPrefix))
 			{
-				const FName Type(*TagStr.RightChop(RakisCrowd::SmartObjectPrefix.Len()));
+				const FName Type(*TagStr.RightChop(RakisCrowdPrivate::SmartObjectPrefix.Len()));
 				SpotsByType.FindOrAdd(Type).Add(Actor);
 				SpotTypes.Add(Actor, Type);
 				++Count;
@@ -511,6 +512,16 @@ void URakisCrowdSubsystem::UpdateConversations()
 			for (ARakisCitizen* M : Members) { M->SetConversationSilenced(true); }
 			SilencedGroups.Add(Group);
 			GroupClearSince.Remove(Group);
+
+			// Звук «разговор стих» (DT_AudioEvents Trigger "Crowd:PlayerNear"), не чаще HushSoundCooldown.
+			if (Now >= NextHushSoundTime && Group.IsValid())
+			{
+				NextHushSoundTime = Now + HushSoundCooldown;
+				if (URakisAudioDirector* Audio = URakisAudioDirector::Get(this))
+				{
+					Audio->PostEventByTrigger(TEXT("Crowd:PlayerNear"), Group->GetActorLocation());
+				}
+			}
 		}
 	}
 
@@ -532,7 +543,7 @@ void URakisCrowdSubsystem::UpdateConversations()
 bool URakisCrowdSubsystem::GetHallCentre(FVector& OutCentre) const
 {
 	TArray<AActor*> Gather;
-	UGameplayStatics::GetAllActorsWithTag(this, RakisCrowd::TagHallGather, Gather);
+	UGameplayStatics::GetAllActorsWithTag(this, RakisCrowdPrivate::TagHallGather, Gather);
 	if (Gather.Num() == 0)
 	{
 		return false;
@@ -559,7 +570,7 @@ void URakisCrowdSubsystem::StartRitual()
 	}
 
 	TArray<AActor*> Gather;
-	UGameplayStatics::GetAllActorsWithTag(this, RakisCrowd::TagHallGather, Gather);
+	UGameplayStatics::GetAllActorsWithTag(this, RakisCrowdPrivate::TagHallGather, Gather);
 	if (Gather.Num() == 0)
 	{
 		if (!bWarnedNoGather)
@@ -578,6 +589,12 @@ void URakisCrowdSubsystem::StartRitual()
 
 	bRitualStarted = true;
 	OnRitualStarted.Broadcast();
+
+	// Хоровой гул толпы в зале (DT_AudioEvents Trigger "CrowdRitual").
+	if (URakisAudioDirector* Audio = URakisAudioDirector::Get(this))
+	{
+		Audio->PostEventByTrigger(TEXT("CrowdRitual"), Centre);
+	}
 
 	TArray<ARakisCitizen*> Valid;
 	for (const TWeakObjectPtr<ARakisCitizen>& Weak : Citizens)
@@ -624,7 +641,7 @@ void URakisCrowdSubsystem::StartRitual()
 
 void URakisCrowdSubsystem::HandleZoneChanged(ERakisZone OldZone, ERakisZone NewZone)
 {
-	if (bRitualStarted || RakisCrowd::CVarAutoRitual.GetValueOnGameThread() == 0)
+	if (bRitualStarted || RakisCrowdPrivate::CVarAutoRitual.GetValueOnGameThread() == 0)
 	{
 		return;
 	}
@@ -660,7 +677,7 @@ void URakisCrowdSubsystem::TickAutoRitual()
 void URakisCrowdSubsystem::SpawnMissingCompanions()
 {
 	UWorld* World = GetWorld();
-	if (!World || RakisCrowd::CVarAutoSpawnCompanions.GetValueOnGameThread() == 0)
+	if (!World || RakisCrowdPrivate::CVarAutoSpawnCompanions.GetValueOnGameThread() == 0)
 	{
 		return;
 	}
@@ -694,11 +711,11 @@ void URakisCrowdSubsystem::SpawnMissingCompanions()
 		for (const FName& Tag : Marker->Tags)
 		{
 			const FString TagStr = Tag.ToString();
-			if (!TagStr.StartsWith(RakisCrowd::CompanionPrefix))
+			if (!TagStr.StartsWith(RakisCrowdPrivate::CompanionPrefix))
 			{
 				continue;
 			}
-			const FName Id(*TagStr.RightChop(RakisCrowd::CompanionPrefix.Len()));
+			const FName Id(*TagStr.RightChop(RakisCrowdPrivate::CompanionPrefix.Len()));
 			if (Id.IsNone() || Existing.Contains(Id))
 			{
 				continue;

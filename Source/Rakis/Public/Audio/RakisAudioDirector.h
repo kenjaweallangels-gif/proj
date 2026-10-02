@@ -22,10 +22,12 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FRakisOnMusicStateChanged, ERakisMu
  * Музыка — два режима:
  *  1) MetaSound MS_Music_Adaptive (один UAudioComponent) с параметрами
  *     "StateIndex" (int, = ERakisMusicState), "Intensity", "WormThreat", "Interior" (float 0..1);
- *  2) фоллбек-кроссфейд, если MetaSound отсутствует: строки DT_AudioEvents с Trigger == "Music.<State>"
- *     (напр. "Music.DesertCalm"), два компонента с FadeIn/FadeOut.
- * Эмбиент — бед на зону: Trigger "Amb.<Zone>" (напр. "Amb.A2_Erg"), затем "Amb.Desert"/"Amb.Sietch",
- *  затем MS_Amb_Desert / MS_Amb_Sietch по фиксированным путям.
+ *     громкость состояния — Volume строки "Music.<State>" (Silence = 0);
+ *  2) фоллбек-кроссфейд, если MetaSound отсутствует: строка DT_AudioEvents с EventID "Music.<State>"
+ *     или Trigger "Music.<State>" / "Music:<State>", два компонента с FadeIn/FadeOut.
+ * Эмбиент — 2D-бед на зону: EventID "Amb.<Zone>" или Trigger "Amb.<Zone>" / "ZoneEnter:<Zone>",
+ *  затем "Amb.Desert"/"Amb.Sietch", затем MS_Amb_Desert / MS_Amb_Sietch по фиксированным путям.
+ * Погода: слой по Trigger "Weather:<PresetId>" (кроссфейд при смене пресета), порывы — "Weather:Gust".
  * PostEvent(EventID, Location) — строка DT_AudioEvents по имени (Is2D → PlaySound2D, иначе SpawnSoundAtLocation).
  * Червь: при GetThreat01() > ThreatEnter — состояние WormThreat, ниже ThreatExit (с удержанием) — возврат.
  */
@@ -56,6 +58,13 @@ public:
 	/** Проиграть событие из DT_AudioEvents. Location игнорируется для Is2D. */
 	UFUNCTION(BlueprintCallable, Category = "Rakis|Audio")
 	void PostEvent(FName EventID, const FVector& Location);
+
+	/**
+	 * Проиграть событие по полю Trigger (строка с наибольшим Priority), напр. "SmartObject:Loom",
+	 * "Crowd:PlayerNear", "CrowdRitual", "Footstep:Companion". false — строки нет/звук не загрузился.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Rakis|Audio")
+	bool PostEventByTrigger(FName Trigger, const FVector& Location);
 
 	/** Эмбиент-бед зоны (вызывает URakisZoneSubsystem). */
 	UFUNCTION(BlueprintCallable, Category = "Rakis|Audio")
@@ -133,14 +142,32 @@ public:
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Rakis|Audio|Reverb")
 	float ReverbFadeTime = 1.5f;
 
+	/** Порыв: отношение скорости ветра с порывом к базовой, выше которого играет "Weather:Gust". */
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Rakis|Audio|Weather")
+	float GustRatioThreshold = 1.25f;
+
+	/** Минимальный интервал между звуками порывов, сек. */
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Rakis|Audio|Weather")
+	float GustCooldown = 7.f;
+
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Rakis|Audio|Weather")
+	float WeatherLayerCrossfade = 6.f;
+
 protected:
 	virtual bool DoesSupportWorldType(const EWorldType::Type WorldType) const override;
 
 private:
 	void LoadData();
 	USoundBase* LoadSound(const FString& Path, FName WarnKey);
-	USoundBase* PickSoundForTrigger(const FString& Trigger, float* OutVolume = nullptr);
+	/** Строка по имени (EventID) или, если нет, по Trigger == Key / AltTrigger (наибольший Priority). */
+	const FRakisAudioEventRow* FindRowFlexible(const FString& Key, const FString& AltTrigger, bool bRequire2D) const;
 	const FRakisAudioEventRow* FindEventRow(FName EventID) const;
+	void PlayRow(const FRakisAudioEventRow& Row, FName WarnKey, const FVector& Location);
+	void UpdateGusts();
+	void SetWeatherLayer(FName PresetId);
+
+	UFUNCTION()
+	void HandleWeatherPresetChanged(FName PresetId);
 
 	void EnsureAdaptiveMusic();
 	void ApplyMusicState(ERakisMusicState OldState);
@@ -175,6 +202,13 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UAudioComponent> AmbiencePrevious;
 
+	/** Погодный слой (напр. "Weather:Storm_Horizon" — далёкая буря). */
+	UPROPERTY(Transient)
+	TObjectPtr<UAudioComponent> WeatherLayer;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UAudioComponent> WeatherLayerPrevious;
+
 	UPROPERTY(Transient)
 	TMap<FName, TObjectPtr<USoundBase>> SoundCache;
 
@@ -196,6 +230,7 @@ private:
 
 	ERakisZone AmbienceZone = ERakisZone::None;
 	FString AmbienceKey;
+	float AmbienceCreatedRowVolume = 1.f;
 
 	float WormThreat = 0.f;
 	float SmoothedThreat = 0.f;
@@ -204,6 +239,10 @@ private:
 	float InteriorTarget = 0.f;
 	float IntensityOverride = 0.f;
 	float UpdateAccumulator = 0.f;
+
+	FString WeatherLayerKey;
+	bool bGustHigh = false;
+	float NextGustTime = 0.f;
 
 	bool bAdaptiveMissing = false;
 	bool bMusicStarted = false;

@@ -2,6 +2,7 @@
 
 #include "Rakis.h"
 #include "RakisAIVisuals.h"
+#include "Audio/RakisAudioDirector.h"
 
 #include "AIController.h"
 #include "Components/CapsuleComponent.h"
@@ -283,6 +284,26 @@ void ARakisCompanion::LogicUpdate()
 	const FVector PlayerLoc = Player->GetActorLocation();
 	const float Dist = FVector::Dist(GetActorLocation(), PlayerLoc);
 	const float PlayerSpeed = Player->GetVelocity().Size2D();
+
+	// Шаги спутника (DT_AudioEvents Trigger "Footstep:Companion") — пока нет AnimNotify, по пройденному пути.
+	const float MySpeed = GetVelocity().Size2D();
+	if (MySpeed > 40.f && Dist < FootstepAudibleRadius && !GetCharacterMovement()->IsFalling())
+	{
+		StrideAccumulator += MySpeed * Elapsed;
+		if (StrideAccumulator >= StrideLength)
+		{
+			StrideAccumulator = 0.f;
+			if (URakisAudioDirector* Audio = URakisAudioDirector::Get(this))
+			{
+				const float HalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+				Audio->PostEventByTrigger(TEXT("Footstep:Companion"), GetActorLocation() - FVector(0.f, 0.f, HalfHeight));
+			}
+		}
+	}
+	else
+	{
+		StrideAccumulator = 0.f;
+	}
 
 	// Взгляд.
 	bLookAtPlayer = Dist <= LookAtRadius;

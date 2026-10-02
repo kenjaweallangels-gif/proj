@@ -26,8 +26,8 @@ public:
 	virtual FText GetInteractVerb() const { return FText::GetEmpty(); }
 
 	/** Можно ли сейчас взаимодействовать (дверь не в движении, камень ещё не открыт...). */
-	virtual bool CanInteract(ARakisCharacter* Instigator) const { return true; }
+	virtual bool CanInteract(ARakisCharacter* Interactor) const { return true; }
 
 	/** Выполнить взаимодействие. */
-	virtual void Interact(ARakisCharacter* Instigator) {}
+	virtual void Interact(ARakisCharacter* Interactor) {}
 };

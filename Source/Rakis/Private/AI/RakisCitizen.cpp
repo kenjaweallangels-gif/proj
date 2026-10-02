@@ -2,6 +2,7 @@
 
 #include "Rakis.h"
 #include "AI/RakisCrowdSubsystem.h"
+#include "Audio/RakisAudioDirector.h"
 #include "Narrative/RakisDialogueSubsystem.h"
 #include "RakisAIVisuals.h"
 
@@ -27,6 +28,7 @@ namespace RakisCitizenCtx
 	static const FName Kin(TEXT("Kin"));
 	static const FName Offworld(TEXT("Offworld"));
 	static const FName Ritual(TEXT("Ritual"));
+	static const FName Idle(TEXT("Idle"));
 
 	static const FName SpotStall(TEXT("Stall"));
 	static const FName SpotWaterJar(TEXT("WaterJar"));
@@ -278,6 +280,10 @@ void ARakisCitizen::BehaviourUpdate()
 			ReleaseCurrentSpot();
 			ChooseNextActivity(Now);
 		}
+		else
+		{
+			UpdateSpotSound(Dist, Now);
+		}
 		break;
 
 	case ERakisCitizenActivity::SteppingAside:
@@ -390,6 +396,22 @@ void ARakisCitizen::ArriveAtSpot(float Now)
 		// Вдвоём-втроём на точке разговаривают охотнее.
 		const float Chance = FMath::Clamp(TalkChance * (Others > 0 ? 1.6f : 1.f), 0.f, 1.f);
 		SetTalking(Rng.FRand() < Chance);
+	}
+	NextSpotSoundTime = Now;
+}
+
+void ARakisCitizen::UpdateSpotSound(float DistToPlayer, float Now)
+{
+	// Звук работы на точке (станок, кувшин, починка): Trigger "SmartObject:<Type>", только рядом с игроком.
+	const AActor* Spot = CurrentSpot.Get();
+	if (!Spot || CurrentSpotType.IsNone() || DistToPlayer > SpotSoundRadius || Now < NextSpotSoundTime)
+	{
+		return;
+	}
+	NextSpotSoundTime = Now + Rng.FRandRange(SpotSoundIntervalMin, SpotSoundIntervalMax);
+	if (URakisAudioDirector* Audio = URakisAudioDirector::Get(this))
+	{
+		Audio->PostEventByTrigger(FName(*FString::Printf(TEXT("SmartObject:%s"), *CurrentSpotType.ToString())), Spot->GetActorLocation());
 	}
 }
 
@@ -693,10 +715,23 @@ void ARakisCitizen::UpdateBarks(const APawn* Player, float DistToPlayer, float N
 			Context = Roll < 0.5f ? RakisCitizenCtx::Shiana : (Roll < 0.75f ? RakisCitizenCtx::Kin : RakisCitizenCtx::Offworld);
 		}
 	}
+	else if ((Activity == ERakisCitizenActivity::UsingSpot || Activity == ERakisCitizenActivity::Idle) && !bIsTalking)
+	{
+		// Бормотание себе под нос — реже.
+		if (Rng.FRand() < 0.3f)
+		{
+			Context = RakisCitizenCtx::Idle;
+		}
+	}
 
 	if (!Context.IsNone() && PlayBark(Context))
 	{
 		NextBarkTime = Now + Rng.FRandRange(BarkCooldownMin, BarkCooldownMax);
+	}
+	else
+	{
+		// Не выпало/занято — следующий бросок не на каждом обновлении.
+		NextBarkTime = Now + Rng.FRandRange(3.f, 8.f);
 	}
 }
 

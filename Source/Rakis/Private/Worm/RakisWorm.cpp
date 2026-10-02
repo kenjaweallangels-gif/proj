@@ -757,8 +757,12 @@ void ARakisWorm::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	UpdateMovement(DeltaSeconds);
-	UpdateBody();
-	UpdateHeadAndMouth(DeltaSeconds);
+	// Глубоко спящего червя не перестраиваем (след головы всё равно пишется в MoveHeadTo).
+	if (bBodyVisible)
+	{
+		UpdateBody();
+		UpdateHeadAndMouth(DeltaSeconds);
+	}
 	UpdateEffects();
 }
 

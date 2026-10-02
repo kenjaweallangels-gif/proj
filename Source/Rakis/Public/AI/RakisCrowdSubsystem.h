@@ -95,6 +95,10 @@ public:
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Rakis|Crowd|Conversation")
 	float ConversationUpdateHz = 4.f;
 
+	/** Минимальный интервал между звуками «разговор стих» (Crowd:PlayerNear), сек. */
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Rakis|Crowd|Conversation")
+	float HushSoundCooldown = 12.f;
+
 	/** Минимальный интервал между любыми двумя репликами толпы, сек. */
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Rakis|Crowd|Barks")
 	float MinGlobalBarkInterval = 3.5f;
@@ -158,6 +162,7 @@ private:
 	TSet<TWeakObjectPtr<AActor>> SilencedGroups;
 
 	float LastBarkTime = -1000.f;
+	float NextHushSoundTime = 0.f;
 	bool bRitualStarted = false;
 	bool bWarnedNoGather = false;
 	bool bWarnedNoTable = false;

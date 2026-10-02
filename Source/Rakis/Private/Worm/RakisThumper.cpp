@@ -126,13 +126,13 @@ void ARakisThumper::Pulse()
 	OnPulse.Broadcast();
 }
 
-void ARakisThumper::Interact(ARakisCharacter* Instigator)
+void ARakisThumper::Interact(ARakisCharacter* Interactor)
 {
-	if (!Instigator)
+	if (!Interactor)
 	{
 		return;
 	}
-	Instigator->AddThumperCharges(1);
+	Interactor->AddThumperCharges(1);
 	StopThumping();
 	Destroy();
 }

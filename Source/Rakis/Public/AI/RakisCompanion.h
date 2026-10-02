@@ -101,6 +101,13 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Rakis|Companion|Follow", meta = (ClampMin = "1.0", ClampMax = "30.0"))
 	float LogicHz = 10.f;
 
+	/** Длина шага для звука шагов, см (фоллбек без AnimNotify). */
+	UPROPERTY(EditAnywhere, Category = "Rakis|Companion|Audio")
+	float StrideLength = 75.f;
+
+	UPROPERTY(EditAnywhere, Category = "Rakis|Companion|Audio")
+	float FootstepAudibleRadius = 2500.f;
+
 	UPROPERTY(EditAnywhere, Category = "Rakis|Companion|Look")
 	float LookAtRadius = 900.f;
 
@@ -164,6 +171,7 @@ private:
 	float LastProgressTime = 0.f;
 	FVector LastProgressLocation = FVector::ZeroVector;
 	float LastLogicTime = 0.f;
+	float StrideAccumulator = 0.f;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> TintMIDs;

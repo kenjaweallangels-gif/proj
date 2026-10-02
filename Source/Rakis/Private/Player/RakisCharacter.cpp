@@ -465,9 +465,9 @@ ERakisSurface ARakisCharacter::SurfaceFromHit(const FHitResult& Hit) const
 	const UPrimitiveComponent* HitComponent = Hit.GetComponent();
 	if (SurfaceEnum && (HitActor || HitComponent))
 	{
-		auto CheckTags = [&](const TArray<FName>& Tags, ERakisSurface& Out) -> bool
+		auto CheckTags = [&](const TArray<FName>& InTags, ERakisSurface& Out) -> bool
 		{
-			for (const FName& Tag : Tags)
+			for (const FName& Tag : InTags)
 			{
 				const FString TagString = Tag.ToString();
 				if (TagString.StartsWith(SurfaceTagPrefix))

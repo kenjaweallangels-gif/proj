@@ -10,13 +10,14 @@
 #include "Engine/DataTable.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "GameFramework/Pawn.h"
 #include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/ReverbEffect.h"
 #include "Sound/SoundAttenuation.h"
 #include "Sound/SoundBase.h"
 
-namespace RakisAudio
+namespace RakisAudioDirectorPrivate
 {
 	static const FName ParamStateIndex(TEXT("StateIndex"));
 	static const FName ParamIntensity(TEXT("Intensity"));
@@ -64,12 +65,14 @@ void URakisAudioDirector::Deinitialize()
 	{
 		W->OnWormStateChanged.RemoveDynamic(this, &URakisAudioDirector::HandleWormStateChanged);
 	}
-	RakisAudio::StopAndDestroy(AdaptiveMusic);
-	RakisAudio::StopAndDestroy(MusicA);
-	RakisAudio::StopAndDestroy(MusicB);
-	RakisAudio::StopAndDestroy(AmbienceCurrent);
-	RakisAudio::StopAndDestroy(AmbiencePrevious);
-	AdaptiveMusic = MusicA = MusicB = AmbienceCurrent = AmbiencePrevious = nullptr;
+	RakisAudioDirectorPrivate::StopAndDestroy(AdaptiveMusic);
+	RakisAudioDirectorPrivate::StopAndDestroy(MusicA);
+	RakisAudioDirectorPrivate::StopAndDestroy(MusicB);
+	RakisAudioDirectorPrivate::StopAndDestroy(AmbienceCurrent);
+	RakisAudioDirectorPrivate::StopAndDestroy(AmbiencePrevious);
+	RakisAudioDirectorPrivate::StopAndDestroy(WeatherLayer);
+	RakisAudioDirectorPrivate::StopAndDestroy(WeatherLayerPrevious);
+	AdaptiveMusic = MusicA = MusicB = AmbienceCurrent = AmbiencePrevious = WeatherLayer = WeatherLayerPrevious = nullptr;
 	SoundCache.Reset();
 	AttenuationCache.Reset();
 	EventsTable = nullptr;
@@ -86,6 +89,71 @@ void URakisAudioDirector::OnWorldBeginPlay(UWorld& InWorld)
 {
 	Super::OnWorldBeginPlay(InWorld);
 	LoadData();
+
+	if (URakisWeatherSubsystem* Weather = InWorld.GetSubsystem<URakisWeatherSubsystem>())
+	{
+		Weather->OnPresetChanged.AddUniqueDynamic(this, &URakisAudioDirector::HandleWeatherPresetChanged);
+		SetWeatherLayer(Weather->GetCurrentPreset());
+	}
+}
+
+void URakisAudioDirector::HandleWeatherPresetChanged(FName PresetId)
+{
+	SetWeatherLayer(PresetId);
+}
+
+void URakisAudioDirector::SetWeatherLayer(FName PresetId)
+{
+	LoadData();
+	const FRakisAudioEventRow* Row = PresetId.IsNone() ? nullptr
+		: FindRowFlexible(FString::Printf(TEXT("Weather:%s"), *PresetId.ToString()), FString(), /*bRequire2D*/ true);
+	const FString NewKey = Row ? Row->Asset : FString();
+	if (NewKey == WeatherLayerKey)
+	{
+		return;
+	}
+	WeatherLayerKey = NewKey;
+
+	RakisAudioDirectorPrivate::StopAndDestroy(WeatherLayerPrevious);
+	WeatherLayerPrevious = WeatherLayer;
+	WeatherLayer = nullptr;
+	if (WeatherLayerPrevious)
+	{
+		WeatherLayerPrevious->FadeOut(WeatherLayerCrossfade, 0.f);
+	}
+	if (Row)
+	{
+		if (USoundBase* Sound = LoadSound(Row->Asset, FName(*FString::Printf(TEXT("Weather:%s"), *PresetId.ToString()))))
+		{
+			WeatherLayer = UGameplayStatics::CreateSound2D(this, Sound, Row->Volume, 1.f, 0.f, nullptr, false, false);
+			if (WeatherLayer)
+			{
+				WeatherLayer->FadeIn(WeatherLayerCrossfade, 1.f);
+			}
+		}
+	}
+}
+
+void URakisAudioDirector::UpdateGusts()
+{
+	const UWorld* World = GetWorld();
+	const URakisWeatherSubsystem* Weather = World ? World->GetSubsystem<URakisWeatherSubsystem>() : nullptr;
+	if (!Weather)
+	{
+		return;
+	}
+	const float Base = FMath::Max(Weather->GetCurrentValues().WindSpeed, 0.5f);
+	const bool bHigh = Weather->GetWindSpeed() / Base > GustRatioThreshold;
+	const float Now = World->GetTimeSeconds();
+
+	// Передний фронт порыва, снаружи, не чаще GustCooldown.
+	if (bHigh && !bGustHigh && Now >= NextGustTime && Weather->GetInterior01() < 0.5f)
+	{
+		NextGustTime = Now + GustCooldown;
+		const APawn* Player = UGameplayStatics::GetPlayerPawn(this, 0);
+		PostEventByTrigger(TEXT("Weather:Gust"), Player ? Player->GetActorLocation() : FVector::ZeroVector);
+	}
+	bGustHigh = bHigh;
 }
 
 void URakisAudioDirector::LoadData()
@@ -151,31 +219,38 @@ const FRakisAudioEventRow* URakisAudioDirector::FindEventRow(FName EventID) cons
 	return EventsTable ? EventsTable->FindRow<FRakisAudioEventRow>(EventID, TEXT("RakisAudio"), false) : nullptr;
 }
 
-USoundBase* URakisAudioDirector::PickSoundForTrigger(const FString& Trigger, float* OutVolume)
+const FRakisAudioEventRow* URakisAudioDirector::FindRowFlexible(const FString& Key, const FString& AltTrigger, bool bRequire2D) const
 {
 	if (!EventsTable)
 	{
 		return nullptr;
 	}
-	const FName TriggerName(*Trigger);
+	// 1) По имени строки (EventID).
+	if (const FRakisAudioEventRow* ByName = EventsTable->FindRow<FRakisAudioEventRow>(FName(*Key), TEXT("RakisAudio"), false))
+	{
+		if (!bRequire2D || ByName->Is2D)
+		{
+			return ByName;
+		}
+	}
+	// 2) По полю Trigger.
+	const FName KeyName(*Key);
+	const FName AltName = AltTrigger.IsEmpty() ? NAME_None : FName(*AltTrigger);
 	const FRakisAudioEventRow* Best = nullptr;
 	for (const TPair<FName, uint8*>& Pair : EventsTable->GetRowMap())
 	{
 		const FRakisAudioEventRow* Row = reinterpret_cast<const FRakisAudioEventRow*>(Pair.Value);
-		if (Row && Row->Trigger == TriggerName && (!Best || Row->Priority > Best->Priority))
+		if (!Row || (bRequire2D && !Row->Is2D))
+		{
+			continue;
+		}
+		const bool bMatch = Row->Trigger == KeyName || (!AltName.IsNone() && Row->Trigger == AltName);
+		if (bMatch && (!Best || Row->Priority > Best->Priority))
 		{
 			Best = Row;
 		}
 	}
-	if (!Best)
-	{
-		return nullptr;
-	}
-	if (OutVolume)
-	{
-		*OutVolume = Best->Volume;
-	}
-	return LoadSound(Best->Asset, TriggerName);
+	return Best;
 }
 
 void URakisAudioDirector::PostEvent(FName EventID, const FVector& Location)
@@ -191,39 +266,55 @@ void URakisAudioDirector::PostEvent(FName EventID, const FVector& Location)
 		}
 		return;
 	}
+	PlayRow(*Row, EventID, Location);
+}
 
-	USoundBase* Sound = LoadSound(Row->Asset, EventID);
+bool URakisAudioDirector::PostEventByTrigger(FName Trigger, const FVector& Location)
+{
+	LoadData();
+	const FRakisAudioEventRow* Row = FindRowFlexible(Trigger.ToString(), FString(), false);
+	if (!Row)
+	{
+		return false;
+	}
+	PlayRow(*Row, Trigger, Location);
+	return true;
+}
+
+void URakisAudioDirector::PlayRow(const FRakisAudioEventRow& Row, FName WarnKey, const FVector& Location)
+{
+	USoundBase* Sound = LoadSound(Row.Asset, WarnKey);
 	if (!Sound)
 	{
 		return;
 	}
 
-	if (Row->Is2D)
+	if (Row.Is2D)
 	{
-		UGameplayStatics::PlaySound2D(this, Sound, Row->Volume);
+		UGameplayStatics::PlaySound2D(this, Sound, Row.Volume);
 		return;
 	}
 
 	USoundAttenuation* Attenuation = nullptr;
-	if (!Row->Attenuation.IsEmpty())
+	if (!Row.Attenuation.IsEmpty())
 	{
-		const FName AttKey(*Row->Attenuation);
+		const FName AttKey(*Row.Attenuation);
 		if (const TObjectPtr<USoundAttenuation>* Cached = AttenuationCache.Find(AttKey))
 		{
 			Attenuation = *Cached;
 		}
 		else
 		{
-			Attenuation = Cast<USoundAttenuation>(FSoftObjectPath(Row->Attenuation).TryLoad());
+			Attenuation = Cast<USoundAttenuation>(FSoftObjectPath(Row.Attenuation).TryLoad());
 			if (!Attenuation && !WarnedKeys.Contains(AttKey))
 			{
 				WarnedKeys.Add(AttKey);
-				UE_LOG(LogRakis, Warning, TEXT("Audio: затухание '%s' не найдено — используется затухание из ассета."), *Row->Attenuation);
+				UE_LOG(LogRakis, Warning, TEXT("Audio: затухание '%s' не найдено — используется затухание из ассета."), *Row.Attenuation);
 			}
 			AttenuationCache.Add(AttKey, Attenuation);
 		}
 	}
-	UGameplayStatics::SpawnSoundAtLocation(this, Sound, Location, FRotator::ZeroRotator, Row->Volume, 1.f, 0.f, Attenuation);
+	UGameplayStatics::SpawnSoundAtLocation(this, Sound, Location, FRotator::ZeroRotator, Row.Volume, 1.f, 0.f, Attenuation);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -256,7 +347,7 @@ void URakisAudioDirector::SetMusicState(ERakisMusicState NewState)
 	else if (bWormState && bAutoWormMusic)
 	{
 		// Явный WormThreat/WormReveal (StoryDirector, кат-сцена) тоже возвращается сам, когда угроза спадёт.
-		if (!RakisAudio::IsProtectedState(MusicState) || !bMusicStarted)
+		if (!RakisAudioDirectorPrivate::IsProtectedState(MusicState) || !bMusicStarted)
 		{
 			PreThreatState = bMusicStarted ? MusicState : ERakisMusicState::DesertCalm;
 		}
@@ -283,7 +374,12 @@ void URakisAudioDirector::ApplyMusicState(ERakisMusicState OldState)
 	EnsureAdaptiveMusic();
 	if (AdaptiveMusic)
 	{
-		AdaptiveMusic->SetIntParameter(RakisAudio::ParamStateIndex, static_cast<int32>(MusicState));
+		AdaptiveMusic->SetIntParameter(RakisAudioDirectorPrivate::ParamStateIndex, static_cast<int32>(MusicState));
+		// Громкость состояния из строки "Music.<State>" (Silence = 0) — плавно.
+		const FString StateName = MusicStateName(MusicState);
+		const FRakisAudioEventRow* Row = FindRowFlexible(FString::Printf(TEXT("Music.%s"), *StateName), FString::Printf(TEXT("Music:%s"), *StateName), false);
+		const float StateVolume = Row ? Row->Volume : (MusicState == ERakisMusicState::Silence ? 0.f : 1.f);
+		AdaptiveMusic->AdjustVolume(MusicFadeOut, FMath::Max(StateVolume, 0.001f));
 	}
 	else
 	{
@@ -316,17 +412,17 @@ void URakisAudioDirector::EnsureAdaptiveMusic()
 		bAdaptiveMissing = true;
 		return;
 	}
-	AdaptiveMusic->SetIntParameter(RakisAudio::ParamStateIndex, static_cast<int32>(MusicState));
-	AdaptiveMusic->SetFloatParameter(RakisAudio::ParamIntensity, SmoothedIntensity);
-	AdaptiveMusic->SetFloatParameter(RakisAudio::ParamWormThreat, SmoothedThreat);
-	AdaptiveMusic->SetFloatParameter(RakisAudio::ParamInterior, SmoothedInterior);
+	AdaptiveMusic->SetIntParameter(RakisAudioDirectorPrivate::ParamStateIndex, static_cast<int32>(MusicState));
+	AdaptiveMusic->SetFloatParameter(RakisAudioDirectorPrivate::ParamIntensity, SmoothedIntensity);
+	AdaptiveMusic->SetFloatParameter(RakisAudioDirectorPrivate::ParamWormThreat, SmoothedThreat);
+	AdaptiveMusic->SetFloatParameter(RakisAudioDirectorPrivate::ParamInterior, SmoothedInterior);
 	AdaptiveMusic->FadeIn(MusicFadeIn, 1.f);
 }
 
 void URakisAudioDirector::CrossfadeMusicTo(ERakisMusicState State)
 {
 	// Затухающий «позапрошлый» трек — убираем сразу.
-	RakisAudio::StopAndDestroy(MusicB);
+	RakisAudioDirectorPrivate::StopAndDestroy(MusicB);
 	MusicB = MusicA;
 	MusicA = nullptr;
 	if (MusicB)
@@ -339,15 +435,17 @@ void URakisAudioDirector::CrossfadeMusicTo(ERakisMusicState State)
 		return;
 	}
 
-	float RowVolume = 1.f;
-	USoundBase* Sound = PickSoundForTrigger(FString::Printf(TEXT("Music.%s"), *MusicStateName(State)), &RowVolume);
+	const FString StateName = MusicStateName(State);
+	const FRakisAudioEventRow* Row = FindRowFlexible(FString::Printf(TEXT("Music.%s"), *StateName), FString::Printf(TEXT("Music:%s"), *StateName), false);
+	const float RowVolume = Row ? Row->Volume : 1.f;
+	USoundBase* Sound = Row ? LoadSound(Row->Asset, FName(*FString::Printf(TEXT("Music.%s"), *StateName))) : nullptr;
 	if (!Sound)
 	{
-		const FName Key(*FString::Printf(TEXT("Music.%s"), *MusicStateName(State)));
+		const FName Key(*FString::Printf(TEXT("Music.%s"), *StateName));
 		if (!WarnedKeys.Contains(Key))
 		{
 			WarnedKeys.Add(Key);
-			UE_LOG(LogRakis, Warning, TEXT("Audio: нет строки DT_AudioEvents с Trigger=%s — тишина."), *Key.ToString());
+			UE_LOG(LogRakis, Warning, TEXT("Audio: нет звука для %s в DT_AudioEvents — тишина."), *Key.ToString());
 		}
 		return;
 	}
@@ -375,9 +473,9 @@ void URakisAudioDirector::UpdateMusicParams(float DeltaTime)
 
 	if (AdaptiveMusic)
 	{
-		AdaptiveMusic->SetFloatParameter(RakisAudio::ParamIntensity, SmoothedIntensity);
-		AdaptiveMusic->SetFloatParameter(RakisAudio::ParamWormThreat, SmoothedThreat);
-		AdaptiveMusic->SetFloatParameter(RakisAudio::ParamInterior, SmoothedInterior);
+		AdaptiveMusic->SetFloatParameter(RakisAudioDirectorPrivate::ParamIntensity, SmoothedIntensity);
+		AdaptiveMusic->SetFloatParameter(RakisAudioDirectorPrivate::ParamWormThreat, SmoothedThreat);
+		AdaptiveMusic->SetFloatParameter(RakisAudioDirectorPrivate::ParamInterior, SmoothedInterior);
 	}
 }
 
@@ -403,12 +501,19 @@ void URakisAudioDirector::SetAmbienceZone(ERakisZone Zone)
 	const bool bSietch = ZoneStr.StartsWith(TEXT("B"));
 
 	float RowVolume = 1.f;
+	USoundBase* Sound = nullptr;
 	FString Key = FString::Printf(TEXT("Amb.%s"), *ZoneStr);
-	USoundBase* Sound = PickSoundForTrigger(Key, &RowVolume);
-	if (!Sound)
+	const FRakisAudioEventRow* Row = FindRowFlexible(Key, FString::Printf(TEXT("ZoneEnter:%s"), *ZoneStr), /*bRequire2D*/ true);
+	if (!Row)
 	{
 		Key = bSietch ? TEXT("Amb.Sietch") : TEXT("Amb.Desert");
-		Sound = PickSoundForTrigger(Key, &RowVolume);
+		Row = FindRowFlexible(Key, FString(), true);
+	}
+	if (Row)
+	{
+		RowVolume = Row->Volume;
+		Sound = LoadSound(Row->Asset, FName(*Key));
+		Key = Row->Asset; // один и тот же бед для разных зон не перезапускается
 	}
 	if (!Sound)
 	{
@@ -418,14 +523,16 @@ void URakisAudioDirector::SetAmbienceZone(ERakisZone Zone)
 		Sound = LoadSound(Key, FName(*Key));
 	}
 
-	// Тот же бед (напр. B1→B2 без своего эмбиента) — не перезапускаем.
+	// Тот же бед (A1→A2 — один MS_Amb_Desert) — не перезапускаем, только плавно меняем громкость.
 	if (Key == AmbienceKey && AmbienceCurrent)
 	{
+		AmbienceCurrent->AdjustVolume(AmbienceCrossfade, RowVolume / FMath::Max(AmbienceCreatedRowVolume, 0.01f));
 		return;
 	}
 	AmbienceKey = Key;
+	AmbienceCreatedRowVolume = RowVolume;
 
-	RakisAudio::StopAndDestroy(AmbiencePrevious);
+	RakisAudioDirectorPrivate::StopAndDestroy(AmbiencePrevious);
 	AmbiencePrevious = AmbienceCurrent;
 	AmbienceCurrent = nullptr;
 	if (AmbiencePrevious)
@@ -451,12 +558,12 @@ void URakisAudioDirector::SetZoneReverb(UReverbEffect* Reverb)
 	}
 	if (ActiveReverb)
 	{
-		UGameplayStatics::DeactivateReverbEffect(this, RakisAudio::ZoneReverbTag);
+		UGameplayStatics::DeactivateReverbEffect(this, RakisAudioDirectorPrivate::ZoneReverbTag);
 	}
 	ActiveReverb = Reverb;
 	if (Reverb)
 	{
-		UGameplayStatics::ActivateReverbEffect(this, Reverb, RakisAudio::ZoneReverbTag, /*Priority*/ 1.f, /*Volume*/ 0.6f, ReverbFadeTime);
+		UGameplayStatics::ActivateReverbEffect(this, Reverb, RakisAudioDirectorPrivate::ZoneReverbTag, /*Priority*/ 1.f, /*Volume*/ 0.6f, ReverbFadeTime);
 	}
 }
 
@@ -524,7 +631,7 @@ void URakisAudioDirector::UpdateWorm()
 
 	if (!bInAutoThreat)
 	{
-		if (WormThreat > ThreatEnter && !RakisAudio::IsProtectedState(MusicState))
+		if (WormThreat > ThreatEnter && !RakisAudioDirectorPrivate::IsProtectedState(MusicState))
 		{
 			PreThreatState = MusicState;
 			bInAutoThreat = true;
@@ -563,4 +670,5 @@ void URakisAudioDirector::Tick(float DeltaTime)
 
 	UpdateWorm();
 	UpdateMusicParams(Elapsed);
+	UpdateGusts();
 }

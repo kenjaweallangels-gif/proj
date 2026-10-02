@@ -7,7 +7,7 @@ mat_master_materials.py — MPC_RakisWeather, мастер-материалы и
   /Game/Rakis/Materials/Master/   M_Landscape_Sand, M_Rock_Master, M_Sietch_Stone, M_Cloth_Worn,
                                   M_Worm_Chitin, M_Worm_Teeth, M_Glowglobe, M_Water_Still,
                                   M_Decal_Carving, M_Decal_Paint, M_Spice_Fabric,
-                                  + служебные M_Blockout, M_LF_GlowglobeFlicker
+                                  + служебные M_Blockout, M_LF_GlowglobeFlicker, M_FX_Dust
   /Game/Rakis/Materials/Instances/ MI_* (см. INSTANCES ниже)
 
 Идемпотентность:

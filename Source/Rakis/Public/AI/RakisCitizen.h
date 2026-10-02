@@ -168,9 +168,19 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Rakis|Crowd|Barks")
 	float BarkCooldownMax = 50.f;
 
-	/** Вероятность фразы во время пути на ритуал (за обновление, после кулдауна). */
+	/** Вероятность фразы во время пути на ритуал (за бросок; броски раз в 3–8 с после кулдауна). */
 	UPROPERTY(EditDefaultsOnly, Category = "Rakis|Crowd|Barks", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float RitualBarkChance = 0.05f;
+	float RitualBarkChance = 0.35f;
+
+	/** Звук работы на точке (SmartObject:<Type>) слышен игроку ближе этого, см. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rakis|Crowd|Audio")
+	float SpotSoundRadius = 1500.f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rakis|Crowd|Audio")
+	float SpotSoundIntervalMin = 6.f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rakis|Crowd|Audio")
+	float SpotSoundIntervalMax = 14.f;
 
 	/** Векторный параметр цвета ткани в материалах одежды (M_Cloth_Worn). */
 	UPROPERTY(EditDefaultsOnly, Category = "Rakis|Crowd|Visual")
@@ -215,6 +225,7 @@ private:
 	void RequestTurnTo(float Yaw);
 	void UpdateBarks(const APawn* Player, float DistToPlayer, float Now);
 	bool PlayBark(FName Context);
+	void UpdateSpotSound(float DistToPlayer, float Now);
 
 	URakisCrowdSubsystem* GetCrowd() const;
 
@@ -237,6 +248,7 @@ private:
 	bool bHasHallCentre = false;
 
 	float NextBarkTime = 0.f;
+	float NextSpotSoundTime = 0.f;
 	float NextStrangerBarkTime = 0.f;
 	bool bPlayerWasClose = false;
 

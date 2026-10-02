@@ -28,8 +28,8 @@ public:
 
 	// IRakisInteractable
 	virtual FText GetInteractVerb() const override { return InteractVerb; }
-	virtual bool CanInteract(ARakisCharacter* Instigator) const override { return Instigator != nullptr; }
-	virtual void Interact(ARakisCharacter* Instigator) override;
+	virtual bool CanInteract(ARakisCharacter* Interactor) const override { return Interactor != nullptr; }
+	virtual void Interact(ARakisCharacter* Interactor) override;
 
 	UFUNCTION(BlueprintPure, Category = "Rakis|Thumper")
 	bool IsThumping() const { return bThumping; }

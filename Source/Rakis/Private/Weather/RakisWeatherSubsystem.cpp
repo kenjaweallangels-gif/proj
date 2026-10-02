@@ -24,7 +24,7 @@
 #include "Materials/MaterialParameterCollection.h"
 #include "UObject/UnrealType.h"
 
-namespace RakisWeather
+namespace RakisWeatherPrivate
 {
 	static const FName TagSun(TEXT("Rakis.Sun"));
 	static const FName TagSkyLight(TEXT("Rakis.SkyLight"));
@@ -261,7 +261,7 @@ void URakisWeatherSubsystem::LoadData()
 		}
 		if (!WeatherMPC)
 		{
-			WeatherMPC = LoadObject<UMaterialParameterCollection>(nullptr, RakisWeather::FallbackMPCPath, nullptr, LOAD_NoWarning | LOAD_Quiet);
+			WeatherMPC = LoadObject<UMaterialParameterCollection>(nullptr, RakisWeatherPrivate::FallbackMPCPath, nullptr, LOAD_NoWarning | LOAD_Quiet);
 		}
 		if (!WeatherMPC && !bWarnedNoMPC)
 		{
@@ -273,7 +273,7 @@ void URakisWeatherSubsystem::LoadData()
 
 void URakisWeatherSubsystem::BuildBuiltInPresets()
 {
-	using RakisWeather::MakePreset;
+	using RakisWeatherPrivate::MakePreset;
 	BuiltInPresets.Reset();
 
 	// Значения — физические (люксы), ориентир docs/06 §1.2 и docs/04 «Освещение и пост».
@@ -364,7 +364,7 @@ void URakisWeatherSubsystem::RequestPreset(FName PresetId, float BlendSeconds)
 
 void URakisWeatherSubsystem::SetTimeOfDay(float Hours)
 {
-	const float H = RakisWeather::WrapHours(Hours);
+	const float H = RakisWeatherPrivate::WrapHours(Hours);
 	Current.TimeOfDayHours = H;
 	FromPreset.TimeOfDayHours = H;
 	ToPreset.TimeOfDayHours = H;
@@ -388,7 +388,7 @@ FRakisWeatherPresetRow URakisWeatherSubsystem::LerpPreset(const FRakisWeatherPre
 	float DeltaH = B.TimeOfDayHours - A.TimeOfDayHours;
 	if (DeltaH > 12.f) { DeltaH -= 24.f; }
 	if (DeltaH < -12.f) { DeltaH += 24.f; }
-	R.TimeOfDayHours = RakisWeather::WrapHours(A.TimeOfDayHours + DeltaH * Alpha);
+	R.TimeOfDayHours = RakisWeatherPrivate::WrapHours(A.TimeOfDayHours + DeltaH * Alpha);
 
 	// Свет удобнее смешивать в логарифме (люксы различаются на порядки).
 	const float LogA = FMath::Loge(FMath::Max(A.SunIntensityLux, 1.f));
@@ -435,12 +435,12 @@ void URakisWeatherSubsystem::RefreshSceneActors()
 
 		if (UDirectionalLightComponent* Dir = Actor->FindComponentByClass<UDirectionalLightComponent>())
 		{
-			if (Actor->ActorHasTag(RakisWeather::TagSun) && !TaggedSun) { TaggedSun = Dir; }
+			if (Actor->ActorHasTag(RakisWeatherPrivate::TagSun) && !TaggedSun) { TaggedSun = Dir; }
 			if (!FirstSun) { FirstSun = Dir; }
 		}
 		if (USkyLightComponent* Sky = Actor->FindComponentByClass<USkyLightComponent>())
 		{
-			if (Actor->ActorHasTag(RakisWeather::TagSkyLight) && !TaggedSky) { TaggedSky = Sky; }
+			if (Actor->ActorHasTag(RakisWeatherPrivate::TagSkyLight) && !TaggedSky) { TaggedSky = Sky; }
 			if (!FirstSky) { FirstSky = Sky; }
 		}
 		if (!HeightFog.IsValid())
@@ -456,12 +456,12 @@ void URakisWeatherSubsystem::RefreshSceneActors()
 			if (USkyAtmosphereComponent* Atmo = Actor->FindComponentByClass<USkyAtmosphereComponent>())
 			{
 				SkyAtmosphere = Atmo;
-				BaseMieScatteringScale = RakisWeather::ReadFloatProperty(Atmo, TEXT("MieScatteringScale"), 0.003996f);
+				BaseMieScatteringScale = RakisWeatherPrivate::ReadFloatProperty(Atmo, TEXT("MieScatteringScale"), 0.003996f);
 			}
 		}
 		if (APostProcessVolume* PP = Cast<APostProcessVolume>(Actor))
 		{
-			if (PP->ActorHasTag(RakisWeather::TagGlobalPP))
+			if (PP->ActorHasTag(RakisWeatherPrivate::TagGlobalPP))
 			{
 				GlobalPP = PP;
 			}
@@ -498,7 +498,7 @@ void URakisWeatherSubsystem::RefreshSceneActors()
 	// Динамический инстанс материала облаков — один раз.
 	if (UVolumetricCloudComponent* Cloud = Clouds.Get())
 	{
-		UMaterialInterface* CloudMat = RakisWeather::GetCloudMaterial(Cloud);
+		UMaterialInterface* CloudMat = RakisWeatherPrivate::GetCloudMaterial(Cloud);
 		if (CloudMat && CloudMat != CloudMID)
 		{
 			if (UMaterialInstanceDynamic* AsMID = Cast<UMaterialInstanceDynamic>(CloudMat))
@@ -543,9 +543,9 @@ void URakisWeatherSubsystem::Tick(float DeltaTime)
 	if (TimeScaleHoursPerSecond != 0.f)
 	{
 		const float Advance = TimeScaleHoursPerSecond * DeltaTime;
-		Current.TimeOfDayHours = RakisWeather::WrapHours(Current.TimeOfDayHours + Advance);
-		FromPreset.TimeOfDayHours = RakisWeather::WrapHours(FromPreset.TimeOfDayHours + Advance);
-		ToPreset.TimeOfDayHours = RakisWeather::WrapHours(ToPreset.TimeOfDayHours + Advance);
+		Current.TimeOfDayHours = RakisWeatherPrivate::WrapHours(Current.TimeOfDayHours + Advance);
+		FromPreset.TimeOfDayHours = RakisWeatherPrivate::WrapHours(FromPreset.TimeOfDayHours + Advance);
+		ToPreset.TimeOfDayHours = RakisWeatherPrivate::WrapHours(ToPreset.TimeOfDayHours + Advance);
 	}
 
 	InteriorCurrent = FMath::FInterpConstantTo(InteriorCurrent, InteriorTarget, DeltaTime, InteriorRate);
@@ -626,7 +626,7 @@ void URakisWeatherSubsystem::ApplyToScene(float DeltaTime, bool bApplyStatic)
 	if (USkyLightComponent* Sky = SkyLight.Get())
 	{
 		Sky->SetIntensity(Current.SkyLightIntensity);
-		if (!RakisWeather::ReadBoolProperty(Sky, TEXT("bRealTimeCapture"), false))
+		if (!RakisWeatherPrivate::ReadBoolProperty(Sky, TEXT("bRealTimeCapture"), false))
 		{
 			const bool bSunMoved = FMath::Abs(SunElevationDeg - LastRecaptureElevation) > SkyRecaptureSunDeltaDeg;
 			if ((bSunMoved || bBlending) && Now - LastRecaptureTime > SkyRecaptureMinInterval)
@@ -732,7 +732,7 @@ void URakisWeatherSubsystem::WriteMPC()
 	{
 		return;
 	}
-	using namespace RakisWeather;
+	using namespace RakisWeatherPrivate;
 
 	WriteScalar(P_WindSpeed, GustedWindSpeed);
 	WriteScalar(P_StormIntensity, Current.StormIntensity);
