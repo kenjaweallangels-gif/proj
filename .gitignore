@@ -11,3 +11,4 @@ __pycache__/
 orchestrator/logs/
 Export/
 .env
+.claude/worktrees/
