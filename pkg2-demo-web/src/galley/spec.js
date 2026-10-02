@@ -237,6 +237,7 @@ for (const p of PANELS) {
     else p.corners = { C: p.cornersFront };       // перегородки: верхний передний угол
   }
   p.outline = p.profile === 'side' ? sideProfile() : rectOutline(p.rect, p.edges, p.corners);
+  p.holes = [];
 }
 
 /** Прямоугольник шипа в локальных (u, v) координатах панели a. */
@@ -380,6 +381,16 @@ export const PLUMBING = [
   { id: 'WL-2', kind: 'water', designation: 'КМ2.700.030', name: 'Отвод воды к крану', d: 10, color: '#d9dde0',
     path: [[-760, 1060, G.tBack + 18], [-760, 1060, 560], [SINK.x, 1060, 622], [SINK.x, G.deckTop, 622]] },
 ];
+
+/** Скруглённый прямоугольник (u, v) — для вырезов. */
+export function roundedRect(cu, cv, w, h, r, n = 6) {
+  return rectOutline({ u0: cu - w / 2, u1: cu + w / 2, v0: cv - h / 2, v1: cv + h / 2 }, {}, { A: r, B: r, C: r, D: r }).slice(0, 4 * (n + 3));
+}
+export function circle(cu, cv, r, n = 24) {
+  return Array.from({ length: n }, (_, i) => [cu + Math.cos((i / n) * Math.PI * 2) * r, cv + Math.sin((i / n) * Math.PI * 2) * r]);
+}
+// вырезы в столе: под раковину (по борту −10 мм) и под кран
+panelById.get('DECK').holes = [roundedRect(SINK.x, SINK.z, SINK.w - 20, SINK.d - 20, 30), circle(SINK.x, 622, 18)];
 
 // ---------- дверцы, петли, защёлки ----------
 // верхние отсеки — дверцы на двух петлях с поворотной защёлкой; отсек отходов — дверца с откидным клапаном

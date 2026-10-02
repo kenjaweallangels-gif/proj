@@ -19,3 +19,4 @@ pkg2-demo-web/test-results/
 data/real/
 pkg2-demo-web/public/data/
 pkg2-demo-web/public/markers/
+pkg2-demo-web/gshot.mjs

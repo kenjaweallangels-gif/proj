@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DOCUMENTS, docByCode, normalizeCode, searchDocs, TASK } from '../src/galley/catalog.js';
-import { OPERATIONS, ProcessRun, STEPS, checkValue, normByOperation, stateBefore, stepsForFeature } from '../src/galley/process.js';
+import { DONE_BEFORE_SHIFT, OPERATIONS, ProcessRun, STEPS, checkValue, normByOperation, stateBefore, stateFrom, stepsForFeature } from '../src/galley/process.js';
 import {
   BRACKETS, FASTENERS, G, GROOVES, JOINTS, PANELS, TROLLEY, BAYS, featureById, featuresNear, outlineArea, panelBox, panelById, rectOutline, slab,
 } from '../src/galley/spec.js';
@@ -151,6 +151,17 @@ describe('техпроцесс', () => {
     const b = BRACKETS.find((x) => x.joint === 'J-DECK-L');
     expect(stepsForFeature(b.id).map((s) => s.id)).toContain('090.02');
     expect(stepsForFeature('J-DECK-L').map((s) => s.id)).toContain('060.01');
+  });
+
+  it('шаги, выполненные предыдущей сменой, пропускаются: после 010.04 — сразу 060.01', () => {
+    const run = new ProcessRun(STEPS, STEPS.findIndex((s) => s.id === '010.04'), DONE_BEFORE_SHIFT);
+    run.next();
+    expect(run.step.id).toBe('060.01');
+    run.prev();
+    expect(run.step.id).toBe('010.04');
+    const st = stateFrom(run.index, DONE_BEFORE_SHIFT);
+    expect(st.installed.has('DIV-T2')).toBe(true);
+    expect(st.installed.has('DECK')).toBe(false);
   });
 
   it('нормы времени по операциям положительны', () => {

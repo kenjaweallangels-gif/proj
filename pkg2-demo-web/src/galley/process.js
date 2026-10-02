@@ -401,9 +401,10 @@ export function stepsForFeature(id) {
 // ---------- движок исполнения с таймерами ----------
 // Время «участка» идёт с ускорением (демо), таймеры — в минутах участка. Блокирующий таймер не даёт перейти дальше.
 export class ProcessRun {
-  constructor(steps = STEPS, startIndex = 0) {
+  constructor(steps = STEPS, startIndex = 0, done = new Set()) {
     this.steps = steps;
     this.index = startIndex;
+    this.done = done;            // выполнены ранее (другой сменой) — пропускаются
     this.timers = [];            // {id, step, label, kind, endMin, blocking}
     this.clockMin = 0;           // минуты участка с начала смены
     this.log = [];
@@ -453,8 +454,10 @@ export class ProcessRun {
     const s = this.step;
     this.emit({ event: 'step_done', step: s.id });
     if (s.timer && s.timer.blocking === false) this.startTimer(s);      // жизнеспособность — тикает во время работы
-    if (this.index < this.steps.length - 1) {
-      this.index++;
+    let i = this.index + 1;
+    while (i < this.steps.length && this.done.has(this.steps[i].id)) i++;
+    if (i < this.steps.length) {
+      this.index = i;
       const n = this.step;
       if (n.timer && n.timer.blocking) this.startTimer(n);              // выдержка начинается с началом шага
       this.emit({ event: 'step', step: n.id });
@@ -470,7 +473,11 @@ export class ProcessRun {
     this.emit({ event: 'timer_start', timer: t });
   }
 
-  prev() { if (this.index > 0) { this.index--; this.emit({ event: 'step', step: this.step.id }); } }
+  prev() {
+    let i = this.index - 1;
+    while (i >= 0 && this.done.has(this.steps[i].id)) i--;
+    if (i >= 0) { this.index = i; this.emit({ event: 'step', step: this.step.id }); }
+  }
 
   goto(id) {
     const i = this.steps.findIndex((s) => s.id === id);
@@ -484,3 +491,13 @@ export class ProcessRun {
   /** Остаток таймера, мин (≥ 0). */
   remaining(t) { return Math.max(0, t.endMin - this.clockMin); }
 }
+
+/** Состояние изделия по прогону: выполненные ранее шаги (done) + все шаги до текущего. */
+export function stateFrom(index, done = new Set()) {
+  const st = { installed: new Set(), glued: new Set(), paint: null, film: new Set(), fastened: new Set() };
+  STEPS.forEach((s, i) => { if (i < index || done.has(s.id)) applyStep(st, s); });
+  return st;
+}
+
+/** Шаги, выполненные предыдущей сменой по заданию (оп. 020–050) — модуль на стапеле уже частично собран. */
+export const DONE_BEFORE_SHIFT = new Set(STEPS.filter((s) => ['020', '030', '040', '050'].includes(s.op)).map((s) => s.id));
