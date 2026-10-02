@@ -89,7 +89,7 @@ void ARakisSealDoor::SetupPanels()
 	RightPanel->SetRelativeScale3D(Scale);
 
 	Doorway->SetRelativeLocation(FVector(0.f, 0.f, H * 0.5f));
-	Doorway->SetBoxExtent(FVector(FMath::Max(PanelSize.X, 60.f) * 2.f, W, H * 0.5f));
+	Doorway->SetBoxExtent(FVector(FMath::Max<double>(PanelSize.X, 60.0) * 2.f, W, H * 0.5f));
 }
 
 void ARakisSealDoor::OnConstruction(const FTransform& Transform)

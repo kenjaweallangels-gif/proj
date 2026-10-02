@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Core/RakisTypes.h"
+#include "Engine/TimerHandle.h"
 #include "RakisWorm.generated.h"
 
 class USceneComponent;

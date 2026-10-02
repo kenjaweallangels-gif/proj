@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Core/RakisTypes.h"
+#include "Engine/TimerHandle.h"
 #include "RakisNoiseComponent.generated.h"
 
 /** Походка игрока — определяет базовую громкость шага. */

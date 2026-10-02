@@ -5,6 +5,7 @@
 #include "Engine/EngineTypes.h"
 #include "Core/RakisTypes.h"
 #include "Noise/RakisNoiseComponent.h"
+#include "Engine/TimerHandle.h"
 #include "RakisCharacter.generated.h"
 
 class UCameraComponent;

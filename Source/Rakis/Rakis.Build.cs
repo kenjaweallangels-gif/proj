@@ -9,7 +9,7 @@ public class Rakis : ModuleRules
 
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
-			"Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput",
+			"Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "PhysicsCore",
 			"GameplayTags", "DeveloperSettings",
 			"UMG", "Slate", "SlateCore",
 			"Niagara", "AudioMixer", "MetasoundEngine", "AudioModulation",

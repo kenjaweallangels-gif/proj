@@ -130,6 +130,7 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UCameraShakeBase> WormShakeInstance;
 
-	uint64 RumbleHandle = 0;
+	/** Хэндл динамической вибрации (тип движка, в 5.x — целочисленный typedef). */
+	FDynamicForceFeedbackHandle RumbleHandle = 0;
 	bool bInputBuilt = false;
 };

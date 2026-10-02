@@ -879,13 +879,13 @@ void ARakisWorm::UpdateMovement(float DeltaSeconds)
 		const FVector ToDesired = FVector(Desired.X - HeadLocation.X, Desired.Y - HeadLocation.Y, 0.f);
 		if (ToDesired.SizeSquared() > FMath::Square(100.f))
 		{
-			HeadYaw = FMath::FixedTurn(HeadYaw, ToDesired.Rotation().Yaw, TurnRate * DeltaSeconds);
+			HeadYaw = FMath::FixedTurn(HeadYaw, static_cast<float>(ToDesired.Rotation().Yaw), TurnRate * DeltaSeconds);
 		}
 	}
 
 	const FVector Forward = FRotator(0.f, HeadYaw, 0.f).Vector();
 	FVector NewLocation = HeadLocation + Forward * Speed * DeltaSeconds;
-	NewLocation.Z = FMath::FInterpConstantTo(HeadLocation.Z, GroundZ + TargetHeight, DeltaSeconds, Tuning->VerticalSpeed);
+	NewLocation.Z = FMath::FInterpConstantTo(static_cast<float>(HeadLocation.Z), GroundZ + TargetHeight, DeltaSeconds, Tuning->VerticalSpeed);
 	MoveHeadTo(NewLocation, DeltaSeconds);
 }
 
@@ -932,7 +932,7 @@ void ARakisWorm::MoveHeadTo(const FVector& NewLocation, float DeltaSeconds)
 	const float Horizontal = Delta.Size2D();
 	if (Horizontal > KINDA_SMALL_NUMBER || FMath::Abs(Delta.Z) > KINDA_SMALL_NUMBER)
 	{
-		const float TargetPitch = FMath::RadiansToDegrees(FMath::Atan2(Delta.Z, FMath::Max(Horizontal, 1.f)));
+		const float TargetPitch = FMath::RadiansToDegrees(FMath::Atan2(static_cast<float>(Delta.Z), FMath::Max(Horizontal, 1.f)));
 		HeadPitch = FMath::FInterpTo(HeadPitch, FMath::Clamp(TargetPitch, -70.f, 70.f), DeltaSeconds, 2.5f);
 	}
 	HeadLocation = NewLocation;

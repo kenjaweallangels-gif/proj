@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import contextlib
 import os
 from typing import Iterable
 
@@ -76,20 +77,75 @@ def rakis_class(name: str):
 
 
 # ---------------------------------------------------------------- уровни
+# LevelEditorSubsystem (UE 5.6): new_level(asset_path, is_partitioned_world=False) -> bool,
+# load_level(asset_path) -> bool, save_current_level() -> bool, save_all_dirty_levels() -> bool,
+# set_current_level_by_name(level_name: Name) -> bool.
+# load_level/new_level НЕ спрашивают о сохранении — несохранённые правки текущей карты теряются,
+# поэтому перед сменой карты сохраняем грязные уровни, если текущая карта — наша (/Game/Rakis/...).
+def current_world_package() -> str:
+    """Пакет открытой в редакторе карты ('/Game/Rakis/Maps/L_Rakis_Persistent') или ''."""
+    try:
+        world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
+        return str(world.get_path_name()).split(".")[0] if world else ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def save_dirty_maps_if_ours() -> None:
+    """Сохраняет грязные уровни перед load_level/new_level (только если открыта карта проекта —
+    у безымянной Untitled-карты save вызвал бы диалог «Save As»)."""
+    if current_world_package().startswith(GAME_ROOT + "/"):
+        try:
+            level_ss.save_all_dirty_levels()
+        except Exception as e:  # noqa: BLE001
+            warn(f"save_all_dirty_levels: {e}")
+
+
+def open_map(map_path: str) -> bool:
+    """Открывает карту, если она ещё не открыта (повторная загрузка сбрасывает стриминг/выделение)."""
+    if current_world_package() == map_path:
+        return True
+    save_dirty_maps_if_ours()
+    return bool(level_ss.load_level(map_path))
+
+
 def open_or_create_level(map_path: str) -> None:
     if eal.does_asset_exist(map_path):
-        level_ss.load_level(map_path)
+        open_map(map_path)
     else:
-        level_ss.new_level(map_path)
+        save_dirty_maps_if_ours()
+        level_ss.new_level(map_path, False)   # не World Partition: стриминг подуровнями (§2.3)
 
 
 def all_actors() -> list:
     return list(actor_ss.get_all_level_actors())
 
 
+def actor_tags(actor) -> list:
+    """Actor.tags (Array[Name], Read-Write) — читаем через get_editor_property, атрибут — фолбэк."""
+    try:
+        return list(actor.get_editor_property("tags"))
+    except Exception:  # noqa: BLE001
+        return list(getattr(actor, "tags", []) or [])
+
+
+def add_tags(actor, tags: Iterable[str]) -> None:
+    """Дописывает теги без дублей. set_editor_property вызывает Modify/PostEditChange (undo, dirty)."""
+    cur = actor_tags(actor)
+    have = {str(t) for t in cur}
+    new = cur + [unreal.Name(t) for t in tags if t not in have]
+    try:
+        actor.set_editor_property("tags", new)
+    except Exception:  # noqa: BLE001
+        actor.tags = new
+
+
+def has_tag(actor, tag: str) -> bool:
+    return tag in {str(t) for t in actor_tags(actor)}
+
+
 def actors_with_tag(tag: str) -> list:
-    t = unreal.Name(tag)
-    return [a for a in all_actors() if t in a.tags]
+    return [a for a in all_actors() if has_tag(a, tag)]
 
 
 def delete_generated(gen_tag: str) -> int:
@@ -116,10 +172,34 @@ def spawn(cls_or_asset, location, rotation=(0, 0, 0), scale=(1, 1, 1),
     if label:
         actor.set_actor_label(label)
     if tags:
-        actor.tags = list(actor.tags) + [unreal.Name(t) for t in tags]
+        add_tags(actor, tags)
     if folder:
-        actor.set_folder_path(folder)
+        actor.set_folder_path(folder)   # Actor.set_folder_path(new_folder_path: Name)
     return actor
+
+
+def fit_box_volume(actor, size_cm, base_cm: float = 200.0) -> bool:
+    """Подгоняет AVolume (Trigger/Blocking/NavMeshBounds/Audio/PCG/ARakisZoneVolume) под размер size_cm=(X,Y,Z).
+
+    В Python UE 5.6 нет API перестроения кисти (BrushBuilder.build не экспонирован, CubeBuilder в Python
+    отсутствует). EditorActorSubsystem.spawn_actor_from_class идёт через actor factory; для подклассов AVolume
+    это UActorFactoryBoxVolume — кисть-куб 200 см. Размер задаём масштабом, но базу меряем по фактическим
+    границам (get_actor_bounds), а не верим 200 см на слово. Возвращает False, если кисти нет."""
+    sx, sy, sz = (float(v) for v in size_cm)
+    actor.set_actor_scale3d(unreal.Vector(1.0, 1.0, 1.0))
+    bx = by = bz = 0.0
+    try:
+        _origin, ext = actor.get_actor_bounds(False)
+        bx, by, bz = ext.x * 2.0, ext.y * 2.0, ext.z * 2.0
+    except Exception:  # noqa: BLE001
+        pass
+    ok = min(bx, by, bz) >= 1.0
+    if not ok:
+        warn(f"{actor.get_actor_label()}: у объёма нет кисти (bounds={bx:.0f}×{by:.0f}×{bz:.0f}) — "
+             f"масштаб от базы {base_cm:.0f} см; если объём не работает: Details ▸ Brush Settings ▸ Box {base_cm:.0f}")
+        bx = by = bz = base_cm
+    actor.set_actor_scale3d(unreal.Vector(sx / bx, sy / by, sz / bz))
+    return ok
 
 
 ENGINE_SHAPES = {
@@ -154,5 +234,32 @@ def set_prop(obj, name: str, value) -> bool:
 
 
 def transaction(title: str):
-    """with transaction("Rakis: blockout desert"): ...  (обёртка над ScopedEditorTransaction)"""
+    """with transaction("Rakis: blockout desert"): ...  (обёртка над ScopedEditorTransaction(desc)).
+    ВАЖНО: открывать/создавать карты (load_level/new_level) — ДО транзакции: загрузка карты сбрасывает
+    буфер undo (UTransBuffer::Reset → ensure(ActiveCount == 0))."""
     return unreal.ScopedEditorTransaction(title)
+
+
+# ---------------------------------------------------------------- импорт FBX
+FBX_INTERCHANGE_CVAR = "Interchange.FeatureFlags.Import.FBX"
+
+
+@contextlib.contextmanager
+def legacy_fbx_import():
+    """В UE 5.5+ FBX по умолчанию импортирует Interchange: опции AssetImportTask.options = FbxImportUI
+    (build_nanite, mesh_type_to_import, skeleton, …) и destination_name им не гарантированно учитываются.
+    На время импорта выключаем CVar Interchange.FeatureFlags.Import.FBX → классический UFbxFactory,
+    затем восстанавливаем прежнее значение. Если CVar нет (другая версия) — ничего не меняется."""
+    sl = unreal.SystemLibrary
+    prev = False
+    try:
+        prev = bool(sl.get_console_variable_bool_value(FBX_INTERCHANGE_CVAR))
+    except Exception:  # noqa: BLE001
+        prev = False
+    if prev:
+        sl.execute_console_command(None, f"{FBX_INTERCHANGE_CVAR} 0")
+    try:
+        yield prev
+    finally:
+        if prev:
+            sl.execute_console_command(None, f"{FBX_INTERCHANGE_CVAR} 1")

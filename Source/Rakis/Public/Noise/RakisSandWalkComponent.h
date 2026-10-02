@@ -54,7 +54,7 @@ public:
 	void ResetRhythm();
 
 	/** Чистая формула регулярности: 1 − clamp(CV / CVReference); меньше 2 интервалов → 0. */
-	static float ComputeRegularity(const TArray<float>& Intervals, float CVReference = 0.35f);
+	static float ComputeRegularity(const TArray<float>& InIntervals, float CVReference = 0.35f);
 
 	/** Каждый шаг (не только в походке по песку) — HUD обновляет засечки. */
 	UPROPERTY(BlueprintAssignable, Category = "Rakis|SandWalk")

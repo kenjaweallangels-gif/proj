@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "Engine/TimerHandle.h"
 #include "RakisHydrationComponent.generated.h"
 
 class ADirectionalLight;

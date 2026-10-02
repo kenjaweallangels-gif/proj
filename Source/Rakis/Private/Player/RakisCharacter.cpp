@@ -194,7 +194,7 @@ void ARakisCharacter::Input_Look(const FInputActionValue& Value)
 	const FVector2D Axis = Value.Get<FVector2D>();
 	FRotator Rotation = Controller->GetControlRotation();
 	Rotation.Yaw = FRotator::NormalizeAxis(Rotation.Yaw + Axis.X);
-	Rotation.Pitch = FMath::Clamp(FRotator::NormalizeAxis(Rotation.Pitch + Axis.Y), MinViewPitch, MaxViewPitch);
+	Rotation.Pitch = FMath::Clamp<double>(FRotator::NormalizeAxis(Rotation.Pitch + Axis.Y), MinViewPitch, MaxViewPitch);
 	Rotation.Roll = 0.f;
 	Controller->SetControlRotation(Rotation);
 }
@@ -490,8 +490,11 @@ ERakisSurface ARakisCharacter::SurfaceFromHit(const FHitResult& Hit) const
 		}
 	}
 
-	// 2) Physical Material.
-	const ERakisSurface FromMaterial = SurfaceFromPhysicalSurface(UPhysicalMaterial::DetermineSurfaceType(Hit.PhysMaterial.Get()));
+	// 2) Physical Material. Читаем SurfaceType напрямую, а не через UPhysicalMaterial::DetermineSurfaceType:
+	// та живёт в модуле PhysicsCore (PHYSICSCORE_API), которого нет в Rakis.Build.cs → риск LNK2019.
+	const UPhysicalMaterial* PhysMat = Hit.PhysMaterial.Get();
+	const EPhysicalSurface PhysSurface = PhysMat ? PhysMat->SurfaceType.GetValue() : SurfaceType_Default;
+	const ERakisSurface FromMaterial = SurfaceFromPhysicalSurface(PhysSurface);
 	return FromMaterial != ERakisSurface::Unknown ? FromMaterial : DefaultSurface;
 }
 
@@ -599,7 +602,7 @@ void ARakisCharacter::HandleFootstep(bool bLeftFoot)
 	NoiseComponent->AddNoiseAt(Loudness, FootstepSource, FootLocation);
 
 	const bool bSandy = CurrentSurface == ERakisSurface::Sand || CurrentSurface == ERakisSurface::PackedSand;
-	const float Speed01 = FMath::Clamp(GetVelocity().Size2D() / FMath::Max(RunSpeed, 1.f), 0.f, 1.f);
+	const float Speed01 = FMath::Clamp(static_cast<float>(GetVelocity().Size2D()) / FMath::Max(RunSpeed, 1.f), 0.f, 1.f);
 
 	if (bSandy && LoadedFootstepFX)
 	{

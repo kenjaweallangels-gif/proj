@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Engine/EngineTypes.h"
+#include "Engine/TimerHandle.h"
 #include "RakisInteractionComponent.generated.h"
 
 class ARakisCharacter;

@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Interaction/RakisInteractable.h"
+#include "Engine/TimerHandle.h"
 #include "RakisFalseRock.generated.h"
 
 class UStaticMeshComponent;
