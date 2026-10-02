@@ -9,17 +9,18 @@ env_worm.py — меши червя Шай-Хулуда (T-010, по контр�
                                     Кольцо = «мягкая» трубка с поперечными валиками + 36 перекрывающихся
                                     хитиновых пластин (черепица, задний «козырёк» 0.4 м налегает на соседнее кольцо),
                                     продольные борозды между пластинами, тонкие гребни на пластинах.
-    Export/SM_Worm_Head.fbx       — голова 10 м: переход к краю пасти (Ø36 м), губа, глотка внутрь (Ø28→20 м).
-                                    pivot — x=0 (стык с первым кольцом).
-    Export/SM_Worm_MouthPetal.fbx — ОДИН лепесток (треть «конуса» пасти, 120°). pivot — на шарнире у края пасти,
-                                    локальная ось Y — ось вращения (раскрытие = pitch вокруг Y).
-                                    Размещение 3 копий: в системе головы позиция (10 м, 0, 18 м) повёрнутая
-                                    roll = 0°/120°/240° вокруг X; раскрытие ≈ −100° (наружу).
+    Export/SM_Worm_Head.fbx       — голова 30 м (= WormTuning.HeadLength): переход к краю пасти (Ø36 м), губа,
+                                    глотка внутрь (Ø28→20 м). pivot — СЕРЕДИНА головы (x=0), губа на x=+15 м —
+                                    так её ставит ARakisWorm (HeadMesh без смещения, шарниры лепестков на HeadLength/2).
+    Export/SM_Worm_MouthPetal.fbx — ОДИН лепесток (треть «бутона» пасти, 120°). Поза покоя «прямо вперёд» (хорда
+                                    шарнир→остриё вдоль +X, длина ≈23 м = 1.15 R), pivot — центр габарита по X,
+                                    шарнир на −X-торце (z=0). ARakisWorm: опора-шарнир (HeadLength/2, 0, 0.9 R) × roll
+                                    0/120/240°, меш смещён на +PetalLength/2; pitch −62° закрыт («бутон»), +42° раскрыт.
     Export/SM_Worm_Teeth.fbx      — 5 колец кристаллических зубов в глотке (кромки назад, «в горло»),
-                                    pivot совпадает с головой (ставится с тем же трансформом).
+                                    pivot совпадает с головой (ставится с тем же трансформом, напр. в сокет HeadMesh).
 Слоты: MI_Worm_Chitin (пластины, лепестки снаружи), MI_Worm_Flesh (трубка, складки, внутренняя сторона лепестков),
 MI_Worm_Throat (глотка), MI_Worm_Teeth (зубы) — env_import.py назначает MI с фолбэком на MI_Worm_Chitin.
-Бюджет (detail 1.0): сегмент ≈ 35–40 тыс. тр., голова ≈ 60 тыс., лепесток ≈ 10 тыс., зубы ≈ 15 тыс.
+Бюджет (detail 1.0): сегмент ≈ 44 тыс. тр., голова ≈ 60 тыс., лепесток ≈ 5 тыс., зубы ≈ 9 тыс.
 """
 from __future__ import annotations
 
@@ -35,11 +36,11 @@ import env_common  # noqa: E402
 RADIUS = 20.0            # м (Ø40 по контракту)
 SEG_LEN = 4.0
 PLATES = 36
-HEAD_LEN = 10.0
+HEAD_LEN = 30.0         # = URakisWormTuning::HeadLength (3000 см)
 RIM_R = 18.0
 THROAT_R0 = 14.0         # у края
 THROAT_R1 = 10.0         # в глубине
-PETAL_LEN = 15.0         # от шарнира до острия (в закрытом виде)
+PETAL_LEN = 15.0         # проекция на ось в позе «бутон»; хорда шарнир→остриё ≈ 23 м = 1.15 R (ARakisWorm::PetalLength)
 
 
 def grid(bm, fn, nu, nv, closed_u=False, closed_v=False, mat=0, flip=False):
@@ -200,6 +201,7 @@ def build_head(detail, seed):
         f.material_index = 1
     bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=0.01)          # сварка швов корпус/губа/глотка
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bmesh.ops.translate(bm, verts=bm.verts[:], vec=(-HEAD_LEN * 0.5, 0.0, 0.0))  # pivot — середина головы (как ARakisWorm)
     ob = env_common.new_mesh_object("SM_Worm_Head", bm=bm)
     for n in ("MI_Worm_Chitin", "MI_Worm_Flesh", "MI_Worm_Throat"):
         env_common.add_material_slot(ob, n)
@@ -254,6 +256,12 @@ def build_petal(detail, seed):
             inward = Vector((0.0, -base.y, -(base.z + rim))).normalized()
             _crystal(bm, base, (inward + Vector((-0.4, 0, 0))).normalized(), rnd.uniform(0.5, 0.9), 0.12, mat=2)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    # поза покоя «прямо вперёд»: хорда шарнир→остриё вдоль +X (ARakisWorm закрывает pitch −62°, раскрывает +42°)
+    alpha = math.atan2(rim, PETAL_LEN)
+    from mathutils import Matrix
+    bmesh.ops.rotate(bm, verts=bm.verts[:], cent=(0.0, 0.0, 0.0), matrix=Matrix.Rotation(-alpha, 3, "Y"))
+    xs = [v.co.x for v in bm.verts]
+    bmesh.ops.translate(bm, verts=bm.verts[:], vec=(-(min(xs) + max(xs)) * 0.5, 0.0, 0.0))  # центр по X, шарнир на −X
     ob = env_common.new_mesh_object("SM_Worm_MouthPetal", bm=bm)
     for n in ("MI_Worm_Chitin", "MI_Worm_Flesh", "MI_Worm_Teeth"):
         env_common.add_material_slot(ob, n)
@@ -306,6 +314,7 @@ def build_teeth(detail, seed):
             if rnd.random() < 0.35:                                          # дочерний кристалл
                 _crystal(bm, base + Vector((0.2, 0, 0)), (direction + Vector((0, rnd.uniform(-.3, .3), rnd.uniform(-.3, .3)))).normalized(), L * 0.5, L * 0.08)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bmesh.ops.translate(bm, verts=bm.verts[:], vec=(-HEAD_LEN * 0.5, 0.0, 0.0))  # тот же pivot, что у головы
     ob = env_common.new_mesh_object("SM_Worm_Teeth", bm=bm)
     env_common.add_material_slot(ob, "MI_Worm_Teeth")
     return ob

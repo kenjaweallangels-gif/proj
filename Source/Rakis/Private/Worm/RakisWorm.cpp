@@ -73,6 +73,13 @@ ARakisWorm::ARakisWorm()
 	HeadMesh->SetGenerateOverlapEvents(false);
 	HeadMesh->SetCanEverAffectNavigation(false);
 
+	TeethMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TeethMesh"));
+	TeethMesh->SetupAttachment(HeadMesh);
+	TeethMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	TeethMesh->SetGenerateOverlapEvents(false);
+	TeethMesh->SetCanEverAffectNavigation(false);
+	TeethMesh->SetVisibility(false);
+
 	for (int32 i = 0; i < RakisWorm::PetalCount; ++i)
 	{
 		USceneComponent* Pivot = CreateDefaultSubobject<USceneComponent>(*FString::Printf(TEXT("PetalPivot%d"), i));
@@ -132,6 +139,7 @@ ARakisWorm::ARakisWorm()
 
 	SegmentMeshAsset = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/Rakis/Worm/SM_Worm_Segment.SM_Worm_Segment")));
 	HeadMeshAsset = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/Rakis/Worm/SM_Worm_Head.SM_Worm_Head")));
+	TeethMeshAsset = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/Rakis/Worm/SM_Worm_Teeth.SM_Worm_Teeth")));
 	FallbackBodyMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Rakis/Materials/Master/M_Worm_Chitin.M_Worm_Chitin")));
 	SandWaveSystem = TSoftObjectPtr<UNiagaraSystem>(FSoftObjectPath(TEXT("/Game/Rakis/FX/NS_Worm_SandWave.NS_Worm_SandWave")));
 	RingSandfallSystem = TSoftObjectPtr<UNiagaraSystem>(FSoftObjectPath(TEXT("/Game/Rakis/FX/NS_Worm_RingSandfall.NS_Worm_RingSandfall")));
@@ -401,6 +409,14 @@ void ARakisWorm::LoadAssets(bool bForGameplay)
 		HeadMesh->SetRelativeRotation(FQuat::Identity);
 		HeadMesh->SetRelativeScale3D(FVector(D / FMath::Max(HeadMeshSize.Y, HeadMeshSize.Z)));
 	}
+
+	// Зубы: дочерний компонент головы, наследует её трансформ (общий pivot в env_worm.py).
+	UStaticMesh* Teeth = bUsingFallbackHead ? nullptr : RakisAssets::Load(TeethMeshAsset, TEXT("RakisWorm.TeethMesh"), false);
+	if (Teeth && TeethMesh->GetStaticMesh() != Teeth)
+	{
+		TeethMesh->SetStaticMesh(Teeth);
+	}
+	TeethMesh->SetVisibility(Teeth != nullptr);
 
 	// Динамический материал головы — только для авторского меша (параметр "MouthOpen").
 	HeadMID = nullptr;

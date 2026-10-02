@@ -268,3 +268,11 @@ class SRakisNoiseRipple, SRakisRhythmTicks, SRakisMoistureDrop, SRakisSubtitles,
 7. `fx_niagara.py` — системы Niagara и их расстановка.
 8. `env_dress_sietch.py`, `env_scatter_desert.py` — декор, PCG.
 9. `char_crowd_variants.py`, `audio_setup.py` — толпа и звук.
+
+### 2.8 Дополнения по итогам интеграции S1
+- **Теги:** `Rakis.FX.Wind` (Niagara-акторы, ветер из WeatherSubsystem → `User.WindDirection/WindSpeed/Intensity`), `Rakis.FX.SandTrout|DustDevil|StormWall` (маркеры FX), `Rakis.GodRay` (луч зала B5, отдельный прожектор — не зависит от времени суток), `Rakis.Ellipsis.A2|A3` (точки «склейки» золотого пути), `Rakis.Thumper`, `Rakis.FalseRock`.
+- **Имена типов делегатов** с префиксом `FRakisOn…` (во избежание коллизий UHT); имена членов и сигнатуры — как в §2.2.
+- **Диалоги:** спикер `Lore` (надписи POI, показываются по центру); условия расширены: `SandWalk:Regular|Irregular`, `Surface:<ERakisSurface>`, `MoistureBelow:<x>`.
+- **Ассеты сверх списка:** `M_Blockout`, `M_LF_GlowglobeFlicker`, `M_FX_Dust`, `NPC_RakisWeather`, `SM_Worm_MouthPetal`, `SM_Worm_Teeth`, `SM_Rock_FalseSlab`.
+- **Погода:** канон — `WeatherPresets.csv` (освещённость солнца физическая; ослабление на рассвете делает Sky Atmosphere). Встроенные пресеты в C++ — только фоллбек.
+- **Ритуал** запускается и StoryDirector, и автоматически при входе в B3/B4/B5 — `StartRitual()` идемпотентен.

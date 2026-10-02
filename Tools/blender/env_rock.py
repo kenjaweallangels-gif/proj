@@ -6,7 +6,8 @@ env_rock.py — процедурная скала-доминанта «Кого�
 
 Результат:
     Export/SM_Rock_ShaitanClaw.fbx  — один меш, pivot = центр основания (UE (150000, 60000, 0)), Nanite-источник
-    Export/SM_Rock_FalseRock.fbx    — плита «фальшивого камня» входа A4 (pivot — центр низа, X — от сиетча наружу)
+    Export/SM_Rock_FalseSlab.fbx    — плита «фальшивого камня» входа A4 (имя = ARakisFalseRock::SlabMeshAsset;
+                                      pivot — центр низа, грубая сторона −X — в расщелину)
 
 Форма (единые числа — Tools/unreal_python/level_layout.py, см. docs/level/layout.md):
   * изогнутая меса 1 км (ось почти по Y UE), вогнутостью к игроку; северный «коготь» до 290 м,
@@ -395,7 +396,7 @@ def build_false_rock(seed):
         x, y, z = p.x * 1.6, p.y * 4.4, (p.z + 0.5) * 5.0
         bulge = 0.0 if p.x > 0.45 else (0.25 * noise.noise(Vector((p.y * 3 + seed, p.z * 3, 0))) - 0.15 * abs(p.y))
         v.co = Vector((x + bulge * (1 if p.x < 0 else 0), y, z))
-    ob = env_common.new_mesh_object("SM_Rock_FalseRock", bm=bm)
+    ob = env_common.new_mesh_object("SM_Rock_FalseSlab", bm=bm)
     env_common.add_material_slot(ob, "MI_Rock_Claw")
     fine_displace(ob, 0.08)
     triplanar_uv(ob, 2.0)
@@ -407,7 +408,7 @@ def main():
     import bpy
     ap = argparse.ArgumentParser(description="Shaitan's Claw generator")
     ap.add_argument("--out", default="Export/SM_Rock_ShaitanClaw.fbx")
-    ap.add_argument("--false-rock-out", default="Export/SM_Rock_FalseRock.fbx")
+    ap.add_argument("--false-rock-out", default="Export/SM_Rock_FalseSlab.fbx")
     ap.add_argument("--preset", choices=sorted(PRESETS), default="default")
     ap.add_argument("--nt", type=int, default=None, help="сечений вдоль длины")
     ap.add_argument("--nside", type=int, default=None, help="точек на сторону сечения")

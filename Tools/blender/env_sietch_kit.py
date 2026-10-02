@@ -173,10 +173,17 @@ class Kit:
         self._mat(faces, mat)
         return faces
 
-    def finish(self, name, bevel=0.04):
+    def finish(self, name, bevel=0.04, center=False):
         import bmesh
         bm = self.bm
         bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-4)
+        if center:   # пропы: pivot — центр основания по XY
+            xs = [v.co.x for v in bm.verts]
+            ys = [v.co.y for v in bm.verts]
+            cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+            for v in bm.verts:
+                v.co.x -= cx
+                v.co.y -= cy
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
         ngons = [f for f in bm.faces if len(f.verts) > 4]
         if ngons:
@@ -358,11 +365,13 @@ def m_seal_door_frame(k):
 
 
 def m_seal_door_panel(k):
-    k.box(0, 1.25, -0.08, 0.08, 0, 3.0, METAL)
-    for z in (0.4, 1.2, 2.0, 2.7):
-        k.box(0.05, 1.2, -0.12, 0.12, z, z + 0.08, METAL)                       # рёбра
-    k.box(1.18, 1.25, -0.1, 0.1, 0, 3.0, CLOTH)                                 # мягкая кромка-уплотнитель
-    return (1.25, 0.24, 3.0)
+    """Панель двери-уплотнителя: ЦЕНТРИРОВАНА (так её масштабирует ARakisSealDoor под PanelSize),
+    толщина по X (проход по X), ширина по Y, высота по Z; мягкий уплотнитель — на кромке +Y (к центру проёма)."""
+    k.box(-0.08, 0.08, -0.625, 0.625, -1.5, 1.5, METAL)
+    for z in (-1.1, -0.3, 0.5, 1.2):
+        k.box(-0.12, 0.12, -0.575, 0.575, z, z + 0.08, METAL)                    # рёбра
+    k.box(-0.1, 0.1, 0.555, 0.625, -1.5, 1.5, CLOTH)                            # уплотнитель
+    return (0.24, 1.25, 3.0)
 
 
 def m_cistern_grate(k):
@@ -566,6 +575,10 @@ def m_water_rings(k):
     return (0.2, 0.02, 0.6)
 
 
+# пропы с pivot в центре основания (остальные — по правилу стен/лестниц: от края на сетке)
+CENTERED = {"Stall_Counter", "Loom_Frame", "Bench_2m", "MakerHooks_Rack", "StillsuitBench", "Carpet_2x3",
+            }
+
 MODULES = {
     # name: (builder, описание)
     "Wall_2m": (lambda k: m_wall(k, 2.0), "стена 2 м"),
@@ -636,7 +649,7 @@ def main():
             size = builder(k)
             no_bevel = ("Glowglobe", "Curtain_2m", "Carved_Panel_2m", "WaterRings", "PrayerMat", "Carpet_2x3")
             bev = 0.0 if name in no_bevel else args.bevel                 # тонкие пропы — без фаски
-            ob = k.finish(name, bev)
+            ob = k.finish(name, bev, center=name in CENTERED)
         except Exception as e:  # noqa: BLE001
             print(f"[Rakis] WARN модуль {name}: {e}")
             continue

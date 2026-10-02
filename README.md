@@ -44,6 +44,30 @@ python3 orchestrator/orchestrator.py approve T-003        # ваше решен�
 
 Альтернатива без скрипта: откройте проект в Cursor, в терминале запустите `claude` и скажите: «Работай как orchestrator, возьми следующий спринт из orchestrator/tasks.yaml».
 
+## Играбельное демо (UE 5.6)
+
+Что сделано в спринте S1 (см. `docs/06_demo_contract.md` и `orchestrator/handoffs/`):
+- **C++ модуль `Source/Rakis`** — персонаж 1/3 лица, шум шагов и неритмичная «походка по песку», жара и влага, червь 360 м (сплайн + кольца, состояния Dormant→Listening→Approach→Surface→Pass, пасть-лепестки, зубы), тампер, двери-уплотнители, фальшивый камень, точки интереса; погода и время суток (9 пресетов, буря на горизонте), зоны и стриминг, адаптивная музыка, толпа сиетча и спутники, кат-сцены, диалоги RU/EN, сюжетный директор, минималистичный Slate-HUD, меню паузы и фоторежим.
+- **Генераторы:** Blender (`Tools/blender/env_*` — дюны-heightmap, скала «Коготь Шайтана», червь, кит сиетча из 46 модулей) и редакторные скрипты (`Tools/unreal_python/*` — материалы, MPC, пост-эффекты марева и пыли, Niagara, свет, блокаут, разметка, декор, данные).
+- **Данные:** `Content/Rakis/Data/*.csv` — 110 реплик, 88 «лаев», 60 сюжетных битов, 9 погодных пресетов, 58 звуковых событий, 8 архетипов толпы (`python3 Tools/validate_data.py --strict`).
+
+### Как собрать и запустить
+```bash
+# 1. Генерация мешей и рельефа (вне UE)
+python3 Tools/blender/env_dunes.py                       # Export/heightmap_desert_r16.png
+blender -b -P Tools/blender/env_rock.py -- --preset default
+blender -b -P Tools/blender/env_worm.py
+blender -b -P Tools/blender/env_sietch_kit.py
+# 2. Сборка C++ (Windows: Build.bat RakisEditor Win64 Development -Project=...; см. docs/05_install.md §4)
+# 3. В редакторе: Tools → Execute Python Script → Tools/unreal_python/build_demo.py
+#    (или UnrealEditor-Cmd Rakis.uproject -run=pythonscript -script=Tools/unreal_python/build_demo.py)
+# 4. Ландшафт из heightmap — вручную (Landscape Mode → Import), параметры в docs/level/layout.md; затем повторить build_demo
+# 5. Открыть L_Rakis_Persistent → Play
+```
+Управление: WASD/мышь, Shift — бег, Alt (удерж.) — походка по песку, Space — сбить ритм, E — действие, T — тампер, V — 1/3 лицо, P — фоторежим, Esc — пауза. Геймпад поддерживается.
+
+**Честно о статусе:** код не компилировался (в среде агентов нет UE) — первая сборка, вероятно, потребует мелких правок API (список рисков — в handoff T-005, T-U01, T-W01). Системы Niagara создаются из шаблонов, их стеки собираются вручную по `docs/tech-art/fx.md`. Фотореализм финального уровня требует ассетов Megascans/MetaHuman и работы художника — ТЗ лежат в `docs/art/**`. Без ассетов демо проходится целиком на блокауте.
+
 ## Правовое
 
 Вселенная «Дюны» — лицензируемая IP. Пакет рассчитан на прототип и портфолио; для коммерческого релиза нужна лицензия или переработка в собственный сеттинг.

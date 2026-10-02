@@ -269,6 +269,75 @@ def try_load(*paths):
     return None
 
 
+# ---------------------------------------------------------------- инстансы (HISM)
+def make_transform(loc, rot=(0.0, 0.0, 0.0), scale=(1.0, 1.0, 1.0)):
+    """rot = (roll, pitch, yaw) в градусах, как у rakis_common.spawn."""
+    return unreal.Transform(unreal.Vector(*loc), unreal.Rotator(roll=rot[0], pitch=rot[1], yaw=rot[2]),
+                            unreal.Vector(*scale))
+
+
+def ism_actor(label, mesh, transforms, tags, folder=None, material=None, max_fallback=400):
+    """Один актор с HierarchicalInstancedStaticMeshComponent (через SubobjectDataSubsystem, UE 5.1+).
+    Если API недоступно — отдельные StaticMeshActor (не больше max_fallback)."""
+    if not transforms or mesh is None:
+        return None
+    mat = load_or_none(material) if isinstance(material, str) else material
+    actor = None
+    try:
+        actor = spawn(unreal.Actor, (0.0, 0.0, 0.0), label=label, tags=tags, folder=folder)
+        sds = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
+        handles = sds.k2_gather_subobject_data_for_instance(actor)
+        params = unreal.AddNewSubobjectParams(parent_handle=handles[0],
+                                              new_class=unreal.HierarchicalInstancedStaticMeshComponent,
+                                              blueprint_context=None)
+        res = sds.add_new_subobject(params)
+        handle = res[0] if isinstance(res, tuple) else res
+        data = unreal.SubobjectDataBlueprintFunctionLibrary.get_data(handle)
+        comp = unreal.SubobjectDataBlueprintFunctionLibrary.get_object(data)
+        comp.set_static_mesh(mesh)
+        if mat:
+            comp.set_material(0, mat)
+        comp.add_instances(transforms, False, True)
+        return actor
+    except Exception as e:  # noqa: BLE001
+        warn(f"{label}: HISM недоступен ({e}) — фолбэк на отдельные акторы")
+        try:
+            if actor:
+                actor_ss.destroy_actor(actor)
+        except Exception:  # noqa: BLE001
+            pass
+    for i, t in enumerate(transforms[:max_fallback]):
+        a = actor_ss.spawn_actor_from_object(mesh, t.translation, t.rotation.rotator())
+        if not a:
+            continue
+        a.set_actor_scale3d(t.scale3d)
+        a.set_actor_label(f"{label}_{i:03d}")
+        a.tags = [unreal.Name(x) for x in tags]
+        if folder:
+            a.set_folder_path(folder)
+        if mat:
+            a.static_mesh_component.set_material(0, mat)
+    return None
+
+
+ENGINE_MESH = {
+    "cube": "/Engine/BasicShapes/Cube.Cube",
+    "sphere": "/Engine/BasicShapes/Sphere.Sphere",
+    "cylinder": "/Engine/BasicShapes/Cylinder.Cylinder",
+    "cone": "/Engine/BasicShapes/Cone.Cone",
+    "plane": "/Engine/BasicShapes/Plane.Plane",
+}
+
+
+def mesh_or_shape(asset_paths, fallback_kind="cube"):
+    """(mesh, is_kit): первый найденный ассет, иначе движковый примитив (100 см)."""
+    for p in asset_paths:
+        m = load_or_none(p)
+        if m:
+            return m, True
+    return unreal.EditorAssetLibrary.load_asset(ENGINE_MESH[fallback_kind]), False
+
+
 # ---------------------------------------------------------------- фолбэк-земля и дюны (без Landscape)
 def _dunes_module():
     """env_dunes.py (чистый Python) — та же функция высот, что и у heightmap."""

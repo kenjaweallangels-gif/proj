@@ -143,6 +143,10 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Rakis|Worm")
 	TObjectPtr<UStaticMeshComponent> HeadMesh;
 
+	/** Кольца кристаллических зубов в глотке (SM_Worm_Teeth, тот же pivot и масштаб, что у головы). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Rakis|Worm")
+	TObjectPtr<UStaticMeshComponent> TeethMesh;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Rakis|Worm")
 	TArray<TObjectPtr<USceneComponent>> PetalPivots;
 
@@ -170,6 +174,10 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Rakis|Worm|Assets")
 	TSoftObjectPtr<UStaticMesh> HeadMeshAsset;
+
+	/** Зубы глотки; показываются только вместе с авторской головой. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rakis|Worm|Assets")
+	TSoftObjectPtr<UStaticMesh> TeethMeshAsset;
 
 	/** Отдельный меш лепестка (ось X — от основания к кончику). Пусто + есть голова → только параметр "MouthOpen". */
 	UPROPERTY(EditDefaultsOnly, Category = "Rakis|Worm|Assets")

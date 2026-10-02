@@ -3,7 +3,7 @@ env_import.py — импорт результатов Blender-генератор
 
 Что делает (всё идемпотентно, при отсутствии файлов — пропускает с предупреждением):
   1. FBX из Export/ → пути контракта §2.5, Nanite включён, коллизия «complex as simple» для окружения:
-       Export/SM_Rock_ShaitanClaw.fbx, SM_Rock_FalseRock.fbx → /Game/Rakis/Environment/Rock/
+       Export/SM_Rock_ShaitanClaw.fbx, SM_Rock_FalseSlab.fbx → /Game/Rakis/Environment/Rock/
        Export/SM_Worm_Segment|Head|MouthPetal|Teeth.fbx    → /Game/Rakis/Worm/
        Export/sietch/SM_Sietch_*.fbx                        → /Game/Rakis/Environment/Sietch/
   2. Назначает MI по имени слота (слот = имя MI из Blender) с цепочкой фолбэков.
@@ -31,7 +31,7 @@ MI_DIR = "/Game/Rakis/Materials/Instances"
 IMPORTS = [
     # (glob относительно Export/, папка назначения, nanite, коллизия complex-as-simple)
     ("SM_Rock_ShaitanClaw.fbx", "/Game/Rakis/Environment/Rock", True, True),
-    ("SM_Rock_FalseRock.fbx", "/Game/Rakis/Environment/Rock", True, True),
+    ("SM_Rock_FalseSlab.fbx", "/Game/Rakis/Environment/Rock", True, True),
     ("SM_Worm_Segment.fbx", "/Game/Rakis/Worm", True, False),
     ("SM_Worm_Head.fbx", "/Game/Rakis/Worm", True, False),
     ("SM_Worm_MouthPetal.fbx", "/Game/Rakis/Worm", True, False),
