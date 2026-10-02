@@ -44,6 +44,11 @@ python3 orchestrator/orchestrator.py approve T-003        # ваше решен�
 
 Альтернатива без скрипта: откройте проект в Cursor, в терминале запустите `claude` и скажите: «Работай как orchestrator, возьми следующий спринт из orchestrator/tasks.yaml».
 
+## Играть сразу, без установки
+- **Ссылка:** https://claude.ai/artifact/VXyAbup6nN6HFRMLRjet96 (браузерная версия, открывается сразу).
+- **Файл:** `Web/dist/rakis_demo.html` — скачайте и откройте двойным щелчком (Chrome/Edge/Firefox, работает офлайн).
+- Исходники браузерной версии и сборка — `Web/` (см. `Web/README.md`). Проект UE5 остаётся основным; браузерная версия использует те же данные (`Content/Rakis/Data/*.csv`) и сценарий.
+
 ## Играбельное демо (UE 5.6)
 
 Что сделано в спринте S1 (см. `docs/06_demo_contract.md` и `orchestrator/handoffs/`):
