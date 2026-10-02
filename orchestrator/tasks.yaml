@@ -135,7 +135,7 @@ tasks:
     inputs: []
     acceptance: "Компоненты и StateTree NPC; Mass-толпа 40–80 агентов; тест в карте блокаута"
     gate: build
-    status: running
+    status: gate
     note: "выполнено агентами Claude (без компиляции UE); ждёт ворот человека"
   - id: T-016
     title: "Интеграционный прогон S1 и отчёт по бюджету кадра"
@@ -170,7 +170,7 @@ tasks:
     inputs: [docs/tech-art/sand.md]
     acceptance: "URakisSandTrailSubsystem, RT_SandTrail, M_Landscape_Sand читает RT; ≤0.3 мс GPU"
     gate: art
-    status: running
+    status: gate
   - id: T-018
     title: "Сверка Python-скриптов с API UE 5.6, автоматический импорт ландшафта"
     role: level-designer
@@ -178,7 +178,7 @@ tasks:
     inputs: [docs/level/layout.md]
     acceptance: "landscape_import.py; все скрипты сверены с документацией 5.6; build_demo без двойного запуска"
     gate: build
-    status: running
+    status: gate
   - id: T-019
     title: "Проверка компиляции C++ (ядро, мир, UI) по документации UE 5.6; склейки золотого пути 3:40"
     role: gameplay-programmer
@@ -186,4 +186,4 @@ tasks:
     inputs: [docs/06_demo_contract.md]
     acceptance: "исправления в handoff T-005/T-W01/T-U01 (раздел S2); действие Ellipsis в StoryDirector; validate_data PASS"
     gate: build
-    status: running
+    status: gate

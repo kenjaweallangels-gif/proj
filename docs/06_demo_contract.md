@@ -276,3 +276,10 @@ class SRakisNoiseRipple, SRakisRhythmTicks, SRakisMoistureDrop, SRakisSubtitles,
 - **Ассеты сверх списка:** `M_Blockout`, `M_LF_GlowglobeFlicker`, `M_FX_Dust`, `NPC_RakisWeather`, `SM_Worm_MouthPetal`, `SM_Worm_Teeth`, `SM_Rock_FalseSlab`.
 - **Погода:** канон — `WeatherPresets.csv` (освещённость солнца физическая; ослабление на рассвете делает Sky Atmosphere). Встроенные пресеты в C++ — только фоллбек.
 - **Ритуал** запускается и StoryDirector, и автоматически при входе в B3/B4/B5 — `StartRitual()` идемпотентен.
+
+### 2.9 Дополнения S2
+- **MPC_RakisWeather:** векторы `TrailOrigin`, `TrailOriginFar` = (центр X, центр Y, размер окна, активно 0/1), пишет только `URakisSandTrailSubsystem`.
+- **Следы на песке:** `/Game/Rakis/Materials/RT/RT_SandTrail` (2048², 40.96 м), `RT_SandTrail_Far` (1024², 204.8 м), материалы `M_SandTrail_Stamp|Fade|Copy`; API `URakisSandTrailSubsystem::AddStamp(...)`.
+- **Сюжет:** действие `Ellipsis` (склейка золотого пути), CVar `Rakis.Story.Ellipsis`; условия реплик проверяются по живому состоянию (`URakisDialogueSubsystem::IsConditionMet`).
+- **Толпа:** теги `Rakis.SO.<Type>`, ассеты `/Game/Rakis/AI/SmartObjects/SOD_<Type>`, `/Game/Rakis/AI/ST_Citizen`; CVar `Rakis.Crowd.StateTree|SmartObjects|LOD`.
+- **Модули:** добавлен `PhysicsCore`.
