@@ -91,3 +91,6 @@ select, input { background: #11161a; border: 1px solid var(--line); border-radiu
   .brand small, #heard, #chatForm, .bar .title { display: none; }
   .tag { font-size: 10px; }
 }
+
+.sim-link { color: var(--accent); text-decoration: none; border: 1px solid #2a95b3; border-radius: 6px; padding: 6px 10px; white-space: nowrap; }
+.sim-link:hover { background: #173540; }

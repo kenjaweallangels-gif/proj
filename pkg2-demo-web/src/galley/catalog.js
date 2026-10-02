@@ -68,7 +68,7 @@ export function searchDocs(query) {
 // ---------- сменное задание и чат ----------
 export const TASK = {
   date: '02.10.2026', shift: '1 смена, 07:30–16:00',
-  worker: 'Сборщик-клепальщик 4 р., таб. № 1047', master: 'Мастер участка',
+  worker: 'Сборщик-монтажник интерьеров ВС 4 р., таб. № 1047', master: 'Мастер участка',
   items: [
     { id: 'Z1', text: `${PRODUCT.name} ${PRODUCT.designation}, зав. № ${PRODUCT.serial}`, ops: '010, 060–190', doc: `${PRODUCT.designation} СБ`, tp: TP.designation, normH: 7.5 },
     { id: 'Z2', text: 'Оп. 020–050 выполнены 01.10 (смена 2, журнал № 3318): основание, боковины, задняя панель, перегородки', ops: '020–050', doc: `${PRODUCT.designation} СБ`, normH: 0 },

@@ -29,7 +29,7 @@ export function buildPanels(mgr, app) {
         const done = it.normH === 0;
         ui.rect(16, y, W - 32, 74, { fill: done ? 'rgba(93,255,168,0.06)' : C.fill, stroke: done ? 'rgba(93,255,168,0.5)' : C.line, r: 8 });
         ui.text(done ? '✓' : '•', 34, y + 32, { size: 24, color: done ? C.ok : C.acc, weight: 600 });
-        ui.wrap(it.text, 60, y + 28, W - 200, { size: 19, maxLines: 2 });
+        ui.wrap(it.text, 60, y + 28, W - 250, { size: 19, maxLines: 2 });
         ui.text(`оп. ${it.ops}`, W - 30, y + 28, { size: 18, color: C.dim, align: 'right' });
         if (it.doc) ui.button(W - 150, y + 38, 124, 30, 'открыть', () => { app.openSystem(it.doc); }, { size: 16 });
         y += 82;
