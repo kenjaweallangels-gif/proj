@@ -18,8 +18,8 @@ import math
 
 import unreal
 
-from rakis_common import (MAP_PERSISTENT, actors_with_tag, create_or_load, delete_generated, ensure_dir, load_or_none,
-                          log, spawn, transaction, warn)
+from rakis_common import (MAP_PERSISTENT, actor_tags, all_actors, create_or_load, delete_generated, ensure_dir,
+                          load_or_none, log, spawn, transaction, warn)
 import level_common as LC
 import level_layout as L
 
@@ -34,10 +34,9 @@ CAPSULE_HALF = 90.0
 
 def _occupied_points():
     pts = []
-    for tag in ("Rakis.CrowdSpawn", "Rakis.HallGather"):
-        pts += [a.get_actor_location() for a in actors_with_tag(tag)]
-    for a in unreal.get_editor_subsystem(unreal.EditorActorSubsystem).get_all_level_actors():
-        if any(str(t).startswith("Rakis.SmartObject.") for t in a.tags):
+    for a in all_actors():
+        tags = [str(t) for t in actor_tags(a)]
+        if any(t in ("Rakis.CrowdSpawn", "Rakis.HallGather") or t.startswith("Rakis.SmartObject.") for t in tags):
             pts.append(a.get_actor_location())
     return pts
 
@@ -139,8 +138,10 @@ def _place_spawner(label, location, count, config):
 
 
 def main():
+    # карты — до транзакции (загрузка уровня сбрасывает буфер undo)
+    LC.ensure_persistent_with_sublevels()
+    LC.make_current(MAP_PERSISTENT)
     with transaction("Rakis: mass crowd markup"):
-        LC.make_current(MAP_PERSISTENT)
         n = delete_generated(GEN)
         log(f"{GEN}: удалено {n}")
         occupied = _occupied_points()
