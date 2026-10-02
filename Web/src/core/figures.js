@@ -12,13 +12,53 @@ function mat(color, rough = 0.9, extra = {}) {
   return matCache.get(key);
 }
 
+/**
+ * Ткань-«юбка» вращением профиля [[радиус, y], ...] со складками: радиус модулируется
+ * по углу (складки) сильнее к подолу, подол неровный. Открытая, двусторонняя.
+ */
+function clothLathe(profile, fold = 0.06, folds = 9, arc = Math.PI * 2, start = 0) {
+  const seg = 40, rows = 14;
+  const pos = [], idx = [];
+  const yTop = profile[0][1], yBot = profile[profile.length - 1][1];
+  const rAt = (y) => {
+    for (let i = 1; i < profile.length; i++) {
+      const [r0, y0] = profile[i - 1], [r1, y1] = profile[i];
+      if (y <= y0 && y >= y1) return r0 + (r1 - r0) * ((y0 - y) / (y0 - y1 || 1));
+    }
+    return profile[profile.length - 1][0];
+  };
+  for (let j = 0; j <= rows; j++) {
+    const v = j / rows;
+    const y0 = yTop + (yBot - yTop) * v;
+    for (let i = 0; i <= seg; i++) {
+      const a = start + arc * (i / seg);
+      const f = v * v;
+      const r = rAt(y0) * (1 + fold * f * (Math.sin(a * folds) * 0.7 + Math.sin(a * folds * 2.3 + 1.7) * 0.3));
+      const hem = j === rows ? 0.025 * Math.sin(a * 3 + 0.5) + 0.015 * Math.sin(a * 7) : 0;
+      pos.push(Math.sin(a) * r, y0 + hem, Math.cos(a) * r);
+    }
+  }
+  for (let j = 0; j < rows; j++) for (let i = 0; i < seg; i++) {
+    const a = j * (seg + 1) + i, b = a + seg + 1;
+    idx.push(a, b, a + 1, b, b + 1, a + 1);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
 const geo = {
   head: new THREE.SphereGeometry(0.11, 14, 10),
   hood: new THREE.SphereGeometry(0.135, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.62),
   mask: new THREE.CylinderGeometry(0.1, 0.105, 0.09, 12, 1, true, -Math.PI * 0.55, Math.PI * 1.1),
   neck: new THREE.CylinderGeometry(0.05, 0.06, 0.1, 8),
   torso: new THREE.CylinderGeometry(0.17, 0.2, 0.55, 12),
-  robe: new THREE.CylinderGeometry(0.2, 0.36, 0.95, 16, 3, true),
+  robe: clothLathe([[0.19, 0], [0.23, -0.2], [0.29, -0.6], [0.36, -1.0], [0.4, -1.2]], 0.07, 11),
+  cape: clothLathe([[0.13, 0.06], [0.24, -0.04], [0.3, -0.22], [0.31, -0.4]], 0.05, 7),
+  sleeve: new THREE.CylinderGeometry(0.06, 0.085, 0.34, 9, 1, true),
+  drape: clothLathe([[0.08, 0], [0.13, -0.08], [0.17, -0.2]], 0.04, 5, Math.PI * 1.2, -Math.PI * 0.1),
   arm: new THREE.CylinderGeometry(0.045, 0.055, 0.32, 8),
   forearm: new THREE.CylinderGeometry(0.04, 0.045, 0.3, 8),
   hand: new THREE.SphereGeometry(0.045, 8, 6),
@@ -30,8 +70,6 @@ const geo = {
   tube: new THREE.TorusGeometry(0.12, 0.012, 6, 16, Math.PI),
 };
 for (const g of Object.values(geo)) g.computeBoundingSphere();
-// Робу сместить так, чтобы низ был у колен.
-geo.robe.translate(0, -0.475, 0);
 
 /**
  * @param {object} o
@@ -72,15 +110,22 @@ export function makeFigure(o = {}) {
     const eye = new THREE.Mesh(new THREE.SphereGeometry(0.016, 6, 4), mat('#2a6cff', 0.2, { emissive: '#1846c8', emissiveIntensity: 0.6 }));
     for (const sx of [-0.035, 0.035]) { const e = eye.clone(); e.position.set(sx, 0.02, 0.095); headPivot.add(e); }
   }
-  if (o.hood !== false) { const hood = new THREE.Mesh(geo.hood, cloth); hood.position.set(0, 0.015, -0.01); hood.rotation.x = -0.25; headPivot.add(hood); }
+  if (o.hood !== false) {
+    const hood = new THREE.Mesh(geo.hood, cloth); hood.position.set(0, 0.015, -0.01); hood.rotation.x = -0.25; headPivot.add(hood);
+    const drape = new THREE.Mesh(geo.drape, cloth); drape.position.set(0, -0.02, -0.02); headPivot.add(drape);
+  }
   if (o.mask !== false) { const m = new THREE.Mesh(geo.mask, suit); m.position.set(0, -0.045, 0.012); headPivot.add(m); const t = new THREE.Mesh(geo.tube, accent); t.position.set(0, -0.08, 0.02); t.rotation.set(Math.PI / 2, 0, 0); headPivot.add(t); }
-  if (o.robe !== false) { const robe = new THREE.Mesh(geo.robe, cloth); robe.position.y = 0.58; robe.scale.set(bulk, 1, bulk * 0.85); spine.add(robe); }
+  if (o.robe !== false) {
+    const robe = new THREE.Mesh(geo.robe, cloth); robe.position.y = 0.5; robe.scale.set(bulk, 1, bulk * 0.85); spine.add(robe);
+    const cape = new THREE.Mesh(geo.cape, cloth); cape.position.y = 0.62; cape.scale.set(bulk, 1, bulk * 0.9); spine.add(cape);
+  }
   if (o.pack) { const p = new THREE.Mesh(geo.pack, mat('#5b4632', 0.9)); p.position.set(0, 0.35, -0.2); spine.add(p); }
 
   const limbs = {};
   for (const side of [-1, 1]) {
     const sh = new THREE.Group(); sh.position.set(0.22 * side * bulk, 0.55, 0); spine.add(sh);
-    const ua = new THREE.Mesh(geo.arm, o.robe !== false ? cloth : suit); ua.position.y = -0.16; sh.add(ua);
+    const ua = new THREE.Mesh(geo.arm, suit); ua.position.y = -0.16; sh.add(ua);
+    if (o.robe !== false) { const sl = new THREE.Mesh(geo.sleeve, cloth); sl.position.y = -0.2; sh.add(sl); }
     const el = new THREE.Group(); el.position.y = -0.32; sh.add(el);
     const fa = new THREE.Mesh(geo.forearm, suit); fa.position.y = -0.15; el.add(fa);
     const hd = new THREE.Mesh(geo.hand, skin); hd.position.y = -0.31; el.add(hd);
