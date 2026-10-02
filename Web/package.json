@@ -1,0 +1,20 @@
+{
+  "name": "rakis-web",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Rakis: Heretics — браузерная (WebGL) версия демо, запускается без Unreal",
+  "type": "module",
+  "scripts": {
+    "data": "node tools/build_data.mjs",
+    "build": "node tools/build_data.mjs && node tools/build.mjs",
+    "dev": "node tools/build_data.mjs && node tools/build.mjs --serve",
+    "test": "node tools/smoke.mjs"
+  },
+  "dependencies": {
+    "three": "0.180.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10",
+    "playwright": "1.56.1"
+  }
+}
