@@ -132,7 +132,6 @@ namespace RakisSmartObjects
 			Slot->Offset = FVector3f(0.f, Lateral, 0.f);
 			Slot->Rotation = FRotator3f::ZeroRotator;
 			Slot->bEnabled = true;
-			Slot->Name = FName(*FString::Printf(TEXT("%s_%d"), *SpotType.ToString(), Index));
 			if (IdProp && IdProp->Struct == TBaseStructure<FGuid>::Get())
 			{
 				*IdProp->ContainerPtrToValuePtr<FGuid>(Slot) = FGuid::NewGuid();
