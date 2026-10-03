@@ -6,6 +6,7 @@ import * as zones from './core/zones.js';
 import * as desert from './desert/index.js';
 import * as sietch from './sietch/index.js';
 import * as worm from './worm/index.js';
+import * as harvester from './harvester/index.js';
 import * as player from './player/index.js';
 import * as companions from './player/companions.js';
 import * as dialogue from './story/dialogue.js';
@@ -32,6 +33,7 @@ const steps = [
   ['weather+world', () => desert.create(game)],
   ['sietch', () => sietch.create(game)],
   ['worm', () => worm.create(game)],
+  ['harvester', () => harvester.create(game)],
   ['player', () => player.create(game)],
   ['companions', () => companions.create(game)],
   ['zones', () => game.add('zones', zones.create(game))],
