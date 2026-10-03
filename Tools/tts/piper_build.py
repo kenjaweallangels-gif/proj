@@ -162,10 +162,12 @@ class Synth:
         key = hashlib.sha1(f"{text}|{length:.3f}|{noise:.3f}|{noise_w:.3f}|{MODEL_NAME}".encode()).hexdigest()[:20]
         os.makedirs(CACHE, exist_ok=True)
         cp = os.path.join(CACHE, key + ".wav")
-        if not os.path.exists(cp):
+        if not os.path.exists(cp) or os.path.getsize(cp) < 100:
             cfg = self.SynthesisConfig(length_scale=length, noise_scale=noise, noise_w_scale=noise_w)
-            with wave.open(cp, "wb") as w:
+            tmp = cp + ".part"
+            with wave.open(tmp, "wb") as w:
                 self.voice.synthesize_wav(text, w, syn_config=cfg)
+            os.replace(tmp, cp)   # атомарно: оборванный прогон не оставляет битый кэш
         return read_wav(cp)[0]
 
 

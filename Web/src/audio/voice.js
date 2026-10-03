@@ -122,7 +122,7 @@ const SYNTH_ALIAS = { Trader: 'Kair', Carrier: 'Ilva', Weaver: 'Ilva', Mother: '
 const SYNTH_GAIN = 0.6;            // запасной синтезатор тише записей
 // Какие архетипы толпы подходят говорящему (для привязки голоса к реальному жителю сиетча).
 const NPC_ARCH = { Trader: ['Trader'], Carrier: ['WaterCarrier'], Weaver: ['Weaver', 'Artisan'], Mother: ['Weaver', 'WaterCarrier', 'Pilgrim'], Child: ['Child'], Girl: ['Child'],
-  Elder: ['Elder'], Youth: ['Artisan', 'Trader', 'Guard'], Pilgrim: ['Pilgrim'], Crowd: [] };
+  Elder: ['Elder'], Youth: ['Artisan', 'Trader', 'Guard'], Pilgrim: ['Pilgrim'], Guard: ['Guard'], Crowd: [] };
 const BARK_GAIN = 0.34;
 
 export function createVoice(game, eng) {
@@ -184,7 +184,9 @@ export function createVoice(game, eng) {
     const g = game;
     const sp = (m) => { try { return m?.speakerPos?.(speaker) || null; } catch { return null; } };
     if (speaker === 'Rider' || speaker === 'Rider1' || speaker === 'Rider2') return sp(g.worm) || g.worm?.riderPos || null;
-    const named = g.space === 'sietch' ? (sp(g.sietch) || sp(g.companions)) : (sp(g.companions) || sp(g.sietch));
+    let named = g.space === 'sietch' ? (sp(g.sietch) || sp(g.companions)) : (sp(g.companions) || sp(g.sietch));
+    // страж у шлюза далеко от галереи: для сцен стражи в других залах берём ближайшего стража-жителя
+    if (named && NPC_ARCH[speaker]?.length && playerPos() && Math.hypot(named.x - playerPos().x, named.z - playerPos().z) > 28) named = null;
     if (named) return named;
     if (NPC_ARCH[speaker]) {
       const n = npcFor(speaker, chain);
