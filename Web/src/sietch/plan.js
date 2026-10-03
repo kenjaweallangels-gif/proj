@@ -34,12 +34,15 @@ export function heightAtLocal(x, z, yFeet = 0) {
   if (Number.isNaN(h)) h = floorSample(second, x, z);
   return Number.isNaN(h) ? 0 : h;
 }
+/** Есть ли пол любого слоя в точке. */
+export function hasAnyFloor(x, z) { return !!G && (!Number.isNaN(floorSample(G.f0, x, z)) || !Number.isNaN(floorSample(G.f1, x, z))); }
 /** Есть ли пол в точке (для расстановки реквизита/проверки). */
 export function hasFloor(x, z, yFeet = 0) { if (!G) return false; return !Number.isNaN(floorSample(yFeet > LAYER_Y ? G.f1 : G.f0, x, z)); }
 
 // ------------------------------------------------------------ коллизия ----
 const blocks0 = [], blocks1 = []; // {x0,x1,z0,z1} или {cx,cz,r}
 export function addBlock(b, level = 0) { (level ? blocks1 : blocks0).push(b); }
+export const allBlocks = () => [...blocks0.map((b) => ({ ...b, level: 0 })), ...blocks1.map((b) => ({ ...b, level: 1 }))];
 const doors = [];
 export function registerDoor(d) { doors.push(d); }
 

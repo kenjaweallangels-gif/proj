@@ -20,6 +20,14 @@ export function createCrowd(ctx) {
   const arch = Object.fromEntries((game.data?.CrowdArchetypes || []).map((a) => [a.id, a]));
   const npcs = [];
   const camL = new THREE.Vector3(), plL = new THREE.Vector3();
+  // твёрдые капсулы людей (мировые координаты) — чтобы игрок/спутники/червь не проходили сквозь толпу
+  const capsules = [];
+  const _tw = new THREE.Vector3();
+  const mkCap = (n) => {
+    const a = new THREE.Vector3(), b = new THREE.Vector3();
+    const id = game.colliders?.add({ type: 'capsule', a, b, r: n.arch === 'Child' ? 0.22 : 0.3, owner: 'sietch', tags: new Set(['npc']) });
+    capsules.push({ n, a, b, id });
+  };
   const maxFull = q === 'low' ? 4 : q === 'high' ? 10 : 7;
   const fullR = q === 'low' ? 8 : q === 'high' ? 13 : 11;
   const out = { npcs, ritualState: 'idle', seated: 0, guardReleased: false };
@@ -147,6 +155,7 @@ export function createCrowd(ctx) {
   out.guard = guardCheck;
 
   // ------------------------------------------------------------------ импостеры ----
+  npcs.forEach(mkCap);
   const NI = npcs.length;
   const bodyGeo = new THREE.LatheGeometry([[0, 0], [0.3, 0], [0.33, 0.06], [0.26, 0.7], [0.21, 1.02], [0.2, 1.22], [0.1, 1.32], [0, 1.33]].map((p) => new THREE.Vector2(p[0], p[1])), 10);
   const headGeo = new THREE.SphereGeometry(0.125, 8, 6); headGeo.translate(0, 1.43, 0);
@@ -183,7 +192,7 @@ export function createCrowd(ctx) {
     if (game.dialogue?.isBusy || game.cinematic?.active) return false;
     if (barkGlobal > 0) return false;
     n.barkT = 38 + R() * 30; barkGlobal = 4.5;
-    game.dialogue?.bark?.(n.arch, ctxName, new THREE.Vector3(n.x + O.x, n.y + O.y + 1.5, n.z + O.z));
+    game.dialogue?.bark?.(n.arch, ctxName, ctx.toWorld(n.x, n.y + 1.5, n.z));
     return true;
   };
   let barkGlobal = 3;
@@ -360,9 +369,9 @@ export function createCrowd(ctx) {
 
   out.update = (dt, t) => {
     ctxTime = t;
-    camL.copy(game.camera.position).sub(root.position);
+    root.worldToLocal(camL.copy(game.camera.position));
     const pw = game.player?.position;
-    if (pw) plL.set(pw.x - O.x, pw.y - O.y, pw.z - O.z); else plL.copy(camL);
+    if (pw) root.worldToLocal(plL.copy(pw)); else plL.copy(camL);
     barkGlobal -= dt; lodT -= dt; glowT -= dt;
     // LOD: ближайшие — полные фигуры.
     if (lodT <= 0) {
@@ -378,6 +387,10 @@ export function createCrowd(ctx) {
         if (n.lod === 'full' && !inScene) root.add(n.fig.group);
         else if (n.lod !== 'full' && inScene) root.remove(n.fig.group);
       }
+    }
+    for (const c of capsules) {
+      const n = c.n, sitting = n.pose === 'sitFloor' || n.mode === 'seat' || n.pose === 'pray' || n.pose === 'crouch', h = n.lk.height * (sitting ? 0.6 : 1);
+      ctx.toWorld(n.x, n.y + 0.3, n.z, c.a); ctx.toWorld(n.x, n.y + Math.max(0.5, h - 0.2), n.z, c.b);
     }
     const dyn = glowT <= 0; if (dyn) glowT = 0.4;
     for (let i = 0; i < npcs.length; i++) {
@@ -412,7 +425,7 @@ export function createCrowd(ctx) {
       if (dp < 1.15 && !n.special && n.mode !== 'seat') { const k = (1.15 - dp) / 1.15; n.x -= (dxp / (dp + 1e-3)) * k * sdt * 1.6; n.z -= (dzp / (dp + 1e-3)) * k * sdt * 1.6; }
       if (n.lod === 'full' && n.mode === 'act' && (n.pose === 'weave' || n.pose === 'measure' || n.pose === 'repair') && dp < 12) {
         n.sfxT = (n.sfxT ?? R() * 2) - sdt;
-        if (n.sfxT <= 0) { n.sfxT = n.pose === 'weave' ? 1.1 + R() * 0.6 : 5 + R() * 4; game.audio?.event?.(n.pose === 'weave' ? 'Loom.Clack' : n.pose === 'measure' ? 'Water.Measure' : 'Stillsuit.Repair', new THREE.Vector3(n.x + O.x, n.y + O.y + 1.0, n.z + O.z)); }
+        if (n.sfxT <= 0) { n.sfxT = n.pose === 'weave' ? 1.1 + R() * 0.6 : 5 + R() * 4; game.audio?.event?.(n.pose === 'weave' ? 'Loom.Clack' : n.pose === 'measure' ? 'Water.Measure' : 'Stillsuit.Repair', ctx.toWorld(n.x, n.y + 1.0, n.z)); }
       }
       if (n.lod === 'full') {
         n.y = n.special && n.kind === 'priestess' ? rimY : ground(n.x, n.z);
@@ -515,7 +528,7 @@ export function createCrowd(ctx) {
   out.speakerPos = (id) => {
     const n = id === 'Harmat' ? harmat : id === 'Priestess' ? priestess : id === 'Dancer' ? dancer : id === 'Guard' ? guardCheck : null;
     if (!n) return null;
-    return new THREE.Vector3(n.x + O.x, n.y + O.y + n.lk.height * 0.95, n.z + O.z);
+    return ctx.toWorld(n.x, n.y + n.lk.height * 0.95, n.z);
   };
   out.count = npcs.length;
   // тестовый хук: мгновенно рассадить толпу по местам

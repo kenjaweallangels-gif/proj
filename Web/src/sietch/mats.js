@@ -4,7 +4,20 @@ import * as THREE from 'three';
 import { makeTextures } from './textures.js';
 import { getTex } from '../core/textures.js';
 
-export const U = { uTime: { value: 0 }, uGlowK: { value: 1.0 }, uBump: { value: 1.0 }, uAmbK: { value: 0.3 } };
+const MAXP = 6;
+export const U = {
+  uTime: { value: 0 }, uGlowK: { value: 1.0 }, uBump: { value: 1.0 }, uAmbK: { value: 0.3 },
+  // «толкатели» ткани: капсулы персонажей (локальные координаты сиетча): A.xyz — нижняя точка, A.w — радиус; B.xyz — верхняя точка
+  uCapA: { value: Array.from({ length: MAXP }, () => new THREE.Vector4(0, -999, 0, 0)) },
+  uCapB: { value: Array.from({ length: MAXP }, () => new THREE.Vector4(0, -999, 0, 0)) },
+};
+export const MAX_PUSHERS = MAXP;
+
+/** Исключает направленный свет (солнце/луна пустыни) из материала: интерьер освещают только светошары и зонды. */
+export function noSun(sh) {
+  const chunk = THREE.ShaderChunk.lights_fragment_begin.replace('#if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )', '#if 0');
+  sh.fragmentShader = sh.fragmentShader.replace('#include <lights_fragment_begin>', chunk);
+}
 
 const NOISE = /* glsl */`
 float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
@@ -79,17 +92,24 @@ function patch(mat, o = {}) {
   const key = `siet-${o.kind || 'std'}${o.sway ? '-sw' : ''}`;
   mat.customProgramCacheKey = () => key;
   mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = U.uTime; sh.uniforms.uGlowK = U.uGlowK; sh.uniforms.uBump = U.uBump; sh.uniforms.uAmbK = U.uAmbK;
+    sh.uniforms.uTime = U.uTime; sh.uniforms.uGlowK = U.uGlowK; sh.uniforms.uBump = U.uBump; sh.uniforms.uAmbK = U.uAmbK; sh.uniforms.uCapA = U.uCapA; sh.uniforms.uCapB = U.uCapB;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
 attribute vec3 aGlow; attribute vec3 aPar;
 varying vec3 vGlow; varying vec3 vPar; varying vec3 vLP; varying vec3 vLN;
-uniform float uTime;`)
+uniform float uTime;
+uniform vec4 uCapA[${MAXP}]; uniform vec4 uCapB[${MAXP}];`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
 vGlow = aGlow; vPar = aPar; vLP = position; vLN = normal;
 ${o.sway ? `float sw = aPar.z;
 transformed.x += (sin(uTime*1.25 + position.y*1.7 + position.x*0.9) + 0.4*sin(uTime*2.3+position.z*2.0)) * 0.045 * sw;
-transformed.z += (sin(uTime*1.05 + position.y*1.3 + position.z*0.8) + 0.4*sin(uTime*1.9+position.x*2.0)) * 0.045 * sw;` : ''}`);
+transformed.z += (sin(uTime*1.05 + position.y*1.3 + position.z*0.8) + 0.4*sin(uTime*1.9+position.x*2.0)) * 0.045 * sw;
+for (int pi = 0; pi < ${MAXP}; pi++) {
+  vec4 pA = uCapA[pi]; if (pA.w <= 0.0) continue;
+  vec3 pB = uCapB[pi].xyz; vec3 ab = pB - pA.xyz; float tt = clamp(dot(transformed - pA.xyz, ab) / max(dot(ab, ab), 1e-4), 0.0, 1.0);
+  vec3 cc = pA.xyz + ab * tt; vec3 dd = transformed - cc; float ll = length(dd); float RR = pA.w + 0.05;
+  if (ll < RR) { transformed = cc + (ll > 1e-4 ? dd / ll : vec3(0.0, 0.0, 1.0)) * RR; }
+}` : ''}`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 varying vec3 vGlow; varying vec3 vPar; varying vec3 vLP; varying vec3 vLN;
@@ -105,6 +125,7 @@ ${o.kind === 'stone' ? 'normal = perturbMy(-vViewPosition, normal, vec2(dFdx(sto
 reflectedLight.indirectDiffuse *= uAmbK;`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
 totalEmissiveRadiance += diffuseColor.rgb * vGlow * uGlowK;`);
+    noSun(sh);
   };
   return mat;
 }
@@ -173,7 +194,7 @@ vTintR = aTint; vParR = aPar; vGlowR = aGlow.rgb * aGlow.rgb * 4.0; vLPr = posit
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 varying vec4 vTintR; varying vec4 vParR; varying vec3 vGlowR; varying vec3 vLPr; varying vec3 vLNr;
-uniform float uGlowK; uniform float uBump; uniform float uTime; uniform float uAmbK;
+uniform float uGlowK; uniform float uBump; uniform float uTime; uniform float uAmbK; uniform mat3 normalMatrix;
 uniform sampler2D uWallMap; uniform sampler2D uFloorMap; uniform sampler2D uWallN; uniform sampler2D uFloorN; uniform float uWallS; uniform float uFloorS;
 ${NOISE}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
@@ -189,13 +210,14 @@ normal = perturbMy(-vViewPosition, normal, vec2(dFdx(rockH), dFdy(rockH)) * (0.9
     vec3 sn = normalize(vLNr);
     nx = vec3(nx.xy + sn.zy, abs(nx.z) * sn.x); ny = vec3(ny.xy + sn.xz, abs(ny.z) * sn.y); nz = vec3(nz.xy + sn.xy, abs(nz.z) * sn.z);
     vec3 nW = normalize(nx.zyx * tw.x + ny.xzy * tw.y + nz.xyz * tw.z);
-    normal = normalize(mix(normal, normalize((viewMatrix * vec4(nW, 0.0)).xyz), 0.55 * (1.0 - sandv)));
+    normal = normalize(mix(normal, normalize(normalMatrix * nW), 0.55 * (1.0 - sandv)));
   }
 #endif`)
       .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
 { float aoR = vTintR.a; reflectedLight.indirectDiffuse *= uAmbK * aoR * aoR; reflectedLight.directDiffuse *= mix(1.0, aoR, 0.55); }`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
 totalEmissiveRadiance += diffuseColor.rgb * vGlowR * uGlowK * mix(1.0, vTintR.a, 0.5);`);
+    noSun(sh);
   };
   return mat;
 }

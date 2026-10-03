@@ -35,7 +35,11 @@ export function buildPrims() {
   const voids = [], solids = [];
   // --- B1
   tubeLine(voids, L.TUNNELS.B1, 'B1', 0.8);
-  tubeLine(voids, L.TUNNELS.slit, 'slit', 0.4);
+  tubeLine(voids, L.TUNNELS.entry, 'entry', 0.5);
+  { // выходной туннель к порталу
+    const E = L.EXIT, nodes = E.nodes.map((n, i) => [n[0], n[1], E.floorAt(E.cum[i]) + 0.9, E.rw, E.rh]);
+    tubeLine(voids, nodes, 'exit', 0.9);
+  }
   // --- B2: нижний зал, карнизы, лестничные тоннели, ниши-лавки, спальные ниши, эркеры, колодцы, вентиляция
   voids.push(makeTube({ a: [46, 3.8, 0], b: [93, 3.8, 0], rw: 4.6, rh: 8.2, tag: 'B2', k: 1.3, pad: 2.5 }));
   for (const s of [-1, 1]) {
@@ -60,7 +64,7 @@ export function buildPrims() {
   for (const x of [16, 31, 108, 118, 126, 134, 142]) voids.push(makeCyl({ cx: x, cz: x < 50 ? 0 : (x % 2 ? 0.2 : -0.2), r: 0.24, y0: 2.4, y1: 5.2, tag: 'vent', k: 0.1, pad: 0.6 }));
   // --- B3
   tubeLine(voids, L.TUNNELS.C, 'C'); tubeLine(voids, L.TUNNELS.N, 'N'); tubeLine(voids, L.TUNNELS.S, 'S');
-  for (const n of L.NICHES) voids.push(makeEll({ c: [n.xc, 1.0, n.side * 2.9], r: [n.rx, 1.7, 1.9], tag: 'niche', k: 0.6 }));
+  for (const n of L.NICHES) voids.push(makeEll({ c: [n.xc, 1.3, n.side * L.NICHE_Z], r: [n.rx, 2.0, 2.0], tag: 'niche', k: 0.6 }));
   voids.push(makeEll({ c: [L.FUNERAL.x + 1.4, 1.0, L.FUNERAL.z], r: L.FUNERAL.r, tag: 'funeral', k: 0.8 }));
   // --- B4
   voids.push(makeEll({ c: CISTERN.ellC, r: CISTERN.ellR, tag: 'B4', k: 1.5, pad: 3 }));
@@ -81,6 +85,8 @@ export function buildPrims() {
   // --- твёрдые тела: мост, парапеты карниза, колонны цистерны, парапет помоста
   solids.push(makeBox({ c: [75.5, 5.5, 0], h: [1.55, 0.55, 5.6], rr: 0.25, tag: 'bridge' }));
   solids.push(makeEll({ c: [75.5, 4.3, 0], r: [1.6, 1.7, 4.2], tag: 'bridgeBelly' }));
+  // плита-основание карниза: плоский пол на y=6 над нишами-лавками (ниши вырезаны под ней)
+  for (const s of [-1, 1]) solids.push(makeBox({ c: [74.1, 4.7, s * 7.9], h: [23.5, 1.3, 3.15], rr: 0.25, tag: 'shelfSlab' }));
   for (const s of [-1, 1]) {
     solids.push(makeBox({ c: [62.6, 6.45, s * 4.95], h: [10.9, 0.5, 0.21], rr: 0.1, tag: 'parapet' }));
     solids.push(makeBox({ c: [87.6, 6.45, s * 4.95], h: [9.8, 0.5, 0.21], rr: 0.1, tag: 'parapet' }));
@@ -92,7 +98,7 @@ export function buildPrims() {
 }
 
 // ------------------------------------------------------------------- пол ----
-const NICHE_FOOT = L.NICHES.map((n) => ({ x: n.xc, z: n.side * 2.9, rx: n.rx, rz: 1.9 }));
+const NICHE_FOOT = L.NICHES.map((n) => ({ x: n.xc, z: n.side * L.NICHE_Z, rx: n.rx, rz: 1.9 }));
 const ALCOVES = [...L.B2_ALCOVES.north.map((x) => ({ x, z: -5.5 })), ...L.B2_ALCOVES.south.map((x) => ({ x, z: 5.5 }))];
 
 export function hallFloor(x, z) {
@@ -115,16 +121,26 @@ export function hallFloor(x, z) {
   return y;
 }
 
+function exitFloor(x, z) {
+  const E = L.EXIT;
+  if (x < 160 || z > -8) return null;
+  let best = 9, bs = 0;
+  for (let i = 0; i < E.nodes.length - 1; i++) {
+    const a = E.nodes[i], b = E.nodes[i + 1];
+    const dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz;
+    const t = clamp(((x - a[0]) * dx + (z - a[1]) * dz) / l2, 0, 1);
+    const d = Math.hypot(x - (a[0] + dx * t), z - (a[1] + dz * t));
+    if (d < best) { best = d; bs = E.cum[i] + t * Math.sqrt(l2); }
+  }
+  return { d: best, y: E.floorAt(bs) };
+}
 export function floorY(x, z) {
   let f = 0;
   const az = Math.abs(z);
   if (x > 40 && x < 100.5) {
     const hx = clamp((x - GALLERY.stairX0) / (GALLERY.nSteps * GALLERY.tread), 0, 1) * GALLERY.balconyY;
-    if (hx > 0 && az > 3.5) {
-      let alc = 0;
-      if (az > 3.5 && az < 8.4) for (const a of ALCOVES) { const dx = (x - a.x) / 2.1, dz = (z - a.z) / 2.3; const e = Math.hypot(dx, dz); if (e < 1) alc = Math.max(alc, 1 - smoothstep(0.72, 1.0, e)); }
-      f = hx * smoothstep(4.0, 4.6, az) * (1 - alc);
-    }
+    // лестничный скат (ступени — аналитические, см. bake.stairTop); карниз над нишами — не пол-функция, а плита-твёрдое тело (solids)
+    if (hx > 0 && az > 3.5) f = hx * smoothstep(4.0, 4.6, az) * (1 - smoothstep(50.5, 51.3, x));
   }
   if (x > 100 && x < 148) {
     for (const n of NICHE_FOOT) { const dx = (x - n.x) / n.rx, dz = (z - n.z) / n.rz; const e = dx * dx + dz * dz; if (e < 1) f = Math.max(f, 0.22 * (1 - smoothstep(0.55, 1.0, Math.sqrt(e)))); }
@@ -134,6 +150,8 @@ export function floorY(x, z) {
     }
   }
   if (x >= 148) f = hallFloor(x, z);
+  const ef = exitFloor(x, z);
+  if (ef && ef.d < 3.4) { const w = 1 - smoothstep(2.0, 3.2, ef.d); f = f + (ef.y - f) * w; }
   // лёгкие неровности (стёртость, наносы)
   const sc = x > 146 && x < 200 && Math.hypot(x - HALL.cx, z) < 6.2 ? 0.2 : 1;
   f += (0.045 * vn3(x * 0.55, 0.6, z * 0.55) + 0.06 * vn3(x * 0.13, 1.3, z * 0.13)) * sc;

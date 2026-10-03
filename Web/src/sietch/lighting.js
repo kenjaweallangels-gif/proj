@@ -168,17 +168,6 @@ export function createLighting(ctx) {
     root.add(disc);
   }
 
-  // ---- Щель фальшивого камня: холодный свет снаружи.
-  {
-    const slit = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 3.9), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 2.2, 3.2), fog: false }));
-    slit.rotation.y = Math.PI / 2; slit.position.set(-3.72, 2.0, -1.3);
-    root.add(slit);
-    const halo = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 4.2), new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0);} ',
-      fragmentShader: 'varying vec2 vUv; void main(){ vec2 p = (vUv-0.5)*2.0; float a = pow(max(0.0,1.0-length(p*vec2(0.9,0.8))),2.0); gl_FragColor = vec4(vec3(0.35,0.5,0.8)*a*0.5,1.0); }' }));
-    halo.rotation.y = Math.PI / 2; halo.position.set(-3.4, 2.0, -1.3); halo.renderOrder = 6;
-    root.add(halo);
-  }
   // ---- Пылинки (вся сцена, камерой-центрированные) + пылинки луча.
   const NM = q === 'low' ? 500 : q === 'high' ? 2200 : 1400;
   const mGeo = new THREE.BufferGeometry();
@@ -314,7 +303,7 @@ export function createLighting(ctx) {
   const drips = [new THREE.Vector4(118, 13, -10, 0), new THREE.Vector4(129, 22, -10, 0), new THREE.Vector4(124, 17, -10, 0)];
   const wMat = new THREE.ShaderMaterial({
     transparent: true, fog: true,
-    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: U.uTime, uG: { value: gArr }, uDrips: { value: drips } }]),
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: U.uTime, uG: { value: gArr }, uDrips: { value: drips }, uCamL: { value: new THREE.Vector3() } }]),
     vertexShader: /* glsl */`
       varying vec3 vW; varying vec3 vWP; varying vec3 vRootP;
 #include <fog_pars_vertex>
@@ -322,12 +311,12 @@ export function createLighting(ctx) {
         #include <fog_vertex>
       }`,
     fragmentShader: /* glsl */`
-      uniform float uTime; uniform vec3 uG[8]; uniform vec4 uDrips[3]; varying vec3 vW; varying vec3 vWP; varying vec3 vRootP;
+      uniform float uTime; uniform vec3 uG[8]; uniform vec4 uDrips[3]; uniform vec3 uCamL; varying vec3 vW; varying vec3 vWP; varying vec3 vRootP;
       #include <fog_pars_fragment>
       float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
       float vn(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(h21(i),h21(i+vec2(1,0)),f.x), mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x), f.y); }
       void main(){
-        vec3 wp = vWP;
+        vec3 wp = vW;
         vec2 q = vW.xz;
         vec2 rip = vec2(vn(q*3.0+uTime*0.15)-0.5, vn(q*3.0+7.3-uTime*0.12)-0.5) * 0.02;
         for (int i=0;i<3;i++){
@@ -335,14 +324,13 @@ export function createLighting(ctx) {
           if (age > 0.0 && age < 4.5) { float ring = sin((r - age*0.45)*38.0) * exp(-abs(r - age*0.45)*9.0) * exp(-age*0.9); rip += normalize(d+1e-4) * ring * 0.045; }
         }
         vec3 N = normalize(vec3(rip.x*8.0, 1.0, rip.y*8.0));
-        vec3 V = normalize(wp - cameraPosition);
+        vec3 V = normalize(wp - uCamL);
         vec3 Rf = reflect(V, N);
         float fres = 0.04 + 0.96*pow(1.0 - clamp(dot(-V, N),0.0,1.0), 4.0);
         vec3 col = vec3(0.005,0.011,0.017);
         // «отражения» светошаров: близость отражённого луча к точке
         for (int i=0;i<8;i++){
-          vec3 g = uG[i] - vec3(0.0); vec3 gw = g;
-          vec3 toG = gw - (wp - vRootP);
+          vec3 toG = uG[i] - wp;
           float t = dot(toG, Rf); if (t > 0.0) { float dist = length(toG - Rf*t); col += vec3(1.0,0.62,0.3) * (6.0 / (1.0 + dist*dist*9.0)) * (0.35+0.65*fres) / (1.0 + 0.004*t*t); }
         }
         // тёплый отсвет свода (общий)
@@ -371,7 +359,8 @@ export function createLighting(ctx) {
   // ---- Обновление.
   const tmpV = new THREE.Vector3();
   out.update = (dt, t) => {
-    camL.copy(game.camera.position).sub(root.position);
+    root.worldToLocal(camL.copy(game.camera.position));
+    wMat.uniforms.uCamL.value.copy(camL);
     // шары: покачивание, мерцание
     for (let i = 0; i < N; i++) {
       const g = globes[i];
@@ -423,7 +412,7 @@ export function createLighting(ctx) {
       const d = drips[i];
       if (ph >= 0 && ph < 0.6) { const f = ph / 0.6; pos[i * 3] = d.x; pos[i * 3 + 1] = 6.0 - 7.2 * f * f; pos[i * 3 + 2] = d.y; }
       else { pos[i * 3] = 0; pos[i * 3 + 1] = -99; pos[i * 3 + 2] = 0; }
-      if (ph >= 0.58 && ph < 0.6 + dt * 2 && (drips[i].w < t - 3)) { drips[i].w = t; out.onDrip?.(i, d.x + O.x, d.y + O.z); }
+      if (ph >= 0.58 && ph < 0.6 + dt * 2 && (drips[i].w < t - 3)) { drips[i].w = t; out.onDrip?.(i, d.x, d.y); }
     }
     dropGeo.attributes.position.needsUpdate = true;
     rayLight.intensity = regionOfZone(zoneAtLocal(camL.x, camL.z)) === 'B5' ? 90 + 8 * Math.sin(t * 0.7) : 0;

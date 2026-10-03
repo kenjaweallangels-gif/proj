@@ -4,7 +4,7 @@
 // Заполняет ctx.spots — точки деятельности для толпы; addBlock — коллизия реквизита.
 import * as THREE from 'three';
 import { addBlock, heightAtLocal, HALL, LEDGE, NICHES, FUNERAL } from './plan.js';
-import { PATHS, B2_ALCOVES, SHELF_BAYS } from './cave/layout.js';
+import { PATHS, B2_ALCOVES, SHELF_BAYS, NICHE_Z } from './cave/layout.js';
 import { rng, clamp } from '../core/util.js';
 
 const J_A = [[0.0, 0], [0.22, 0.0], [0.28, 0.12], [0.28, 0.4], [0.2, 0.68], [0.14, 0.76], [0.17, 0.8], [0.14, 0.82], [0.12, 0.76]];
@@ -53,7 +53,8 @@ export function buildProps(B, ctx) {
   };
   const cushion = (x, z, col, s = 1, yf = 0, y0 = null) => B.sphere('clothStatic', [x, (y0 ?? gy(x, z, yf)) + 0.09 * s, z], 0.22 * s, { scale: [1, 0.46, 1], color: col, ws: 10, hs: 6, rot: [0, R() * 3, 0] });
   /** Висящая ткань (качается): plane normal ±z (axis 'x': полотнище вдоль x) или ±x (axis 'z'). */
-  const hanging = (x, yTop, z, w, h, axis, side, key, seed = 0, tint = [1, 1, 1], gap = 0) => {
+  const hanging = (x, yTop, z, w, h, axis, side, key, seed = 0, tint = [1, 1, 1], gap = 0, door = false) => {
+    if (door) (ctx.curtains ||= []).push({ x, z, axis, side, w, yTop, h });
     const nx = 16, ny = 9, rails = [];
     for (let j = 0; j <= ny; j++) {
       const row = [], t = j / ny, y = yTop - h * t;
@@ -256,7 +257,7 @@ export function buildProps(B, ctx) {
     for (const [x, s] of [[56, 1], [64, -1], [72, 1], [84, -1], [92, 1], [60, -1]]) { rug('carpetRed', x, s * 6.1, 3.0, 1.6, 0.1 * s, 0, yf); rug('carpetBlue', x + 0.4, s * 6.2, 1.6, 1.0, 0.5, 1, yf); cushion(x - 1.0, s * 6.0, goodsCols[(x | 0) % 6], 1, yf); cushion(x + 1.2, s * 6.5, goodsCols[(x + 2 | 0) % 6], 0.9, yf); }
     for (const x of SHELF_BAYS) for (const s of [-1, 1]) {
       const bx = x + (s > 0 ? 1 : 0), zz = s * 7.35;
-      hanging(bx, 8.55, zz, 2.7, 2.35, 'x', s, kKeys[(x + s + 5) % 6 | 0], x * 0.7, [0.9, 0.9, 0.9], (x % 3) * 0.08);
+      hanging(bx, 8.55, zz, 2.7, 2.35, 'x', s, kKeys[(x + s + 5) % 6 | 0], x * 0.7, [0.9, 0.9, 0.9], (x % 3) * 0.08, true);
       rug('carpetOchre', bx, s * 8.1, 2.0, 1.4, 0.2, 0, yf); cushion(bx - 0.5, s * 8.4, goodsCols[(x | 0) % 6], 0.9, yf);
     }
     for (const s of [-1, 1]) for (let i = 0; i < 8; i++) {
@@ -283,11 +284,11 @@ export function buildProps(B, ctx) {
     B.region = 'B3';
     ctx.niches = [];
     for (const n of NICHES) {
-      const zc = pathZ(PATHS.C, n.xc), zn = n.side * 2.9;
+      const zc = pathZ(PATHS.C, n.xc), zn = n.side * NICHE_Z;
       const mouthZ = zc + n.side * 1.45;
       ctx.niches.push({ ...n, cx: n.xc, mouthZ, zn });
       const fl = gy(n.xc, zn);
-      if (!n.open) hanging(n.xc, 2.45, mouthZ, 2.55, 2.3, 'x', n.side, kKeys[n.curtain * 2 % 6], n.xc, [0.9, 0.9, 0.9], (n.curtain === 1 ? 0.12 : 0));
+      if (!n.open) hanging(n.xc, 2.45, mouthZ, 2.55, 2.3, 'x', n.side, kKeys[n.curtain * 2 % 6], n.xc, [0.9, 0.9, 0.9], (n.curtain === 1 ? 0.12 : 0), true);
       // постель: ковры друг на друге, подушки, сундучок, кувшин
       rug(['carpetBlue', 'carpetRed', 'carpetOchre'][n.curtain], n.xc, zn + n.side * 0.2, 2.2, 1.4, 0.1 * n.side, 0, 0);
       rug(['carpetOchre', 'carpetBlue', 'carpetRed'][n.curtain], n.xc + 0.2, zn + n.side * 0.35, 1.5, 0.9, 0.5, 1, 0);
@@ -343,7 +344,7 @@ export function buildProps(B, ctx) {
     for (let i = 0; i < 5; i++) { const x = 114 + i * 2.3; const zz = 11.0; B.cyl('metal', [x, 0.5, zz], 0.04, 0.04, 1.0, 6, { color: [0.45, 0.4, 0.34] }); for (let k = 0; k < 3; k++) B.geo('brass', new THREE.TorusGeometry(0.06, 0.008, 6, 12), { pos: [x, 0.3 + k * 0.2, zz], rot: [Math.PI / 2, 0, 0], color: [0.8, 0.65, 0.4] }); }
     B.cyl('metal', [133, 4.3, 27.3], 0.07, 0.07, 1.2, 8, { rot: [Math.PI / 2, 0.3, 0], color: [0.4, 0.34, 0.28] });
     jar(131.8, 12.2, true, [0.62, 0.46, 0.34], 0); jar(132.7, 12.0, false, [0.6, 0.45, 0.34], 0);
-    S.guard.push({ x: 123.8, z: 5.3, yaw: faceYaw(-0.3, 1), role: 'grate' });
+    S.guard.push({ x: 120.2, z: 7.1, yaw: faceYaw(0.8, 1), role: 'grate' });
   }
 
   // ================================================================== B5: зал ====

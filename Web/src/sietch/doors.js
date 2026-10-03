@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { SEALS } from './cave/layout.js';
 import { registerDoor, addBlock, heightAtLocal } from './plan.js';
 import { clamp, smoothstep } from '../core/util.js';
-import { U } from './mats.js';
+import { U, noSun } from './mats.js';
 
 const ROLL_T = 0.02; // толщина мембраны в навитом виде
 function sealMaterial(glow) {
@@ -51,6 +51,7 @@ varying float vRoll; varying float vYw; varying float vEdge;`)
   diffuseColor.rgb *= (1.0 - 0.28 * rib) * (1.0 - 0.45 * vEdge);
   diffuseColor.a = clamp(diffuseColor.a * (1.0 + 0.7 * rib + 0.9 * vEdge + vRoll * 0.9), 0.0, 0.95);
 }`);
+    noSun(sh);
   };
   return m;
 }
@@ -147,11 +148,11 @@ export function createDoors(ctx, crowd) {
       if (near && allowed && d.target === 0) {
         d.target = 1; d.closeT = 0;
         game.bus.emit('interact', { tag: 'Rakis.SealDoor', id: d.id });
-        game.audio?.event?.('Door.SealHiss', new THREE.Vector3(d.x + O.x, 1.6, d.z + O.z));
+        game.audio?.event?.('Door.SealHiss', ctx.toWorld(d.x, d.fy + 1.6, d.z));
         burst(d, 10);
       }
       if (d.target === 1) {
-        if (Math.abs(along) > 5.5) { d.closeT += dt; if (d.closeT > 2.0) { d.target = 0; burst(d, 6); game.audio?.event?.('Door.SealHiss', new THREE.Vector3(d.x + O.x, 1.6, d.z + O.z)); } } else d.closeT = 0;
+        if (Math.abs(along) > 5.5) { d.closeT += dt; if (d.closeT > 2.0) { d.target = 0; burst(d, 6); game.audio?.event?.('Door.SealHiss', ctx.toWorld(d.x, d.fy + 1.6, d.z)); } } else d.closeT = 0;
       }
       const rate = 1 / 1.9;
       d.open = clamp(d.open + Math.sign(d.target - d.open) * rate * dt, 0, 1);

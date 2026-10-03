@@ -80,7 +80,7 @@ function placeGlobes(V, field) {
     let y = g.y;
     // найти воздух вокруг желаемой высоты
     let ceil = null;
-    for (let yy = Math.min(g.y, 4) - 0.5; yy < 34; yy += 0.1) {
+    for (let yy = g.y - 2.8; yy < 34; yy += 0.1) {
       if (V.sample(g.x, yy, g.z) < -0.15) { ceil = yy; break; }
     }
     if (ceil === null) { return; }
@@ -127,6 +127,7 @@ function segDist(px, pz, a, b) {
 }
 const PATH_SEGS = [];
 for (const k of Object.keys(L.PATHS)) { const P = L.PATHS[k]; for (let i = 0; i < P.length - 1; i++) PATH_SEGS.push([P[i], P[i + 1]]); }
+for (let i = 0; i < L.EXIT.nodes.length - 1; i++) PATH_SEGS.push([L.EXIT.nodes[i], L.EXIT.nodes[i + 1]]);
 PATH_SEGS.push([[44, 0], [98, 0]], [[44, -2.4], [98, -2.4]], [[44, 2.4], [98, 2.4]], [[150, 0], [166, 0]]);
 const pathDist = (x, z) => { let m = 9; for (const s of PATH_SEGS) { const d = segDist(x, z, s[0], s[1]); if (d < m) m = d; } return m; };
 
@@ -219,7 +220,7 @@ function buildGrids(field, V, log) {
   const { h, ox, oz, nx, nz } = GRID;
   const NOFLOOR = -32768;
   const f0 = new Float32Array(nx * nz).fill(NaN), f1 = new Float32Array(nx * nz).fill(NaN);
-  const YMAX = 34, YMIN = -4.2, STEP = 0.125;
+  const YMAX = 34, YMIN = -29, STEP = 0.125;
   let cols = 0;
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
     const x = ox + (i + 0.5) * h, z = oz + (j + 0.5) * h;

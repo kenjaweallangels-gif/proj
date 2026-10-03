@@ -15,11 +15,8 @@ export function create(game) {
     game.camera.position.set(x, y + 2, z);
     game.camera.lookAt(x + Math.cos(yaw) * 20, y + 2, z + Math.sin(yaw) * 20);
   }
-  const sietchPos = (lx) => ({ x: SIETCH_ORIGIN.x + lx, z: SIETCH_ORIGIN.z });
-  async function toSietch(lx) {
-    if (game.space !== 'sietch') await game.sietch?.enter?.();
-    if (lx !== undefined) { const s = sietchPos(lx); tp(s.x, s.z, 0); }
-  }
+  // Сиетч бесшовный и повёрнут в мире: отладочные точки — через game.sietch.enter(point) (внутренний телепорт без затемнения).
+  async function toSietch(point = 'B1') { await game.sietch?.enter?.(point); }
 
   const api = {
     async goto(name) {
@@ -38,9 +35,9 @@ export function create(game) {
         } else if (name === 'A3') tp(ELLIPSIS.A3.x, ELLIPSIS.A3.z, ELLIPSIS.A3.yaw);
         else if (name === 'mouth') { const m = gp('MOUTH'); tp(m.x, m.z, yawTo(m, gp('FALSE_ROCK'))); }
         else if (name === 'sietch') await toSietch();
-        else if (name === 'gallery') await toSietch((SIETCH.B2.x0 + SIETCH.B2.x1) / 2 - 20);
+        else if (name === 'gallery') await toSietch('B2');
         else if (name === 'hall' || name === 'finale') {
-          await toSietch(SIETCH.B5.x0 + 12);
+          await toSietch('B5');
           if (game.story?.startRitual) game.story.startRitual();
           else game.sietch?.startRitual?.();
           if (name === 'finale') game.story?.fire?.('Beat:SB_B5_06_Feet');
