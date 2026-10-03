@@ -5,7 +5,8 @@ import { rng, clamp, smoothstep } from '../core/util.js';
 import { createLevelRockMaterial } from '../level/rockmat.js';
 import { buildGrass, buildShrub, buildTree, buildPalm, buildFlower, InstGroup, makePlantMaterial } from './plants.js';
 import { grassTexture, foliageTexture, palmFrondTexture, flowerTexture, barkTexture } from './textures.js';
-import { C, FLOOR_Y, MOUTH, CHANNELS, BEDS, PLAZA, POND, BASIN, ringIn, nearChannel, inBed, ang, radius } from './layout.js';
+import { C, FLOOR_Y, MOUTH, CHANNELS, BEDS, PLAZA, POND, BASIN, RAVINE, polyDist, pathAt, ringIn, nearChannel, inBed, ang, radius } from './layout.js';
+import { WALL } from './ground.js';
 
 const V3 = THREE.Vector3;
 
@@ -56,6 +57,8 @@ export function createFlora(game, { ground, faceAt, root, quality, towerSites = 
   const plazaK = (x, z) => x > MOUTH.x + 0.5 && x < MOUTH.x + 18 && Math.abs(z - MOUTH.z) < 9;
   const free = (x, z, { m = 0.9, bed = false, water = true } = {}) => {
     if (!inBasin(x, z)) return false;
+    if (x > 850 && polyDist(RAVINE.pts, x, z).d < RAVINE.w + 1.2) return false;
+    if (!bed && m > 0.6 && pathAt(x, z) > 0.12) return false;
     if (water && nearChannel(x, z, m)) return false;
     if (!bed && inBed(x, z, m)) return false;
     if (plazaK(x, z) && Math.hypot(x - PLAZA.x, (z - PLAZA.z) / 0.85) < PLAZA.r + 0.6) return false;
@@ -128,7 +131,7 @@ export function createFlora(game, { ground, faceAt, root, quality, towerSites = 
   BEDS.forEach((b, bi) => {
     const kind = bi % 3;
     for (let x = b.x - b.hx + 1; x < b.x + b.hx - 0.4; x += 1.4) for (let z = b.z - b.hz + 0.8; z < b.z + b.hz - 0.4; z += 1.15) {
-      const jx = x + (R() - 0.5) * 0.25, jz = z + (R() - 0.5) * 0.25, y = ground(jx, jz) + 0.16;
+      const jx = x + (R() - 0.5) * 0.25, jz = z + (R() - 0.5) * 0.25, y = ground(jx, jz) + WALL.bedSoil;
       const row = Math.floor((x - b.x + b.hx) / 1.4);
       if (kind === 0) { const s = 0.45 + R() * 0.2; pick(salt).add(jx, y, jz, R() * 6.28, s, s, colorVar(0.2)); }
       else if (kind === 1) { if (row % 2) { const s = 0.28 + R() * 0.12; pick(tama).add(jx, y, jz, R() * 6.28, s, s, colorVar(0.2)); } else { const s = 0.45; pick(creo).add(jx, y, jz, R() * 6.28, s, s, colorVar(0.2)); } }

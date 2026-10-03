@@ -21,6 +21,8 @@ export function createRim({ base, faceX, h = RIM_ZONE.h }) {
     return H * (1 - smooth(0, 1, (d - 10) / (H * 2.9)));
   };
   const crestAt = (th) => FLOOR_Y + ringH(th);
+  const footCache = new Float32Array(720).fill(NaN);
+  const footY = (th) => { const q = Math.round(((th + Math.PI * 4) % (Math.PI * 2)) / (Math.PI * 2) * 719); if (!(footCache[q] === footCache[q])) { const t = (q / 719) * Math.PI * 2, rin = ringIn(t); footCache[q] = base(C.x + Math.cos(t) * (rin + 0.3), C.z + Math.sin(t) * (rin + 0.3)); } return footCache[q]; };
 
   // валуны у подножия (3D)
   const BOUL = [];
@@ -54,10 +56,12 @@ export function createRim({ base, faceX, h = RIM_ZONE.h }) {
   // высота поверхности гребня в точке (карта высот) с площадками
   const surf = (x, z) => {
     const r = radius(x, z), th = ang(x, z);
-    let y = FLOOR_Y + rel(r, th);
+    const rl = rel(r, th);
+    // гребень растёт от «подошвы» в этом направлении (дно с террасами не плоское), а не от константы FLOOR_Y
+    let y = rl > 0 ? footY(th) + rl : -1e9;
     for (const p of pads) {
       const dd = Math.hypot(x - p.x, z - p.z);
-      if (dd < p.r + 5) { const lvl = FLOOR_Y + ringH(p.th ?? ang(p.x, p.z)) - 0.8; y = mix(y, Math.max(lvl, 0), 1 - smooth(p.r, p.r + 5, dd)); }
+      if (dd < p.r + 5) { const lvl = footY(p.th ?? ang(p.x, p.z)) + ringH(p.th ?? ang(p.x, p.z)) - 0.8; y = mix(y, Math.max(lvl, 0), 1 - smooth(p.r, p.r + 5, dd)); }
     }
     return Math.max(y, base(x, z));
   };

@@ -64,21 +64,27 @@ export function createGroundField({ desert, faceAt }) {
   // ---- низкие стенки/бордюры (для физики; визуал — структуры) ----
   const chanSegs = [];
   for (const ch of CHANNELS) for (let i = 0; i < ch.pts.length - 1; i++) chanSegs.push({ a: ch.pts[i], b: ch.pts[i + 1], half: ch.w / 2 });
-  const chanMinX = Math.min(...chanSegs.map((s) => Math.min(s.a[0], s.b[0]))) - 2, chanMaxX = Math.max(...chanSegs.map((s) => Math.max(s.a[0], s.b[0]))) + 2;
-  /** Добавка к G от стенок желобов, грядок, чаши (м). Плавные края (≈6 см). */
+  // корзины 4 м: список сегментов, которые могут влиять на точку
+  const BK = 4, bx0 = GRID.x0, bz0 = GRID.z0, bnx = Math.ceil((GRID.x1 - GRID.x0) / BK) + 1, bnz = Math.ceil((GRID.z1 - GRID.z0) / BK) + 1;
+  const buckets = Array.from({ length: bnx * bnz }, () => []);
+  for (const s of chanSegs) {
+    const x0 = Math.min(s.a[0], s.b[0]) - 1, x1 = Math.max(s.a[0], s.b[0]) + 1, z0 = Math.min(s.a[1], s.b[1]) - 1, z1 = Math.max(s.a[1], s.b[1]) + 1;
+    for (let k = Math.max(0, Math.floor((z0 - bz0) / BK)); k <= Math.min(bnz - 1, Math.floor((z1 - bz0) / BK)); k++) for (let i = Math.max(0, Math.floor((x0 - bx0) / BK)); i <= Math.min(bnx - 1, Math.floor((x1 - bx0) / BK)); i++) buckets[i + bnx * k].push(s);
+  }
+  /** Добавка к G от стенок желобов и грядок (м). Плавные края (≈6 см). */
   function bump(x, z) {
     let b = 0;
-    if (x > chanMinX && x < chanMaxX) {
-      for (const s of chanSegs) {
-        if (x < Math.min(s.a[0], s.b[0]) - 1.2 || x > Math.max(s.a[0], s.b[0]) + 1.2) continue;
+    const bi = Math.floor((x - bx0) / BK), bk = Math.floor((z - bz0) / BK);
+    if (bi >= 0 && bk >= 0 && bi < bnx && bk < bnz) {
+      for (const s of buckets[bi + bnx * bk]) {
         const d = segDist(s.a[0], s.a[1], s.b[0], s.b[1], x, z);
         if (d > s.half + WALL.channelT + 0.3) continue;
-        // стенка: [half, half+T]; внутри лотка — ровно 0
         const k = smoothstep(s.half - 0.05, s.half + 0.03, d) * (1 - smoothstep(s.half + WALL.channelT - 0.03, s.half + WALL.channelT + 0.08, d));
-        b = Math.max(b, WALL.channel * k);
+        if (k > 0) b = Math.max(b, WALL.channel * k);
       }
     }
-    for (const bd of BEDS) {
+    for (let q = 0; q < BEDS.length; q++) {
+      const bd = BEDS[q];
       const ax = Math.abs(x - bd.x) - bd.hx, az = Math.abs(z - bd.z) - bd.hz;
       if (ax > WALL.bedT + 0.2 || az > WALL.bedT + 0.2) continue;
       const m = Math.max(ax, az);                    // <0 внутри грядки
@@ -128,7 +134,14 @@ export function buildGrid(field, G = GRID) {
     const o = i + nx * k, h00 = h[o], h10 = h[o + 1], h01 = h[o + nx], h11 = h[o + nx + 1];
     return u >= v ? h00 + (h10 - h00) * u + (h11 - h10) * v : h00 + (h11 - h01) * u + (h01 - h00) * v;
   }
-  return { nx, nz, h, cv, cellOn, G, sample };
+  /** Покрытие (0..1) в точке, билинейно. */
+  function coverAt(x, z) {
+    const fx = (x - G.x0) / c, fz = (z - G.z0) / c;
+    if (fx < 0 || fz < 0 || fx >= nx - 1 || fz >= nz - 1) return 0;
+    const i = fx | 0, k = fz | 0, u = fx - i, v = fz - k, o = i + nx * k;
+    return (cv[o] * (1 - u) + cv[o + 1] * u) * (1 - v) + (cv[o + nx] * (1 - u) + cv[o + nx + 1] * u) * v;
+  }
+  return { nx, nz, h, cv, cellOn, G, sample, coverAt };
 }
 
 /** Данные меша (position/normal/uv/index) по сетке: только включённые ячейки. */
