@@ -270,7 +270,7 @@ export function makeFigure(opts = {}) {
   const V = THREE.Vector3;
   const cl = { lag: new V(), lv: new V(), prev: new V(), have: false, vel: new V(), lastPos: new V(), lodT: Math.random() * 0.3, skip: 0, acc: 0, wasCtxWind: false };
   const fig = {
-    group: g, height: H, parts, options: o, props, gait: null, onStep: null, lod: () => lod,
+    group: g, height: H, parts, options: o, props, gait: null, onStep: null, lod: () => lod, _anim: anim,
     get stats() { return { tris: [0, 1, 2].map((l) => { const e = geoAt(l); return triCount(e.body) + triCount(e.cloth); }), key }; },
     /** Скорость в м/с; irregular>0.45 — «походка по песку» (рваный шаг). 4-й параметр — ctx (см. шапку). Возвращает фазу цикла (рад). */
     animate(speed, dt, irregular = 0, ctx) {
