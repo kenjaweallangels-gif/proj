@@ -2,6 +2,7 @@
 // Все координаты — «абсолютные» в позе привязки (рост 1.75 м, +Z вперёд, +X — левая сторона фигуры = 'R' в именах API).
 // Атрибуты: region (материал), aux = (ребро-координата, сила рёбер, пыль/складка, угол для швов), skinIndex/skinWeight.
 import * as THREE from 'three';
+import { faceParams, buildHeadHi, buildHair, buildBeard } from './char_face.js';
 
 // ---------------------------------------------------------------------------------------------- кости ----
 export const BONE_NAMES = ['pelvis', 'spine', 'chest', 'neck', 'head'];
@@ -15,7 +16,7 @@ export const REST = {
   sh: [0.185, 1.43, 0], el: [0.185, 1.13, 0], hand: [0.185, 0.87, 0], hip: [0.09, 0.92, 0], kn: [0.09, 0.48, 0], foot: [0.09, 0.08, 0], toe: [0.09, 0.035, 0.13],
 };
 export const L1 = 0.44, L2 = 0.4; // бедро, голень
-export const REG = { SUIT: 0, SKIN: 1, CLOTH: 2, ACCENT: 3, LEATHER: 4, METAL: 5, HAIR: 6, SCLERA: 7, IRIS: 8, LIP: 9, SOLE: 10, LINING: 11, CLOTH2: 12 };
+export const REG = { SUIT: 0, SKIN: 1, CLOTH: 2, ACCENT: 3, LEATHER: 4, METAL: 5, HAIR: 6, SCLERA: 7, IRIS: 8, LIP: 9, SOLE: 10, LINING: 11, CLOTH2: 12, TOOTH: 13, MOUTH: 14 };
 
 // ---------------------------------------------------------------------------------------------- билдер ----
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -37,10 +38,12 @@ export function skY(y, stops) {
 }
 
 export class GB {
-  constructor() { this.p = []; this.reg = []; this.aux = []; this.sk = []; this.idx = []; }
+  constructor() { this.p = []; this.reg = []; this.aux = []; this.sk = []; this.idx = []; this.fc = []; this.nm = []; }
   get n() { return this.reg.length; }
-  vert(x, y, z, reg, aux, sk) {
+  vert(x, y, z, reg, aux, sk, fc, nrm) {
+    this.nm.push(nrm || null);
     this.p.push(x, y, z); this.reg.push(reg); this.aux.push(aux[0], aux[1], aux[2], aux[3]);
+    if (fc) this.fc.push(fc[0], fc[1], fc[2], fc[3]); else this.fc.push(0, 0, 0, 0);
     this.sk.push(sk[0], sk[1], sk[2] || 0, sk[3] || 0);
     return this.reg.length - 1;
   }
@@ -53,7 +56,7 @@ export class GB {
     const base = this.n;
     for (let j = 0; j < R; j++) for (let i = 0; i < M; i++) {
       const p = rings[j][i], m = meta(j, i, p);
-      this.vert(p[0], p[1], p[2], m.reg, m.aux, m.sk);
+      this.vert(p[0], p[1], p[2], m.reg, m.aux, m.sk, m.face, m.nrm);
     }
     const cols = closed ? M : M - 1;
     const at = (j, i) => base + j * M + (i % M);
@@ -74,9 +77,9 @@ export class GB {
     const cap = (j, sign) => {
       const ring = rings[j], c = ctr(ring);
       const m = meta(j, 0, ring[0]);
-      const cv = this.vert(c[0], c[1], c[2], m.reg, m.aux, m.sk);
+      const cv = this.vert(c[0], c[1], c[2], m.reg, m.aux, m.sk, m.face);
       const vs = [];
-      for (let i = 0; i < M; i++) vs.push(this.vert(ring[i][0], ring[i][1], ring[i][2], m.reg, m.aux, m.sk));
+      for (let i = 0; i < M; i++) vs.push(this.vert(ring[i][0], ring[i][1], ring[i][2], m.reg, m.aux, m.sk, m.face));
       const A = ring[0], Bp = ring[1 % M];
       const u1 = [A[0] - c[0], A[1] - c[1], A[2] - c[2]], u2 = [Bp[0] - c[0], Bp[1] - c[1], Bp[2] - c[2]];
       const n = [u1[1] * u2[2] - u1[2] * u2[1], u1[2] * u2[0] - u1[0] * u2[2], u1[0] * u2[1] - u1[1] * u2[0]];
@@ -95,6 +98,7 @@ export class GB {
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
     g.setAttribute('region', new THREE.Float32BufferAttribute(this.reg, 1));
     g.setAttribute('aux', new THREE.Float32BufferAttribute(this.aux, 4));
+    g.setAttribute('face', new THREE.Float32BufferAttribute(this.fc, 4));
     const si = [], sw = [];
     for (let i = 0; i < this.sk.length; i += 4) { si.push(this.sk[i], this.sk[i + 2], 0, 0); sw.push(this.sk[i + 1], this.sk[i + 3], 0, 0); }
     g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
@@ -116,6 +120,7 @@ export class GB {
         nrm[i * 3] = a[0] / l; nrm[i * 3 + 1] = a[1] / l; nrm[i * 3 + 2] = a[2] / l;
       }
     }
+    { const nrm = g.attributes.normal.array; for (let i = 0; i < this.n; i++) { const v = this.nm[i]; if (v) { nrm[i * 3] = v[0]; nrm[i * 3 + 1] = v[1]; nrm[i * 3 + 2] = v[2]; } } }
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.95, 0), 1.45);
     g.boundingBox = new THREE.Box3(new THREE.Vector3(-1.2, -0.1, -1.2), new THREE.Vector3(1.2, 2.3, 1.2));
     return g;
@@ -125,7 +130,7 @@ export class GB {
 // (build() фильтрует чётные/нечётные элементы: [i0,i1,0,0] и [w0,w1,0,0] — см. vert(): sk хранится как 4 числа.)
 
 // Кольцо в плоскости XZ (ось Y). a=0 — вперёд (+Z), a растёт к +X.
-function ringY(y, cx, cz, rx, rz, N, fn, a0 = 0, a1 = Math.PI * 2, open = false) {
+export function ringY(y, cx, cz, rx, rz, N, fn, a0 = 0, a1 = Math.PI * 2, open = false) {
   const pts = [], M = open ? N + 1 : N;
   for (let i = 0; i < M; i++) {
     const a = a0 + (a1 - a0) * (i / (open ? N : N));
@@ -151,7 +156,7 @@ const rotQ = new THREE.Quaternion(), rotE = new THREE.Euler(), tv = new THREE.Ve
 
 // ----------------------------------------------------------------------------------------- примитивы ----
 /** Эллипсоид. rot — Euler [x,y,z]. */
-function ellipsoid(b, c, r, reg, sk, o = {}) {
+export function ellipsoid(b, c, r, reg, sk, o = {}) {
   const U = o.u ?? 8, V = o.v ?? 6, rot = o.rot, aux = o.aux || [c[1], 0, 0, 0];
   if (rot) { rotE.set(rot[0], rot[1], rot[2]); rotQ.setFromEuler(rotE); }
   const rings = [];
@@ -169,7 +174,7 @@ function ellipsoid(b, c, r, reg, sk, o = {}) {
 }
 
 /** Трубка по ломаной с радиусом r(t). Параллельный перенос кадра. */
-function tube(b, pts, rad, reg, skFn, o = {}) {
+export function tube(b, pts, rad, reg, skFn, o = {}) {
   const N = o.seg ?? 6, P0 = pts.map((p) => new THREE.Vector3(...p)), P = P0.filter((p, i) => i === 0 || p.distanceTo(P0[i - 1]) > 2e-3), n = P.length;
   if (n < 2) return;
   const rings = [], tan = [];
@@ -189,7 +194,7 @@ function tube(b, pts, rad, reg, skFn, o = {}) {
 
 // ---------------------------------------------------------------------------------------------- тело ----
 // Параметры телосложения: ширины в плечах/талии/бёдрах, глубина груди.
-const BUILDS = {
+export const BUILDS = {
   m: { sh: 1, chest: 1, waist: 1, hip: 1, depth: 1, bust: 0, limb: 1, head: 1 },
   f: { sh: 0.9, chest: 0.93, waist: 0.88, hip: 1.1, depth: 0.95, bust: 1, limb: 0.9, head: 0.96 },
   c: { sh: 0.85, chest: 0.9, waist: 1, hip: 0.95, depth: 0.95, bust: 0, limb: 0.9, head: 1.28 },
@@ -351,7 +356,7 @@ export function buildBody(o, lod) {
 }
 
 // Параметры головы (локально: центр 0, подбородок -0.118, макушка 0.138), затем переносится в y=1.63.
-const HEAD_Y = 1.63;
+export const HEAD_Y = 1.63;
 const HEAD_ROWS = [ // y, rx, rz, cz
   [-0.12, 0.026, 0.03, 0.058], [-0.108, 0.05, 0.058, 0.04], [-0.085, 0.07, 0.076, 0.024], [-0.05, 0.08, 0.09, 0.008], [-0.01, 0.083, 0.097, 0.004],
   [0.03, 0.083, 0.1, 0.003], [0.07, 0.08, 0.099, -0.001], [0.105, 0.07, 0.088, -0.006], [0.128, 0.05, 0.068, -0.012], [0.141, 0.025, 0.04, -0.012],
@@ -371,49 +376,17 @@ function headRings(N, yRows, off = 0, a0 = 0, a1 = Math.PI * 2, open = false, hs
 }
 function buildHead(b, o, lod, B) {
   const hs = B.head, N = [18, 12, 8][lod];
-  const rows = lod === 0 ? [-0.12, -0.108, -0.085, -0.065, -0.05, -0.03, -0.01, 0.01, 0.03, 0.05, 0.07, 0.09, 0.105, 0.128, 0.141] : lod === 1 ? [-0.12, -0.085, -0.05, -0.01, 0.03, 0.07, 0.105, 0.128, 0.141] : [-0.12, -0.05, 0.03, 0.105, 0.141];
-  const rings = rows.map((y) => { const [rx, rz, cz] = headRow(y); return ringY(HEAD_Y + y * hs, 0, cz * hs + 0.005, rx * hs, rz * hs, N, lod === 0 ? (a) => headFace(a, y) : null); });
-  b.loft(rings, (j, i, p) => ({ reg: REG.SKIN, aux: [0, 0, 0, 0], sk: HSK }), { capStart: true, capEnd: true });
-  const Y = (y) => HEAD_Y + y * hs, Z = (z) => z * hs + 0.005;
-  if (lod === 2) return;
-  // нос
-  const nose = (r, c, rot) => ellipsoid(b, [c[0], Y(c[1]), Z(c[2])], r.map((v) => v * hs), REG.SKIN, HSK, { u: 8, v: 5, rot, aux: [0, 0, 0, 0] });
-  nose([0.011, 0.032, 0.013], [0, -0.004, 0.098], [-0.25, 0, 0]);
-  nose([0.014, 0.013, 0.016], [0, -0.03, 0.109], [0.2, 0, 0]);
-  nose([0.009, 0.011, 0.012], [0.014, -0.032, 0.1], [0, 0, 0.3]);
-  nose([0.009, 0.011, 0.012], [-0.014, -0.032, 0.1], [0, 0, -0.3]);
-  // уши
-  for (const s of [-1, 1]) ellipsoid(b, [0.083 * s * hs, Y(-0.005), Z(-0.008)], [0.007 * hs, 0.03 * hs, 0.019 * hs], REG.SKIN, HSK, { u: 8, v: 5, rot: [0, 0, s * 0.18], aux: [0, 0, 0, 0] });
-  // глаза: склера (у ибад — синяя), радужка/зрачок
-  const eyeY = 0.016;
-  for (const s of [-1, 1]) {
-    const ex = 0.033 * s * hs;
-    ellipsoid(b, [ex, Y(eyeY), Z(0.081)], [0.0165 * hs, 0.0125 * hs, 0.012 * hs], REG.SCLERA, HSK, { u: 10, v: 6, aux: [0, 0, 0, 0] });
-    ellipsoid(b, [ex * 0.985, Y(eyeY), Z(0.0905)], [0.0098 * hs, 0.0098 * hs, 0.0035 * hs], REG.IRIS, HSK, { u: 8, v: 4, aux: [0, 0, 0, 0] });
-    // веки
-    ellipsoid(b, [ex, Y(eyeY + 0.011), Z(0.081)], [0.0165 * hs, 0.0042 * hs, 0.0125 * hs], REG.SKIN, HSK, { u: 8, v: 4, rot: [-0.25, 0, 0], aux: [0, 0, 0, 0] });
-    ellipsoid(b, [ex, Y(eyeY - 0.0105), Z(0.081)], [0.0155 * hs, 0.0036 * hs, 0.0115 * hs], REG.SKIN, HSK, { u: 8, v: 4, rot: [0.2, 0, 0], aux: [0, 0, 0, 0] });
-    // брови
-    ellipsoid(b, [0.036 * s * hs, Y(0.044), Z(0.088)], [0.021 * hs, 0.0042 * hs, 0.008 * hs], REG.HAIR, HSK, { u: 8, v: 4, rot: [-0.25, 0, s * -0.12], aux: [0, 0, 0, 0] });
+  if (lod === 2) {
+    const rows = [-0.12, -0.05, 0.03, 0.105, 0.141];
+    const rings = rows.map((y) => { const [rx, rz, cz] = headRow(y); return ringY(HEAD_Y + y * hs, 0, cz * hs + 0.005, rx * hs, rz * hs, N, null); });
+    b.loft(rings, (j, i, p) => ({ reg: REG.SKIN, aux: [0, 0, 0, 0], sk: HSK }), { capStart: true, capEnd: true });
+    return;
   }
-  // губы (видны без маски)
-  ellipsoid(b, [0, Y(-0.057), Z(0.088)], [0.021 * hs, 0.0065 * hs, 0.009 * hs], REG.LIP, HSK, { u: 8, v: 4, aux: [0, 0, 0, 0] });
-  ellipsoid(b, [0, Y(-0.069), Z(0.084)], [0.018 * hs, 0.006 * hs, 0.009 * hs], REG.LIP, HSK, { u: 8, v: 4, aux: [0, 0, 0, 0] });
-
-  // волосы (если голова открыта у скулы/виска; под капюшоном лишь шапка)
-  if (o.hair !== 'none' && lod < 2) {
-    const long = o.hair === 'long', bun = o.hair === 'bun' || o.hair === 'braid';
-    const hr = [0.141, 0.13, 0.118, 0.108, 0.098, 0.08, 0.055, 0.03, 0.005], hth = [0, 0, 0, 0, 1.0, 1.35, 1.65, 1.85, 1.95];
-    const rr = hr.map((y, k) => { const [rx, rz, cz] = headRow(y); return ringY(Y(y), 0, Z(cz / 1) - 0.006, rx * hs + 0.007, rz * hs + 0.009, N, null, hth[k], Math.PI * 2 - hth[k], true); });
-    // шапка волос: от линии лба по макушке к затылку и вискам
-    b.loft(rr.reverse(), (j, i, p) => ({ reg: REG.HAIR, aux: [0, 0, 0, 0], sk: HSK }), { closed: false, capEnd: true });
-    if (bun) ellipsoid(b, [0, Y(0.07), Z(-0.115)], [0.04 * hs, 0.036 * hs, 0.036 * hs], REG.HAIR, HSK, { u: 8, v: 5, aux: [0, 0, 0, 0] });
-    if (long) b.loft([-0.22, -0.13, -0.05, 0.02].map((y, k) => ringY(Y(y), 0, Z(-0.07 - (3 - k) * 0.012), 0.068 - (3 - k) * 0.006, 0.03, 10, null, Math.PI * 0.72, Math.PI * 1.28, true)), (j, i, p) => ({ reg: REG.HAIR, aux: [0, 0, 0, 0], sk: HSK }), { closed: false });
-  }
-  if (o.beard && lod < 2) {
-    const rr = [-0.23, -0.19, -0.14, -0.108, -0.075, -0.04].map((y, k) => { const [rx, rz, cz] = headRow(Math.max(y, -0.12)); return ringY(Y(y), 0, Z(cz) + 0.012 + (5 - k) * 0.004, rx * hs * (1 - (5 - k) * 0.05) + 0.008, rz * hs * (1 - (5 - k) * 0.06) + 0.012, 12, null, -Math.PI * 0.62, Math.PI * 0.62, true); });
-    b.loft(rr, (j, i, p) => ({ reg: REG.HAIR, aux: [0, 0, 0, 0], sk: HSK }), { closed: false, capEnd: false });
-  }
+  const P = o.faceP || faceParams(o);
+  const cowled = o.cowl !== false && ((o.maskOn ?? (o.mask !== false)) || o.hood !== false) && !o.bare;
+  const hh = buildHeadHi(b, o, lod, B, cowled, P);
+  buildHair(b, o, lod, B, P, hh.S);
+  if (o.beard) buildBeard(b, o, lod, B, P, hh.S);
 }
 
 /** Головной чехол дистикомба: капюшон-«затвор» вокруг лица + маска с трубками. Возвращает ничего (в тело). */
@@ -440,7 +413,8 @@ export function buildCowl(b, o, lod, B) {
   b.loft(fixed, (j, i, p) => {
     const y = p[1] - HEAD_Y;
     const inMask = y < -0.03 && y > -0.125 && maskUp;
-    return { reg: REG.SUIT, aux: [p[1] * 1.0, inMask ? 1.1 : 0.7, 0.3 + (inMask ? 0.2 : 0), 0], sk: y < -0.14 ? [BI.neck, 1 - sstep(-0.2, -0.14, y) * 0 , BI.head, 0] : HSK };
+    const jw = sstep(-0.05, -0.078, y / hs) * (1 - sstep(0.04, 0.08, Math.abs(p[0] / hs))) * (1 - sstep(-0.13, -0.2, y / hs));
+    return { reg: REG.SUIT, aux: [p[1] * 1.0, inMask ? 1.1 : 0.7, 0.3 + (inMask ? 0.2 : 0), 0], face: [0, 0, 0, lod === 0 ? jw : 0], sk: y < -0.14 ? [BI.neck, 1 - sstep(-0.2, -0.14, y) * 0 , BI.head, 0] : HSK };
   }, { closed: false, capStart: true });
   // шов-обод вокруг лица (герметизация)
   const rimPts = [];
