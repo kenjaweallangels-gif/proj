@@ -12,3 +12,5 @@ orchestrator/logs/
 Export/
 .env
 .claude/worktrees/
+Tools/tts/models/
+Tools/tts/.cache/

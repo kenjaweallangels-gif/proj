@@ -101,7 +101,7 @@ S("DLG_A2_B01", "ZoneEnter:A2_Erg", [
 ])
 
 # политика: десятина водой
-S("DLG_A2_B20", "ZoneEnter:A2_Erg", [
+S("DLG_A2_B20", "ZoneEnter:A3_Approach", [
     ("Rayn", "Neutral", "Yā Kayr, qaddi ʿušr an-nuṭf? Qaddi yaḥluṣ an-tabr?",
      "Кайр, сколько составляет водяная десятина? И сколько платит сиетч?", "Kair, how much is the water tithe? And how much does a sietch pay?"),
     ("Kair", "Neutral", "Kull nuṭfat ʿaš. Mun kull ḥalq, mun kull qull, wa-ayḍ mun dumʿ an-khufūt.",
@@ -155,7 +155,7 @@ S("DLG_A2_B45", "MoistureBelow:0.35", [
 ])
 
 # похороны, вода мёртвых; шутка про привычку считать
-S("DLG_A2_B50", "ZoneEnter:A2_Erg", [
+S("DLG_A2_B50", "ZoneEnter:A3_Approach", [
     ("Rayn", "Neutral", "Yā Kayr, kay wakīd: an-tabr yakurr nuṭf an-khufūt li-an-ḍumm? Hum khufūt!",
      "Кайр, правда, что в сиетчах воду умерших возвращают общине? Это же покойники!", "Kair, is it true the sietches return the water of the dead to the community? They're corpses!"),
     ("Kair", "Calm", "Maš nuṭf khufūt. Nuṭf jaddunā. Yamṣuṣūhā bi-ḥamd, bayd maš bi-jahr.",
@@ -223,7 +223,7 @@ S("DLG_WRM_P01", "", [
     ("Ilva", "Calm", G, "Чан, мастер Рэйн? Какой чан?", "Vat, Master Rayn? What vat?"),
     ("Rayn", "Afraid", G, "Для воды. Чаны для воды. Торговое словечко.", "For water. Water vats. Trade talk."),
 ])
-S("DLG_THM_001", "Interact:Rakis.Thumper", [("Kair", "Tense", "Al-miḍbaṭ yanfilnā ḥawfāt nazr. Iḥfuzū.",
+S("DLG_THM_001", "Interact:Rakis.Thumper", [("Kair", "Tense", "An-miḍbaṭ yanfilnā ḥawfāt nazr. Iḥfuzū.",
     "Тампер даст нам несколько вдохов. Не больше. Идём.", "The thumper buys us a few breaths. No more. Move.")])
 
 # =====================================================================================================================
@@ -314,9 +314,9 @@ S("DLG_A5_005", "", [
      "Снизу тропу не видно. Её прятали — камнем и тенью.", "From below the path can't be seen. They hid it — with stone and with shade."),
 ])
 S("DLG_A5_010", "", [
-    ("Rayn", "Afraid", "Lin ānu aṭraḥ… ʿallim ummī: ānu bāt daššān ṣādiq.",
+    ("Rayn", "Afraid", "Lin ānu aṭraḥ… ilqut li-ummī: ānu bāt daššān ṣādiq.",
      "Если я упаду… передайте моей матери: я был честным купцом.", "If I fall… tell my mother: I was an honest merchant."),
-    ("Kair", "Wry", "Ṣādiq? Hī maš ġad taʿqil.",
+    ("Kair", "Wry", "Ṣādiq? Hī maš ġad taqal.",
      "Честным? Она не поверит.", "Honest? She won't believe it."),
     ("Rayn", "Wry", "Ānu maš ġad aṭraḥ. Ānu ġad aʿlaq ʿalā ḍahrak.",
      "Я не упаду. Я повисну на вашей спине.", "I won't fall. I'll hang on your back."),
@@ -480,7 +480,7 @@ S("DLG_B2_F10", "", [
      "Приходи есть ко мне. Я сварила кашу с финиками.", "Come and eat at my place. I cooked porridge with dates."),
     ("Elder", "Wry", "ʿAṣīd bi-tamr? Hād ṭaʿām ṣuġāġ. Ānu aqdam mun hād.",
      "Каша с финиками? Это еда для детей. Я староват для такого.", "Porridge with dates? That's a children's meal. I'm too old for it."),
-    ("Weaver", "Amused", "Wa-ḥīn ṣiġāk yatūlū li-ʿurs, yaḥṭamū hād ayḍ.",
+    ("Weaver", "Amused", "Wa-ḥīn ṣiġāġak yatūlū li-ʿurs, yaḥṭamū hād ayḍ.",
      "А когда твои дети приедут на свадьбу, они это тоже съедят.", "And when your children come home for a wedding, they'll eat it too."),
     ("Elder", "Warm", "…Ṣāf. Ġad atūl.",
      "…Хорошо. Приду.", "…All right. I'll come."),
@@ -510,7 +510,7 @@ S("DLG_B2_K10", "", [
 
 # companions в галерее
 S("DLG_B2_B01", "ZoneEnter:B2_Gallery", [
-    ("Rayn", "Neutral", "Qaddi ḍumm hun? Mīt? Mītān? Wa-kull mun ṣihr wāḥid?",
+    ("Rayn", "Neutral", "Qaddi ḍumm hun? Mīt? Mītān? Wa-kull mun ṣihr ḥad?",
      "Сколько их здесь? Сотня? Две? И все из одной цистерны?", "How many live here? A hundred? Two hundred? And all from one cistern?"),
     ("Kair", "Tense", "An-nuṭf ġayr ḥaṣr bi-jahr, yā Rayn. Hād ʿayb.",
      "Чужую воду вслух не считают, Рэйн. Это стыдно.", "You don't count other people's water aloud, Rayn. It's shameful."),
@@ -558,7 +558,7 @@ S("DLG_B3_S01", "", [
      "Мы должны Умм-Касим три кольца. До весны.", "We owe Umm Qasim three rings. By spring."),
     ("Mother", "Whisper", "ʿAlašku. Ġad aṭraḥ ġazlī mun an-nisj. Wa-adšin.",
      "Знаю. Я сниму свою пряжу со станка. И продам.", "I know. I'll take my yarn off the loom. And sell it."),
-    ("Youth", "Whisper", "Maš. Ġad asrub ʿad an-Ḍafr fu-ḥalk. Hunāk yaḥluṣū nuṭfat.",
+    ("Youth", "Whisper", "Maš. Ġad asrub ʿad an-Ḍafr fu-ḥalk. Hnāy yaḥluṣū nuṭfat.",
      "Не надо. Я пойду в ночной дозор на Коготь. Там платят каплей.", "Don't. I'll take the night watch on the Claw. They pay in drops there."),
 ])
 S("DLG_B3_001", "", [
@@ -614,7 +614,7 @@ S("DLG_B5_020", "", [
      "Из Кина, значит. От тех, кто сменял Бога на воду. …Ну. Показывай, что принёс, проводник.", "From Keen, then. From those who traded God for water. …Well. Show me what you've brought, guide."),
     ("Kair", "Neutral", "Luqt an-ḥanābin, yā Rāʿim. Yabġū ʿušr an-nuṭf, wa-wasm ʿalā kull ḥalq. Ānu ʿatalku an-khaṭṭ. Maš ġad aqrāh.",
      "Слово жрецов, досточтимый. Они хотят водяную десятину и печать на каждом кольце. Я принёс письмо. Читать его я не стану.", "The priests' word, honored one. They want the water tithe, and a seal on every ring. I've brought the letter. I won't read it aloud."),
-    ("Harmat", "Neutral", "Ḥaṭṭuh fūq an-ṣalt. Aqrāʾuh bād an-ṭaʿām. Ḥašn an-nuṭf maš yabdaʾ bi-baṭn khāw.",
+    ("Harmat", "Neutral", "Ḥaṭṭuh fūq an-ṣalt. Aqrāh bād an-ṭaʿām. Ḥašn an-nuṭf maš yabdaʾ bi-baṭn khāw.",
      "Положи на камень. Прочту после еды. Разговор о воде не начинают на пустой желудок.", "Put it on the stone. I'll read it after the meal. Talk of water isn't begun on an empty belly."),
     ("Rayn", "Afraid", "Ṭaʿām? Hun yaḥṭamū sāb dī yuḥkam?",
      "Еда? У вас принято есть с теми, кого собираются судить?", "A meal? Here you dine with the person you're about to judge?"),

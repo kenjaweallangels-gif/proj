@@ -216,8 +216,20 @@ export function createSfx(game, eng) {
     harv.level += (target - harv.level) * (1 - Math.exp(-dt / (harv.on ? 2.2 : 3.2)));   // раскрутка / выбег
     harv.pitch = 0.55 + 0.45 * harv.level;
     const t = eng.T();
-    const lvl = harv.level < 0.01 ? 0 : harv.level;
-    eng.ramp(harv.inp.gain, lvl, 0.25);
+    // Двигатель слышен только когда комбайн РАБОТАЕТ и он рядом: ноль дальше ~420 м и внутри сиетча (раньше низкий «бурый» гул тянулся через всю карту).
+    let hnear = 1;
+    {
+      const hp0 = harvPos();
+      if (hp0 && game.camera) {
+        game.camera.getWorldPosition(camPos);
+        const dd = Math.hypot(camPos.x - hp0.x, camPos.z - hp0.z);
+        const x = clamp((420 - dd) / (420 - 90), 0, 1);
+        hnear = x * x * (3 - 2 * x);
+      }
+      if (game.space === 'sietch') hnear = 0;
+    }
+    const lvl = harv.level < 0.01 ? 0 : harv.level * hnear;
+    eng.ramp(harv.inp.gain, lvl < 0.005 ? 0 : lvl, 0.25);
     for (const o of harv.oscs) eng.ramp(o.o.frequency, o.f * harv.pitch, 0.3);
     eng.ramp(harv.wh.frequency, 260 + 260 * harv.level, 0.3);
     eng.ramp(harv.wg.gain, 0.01 + 0.05 * harv.level * harv.level, 0.3);
@@ -231,7 +243,7 @@ export function createSfx(game, eng) {
       eng.ramp(harv.air.frequency, clamp(9000 / (1 + d / 160), 450, 9000), 0.3);
     }
     // лязг гусениц
-    if (lvl > 0.15 && t > harv.nextClank) {
+    if (lvl > 0.12 && t > harv.nextClank) {
       eng.burst({ type: 'bandpass', f0: rnd(800, 2600), q: rnd(3, 7), dur: rnd(0.03, 0.08), attack: 0.001, gain: rnd(0.15, 0.4) * lvl, kind: 'white', out: harv.inp, when: t });
       if (Math.random() < 0.5) eng.blip({ freq: rnd(150, 260), freq1: rnd(90, 150), dur: 0.1, gain: 0.22 * lvl, type: 'triangle', out: harv.inp, when: t });
       harv.nextClank = t + (0.2 + Math.random() * 0.14) / (0.6 + harv.pitch * 0.4);
@@ -393,17 +405,29 @@ export function createSfx(game, eng) {
         const d = camPos.distanceTo(w.headPos);
         prox = clamp(1 - d / 320, 0, 1);
       }
-      const rumble = clamp(Math.max(Math.pow(threat, 0.8) * 0.42, prox * prox * 0.75), 0, 1);
-      eng.ramp(wormOut.gain, rumble, 0.5);
+      // Рокот червя (Ред. 2): ТОЛЬКО при настоящем приближении/выходе червя рядом с игроком в пустыне. Раньше шёл по threat/расстоянию 320 м
+      // почти постоянно («гул как землетрясение везде»). Теперь: состояние (Approach/Surface/Pass/Ridden; Listening — лишь лёгкая дрожь),
+      // близость (полная громкость ближе 45 м, ноль дальше 230 м) и пустыня (в сиетче рокота нет).
+      const st = w?.state;
+      const stateK = st === 'Surface' || st === 'Pass' || st === 'Ridden' ? 1 : st === 'Approach' ? 0.75 : st === 'Listening' ? 0.18 : 0;
+      let near = 0;
+      if (stateK > 0 && w?.headPos && game.space === 'desert') {
+        game.camera.getWorldPosition(camPos);
+        const dd = camPos.distanceTo(w.headPos);
+        const x = clamp((230 - dd) / (230 - 45), 0, 1);
+        near = x * x * (3 - 2 * x);
+      }
+      const rumble = clamp(stateK * near * (0.35 + 0.65 * threat), 0, 1) * 0.75;
+      eng.ramp(wormOut.gain, rumble < 0.01 ? 0 : rumble, 0.5);
       const pitch = 1 + threat * 0.25;
       subs.forEach((o, i) => eng.ramp(o.frequency, [26, 31.5, 38, 44.5][i] * pitch, 0.6));
       const moving = w && (w.state === 'Approach' || w.state === 'Surface' || w.state === 'Pass');
       eng.ramp(hissG.gain, moving ? 0.1 * clamp(0.4 + threat * 0.6, 0, 1) * (0.3 + prox * 0.7) : 0, 0.8);
       const now = eng.T();
       // Камни «тук-тук»: частота 0 → 12 Гц по угрозе.
-      if (threat > 0.15 && now > nextRock) { rockRattle(rnd(-1, 1)); nextRock = now + 1 / (0.6 + threat * 12) * rnd(0.5, 1.5); }
+      if (threat > 0.15 && near > 0.15 && now > nextRock) { rockRattle(rnd(-1, 1)); nextRock = now + 1 / (0.6 + threat * 12) * rnd(0.5, 1.5); }
       // Сердцебиение при высокой угрозе (60 → 110 ударов/мин).
-      if (threat > 0.5 && now > nextBeat) { heartbeat(); nextBeat = now + 60 / (60 + (threat - 0.5) * 100); }
+      if (threat > 0.5 && near > 0.2 && now > nextBeat) { heartbeat(); nextBeat = now + 60 / (60 + (threat - 0.5) * 100); }
       // Сухое дыхание при низкой влаге.
       if (p && (p.moisture ?? 1) < 0.25 && game.space === 'desert' && now > breathAt) { breath(true); breathAt = now + rnd(6, 10); }
     },

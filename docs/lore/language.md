@@ -862,6 +862,9 @@ Irdif-ū      an-ʿuqūf.
 | — | akhḍar | зелёный | green |
 | — | ḍāhir | открытый, видимый | open, visible |
 | — | ḥadr | низ, спуск | down, descent |
+| W-R-ʾ | wara | позади, за | behind |
+| S-T-R | sitr | занавеска | curtain |
+| ʿ-J-L | mustaʿjil | торопливый, нетерпеливый | hasty one |
 
 ### 13.8 Конвейер озвучки (кратко)
 `Tools/tts/script_s1.py` (источник) → `gen_dialogue.py` → `Dialogue_S1.csv` → `piper_build.py` (Piper → ffmpeg: голос персонажа → Opus 16–20 кбит/с) → `Web/src/assets/vo.js`. Подробности — `docs/audio/voice_pipeline.md`.

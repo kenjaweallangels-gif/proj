@@ -136,7 +136,17 @@ def _hyphenated(raw: str) -> str:
         if p in ART_COMB and nxt == "an" and p != "an":
             out.append(ART_COMB[p]); i += 2; continue
         if p == "an":
-            out.append(ART_COMB["an"]); i += 1; continue
+            if pending:  # «li-an-X», «wa-fu-an-X»: клитика + артикль = отдельное слово (b-an → بِنْ)
+                last = pending[-1]
+                if last == FATHA or last == KASRA or last == DAMMA:
+                    base = pending[:-1]
+                    vow = FATHA if last == FATHA else KASRA
+                else:
+                    base, vow = pending, KASRA
+                out.append(base + vow + "نْ"); pending = ""
+            else:
+                out.append(ART_COMB["an"])
+            i += 1; continue
         if p in ART_COMB and p != "an" and nxt is not None and p in ("b", "l", "f", "w", "k"):
             # одинокая b-/l-… перед не-артиклем: слитно
             pending += _word(p)[:-1]  # без сукуна: будет огласовано следующим слогом
@@ -158,11 +168,11 @@ def to_script(native: str) -> str:
         return ""
     out = []
     # токены: слова (латиница/дефис/апострофы) и всё остальное
-    for m in re.finditer(r"[A-Za-zĀĪŪāīūōṬḌṢŠḤĠṭḍṣšḥġʿʾ\-]+|[^\sA-Za-zĀĪŪāīūōṬḌṢŠḤĠṭḍṣšḥġʿʾ\-]+|\s+", s):
+    for m in re.finditer(r"[A-Za-zĀĪŪŌāīūōṬḌṢŠḤĠṭḍṣšḥġʿʾ\-]+|[^\sA-Za-zĀĪŪŌāīūōṬḌṢŠḤĠṭḍṣšḥġʿʾ\-]+|\s+", s):
         t = m.group(0)
         if t.isspace():
             out.append(" ")
-        elif re.match(r"[A-Za-zĀĪŪāīūōṬḌṢŠḤĠṭḍṣšḥġʿʾ]", t):
+        elif re.match(r"[A-Za-zĀĪŪŌāīūōṬḌṢŠḤĠṭḍṣšḥġʿʾ]", t):
             out.append(_hyphenated(t))
         else:  # пунктуация
             out.append("".join(PUNCT.get(ch, ch) for ch in t))
@@ -174,7 +184,7 @@ def to_script(native: str) -> str:
 
 def words(native: str) -> list[str]:
     """Список слов-морфем (нижний регистр, без пунктуации) — для проверки по словарю."""
-    s = re.sub(r"[^A-Za-zĀĪŪāīūōṬḌṢŠḤĠṭḍṣšḥġʿʾ\-\s]", " ", native or "")
+    s = re.sub(r"[^A-Za-zĀĪŪŌāīūōṬḌṢŠḤĠṭḍṣšḥġʿʾ\-\s]", " ", native or "")
     res = []
     for w in s.split():
         res.append(w.lower())

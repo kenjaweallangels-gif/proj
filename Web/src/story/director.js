@@ -1,6 +1,7 @@
 // Сюжетный директор (порт ARakisStoryDirector): исполняет game.data.StoryBeats.
 // Триггеры: Start, ZoneEnter:<Zone>, Beat:<ID>, WormState:<State>, NoiseAbove:<x>, Interact:<Tag>.
-// Действия: PlayDialogue, PlayCinematic, SetWeather, SetMusic, TitleCard, ForceWorm, CrowdRitual, Hint, FadeOut, EndDemo.
+// Действия: PlayDialogue, PlayCinematic, SetWeather, SetMusic, TitleCard, ForceWorm, CrowdRitual, Hint.
+// Демо НЕ заканчивается: ни затемнения, ни титра «Конец». После зала жизнь идёт дальше, управление свободно всегда (Ред. 2; FadeOut/EndDemo удалены).
 // Всё происходит в реальном времени под управлением игрока: никаких склеек времени («N часов спустя») и кат-сцен с отнятым управлением.
 // PlayCinematic лишь запускает реалтайм-последовательности модулей (worm.playReveal, sietch.playFinale) и ждёт их Promise; game.cinematic не трогает.
 // Действие Ellipsis из старых таблиц распознаётся и игнорируется (бит считается выполненным).
@@ -54,7 +55,6 @@ const BUILTIN = [
   B('S_B5_Ritual', 83, 'ZoneEnter:B5_Hall', 'CrowdRitual', ''),
   B('S_B5_Finale', 84, 'ZoneEnter:B5_Hall', 'PlayCinematic', '/Game/Rakis/Cinematics/LS_HallFinale', 8),
   B('S_B5_Harmat', 85, 'Beat:S_B5_Finale', 'PlayDialogue', 'B5_Harmat_01', 0.5),
-  B('S_B5_End', 86, 'Beat:S_B5_Harmat', 'EndDemo', '', 2),
 ];
 
 export function create(game) {
@@ -73,7 +73,7 @@ export function create(game) {
 
   // ---- Биты ----
   let beats = [];
-  let started = false, ended = false, ritualStarted = false;
+  let started = false, ritualStarted = false;
   let cinematicBeat = null;
   let hasNoiseBeats = false;
   let lastStoryWeather = null;     // последний SetWeather сюжета (применённый или пропущенный из-за ручного режима)
@@ -121,7 +121,6 @@ export function create(game) {
           return;
         }
         case 'PlayCinematic': actionCinematic(b, p); return;
-        case 'FadeOut': actionFadeOut(b, p); return;
         case 'Ellipsis': console.info(`[story] Ellipsis ${b.id} устарел (всё в реальном времени) — пропущен`); break;
         case 'SetWeather': {
           const [id, blend] = p.split(',').map((s) => s.trim());
@@ -140,7 +139,7 @@ export function create(game) {
         case 'Hint': game.ui?.hint?.(pick(p)); break;
         case 'ForceWorm': game.worm?.forceSurface?.(WORM_REVEAL.x, WORM_REVEAL.z); break;
         case 'CrowdRitual': startRitual(); break;
-        case 'EndDemo': endDemo(); break;
+        case 'FadeOut': case 'EndDemo': console.info(`[story] ${b.action} (${b.id}) устарел: демо не заканчивается — пропущен`); break;
         default: console.warn(`[story] неизвестное действие '${b.action}' в бите ${b.id}`);
       }
     } catch (e) { console.error(`[story] бит ${b.id}:`, e); }
@@ -152,13 +151,6 @@ export function create(game) {
     ritualStarted = true;
     game.sietch?.startRitual?.();
     bus.emit('ritual');
-  }
-
-  function endDemo() {
-    if (ended) return;
-    ended = true;
-    game.ui?.endCard?.();
-    bus.emit('end');
   }
 
   // ---- Реалтайм-последовательности (бывшие кат-сцены) ----
@@ -184,21 +176,6 @@ export function create(game) {
     const safety = schedule(CINEMATIC_SAFETY, finish);
     if (hasPromise) promise.then(finish, finish);
     else schedule(/Hall/i.test(p) ? 9 : 6, finish); // фоллбек по времени
-  }
-
-  function actionFadeOut(b, p) {
-    // Param = "сек[,удержание]": в чёрное за сек, через удержание (по умолч. 0.5) — обратно; <0 — остаться в чёрном.
-    const [s, h] = p.split(',');
-    const sec = s?.trim() ? Math.max(0, parseFloat(s)) : 1;
-    let hold = h !== undefined ? parseFloat(h) : 0.5;
-    // Если следом идёт EndDemo — остаёмся в чёрном.
-    if (beats.some((x) => x.trigger === `Beat:${b.id}` && x.action === 'EndDemo')) hold = -1;
-    const ui = game.ui;
-    if (!ui?.fade) { schedule(sec, () => completeBeat(b)); return; }
-    ui.fade(true, sec).then(() => {
-      completeBeat(b);
-      if (hold >= 0) schedule(hold, () => { if (!ended) ui.fade(false, sec); });
-    });
   }
 
   // ---- Подписки ----
@@ -251,7 +228,7 @@ export function create(game) {
   const api = {
     /** Отладка: story.fire('ZoneEnter:B5_Hall'). */
     fire: (trigger) => fireTrigger(trigger),
-    endDemo, startRitual,
+    startRitual,
     /** Отладка: запустить кат-сцену по Param (WormReveal / HallFinale) без бита. */
     playCinematic: (param) => actionCinematic({ id: `DBG_${param}`, fired: true, completed: false }, String(param)),
     /** «Вернуть сюжетную погоду»: снимает ручной режим и применяет последний пресет сюжета. */
@@ -264,7 +241,8 @@ export function create(game) {
     isCompleted: (id) => !!beats.find((b) => b.id === id)?.completed,
     get beats() { return beats; },
     get started() { return started; },
-    get ended() { return ended; },
+    /** Совместимость: демо не заканчивается никогда. */
+    get ended() { return false; },
     /** Совместимость: склеек больше нет. */
     get ellipsisPhase() { return 'none'; },
     list() { console.table(beats.map((b) => ({ id: b.id, order: b.order, trigger: b.trigger, action: b.action, fired: b.fired, done: b.completed }))); },

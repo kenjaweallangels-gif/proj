@@ -4,7 +4,8 @@ SB_A1_01_Music,20,Start,SetMusic,DesertCalm,0.5
 SB_A1_02_Title,30,Start,TitleCard,Ракис. Гребень Шайтана. Рассвет|Rakis. Shaitan's Ridge. Dawn,2.0
 SB_A1_03_RaynStep,40,Beat:SB_A1_02_Title,PlayDialogue,DLG_A1_001,3.0
 SB_A1_04_Hint,50,Beat:SB_A1_03_RaynStep,Hint,"C / LB — шаг пустыни (тише, но медленнее). Пробел / A — сбить ритм ещё сильнее.|C / LB — desert step (quieter, slower). Space / A — break the rhythm further.",1.0
-SB_A1_05_Banter,60,Beat:SB_A1_04_Hint,PlayDialogue,DLG_A1_005,20.0
+SB_A1_05_Banter,60,Beat:SB_A1_04_Hint,PlayDialogue,DLG_A1_020,20.0
+SB_A1_06_Mission,65,Beat:SB_A1_05_Banter,PlayDialogue,DLG_A1_010,14.0
 SB_A2_00_Title,70,ZoneEnter:A2_Erg,TitleCard,Открытый эрг|The Open Erg,1.0
 SB_A2_01_Weather,80,ZoneEnter:A2_Erg,SetWeather,"Morning_Erg,25",0
 SB_A2_02_Music,90,ZoneEnter:A2_Erg,SetMusic,DesertDrone,4.0
@@ -46,7 +47,7 @@ SB_B1_02_Guard,400,ZoneEnter:B1_Airlock,PlayDialogue,DLG_B1_001,3.0
 SB_B2_00_Music,410,ZoneEnter:B2_Gallery,SetMusic,SietchLife,1.0
 SB_B2_01_Children,420,ZoneEnter:B2_Gallery,PlayDialogue,DLG_B2_B03,15.0
 SB_B2_02_Shiana,430,ZoneEnter:B2_Gallery,PlayDialogue,DLG_B2_C01,35.0
-SB_B2_03_Tithe,440,ZoneEnter:B2_Gallery,PlayDialogue,DLG_B2_C03,70.0
+SB_B2_03_Tithe,440,ZoneEnter:B2_Gallery,PlayDialogue,DLG_B2_C10,70.0
 SB_B2_04_RitualTimer,450,ZoneEnter:B2_Gallery,CrowdRitual,,240.0
 SB_B3_00_Music,460,ZoneEnter:B3_Passages,SetMusic,SietchNarrow,0.5
 SB_B3_01_Ritual,470,ZoneEnter:B3_Passages,CrowdRitual,,0
@@ -62,8 +63,8 @@ SB_B5_05_Song,550,Beat:SB_B5_04_Chant,PlayDialogue,DLG_B5_P01,0.5
 SB_B5_06_Feet,560,Beat:SB_B5_05_Song,PlayDialogue,DLG_B5_010,4.0
 SB_B5_07_Finale,570,Beat:SB_B5_06_Feet,PlayCinematic,/Game/Rakis/Cinematics/LS_HallFinale,3.0
 SB_B5_08_Ossana,580,Beat:SB_B5_06_Feet,PlayDialogue,DLG_B5_020,9.0
-SB_B5_09_Fade,590,Beat:SB_B5_07_Finale,FadeOut,4,1.0
-SB_B5_10_End,600,Beat:SB_B5_09_Fade,EndDemo,,0.5
+SB_B5_09_Life,595,Beat:SB_B5_08_Ossana,SetMusic,SietchLife,9.0
+SB_B5_10_Free,596,Beat:SB_B5_08_Ossana,Hint,"Табр-ан-Нур открыт: гуляйте по галерее, спускайтесь к цистерне, найдите сад. Разговоры здесь не кончаются.|Tabr-an-Nur is open: wander the gallery, go down to the cistern, find the garden. The talk never stops.",16.0
 SB_C1_00_Weather,605,ZoneEnter:C1_Garden,SetWeather,"Noon_Approach,8",0
 SB_C1_01_Music,606,ZoneEnter:C1_Garden,SetMusic,DesertCalm,1.0
 SB_C1_02_Title,607,ZoneEnter:C1_Garden,TitleCard,Тайный сад|The Hidden Garden,1.5

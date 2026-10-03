@@ -17,7 +17,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 sys.path.insert(0, HERE)
-LET = "A-Za-zĀĪŪāīūōṬḌṢŠḤĠṭḍṣšḥġʿʾ"
+LET = "A-Za-zĀĪŪŌāīūōṬḌṢŠḤĠṭḍṣšḥġʿʾ"
 
 
 def doc_words():

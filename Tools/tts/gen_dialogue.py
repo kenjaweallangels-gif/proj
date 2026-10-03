@@ -47,7 +47,7 @@ def rayn_accent(s: str) -> str:
             return w
         w = w.replace("kh", "k").replace("Kh", "K")
         return "".join(RAYN_MAP.get(c, c) for c in w)
-    return re.sub(r"[A-Za-zĀĪŪāīūōṬḌṢŠḤĠṭḍṣšḥġʿʾ\-]+", word, s)
+    return re.sub(r"[A-Za-zĀĪŪŌāīūōṬḌṢŠḤĠṭḍṣšḥġʿʾ\-]+", word, s)
 
 
 DIALECT = {"Kair": kin_register, "Rayn": rayn_accent}
