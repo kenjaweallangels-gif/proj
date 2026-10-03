@@ -240,7 +240,7 @@ export function create(game) {
       const lat = Math.hypot(pos.x - (a.x + dx * t), pos.z - (a.z + dz * t));
       if (t > 0.22 && t < 1.05 && lat < 20 && pos.y > (game.heightAt(a.x, a.z) + 3)) fireTrigger('ZoneEnter:A5_Trail');
     }
-    if (!lastVZ.cleft && Math.hypot(pos.x - ENTRY.cleft.x, pos.z - ENTRY.cleft.z) < 9 && Math.abs(pos.y - ENTRY.cleft.y) < 10) {
+    if (!lastVZ.cleft && Math.hypot(pos.x - ENTRY.cleft.x, pos.z - ENTRY.cleft.z) < 9 && Math.abs(pos.y - ENTRY.cleft.y) < 14) {
       lastVZ.cleft = true; fireTrigger('ZoneEnter:A6_Cleft');
     }
     if (!game.garden?.zoneAt && !lastVZ.garden && Math.hypot(pos.x - GARDEN.center.x, pos.z - GARDEN.center.z) < GARDEN.radius * 0.8) {
