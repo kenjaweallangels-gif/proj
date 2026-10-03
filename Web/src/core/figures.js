@@ -17,7 +17,7 @@
 // Глобально: setFigureWind(dir, speed) — ветер для всех (вызывает модуль игрока), setFigureView(camPos) — для LOD.
 import * as THREE from 'three';
 import { rng } from './util.js';
-import { BONE_NAMES, REST, REG, BUILDS, robeProfile, geometryFor, triCount } from '../player/char_geometry.js';
+import { BONE_NAMES, REST, REG, BUILDS, robeProfile, geometryFor, geometryStage, hasGeometry, triCount } from '../player/char_geometry.js';
 import { faceParams, faceKey, faceUniformsSpec } from '../player/char_face.js';
 import { makeUniforms, makeBodyMaterial, makeClothMaterial } from '../player/char_material.js';
 import { createAnimator } from '../player/char_anim.js';
@@ -29,11 +29,26 @@ const VIEW = new THREE.Vector3(1e6, 0, 1e6);
 let VIEW_SET = false;
 let LOD_SCALE = 1;
 let CLOCK = 0;
+let _tick = 0;
+function FRAME_TICK() { const n = performance.now(); if (n - _tick > 4) { FRAME++; _tick = n; } }
 export function setFigureWind(dir, speed = 0) { if (!dir) { WIND.x = WIND.z = WIND.speed = 0; return; } WIND.x = dir.x; WIND.z = dir.z; WIND.speed = speed; }
 export function setFigureView(camPos) { VIEW.copy(camPos); VIEW_SET = true; }
 /** Масштаб дистанций LOD (качество графики: low 0.6, med 1, high 1.4). */
 export function setFigureQuality(q) { LOD_SCALE = q === 'low' ? 0.6 : q === 'high' ? 1.4 : 1; }
 export const FIGURE_STATS = { figures: 0, lod: [0, 0, 0] };
+// Фоновая очередь сборки геометрии LOD: один этап (тело или ткань) за кадр и не чаще бюджета — без подвисаний при приближении NPC.
+const BUILDQ = [], QSET = new Set();
+let QFRAME = -1, FRAME = 0;
+function enqueueBuild(o, lod, key) { const k = key + '|' + lod; if (QSET.has(k)) return; QSET.add(k); BUILDQ.push({ o, lod, key, k }); }
+/** Выполнить этапы очереди в пределах бюджета (мс). Вызывается автоматически из animate (раз в кадр); можно вызвать при загрузке с большим бюджетом. */
+export function pumpFigureBuilds(budgetMs = 4) {
+  const t0 = performance.now();
+  while (BUILDQ.length && performance.now() - t0 < budgetMs) {
+    const j = BUILDQ[0];
+    if (geometryStage(j.o, j.lod, j.key)) { BUILDQ.shift(); QSET.delete(j.k); }
+  }
+}
+export function figureBuildBacklog() { return BUILDQ.length; }
 
 // ------------------------------------------------------------------------------------------ палитры архетипов толпы ----
 export const PALETTES = {
@@ -260,6 +275,7 @@ export function makeFigure(opts = {}) {
   root.updateMatrixWorld(true);
   body.bind(skeleton, body.matrixWorld);
   cloth.bind(skeleton, cloth.matrixWorld);
+  for (const m of [body, cloth]) m.onBeforeRender = () => { cl.seen = FRAME; };
   const setLod = (l) => { const e = geoAt(l); if (l === lod && body.geometry === e.body) return; lod = l; body.geometry = e.body; cloth.geometry = e.cloth; };
   const parts = { root, pelvis, spine, chest, neck, headPivot, limbs, body, cloth, skeleton };
   const props = addProps(parts, o);
@@ -268,7 +284,7 @@ export function makeFigure(opts = {}) {
   const anim = createAnimator(parts, { style: o.style, seed: o.seed });
   const ik = createArmIK(parts, g);
   const V = THREE.Vector3;
-  const cl = { lag: new V(), lv: new V(), prev: new V(), have: false, vel: new V(), lastPos: new V(), lodT: Math.random() * 0.3, skip: 0, acc: 0, wasCtxWind: false };
+  const cl = { lag: new V(), lv: new V(), prev: new V(), have: false, vel: new V(), lastPos: new V(), lodT: 0, jit: 0.05 + (hashStr(o.name || 'x') % 100) / 1000, skip: 0, acc: 0, wasCtxWind: false, dist: 5, seen: 1e9 };
   const fig = {
     group: g, height: H, parts, options: o, props, gait: null, onStep: null, lod: () => lod, _anim: anim,
     get stats() { return { tris: [0, 1, 2].map((l) => { const e = geoAt(l); return triCount(e.body) + triCount(e.cloth); }), key }; },
@@ -276,23 +292,31 @@ export function makeFigure(opts = {}) {
     animate(speed, dt, irregular = 0, ctx) {
       if (dt <= 0) return anim.state.ph * Math.PI * 2;
       CLOCK += 0; // clock — по собственному таймеру анимации
-      // LOD по расстоянию до камеры
+      // LOD по расстоянию до камеры (гистерезис, редкая проверка со смещением по фигурам)
+      FRAME_TICK();
       cl.lodT -= dt;
       if (cl.lodT <= 0 && o.lod === undefined) {
-        cl.lodT = 0.2 + Math.random() * 0.15;
+        cl.lodT = 0.18 + cl.jit;
         if (VIEW_SET) {
           g.updateWorldMatrix(true, false);
           const e = g.matrixWorld.elements, dx = e[12] - VIEW.x, dy = e[13] + 1 - VIEW.y, dz = e[14] - VIEW.z;
-          const d = Math.sqrt(dx * dx + dy * dy + dz * dz) / LOD_SCALE;
-          const hy = lod === 0 ? 1.5 : lod === 1 ? -1.5 : 0;
-          const nl = d < 9 + (lod > 0 ? -1.5 : 1.5) ? 0 : d < 26 + (lod > 1 ? -3 : 3) ? 1 : 2;
-          if (nl !== lod) setLod(nl);
+          cl.dist = Math.sqrt(dx * dx + dy * dy + dz * dz) / LOD_SCALE;
+          const d = cl.dist, hy = 1.12;
+          const want = d < 6 * (lod === 0 ? hy : 1 / hy) ? 0 : d < 22 * (lod === 1 ? hy : lod === 2 ? 1 / hy : 1) ? 1 : 2;
+          // геометрию строим заранее: LOD0 — с 11 м, остальные — по запросу; переключаем, когда готово
+          if (want !== lod) {
+            if (hasGeometry(key, want)) setLod(want); else enqueueBuild(o, want, key);
+          } else if (lod > 0 && d < 11 && !hasGeometry(key, 0)) enqueueBuild(o, 0, key);
         }
       }
-      // дальние — анимируем реже
+      if (QFRAME !== FRAME && BUILDQ.length) { QFRAME = FRAME; pumpFigureBuilds(3.5); }
+      // частота анимации: ближние — каждый кадр; дальние и невидимые — реже (dt копится, поза не «залипает»)
       cl.acc += dt;
-      if (lod === 2 && ++cl.skip % 3 !== 0) return anim.state.ph * Math.PI * 2;
-      const adt = cl.acc; cl.acc = 0;
+      const seen = FRAME - cl.seen < 30;
+      const every = lod === 0 ? 1 : lod === 1 ? (cl.dist > 14 ? 2 : 1) : 4;
+      const skipN = !seen && cl.dist > 9 ? Math.max(every, 6) : every;
+      if (skipN > 1 && ++cl.skip % skipN !== 0 && cl.acc < 0.09) return anim.state.ph * Math.PI * 2;
+      const adt = Math.min(cl.acc, 0.1); cl.acc = 0;
       const out = anim.update(adt, speed, irregular, ctx);
       clothStep(adt, speed, ctx, out);
       if (lod === 0) faceStep(adt);
@@ -369,11 +393,16 @@ export function makeFigure(opts = {}) {
     const yr = anim.state.yawRate;
     const tx = -lx * 0.045 + yr * 0.035, tz = -lz * 0.06;
     const ty = -Math.min(0.06, Math.abs(anim.state.accel) * 0.01) * 0.0 + Math.min(0.05, vm * 0.008);
-    // пружина (2 подшага)
-    const sub = dt > 0.02 ? 2 : 1, h = dt / sub;
-    for (let k = 0; k < sub; k++) {
-      cl.lv.x += ((tx - cl.lag.x) * 85 - cl.lv.x * 12) * h; cl.lv.y += ((ty - cl.lag.y) * 85 - cl.lv.y * 12) * h; cl.lv.z += ((tz - cl.lag.z) * 85 - cl.lv.z * 12) * h;
-      cl.lag.x += cl.lv.x * h; cl.lag.y += cl.lv.y * h; cl.lag.z += cl.lv.z * h;
+    // пружина отставания: точное решение недодемпфированного осциллятора (ω=9.2, ζ=0.65) — устойчиво при любом dt, без аллокаций
+    {
+      const W = 9.2, Z = 0.65, wd = W * Math.sqrt(1 - Z * Z), dd = Math.min(dt, 0.1), ex = Math.exp(-Z * W * dd), cs = Math.cos(wd * dd), sn = Math.sin(wd * dd);
+      const k1 = W * W / wd, k2 = Z * W / wd, k3 = Z * W;
+      let d = cl.lag.x - tx, v = cl.lv.x, c2 = (v + k3 * d) / wd;
+      cl.lag.x = tx + ex * (d * cs + c2 * sn); cl.lv.x = ex * (v * cs - k1 * d * sn - k2 * v * sn);
+      d = cl.lag.y - ty; v = cl.lv.y; c2 = (v + k3 * d) / wd;
+      cl.lag.y = ty + ex * (d * cs + c2 * sn); cl.lv.y = ex * (v * cs - k1 * d * sn - k2 * v * sn);
+      d = cl.lag.z - tz; v = cl.lv.z; c2 = (v + k3 * d) / wd;
+      cl.lag.z = tz + ex * (d * cs + c2 * sn); cl.lv.z = ex * (v * cs - k1 * d * sn - k2 * v * sn);
     }
     const m = Math.hypot(cl.lag.x, cl.lag.z); if (m > 0.3) { cl.lag.x *= 0.3 / m; cl.lag.z *= 0.3 / m; }
     U.uLag.value.copy(cl.lag);

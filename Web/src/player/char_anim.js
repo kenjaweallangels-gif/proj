@@ -344,7 +344,7 @@ const smin = (a, b, k) => { const hh = Math.max(k - Math.abs(a - b), 0) / k; ret
     G.f = fq; G.Tc = 2 / fq; // style.stride масштабирует длину шага ниже
     const dsT = lerp(0.64, 0.36, sstep(2.2, 5.5, ve));
     G.ds = clamp(spring(K.ds, dsT, 3, dt), 0.34, 0.66); G.run = run;
-    const stepScale = style.stride;
+    const stepScale = style.stride * (1 - 0.32 * run);
 
     // --- подшаги ходьбы ---
     if (S.wDesert < 0.999) {
@@ -447,6 +447,7 @@ const smin = (a, b, k) => { const hh = Math.max(k - Math.abs(a - b), 0) / k; ret
     }
     if (S.wSlide > 0.01) for (let i = 0; i < 2; i++) { const sd = i ? 1 : -1; sides[i].sh.rotation.z += sd * 0.7 * S.wSlide; sides[i].sh.rotation.x -= 0.2 * S.wSlide; }
     if (S.hitch > 0) S.hitch -= dt;
+    if (!Number.isFinite(hpS + P.px + P.pyaw + F[0].az + F[1].az)) { for (const k in K) { K[k][0] = Number.isFinite(K[k][0]) ? K[k][0] : 0; K[k][1] = 0; } K.hp[0] = HIP_Y - 0.01; this.reset?.(); }
     return out;
   }
 

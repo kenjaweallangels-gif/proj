@@ -218,7 +218,7 @@ export function hose(b, ctrl, r0, skFn, o = {}) {
   if (o.clamps !== false && !curLod) for (const t of [0.015, 0.985]) { const p = curve.getPoint(t), q = curve.getPoint(t < 0.5 ? t + 0.02 : t - 0.02); tube(b, [[p.x, p.y, p.z], [(p.x + q.x) / 2, (p.y + q.y) / 2, (p.z + q.z) / 2]], r0 * 1.32, REG.METAL, skFn, { seg: 6, aux: [0, 0, 0.1, 0] }); }
 }
 
-export function buildBody(o, lod) {
+export function* buildBodyG(o, lod) {
   curLod = lod;
   const b = new GB();
   const B = BUILDS[o.build] || BUILDS.m;
@@ -364,8 +364,10 @@ export function buildBody(o, lod) {
     }
   }
 
+  yield;
   // ---- голова ----
-  buildHead(b, o, lod, B);
+  yield* buildHead(b, o, lod, B);
+  yield;
 
   // ---- пояс, подсумки, трубки ----
   buildBelt(b, o, lod, torso, B);
@@ -392,7 +394,7 @@ const HSK = [BI.head, 1];
 function headRings(N, yRows, off = 0, a0 = 0, a1 = Math.PI * 2, open = false, hs = 1) {
   return yRows.map((y) => { const [rx, rz, cz] = headRow(y); return ringY(HEAD_Y + y * hs, 0, cz * hs + 0.005, (rx + off) * hs, (rz + off) * hs, N, null, a0, a1, open); });
 }
-function buildHead(b, o, lod, B) {
+function* buildHead(b, o, lod, B) {
   const hs = B.head, N = [18, 12, 8][lod];
   if (lod === 2) {
     const rows = [-0.12, -0.05, 0.03, 0.105, 0.141];
@@ -402,9 +404,9 @@ function buildHead(b, o, lod, B) {
   }
   const P = o.faceP || faceParams(o);
   const cowled = o.cowl !== false && ((o.maskOn ?? (o.mask !== false)) || o.hood !== false) && !o.bare;
-  const hh = buildHeadHi(b, o, lod, B, cowled, P);
-  buildHair(b, o, lod, B, P, hh.S);
-  if (o.beard) buildBeard(b, o, lod, B, P, hh.S);
+  const hh = yield* buildHeadHi(b, o, lod, B, cowled, P);
+  yield* buildHair(b, o, lod, B, P, hh.S);
+  if (o.beard) yield* buildBeard(b, o, lod, B, P, hh.S);
 }
 
 /** Головной чехол дистикомба: капюшон-«затвор» вокруг лица + маска с трубками. Возвращает ничего (в тело). */
@@ -671,7 +673,7 @@ function scarf(b, o, lod, B) {
   b.loft(rings, (j, i, p) => ({ reg: REG.ACCENT, aux: [(j / (ys - 1)) ** 1.3, 0, p[1] * 3, i], sk: skY(p[1], [[1.52, BI.neck], [1.43, BI.chest], [1.15, BI.chest], [1.0, BI.spine]]) }), { capEnd: true });
 }
 
-export function buildCloth(o, lod) {
+export function* buildClothG(o, lod) {
   curLod = lod;
   const b = new GB();
   const B = BUILDS[o.build] || BUILDS.m;
@@ -680,6 +682,7 @@ export function buildCloth(o, lod) {
   const layers = o.layers || [];
   if (hasRobe) clothLayer(b, { build: o.build, age: o.faceP?.age ?? o.age, reg: REG.CLOTH2, style: o.robeStyle || 'jubba', hemTrim: o.hemTrim, frontTrim: o.frontTrim, asym: o.asym, tear: o.tear, lining: o.lining, collar: true, fold: o.fold, wear: o.wear }, lod, B, N, (o.seed | 0) + 3);
   layers.forEach((l, li) => clothLayer(b, { build: o.build, age: o.faceP?.age ?? o.age, ease: 0.012, wear: o.wear, ...l }, lod, B, N, (o.seed | 0) + 17 + li * 5));
+  yield;
   if (hasRobe) sleeves(b, o, lod, B, Math.max(8, N / 3 | 0));
   if (o.cowl !== false && o.hoodUp !== false && o.hood !== false) { clothHood(b, o, lod, B); if (lod < 2 && !o.noDrape) hoodDrape(b, o, lod, B, Math.max(10, N / 2 | 0)); }
   if (o.scarf) scarf(b, o, lod, B);
@@ -688,8 +691,8 @@ export function buildCloth(o, lod) {
 }
 
 /** Тело + чехол головы (капюшон дистикомба/маска). */
-export function buildBodyFull(o, lod) {
-  const b = buildBody(o, lod);
+export function* buildBodyFullG(o, lod) {
+  const b = yield* buildBodyG(o, lod);
   const B = BUILDS[o.build] || BUILDS.m;
   if (o.cowl !== false && ((o.maskOn ?? (o.mask !== false)) || o.hood !== false) && !o.bare && lod < 3) buildCowl(b, o, lod, B);
   if (o.bare && o.maskless !== true) { /* без чехла */ }
@@ -697,18 +700,29 @@ export function buildBodyFull(o, lod) {
 }
 
 // Кэш геометрий по ключу варианта.
-export const GEO_STATS = { ms: [0, 0, 0], n: [0, 0, 0] };
-const cache = new Map();
+export const GEO_STATS = { ms: [0, 0, 0], n: [0, 0, 0], stages: [] };
+const cache = new Map(), partial = new Map();
 export function hasGeometry(key, lod) { return cache.has(key + '|' + lod); }
+/** Поэтапная сборка (тело, затем ткань) — по одному этапу за вызов; true, когда готово. Для фоновой очереди без подвисаний. */
+export function geometryStage(o, lod, key) {
+  const k = key + '|' + lod;
+  if (cache.has(k)) return true;
+  const t0 = performance.now();
+  curLod = lod;
+  const cpu0 = typeof process !== 'undefined' && process.cpuUsage ? process.cpuUsage().user : 0;
+  let p = partial.get(k);
+  if (!p) { p = { ph: 0, gen: buildBodyFullG(o, lod), body: null, bb: null }; partial.set(k, p); }
+  if (p.ph === 0) { const r = p.gen.next(); if (r.done) { p.bb = r.value; p.ph = 1; } }
+  else if (p.ph === 1) { p.body = p.bb.build(); p.bb = null; p.gen = buildClothG(o, lod); p.ph = 2; }
+  else if (p.ph === 2) { const r = p.gen.next(); if (r.done) { p.bb = r.value; p.ph = 3; } }
+  else { cache.set(k, { body: p.body, cloth: p.bb.build() }); partial.delete(k); GEO_STATS.n[lod]++; GEO_STATS.ms[lod] += performance.now() - t0; return true; }
+  GEO_STATS.ms[lod] += performance.now() - t0; GEO_STATS.stages.push(+(performance.now() - t0).toFixed(1)); if (cpu0) (GEO_STATS.cpu ||= []).push([lod, p.ph, p.n = (p.n | 0) + 1, (process.cpuUsage().user - cpu0) / 1000]);
+  return false;
+}
 export function geometryFor(o, lod, key) {
   const k = key + '|' + lod;
   let e = cache.get(k);
-  if (!e) {
-    const t0 = performance.now();
-    e = { body: buildBodyFull(o, lod).build(), cloth: buildCloth(o, lod).build() };
-    cache.set(k, e);
-    GEO_STATS.ms[lod] += performance.now() - t0; GEO_STATS.n[lod]++;
-  }
+  if (!e) { while (!geometryStage(o, lod, key)); e = cache.get(k); }
   return e;
 }
 export function triCount(g) { return g.index.count / 3; }

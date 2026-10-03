@@ -148,13 +148,15 @@ function colList(lod) {
 }
 
 /** Голова целиком. cowled — на голове чехол/капюшон (уши не нужны). Возвращает {eye, hs}. */
-export function buildHeadHi(b, o, lod, B, cowled, P) {
+export function* buildHeadHi(b, o, lod, B, cowled, P) {
   const S = faceSurface(P), hs = B.head;
   const rows = rowList(lod), cols = colList(lod);
   const X = (x) => x * hs, Y = (y) => HEAD_Y + y * hs, Z = (z) => z * hs + 0.005;
   const N = cols.length;
-  const rings = [], meta = [];
-  for (let j = 0; j < rows.length; j++) {
+  let rings = [], meta = [];
+  const gk = lod + '|' + hs;
+  if (S.grid && S.grid.k === gk) { rings = S.grid.rings; meta = S.grid.meta; }
+  else for (let j = 0; j < rows.length; j++) {
     const r = [], mrow = [];
     for (let i = 0; i < N; i++) {
       const p = S.pt(cols[i], rows[j]);
@@ -163,6 +165,8 @@ export function buildHeadHi(b, o, lod, B, cowled, P) {
     }
     rings.push(r); meta.push(mrow);
   }
+  S.grid = { k: gk, rings, meta };
+  yield;
   const jawOn = lod === 0;
   b.loft(rings, (j, i) => { const m = meta[j][i]; return { reg: REG.SKIN, aux: [0, 0, 0, 0], face: [m.lid, m.margin, m.dark, jawOn ? m.jaw : 0], sk: HSK }; }, { capStart: true, capEnd: true });
   const e = S.eye;
@@ -260,7 +264,7 @@ function strip(b, left, right, hint, meta, nrm) {
  * Волосы: непрозрачная «шапка» + слои карточек с прядями (alpha-test в шейдере). style: short | crop | bun | long | braid.
  * Бровей геометрией нет — они в шейдере. Возвращает ничего.
  */
-export function buildHair(b, o, lod, B, P, S) {
+export function* buildHair(b, o, lod, B, P, S) {
   const style = o.hair;
   if (!style || style === 'none') return;
   const hs = B.head, R = rng(((o.seed | 0) * 31 + 7) >>> 0);
@@ -294,6 +298,7 @@ export function buildHair(b, o, lod, B, P, S) {
   const cards = style === 'long' || style === 'braid' ? 620 : style === 'bun' ? 420 : 560;
   const jawBeard = 0;
   for (let c = 0; c < cards; c++) {
+    if (c % 110 === 109) yield;
     const layer = c % 3, a0 = (R() * 2 - 1) * Math.PI, s0 = Math.abs(a0), hl0 = hairline(s0, bald);
     const y0 = lerp(hl0 + 0.004, 0.135, Math.pow(R(), 0.75));
     if (style === 'bun' && R() < 0.0) continue;
@@ -341,7 +346,7 @@ export function buildHair(b, o, lod, B, P, S) {
 }
 
 /** Борода/усы-карточки: корни на нижней части лица, пряди вниз и вперёд; двигаются с челюстью. */
-export function buildBeard(b, o, lod, B, P, S) {
+export function* buildBeard(b, o, lod, B, P, S) {
   if (lod > 0) return;
   const hs = B.head, R = rng(((o.seed | 0) * 17 + 3) >>> 0);
   const X = (x) => x * hs, Y = (y) => HEAD_Y + y * hs, Z = (z) => z * hs + 0.005;
@@ -379,6 +384,7 @@ export function buildBeard(b, o, lod, B, P, S) {
     strip(b, left, right, norms, (t) => ({ v: t, id: 0.05 + id * 0.9, jaw: jw }), norms);
   };
   for (let c = 0; c < 170; c++) {
+    if (c % 60 === 59) yield;
     const a0 = (R() * 2 - 1) * 1.45, s0 = Math.abs(a0), L = len0 * (0.55 + R() * 0.7) * (s0 < 0.5 ? 1.3 : 0.7) * (0.45 + 0.55 * Math.cos(s0 * 0.9));
     strand(a0, top(s0) + R() * 0.02, L, (0.012 + R() * 0.01) * hs, c % 3, true);
   }
