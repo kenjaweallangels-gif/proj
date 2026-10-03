@@ -7,6 +7,7 @@
 // на выходе фрагмента — проверка на NaN/Inf по битам и ограничение яркости (wguard).
 import * as THREE from 'three';
 import { LENGTH, RADIUS, N_PTS } from './spine.js';
+import { triplanarKit } from '../core/triplanar.js';
 
 /** Общие uniform-ы (один объект на все материалы червя). Править можно в рантайме: game.worm.look.* */
 export function createUniforms(spineTex) {
@@ -268,16 +269,33 @@ const FRAG_EMISSIVE_BODY = /* glsl */`
   }
 `;
 
+const FRAG_TEX = /* glsl */`
+  {
+    float wTk = 1.0 - wss(60.0, 520.0, wDist);
+    if (wTk > 0.002) {
+      tpWEvalUV(vec2(vSA.x, vSA.y * 0.15915494), -vViewPosition, normal);
+      normal = wnrm(mix(normal, tpWNW, wTk * uWTex.x), normal);
+      diffuseColor.rgb *= mix(vec3(1.0), tpWMul, wTk * uWTex.y);
+      roughnessFactor = mix(roughnessFactor, clamp(roughnessFactor * (0.55 + 0.7 * tpWRgh), 0.3, 1.0), wTk * uWTex.z);
+    }
+  }
+`;
+
 /**
  * @param {number} mode 0 — тело (вершины по текстуре), 1 — лепесток (хитин снаружи, плоть внутри), 2 — глотка (плоть, темнеет вглубь)
  */
 export function patchChitin(material, mode, U, hq = true) {
+  // мелкая фотограмметрическая деталь (песчаник) по параметрам (s, угол): ломает «пластиковость» хитина
+  const WT = 2.6;
+  const kit = mode === 0 ? triplanarKit('tpW', 'rock_cave', { uv: true, repeat: [1 / WT, Math.round(2 * Math.PI * RADIUS / WT)], quality: hq ? 'med' : 'low', ao: 0, normal: 1, chroma: 0.25, antiTile: hq }) : null;
+  if (kit) U.uWTex = U.uWTex || { value: new THREE.Vector3(0.75, 0.55, 0.6) };   // x: нормаль, y: цвет, z: шероховатость
   material.defines = { ...(material.defines || {}), WORM_MODE: mode };
   if (hq) material.defines.WORM_HQ = 1; else delete material.defines.WORM_HQ;
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, U);
+    if (kit) Object.assign(shader.uniforms, kit.uniforms);
     if (mode === 0) {
-      injectCommon(shader, NOISE + SPINE_VS, 'varying vec2 vSA; varying float vShade;');
+      injectCommon(shader, NOISE + SPINE_VS, 'varying vec2 vSA; varying float vShade;' + (kit ? 'uniform vec3 uWTex;\n' + kit.pars : ''));
       shader.vertexShader = shader.vertexShader
         .replace('#include <beginnormal_vertex>', /* glsl */`
           float wAA = uv.y * 6.2831853; float wSS = uv.x * uLen;
@@ -304,7 +322,7 @@ export function patchChitin(material, mode, U, hq = true) {
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <color_fragment>', `#include <color_fragment>\n${FRAG_COLOR_BODY}`)
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = wRough;')
-      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${FRAG_BUMP}`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${FRAG_BUMP}${kit ? FRAG_TEX : ''}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n totalEmissiveRadiance += wBounce * vShade;\n${FRAG_EMISSIVE_BODY}`)
       .replace('#include <opaque_fragment>', /* glsl */`
         outgoingLight *= vShade;
@@ -315,7 +333,7 @@ export function patchChitin(material, mode, U, hq = true) {
         #endif
         #include <opaque_fragment>`);
   };
-  material.customProgramCacheKey = () => `worm${mode}${hq ? 'h' : 'l'}2`;
+  material.customProgramCacheKey = () => `worm${mode}${hq ? 'h' : 'l'}2${kit ? 't' : ''}`;
   return material;
 }
 

@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { patchMaterial } from '../desert/env.js';
 import { rng } from '../core/util.js';
+import { triplanarKit } from '../core/triplanar.js';
 
 const VERT_PARS = /* glsl */`
 attribute float aTag;
@@ -10,6 +11,7 @@ varying vec3 vLP;
 varying vec3 vLN;
 varying vec3 vWP;
 varying float vTag;
+varying vec3 vHR0; varying vec3 vHR1; varying vec3 vHR2;
 `;
 const VERT_MAIN = /* glsl */`
 vec3 transformed = vec3(position);
@@ -17,6 +19,12 @@ vLP = position;
 vLN = normal;
 vTag = aTag;
 {
+  mat3 hvR = mat3(modelViewMatrix);
+  #ifdef USE_INSTANCING
+  hvR = hvR * mat3(instanceMatrix);
+  #endif
+  vHR0 = hvR[0]; vHR1 = hvR[1]; vHR2 = hvR[2];
+
   vec4 hvW = vec4(position, 1.0);
   #ifdef USE_INSTANCING
   hvW = instanceMatrix * hvW;
@@ -31,7 +39,9 @@ varying vec3 vLP;
 varying vec3 vLN;
 varying vec3 vWP;
 varying float vTag;
+varying vec3 vHR0; varying vec3 vHR1; varying vec3 vHR2;
 uniform float uWear;
+vec3 gTpD = vec3(0.0);
 float gH;
 float gR;
 `;
@@ -121,6 +131,15 @@ const FRAG_COLOR = /* glsl */`
   gR = mix(gR, 0.28, oil * 0.8);
   if (tag == 2) gR = 0.9;
   base *= 1.0 - 0.25 * (1.0 - lod2) * 0.0;
+#ifdef HV_TEX
+  float tpK = (1.0 - smoothstep(60.0, 320.0, dist)) * uHTexK.x * (tag == 4 ? 0.3 : 1.0);
+  if (tpK > 0.002) {
+    tpHEval(vLP, N);
+    base *= mix(vec3(1.0), tpHMul, tpK * uHTexK.y * (tag == 2 ? 0.5 : 1.0));
+    gR = mix(gR, clamp(gR * (0.35 + tpHRgh), 0.05, 1.0), tpK * uHTexK.z);
+    gTpD = (tpHNW - N) * tpK * uHTexK.w;
+  }
+#endif
   diffuseColor.rgb = base;
 }
 `;
@@ -134,6 +153,7 @@ const FRAG_NORMAL = /* glsl */`
   float det = dot(sX, R1) * faceDirection;
   vec3 grad = sign(det) * (dH.x * R1 + dH.y * R2);
   normal = normalize(abs(det) * normal - grad);
+  normal = normalize(normal + mat3(vHR0, vHR1, vHR2) * gTpD);
 }
 `;
 
@@ -141,10 +161,11 @@ const FRAG_NORMAL = /* glsl */`
 export function createHullMaterial(quality) {
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7, metalness: 0.12, vertexColors: true });
   mat.userData.wear = { value: 1 };
-  patchMaterial(mat, 'hv-hull' + (quality === 'low' ? 'L' : ''), {
-    uniforms: { uWear: mat.userData.wear },
+  const kit = triplanarKit('tpH', 'metal_rusty', { scale: 1.3, sharpness: 6, quality, ao: 0, normal: 1, chroma: 0.3 });
+  patchMaterial(mat, 'hv-hull' + (quality === 'low' ? 'L' : '') + (kit ? 't' : ''), {
+    uniforms: { uWear: mat.userData.wear, uHTexK: { value: new THREE.Vector4(1, 0.8, 0.7, 0.9) }, ...(kit ? kit.uniforms : {}) },
     vertexPars: VERT_PARS, vertexMain: VERT_MAIN,
-    fragPars: FRAG_PARS, fragColor: FRAG_COLOR, fragRough: FRAG_ROUGH, fragLightsEnd: FRAG_FILL,
+    fragPars: (kit ? '#define HV_TEX\nuniform vec4 uHTexK;\n' + kit.pars : '') + FRAG_PARS, fragColor: FRAG_COLOR, fragRough: FRAG_ROUGH, fragLightsEnd: FRAG_FILL,
     fragNormal: quality === 'low' ? '' : FRAG_NORMAL,
   });
   return mat;

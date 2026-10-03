@@ -133,7 +133,7 @@ export function create(game) {
 
   game.add('world', world);
   game.add('weather', weather);
-  game.add('post', createPost(game, weather));
+  game.add('post', createPost(game, weather, sky));
 
   scene.fog = new THREE.FogExp2(0xc8b79a, 0.0002);
   scene.background = null;

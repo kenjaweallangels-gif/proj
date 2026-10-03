@@ -181,7 +181,7 @@ function hookTexture() {
 export function createClaw(game, world) {
   const q = game.settings.quality;
   const group = new THREE.Group();
-  const rockMat = createRockMaterial({ band: 5.5 });
+  const rockMat = createRockMaterial({ band: 5.5, tex: 'rock_cliff', texScale: 4.5, quality: q });
   const claw = new THREE.Mesh(buildClawGeometry(q), rockMat);
   claw.castShadow = q !== 'low'; claw.receiveShadow = q !== 'low';
   claw.frustumCulled = false;
