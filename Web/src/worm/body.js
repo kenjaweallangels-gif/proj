@@ -1,17 +1,19 @@
-// Меш червя: тело-труба (деформация по позвоночнику на GPU), голова с тремя лепестками, глотка, кристаллические зубы, наездники.
+// Меш червя: тело-труба (деформация по позвоночнику на GPU), голова с тремя лепестками, глотка, кристаллические зубы.
+// Снаряжение наездников (крючья творца, канаты, сёдла) и фигуры — в gear.js.
 import * as THREE from 'three';
-import { makeFigure } from '../core/figures.js';
 import { LENGTH, RADIUS } from './spine.js';
 import { patchChitin, patchTeeth, patchSpineBack } from './shaders.js';
 
 export const HEAD_LEN = 30;     // длина лепестков в закрытом состоянии, м
 const PETAL_NU = 28, PETAL_NV = 22;
 
-const QUALITY = {
-  low: { ns: 300, na: 56, hq: false, teethRings: [40, 36, 32, 28, 24], children: false },
-  med: { ns: 600, na: 108, hq: true, teethRings: [64, 58, 52, 46, 40], children: true },
-  high: { ns: 800, na: 144, hq: true, teethRings: [72, 64, 58, 52, 44], children: true },
+/** Шкала качества: ns×na — сетка тела, hq — тяжёлые детали шейдера (трещины, шрамы, наросты), teeth — кольца зубов. */
+export const QUALITY = {
+  low: { ns: 360, na: 56, hq: false, teethRings: [40, 36, 32, 28, 24], children: false, seamTeeth: false },
+  med: { ns: 720, na: 108, hq: true, teethRings: [64, 58, 52, 46, 40], children: true, seamTeeth: true },
+  high: { ns: 1080, na: 144, hq: true, teethRings: [72, 64, 58, 52, 44], children: true, seamTeeth: true },
 };
+export const QUALITY_ORDER = ['low', 'med', 'high'];
 
 function tubeGeometry(ns, na) {
   const nv = (ns + 1) * (na + 1);
@@ -55,6 +57,17 @@ function closedProfile(L = HEAD_LEN, R = RADIUS) {
   return seg;
 }
 
+/** Безопасные нормали: вырожденные (нулевые) нормали на кончике лепестка давали normalize(0) = NaN в шейдере. */
+function safeNormals(geo) {
+  geo.computeVertexNormals();
+  const n = geo.attributes.normal;
+  for (let i = 0; i < n.count; i++) {
+    const x = n.getX(i), y = n.getY(i), z = n.getZ(i);
+    if (!(x * x + y * y + z * z > 1e-8) || !Number.isFinite(x + y + z)) n.setXYZ(i, 0, 0, 1);
+  }
+  n.needsUpdate = true;
+}
+
 class Petal {
   constructor(theta, material, profile) {
     this.theta = theta;
@@ -86,7 +99,7 @@ class Petal {
       const ix = this.geo.index.array;
       for (let k = 0; k < ix.length; k += 3) { const t = ix[k + 1]; ix[k + 1] = ix[k + 2]; ix[k + 2] = t; }
       this.geo.index.needsUpdate = true;
-      this.geo.computeVertexNormals();
+      safeNormals(this.geo);
     }
   }
   rebuild(open) {
@@ -105,11 +118,13 @@ class Petal {
         cx += sg.ds * Math.sin(phi); cz += sg.ds * Math.cos(phi);
         ell += sg.ds;
       }
-      const rho = Math.max(cx - 0.9 * u, 0.02);
+      const rho0 = Math.max(cx - 0.9 * u, 0.02);
       for (let i = 0; i <= PETAL_NV; i++) {
         const v = (i / PETAL_NV) * 2 - 1;
         const al = v * halfW * (1 - open * 0.45 * Math.pow(u, 2.6));
-        // небольшая «лодочка»: края чуть приподняты вперёд при раскрытии
+        // складки губ: поперечные валики и утолщённая кромка у шва (затухают к кончику)
+        const fold = (0.42 * Math.pow(Math.sin(ell * 0.95 + v * 1.3), 2) * Math.min(1, u * 5) + 0.7 * Math.pow(Math.abs(v), 6)) * (1 - u) * (1 - u * 0.5);
+        const rho = Math.max(rho0 + fold, 0.02);
         const px = rho * Math.cos(al), py = rho * Math.sin(al), pz = cz + open * (4.5 * v * v * (0.25 + 0.75 * u) + 0.9 * Math.sin(v * 7.0 + this.theta * 3) * u * (1 - u) * 2);
         const k = j * (PETAL_NV + 1) + i;
         this.pos[k * 3] = px * ct - py * st; this.pos[k * 3 + 1] = px * st + py * ct; this.pos[k * 3 + 2] = pz;
@@ -120,13 +135,14 @@ class Petal {
     this.geo.attributes.position.needsUpdate = true;
     this.geo.attributes.uv.needsUpdate = true;
     this.geo.attributes.aPet.needsUpdate = true;
-    this.geo.computeVertexNormals();
+    safeNormals(this.geo);
   }
+  /** Точка кромки шва (i = PETAL_NV) на строке j. */
+  edge(j, out) { const k = j * (PETAL_NV + 1) + PETAL_NV; return out.set(this.pos[k * 3], this.pos[k * 3 + 1], this.pos[k * 3 + 2]); }
 }
 
 /** Профиль внутренней стенки глотки (z вперёд, отрицательные — вглубь). */
 function cavityR(z) {
-  // z: +0.5 .. -34
   const pts = [[0.6, 20.4], [-4, 19.0], [-10, 15.8], [-18, 11.5], [-26, 7], [-33, 2.6], [-36, 0.4]];
   for (let i = 0; i < pts.length - 1; i++) {
     if (z <= pts[i][0] && z >= pts[i + 1][0]) {
@@ -158,7 +174,7 @@ function cavityGeometry() {
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setIndex(idx);
-  g.computeVertexNormals();
+  safeNormals(g);
   return g;
 }
 
@@ -185,10 +201,8 @@ function buildTeeth(cfg, mat, rand) {
         const jitterT = (rand() - 0.5) * (main ? 0.12 : 0.5);
         const tl = (main ? 1 : 0.38 + rand() * 0.2) * len0 * (0.8 + rand() * 0.4);
         const rad = main ? 0 : (c === 1 ? 1 : -1) * 0.55;
-        // позиция основания; дочерние кристаллы сдвинуты по окружности
         const thc = th + rad / rw;
         p.set(Math.cos(thc) * rw, Math.sin(thc) * rw, zk + (main ? 0 : -0.2));
-        // зуб смотрит в горло (назад) и к оси
         d.set(-cos * (0.62 + jitterT), -sin * (0.62 + jitterT), -(0.55 + (rand() - 0.5) * 0.2)).normalize();
         if (!main) d.x += (rand() - 0.5) * 0.4, d.y += (rand() - 0.5) * 0.4, d.normalize();
         q.setFromUnitVectors(up, d);
@@ -208,19 +222,55 @@ function buildTeeth(cfg, mat, rand) {
   return mesh;
 }
 
+/** Мелкие зубы-«гребёнка» вдоль швов закрытой пасти (видны и при закрытом рте). */
+function buildSeamTeeth(petals, mat) {
+  const perSeam = 12;
+  const total = petals.length * perSeam;
+  const geo = new THREE.CylinderGeometry(0.0, 0.2, 1, 5, 1, true);
+  geo.translate(0, 0.5, 0);
+  geo.setAttribute('aDepth', new THREE.InstancedBufferAttribute(new Float32Array(total), 1));
+  const mesh = new THREE.InstancedMesh(geo, mat, total);
+  mesh.frustumCulled = false;
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), t = new THREE.Vector3(), rad = new THREE.Vector3(), d = new THREE.Vector3();
+  const q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), m = new THREE.Matrix4(), sc = new THREE.Vector3();
+  mesh.update = () => {
+    let n = 0;
+    for (const pt of petals) {
+      for (let k = 0; k < perSeam; k++) {
+        const j = 5 + k * 1.7;
+        const j0 = Math.floor(j), fr = j - j0;
+        pt.edge(j0, a); pt.edge(Math.min(PETAL_NU, j0 + 1), b); a.lerp(b, fr);
+        pt.edge(Math.min(PETAL_NU, j0 + 2), b);
+        t.subVectors(b, a).normalize();
+        rad.set(a.x, a.y, 0).normalize();
+        d.copy(t).multiplyScalar(0.85).addScaledVector(rad, -0.25 + (k % 2) * 0.5).normalize();
+        q.setFromUnitVectors(up, d);
+        const len = (1.5 - 0.7 * (k / perSeam)) * (0.8 + 0.4 * ((k * 7) % 5) / 5);
+        sc.set(1, len, 1);
+        m.compose(a, q, sc);
+        mesh.setMatrixAt(n++, m);
+      }
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  };
+  mesh.update();
+  return mesh;
+}
+
 export class WormBody {
   constructor(game, U, spine, quality = 'med') {
     this.game = game; this.U = U; this.spine = spine;
     const cfg = QUALITY[quality] || QUALITY.med;
-    this.cfg = cfg;
-    const rand = (() => { let a = 1517; return () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; }; })();
+    this.cfg = cfg; this.quality = QUALITY[quality] ? quality : 'med';
+    this._rand = (() => { let a = 1517; return () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; }; })();
 
     this.group = new THREE.Group();
     this.group.name = 'Worm';
 
     // Тело
-    const bodyMat = patchChitin(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.8, metalness: 0 }), 0, U, cfg.hq);
-    this.tube = new THREE.Mesh(tubeGeometry(cfg.ns, cfg.na), bodyMat);
+    this.bodyMat = patchChitin(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.8, metalness: 0 }), 0, U, cfg.hq);
+    this.tube = new THREE.Mesh(tubeGeometry(cfg.ns, cfg.na), this.bodyMat);
     this.tube.frustumCulled = false;
     this.tube.name = 'WormBody';
     this.group.add(this.tube);
@@ -234,22 +284,42 @@ export class WormBody {
     this.head.name = 'WormHead';
     this.head.matrixAutoUpdate = false;
     this.group.add(this.head);
-    const petalMat = patchChitin(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.8, metalness: 0, side: THREE.DoubleSide }), 1, U, cfg.hq);
+    this.petalMat = patchChitin(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.8, metalness: 0, side: THREE.DoubleSide }), 1, U, cfg.hq);
     const profile = closedProfile();
-    this.petals = [90, 210, 330].map((deg) => new Petal(deg * Math.PI / 180, petalMat, profile));
+    this.petals = [90, 210, 330].map((deg) => new Petal(deg * Math.PI / 180, this.petalMat, profile));
     this.petals.forEach((p) => this.head.add(p.mesh));
-    const throatMat = patchChitin(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.4, metalness: 0, side: THREE.DoubleSide }), 2, U, cfg.hq);
-    this.throat = new THREE.Mesh(cavityGeometry(), throatMat);
+    this.throatMat = patchChitin(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.4, metalness: 0, side: THREE.DoubleSide }), 2, U, cfg.hq);
+    this.throat = new THREE.Mesh(cavityGeometry(), this.throatMat);
     this.throat.frustumCulled = false;
     this.head.add(this.throat);
-    const teethMat = patchTeeth(new THREE.MeshStandardMaterial({ color: '#e9dfc8', roughness: 0.28, metalness: 0.05 }), U);
-    this.teeth = buildTeeth(cfg, teethMat, rand);
+    this.teethMat = patchTeeth(new THREE.MeshStandardMaterial({ color: '#e9dfc8', roughness: 0.28, metalness: 0.05 }), U);
+    this.teeth = buildTeeth(cfg, this.teethMat, this._rand);
     this.head.add(this.teeth);
+    this.seamTeeth = null;
+    if (cfg.seamTeeth) { this.seamTeeth = buildSeamTeeth(this.petals, this.teethMat); this.head.add(this.seamTeeth); }
 
     this.open = -1;
     this.setOpen(0);
     this._P = new THREE.Vector3(); this._T = new THREE.Vector3(); this._N = new THREE.Vector3(); this._B = new THREE.Vector3();
     this._m = new THREE.Matrix4();
+  }
+
+  /** Шкала качества: 'low' | 'med' | 'high'. Пересоздаёт сетку тела и переключает тяжёлые детали шейдера. */
+  setQuality(name) {
+    if (!QUALITY[name] || name === this.quality) return false;
+    const cfg = QUALITY[name];
+    const old = this.tube.geometry;
+    const geo = tubeGeometry(cfg.ns, cfg.na);
+    this.tube.geometry = geo; this.tubeBack.geometry = geo;
+    old.dispose();
+    for (const m of [this.bodyMat, this.petalMat, this.throatMat]) {
+      if (cfg.hq) m.defines.WORM_HQ = 1; else delete m.defines.WORM_HQ;
+      m.customProgramCacheKey = ((mode) => () => `worm${mode}${cfg.hq ? 'h' : 'l'}2`)(m.defines.WORM_MODE);
+      m.needsUpdate = true;
+    }
+    if (this.seamTeeth) this.seamTeeth.visible = !!cfg.seamTeeth;
+    this.cfg = cfg; this.quality = name;
+    return true;
   }
 
   setOpen(v) {
@@ -258,6 +328,7 @@ export class WormBody {
     this.open = v;
     this.U.uOpen.value = v;
     for (const p of this.petals) p.rebuild(v);
+    this.seamTeeth?.update();
   }
 
   /** Поставить голову по каркасу на s=0. */
@@ -277,77 +348,5 @@ export class WormBody {
     this.spine.frameAt(0, this._P, this._T, this._N);
     outPos.copy(this._P).addScaledVector(this._T, HEAD_LEN * 0.55);
     outDir.copy(this._T);
-  }
-}
-
-/** Наездники: три крошечные фигуры в тёмных накидках с крючьями творца. */
-export class Riders {
-  constructor(game, spine) {
-    this.spine = spine;
-    this.group = new THREE.Group();
-    this.group.visible = false;
-    this.items = [];
-    const defs = [
-      { name: 'Rider1', s: 34, da: -0.10, cloth: '#1d1a17', suit: '#14120f', accent: '#5c2a1f', bulk: 1.05 },
-      { name: 'Ossana', s: 58, da: 0.0, cloth: '#2a2118', suit: '#17130f', accent: '#7a2d22', bulk: 1.0 },
-      { name: 'Rider3', s: 86, da: 0.11, cloth: '#1b1c1e', suit: '#121315', accent: '#31475f', bulk: 1.08 },
-    ];
-    const poleMat = new THREE.MeshStandardMaterial({ color: '#3a2e22', roughness: 0.7, metalness: 0.2 });
-    const metal = new THREE.MeshStandardMaterial({ color: '#6c6a66', roughness: 0.4, metalness: 0.8 });
-    for (const d of defs) {
-      const fig = makeFigure({ height: 1.75, cloth: d.cloth, suit: d.suit, accent: d.accent, bulk: d.bulk, name: d.name, mask: true, hood: true });
-      const root = new THREE.Group();
-      root.add(fig.group);
-      // крюк творца: шест с изогнутым крюком, воткнут в кольцо
-      const pole = new THREE.Group();
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 3.6, 6), poleMat);
-      shaft.position.y = 1.7;
-      const hook = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.03, 5, 10, Math.PI * 1.3), metal);
-      hook.position.set(0, 0.02, -0.18); hook.rotation.y = Math.PI / 2;
-      pole.add(shaft, hook);
-      pole.position.set(0.42, -0.05, 0.25);
-      pole.rotation.set(-0.28, 0, -0.12);
-      root.add(pole);
-      // страховочный трос от пояса к шесту
-      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.9, 4), poleMat);
-      rope.position.set(0.22, 0.95, 0.14); rope.rotation.z = Math.PI / 2.6;
-      root.add(rope);
-      // материалы фигур общие (кэш figures.js) — клонируем и добавляем слабую подсветку, чтобы силуэты читались против солнца
-      root.traverse((o) => {
-        if (!o.isMesh) return;
-        o.castShadow = false;
-        const m = o.material.clone();
-        m.emissive = m.color.clone().multiplyScalar(0.22);
-        o.material = m;
-      });
-      this.group.add(root);
-      this.items.push({ ...d, fig, root, sNow: d.s, a: 0, free: false, hidden: false });
-    }
-    this.aBase = 0;
-    this._P = new THREE.Vector3(); this._N = new THREE.Vector3(); this._T = new THREE.Vector3();
-    this._B = new THREE.Vector3(); this._m = new THREE.Matrix4();
-    this._q = new THREE.Quaternion();
-  }
-
-  /** Расставить по телу. groundFn — для скрытия ушедших под песок. */
-  update(dt, groundFn, time) {
-    const sp = this.spine;
-    for (const it of this.items) {
-      if (it.free) continue;
-      if (it.hidden) { it.root.visible = false; continue; }
-      sp.surfacePoint(it.sNow, this.aBase + it.da + it.a, this._P, this._N, 0.05);
-      // каркас: вперёд — к голове; вверх — наружная нормаль
-      sp.frameAt(it.sNow, this._B, this._T, this._B.clone());
-      const up = this._N, fwd = this._T.clone().addScaledVector(up, -this._T.dot(up)).normalize();
-      const right = new THREE.Vector3().crossVectors(up, fwd);
-      this._m.makeBasis(right, up, fwd).setPosition(this._P);
-      it.root.matrix.copy(this._m);
-      it.root.matrixAutoUpdate = false;
-      it.root.matrixWorldNeedsUpdate = true;
-      // раскачка тела
-      it.fig.animate(it.moving ? 2.4 : 0, dt);
-      const under = this._P.y < groundFn(this._P.x, this._P.z) + 0.5;
-      it.root.visible = !under;
-    }
   }
 }

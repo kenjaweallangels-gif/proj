@@ -27,11 +27,21 @@ export class Spine {
     this.RS = new Float32Array(TEX_W).fill(1);
     // Текстура: строка 0 — xyz + масштаб радиуса, строка 1 — нормаль
     this.data = new Float32Array(TEX_W * 2 * 4);
+    // Начальная поза — прямая линия (а не нули): шейдеры никогда не видят вырожденный позвоночник (normalize(0) → NaN).
+    for (let i = 0; i < TEX_W; i++) {
+      const k = Math.min(i, N_PTS - 1);
+      this.data[i * 4] = 0; this.data[i * 4 + 1] = -200; this.data[i * 4 + 2] = k * SEG_LEN; this.data[i * 4 + 3] = 1;
+      const o = (TEX_W + i) * 4; this.data[o] = 0; this.data[o + 1] = 1; this.data[o + 2] = 0;
+    }
     this.tex = new THREE.DataTexture(this.data, TEX_W, 2, THREE.RGBAFormat, THREE.FloatType);
     this.tex.minFilter = this.tex.magFilter = THREE.NearestFilter;
     this.tex.generateMipmaps = false;
     this.tex.needsUpdate = true;
     this.waveAmp = 0;                     // м, вертикальное «дыхание»
+    this.headLift = 0;                    // м, на сколько приподнята голова (затухает вдоль тела на liftLen)
+    this.liftLen = 70;
+    this.breath = 0;                      // 0..1, медленная пульсация радиуса (покой)
+    this.bad = 0;                         // счётчик подавленных NaN (диагностика)
     this._t = new THREE.Vector3();
     this._a = new THREE.Vector3(); this._b = new THREE.Vector3();
     this._n = new THREE.Vector3(); this._bb = new THREE.Vector3();
@@ -90,7 +100,13 @@ export class Spine {
   compute(time, liveliness = 1) {
     const P = this.P, N = this.Nrm, T = this.Tan, RS = this.RS;
     const v = this._t;
-    for (let i = 0; i < N_PTS; i++) { this.pointAt(i * SEG_LEN, v); P[i * 3] = v.x; P[i * 3 + 1] = v.y; P[i * 3 + 2] = v.z; }
+    for (let i = 0; i < N_PTS; i++) {
+      this.pointAt(i * SEG_LEN, v);
+      if (!(Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z))) { v.copy(this.hp); this.bad++; }
+      const s = i * SEG_LEN;
+      const lf = this.headLift !== 0 ? this.headLift * (1 - sm(0, this.liftLen, s)) : 0;
+      P[i * 3] = v.x; P[i * 3 + 1] = v.y + lf; P[i * 3 + 2] = v.z;
+    }
     for (let i = 0; i < N_PTS; i++) {
       const a = Math.max(i - 1, 0), b = Math.min(i + 1, N_PTS - 1);
       const tx = P[a * 3] - P[b * 3], ty = P[a * 3 + 1] - P[b * 3 + 1], tz = P[a * 3 + 2] - P[b * 3 + 2];
@@ -114,6 +130,7 @@ export class Spine {
       const w = A * Math.sin(s * 0.07 - time * 1.1) * Math.min(1, s / 40);
       P[i * 3] += N[i * 3] * w; P[i * 3 + 1] += N[i * 3 + 1] * w; P[i * 3 + 2] += N[i * 3 + 2] * w;
       { const u = Math.min(1, Math.max(0, (LENGTH - s) / 70)); RS[i] = Math.max(0.03, Math.sqrt(1 - (1 - u) * (1 - u))); }
+      if (this.breath > 0) RS[i] *= 1 + this.breath * 0.022 * Math.sin(s * 0.055 - time * 0.85) * Math.min(1, s / 25);
     }
     const d = this.data;
     for (let i = 0; i < TEX_W; i++) {
@@ -150,13 +167,14 @@ export class Spine {
   /** Радиус тела в s (то же, что в шейдере, без макрошума). */
   radiusAt(s, a) {
     const ring = s / SEG_LEN, f = ring - Math.floor(ring);
-    const step = 0.9 * sm(0, 0.8, f) - 1.5 * sm(0.8, 1, f);
+    const ds = Math.min(f, 1 - f);
+    const stp = -0.6 + 1.1 * sm(0, 0.7, f) + 0.45 * sm(0.58, 0.84, f) - 1.55 * sm(0.88, 1, f) - 0.55 * Math.exp(-(ds * ds) / (0.035 * 0.035));
     const cell = a * 36 / (Math.PI * 2) + 0.5 * Math.floor(ring);
     const g = cell - Math.floor(cell);
-    const dome = 1 - Math.pow(Math.abs(2 * g - 1), 3);
-    const i = Math.min(N_PTS - 2, Math.floor(s / SEG_LEN));
+    const ge = Math.min(g, 1 - g), dd = Math.min(1, ge / 0.32), dome = dd * dd * (3 - 2 * dd);
+    const i = Math.max(0, Math.min(N_PTS - 2, Math.floor(s / SEG_LEN)));
     const rs = this.RS[i] + (this.RS[i + 1] - this.RS[i]) * (s / SEG_LEN - i);
-    return (RADIUS + step + 0.55 * dome) * rs;
+    return (RADIUS + stp + 0.55 * dome + 0.18 * Math.exp(-((g - 0.5) * (g - 0.5)) / 0.012)) * rs;
   }
 
   /** Точка на поверхности: s вдоль тела, a — угол вокруг (0 — «верх», вектор N). Возвращает позицию и наружную нормаль. */

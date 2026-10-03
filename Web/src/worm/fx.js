@@ -25,7 +25,7 @@ void main(){
     pos += uWind * (age*age/(age+3.0));
     pos.y += aK.w * age * (1.0 - exp(-age*0.35));
     size *= 0.35 + 1.5*sqrt(u);
-    alpha = smoothstep(0.0,0.07,u) * pow(1.0-u, 1.4);
+    alpha = smoothstep(0.0,0.07,u) * pow(max(1.0-u, 0.0), 1.4);
     pos.y = max(pos.y, aK.y + 0.4);
   } else {
     pos = aP0 + aV*(1.0-exp(-k*age))/k + vec3(0.0,-0.5*uGrav*age*age,0.0) + uWind*0.15*age;
@@ -59,12 +59,13 @@ float vn(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
   return mix(mix(h21(i),h21(i+vec2(1,0)),f.x), mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x), f.y); }
 void main(){
   float r = length(vC)*2.0;
-  vec3 V = normalize(cameraPosition - vWorld);
-  float fwd = pow(max(dot(-V, uSunDir), 0.0), 4.0);
+  vec3 Vr = cameraPosition - vWorld;
+  vec3 V = dot(Vr, Vr) > 1e-8 ? normalize(Vr) : vec3(0.0, 1.0, 0.0);
+  float fwd = pow(max(dot(-V, uSunDir), 0.0) + 1e-5, 4.0);
   vec3 col; float a;
   if (vType > 0.5 && vType < 1.5) {
     float n = vn(vC*3.5 + vSeed*31.0)*0.6 + vn(vC*8.0 + vSeed*11.0)*0.4;
-    float sh = smoothstep(1.0, 0.05, r*(0.75+0.55*n));
+    float sh = 1.0 - smoothstep(0.05, 1.0, r*(0.75+0.55*n));
     a = sh*sh*vAlpha*0.36*uOpacity;
     float lit = 0.6 + 0.4*vSeed;
     col = uDustCol*(uAmb + uSunCol*lit*0.55) + uSunCol*uDustCol*fwd*uScatter;
@@ -79,8 +80,11 @@ void main(){
   float d = length(vWorld - cameraPosition);
   float fog = uFogDen > 0.0 ? 1.0 - exp(-uFogDen*uFogDen*d*d) : 0.0;
   col = mix(col, uFogCol, fog);
-  if (a < 0.004) discard;
-  gl_FragColor = vec4(col, a);
+  if (!(a >= 0.004) || a > 4.0) discard;                       // NaN-безопасно: !(NaN >= x) == true
+  uvec3 wb = floatBitsToUint(col) & uvec3(0x7f800000u);
+  if (any(equal(wb, uvec3(0x7f800000u)))) discard;
+  col = min(col, vec3(32.0));
+  gl_FragColor = vec4(col, min(a, 1.0));
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
@@ -110,6 +114,7 @@ class Pool {
     this.cursor = 0; this.dirtyLo = Infinity; this.dirtyHi = -1; this.wrapped = false;
   }
   emit(px, py, pz, vx, vy, vz, birth, life, size, seed, type, groundY, drag, extra) {
+    if (!(Number.isFinite(px + py + pz + vx + vy + vz + birth + life + size + groundY + drag + extra))) return;   // NaN в атрибутах → чёрный кадр
     const i = this.cursor;
     this.cursor = (this.cursor + 1) % this.count;
     if (this.cursor === 0) this.wrapped = true;
@@ -192,6 +197,66 @@ class Mound {
 }
 function smoothstep(a, b, x) { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
 
+/** Песчаная «юбка» по линии контакта тела с песком: смягчает стык, имитирует сдвинутый песок вдоль бортов. */
+class Skirt {
+  constructor(n) {
+    this.n = n;
+    this.pos = new Float32Array(n * 6 * 3);
+    this.col = new Float32Array(n * 6 * 4);
+    const nor = new Float32Array(n * 6 * 3);
+    for (let i = 0; i < n * 6; i++) nor[i * 3 + 1] = 1;
+    const idx = [];
+    for (let side = 0; side < 2; side++) for (let i = 0; i < n - 1; i++) for (let c = 0; c < 2; c++) {
+      const a = i * 6 + side * 3 + c, b = a + 1, d = a + 6, e = d + 1;
+      if (side === 0) idx.push(a, d, b, b, d, e); else idx.push(a, b, d, b, e, d);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(this.col, 4).setUsage(THREE.DynamicDrawUsage));
+    g.setIndex(idx);
+    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e5);
+    this.mat = new THREE.MeshLambertMaterial({
+      color: '#d2b283', vertexColors: true, transparent: true, depthWrite: false,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    });
+    this.mesh = new THREE.Mesh(g, this.mat);
+    this.mesh.frustumCulled = false; this.mesh.visible = false; this.mesh.renderOrder = 2;
+    this.contact = new Float32Array(n * 4);   // half, lx, lz, alpha
+  }
+  update(sp, g, intensity, wid = 1) {
+    const n = this.n, P = sp.P, T = sp.Tan, pos = this.pos, col = this.col, ct = this.contact;
+    let any = false;
+    for (let i = 0; i < n; i++) {
+      const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2];
+      let lx = -T[i * 3 + 2], lz = T[i * 3];
+      const ll = Math.hypot(lx, lz); if (ll > 1e-4) { lx /= ll; lz /= ll; } else { lx = 1; lz = 0; }
+      const R = RADIUS * sp.RS[i] - 0.8;
+      const gy = g(x, z), hrel = y - gy;
+      const inside = Math.abs(hrel) < R;
+      const half = inside ? Math.sqrt(Math.max(0, R * R - hrel * hrel)) : 0;
+      const vis = smoothstep(-R + 0.5, -R + 7, hrel) * (1 - smoothstep(R - 4, R, hrel)) * intensity * smoothstep(0.1, 2, R);
+      if (vis > 0.02) any = true;
+      ct[i * 4] = half; ct[i * 4 + 1] = lx; ct[i * 4 + 2] = lz; ct[i * 4 + 3] = vis;
+      for (let side = 0; side < 2; side++) {
+        const sg = side === 0 ? -1 : 1;
+        for (let c = 0; c < 3; c++) {
+          const off = half - 0.4 + (c === 0 ? 0 : c === 1 ? 4.2 * wid : 11 * wid);
+          const px = x + lx * sg * off, pz = z + lz * sg * off;
+          const o = i * 6 + side * 3 + c;
+          pos[o * 3] = px; pos[o * 3 + 1] = g(px, pz) + (c === 0 ? 0.9 : c === 1 ? 0.8 : 0.2); pos[o * 3 + 2] = pz;
+          const a = vis * (c === 0 ? 1.0 : c === 1 ? 0.75 : 0);
+          const sh = c === 0 ? 0.82 : 1.0;
+          col[o * 4] = sh; col[o * 4 + 1] = sh * 0.97; col[o * 4 + 2] = sh * 0.93; col[o * 4 + 3] = a;
+        }
+      }
+    }
+    this.mesh.visible = any;
+    this.mesh.geometry.attributes.position.needsUpdate = true;
+    this.mesh.geometry.attributes.color.needsUpdate = true;
+  }
+}
+
 export class WormFX {
   constructor(game, quality) {
     this.game = game;
@@ -215,6 +280,8 @@ export class WormFX {
     this.mound = new Mound(cfg.grid, 110, '#c8a672');
     this.ripple = new Mound(cfg.grid, 130, '#c8a672');
     this.group.add(this.mound.mesh, this.ripple.mesh);
+    this.skirt = new Skirt(N_PTS);
+    this.group.add(this.skirt.mesh);
 
     // Тень-лента на песке
     this.shadowN = N_PTS;
@@ -257,7 +324,7 @@ export class WormFX {
     this.group.add(this.rocks);
     this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._e = new THREE.Euler(); this._v = new THREE.Vector3(); this._s = new THREE.Vector3();
     this.jobs = [];
-    this.acc = { spray: 0, trail: 0, fall: 0, cross: 0, base: 0 };
+    this.acc = { spray: 0, trail: 0, fall: 0, cross: 0, base: 0, wake: 0, bow: 0, rest: 0 };
     this.sandAmtTarget = 0;
   }
 
@@ -312,6 +379,22 @@ export class WormFX {
     this.jobs = this.jobs.filter((j) => j.sand + j.shock + j.plume + j.puff > 0);
   }
 
+  /** Облачко песка/пыли в точке (выбитый крюк, посадка Оссаны, оседание червя). mode 'wide' — широкий выдох пыли. */
+  puff(x, y, z, power = 0.3, mode = 'small') {
+    const r = this.rand, t = this.game.time, k = this.k;
+    const ns = Math.floor((mode === 'wide' ? 220 : 36) * power * Math.max(0.4, k) + 4);
+    const nd = Math.floor((mode === 'wide' ? 90 : 10) * power * Math.max(0.4, k) + 2);
+    const gy = mode === 'wide' ? y - 1.5 : y - 40, wide = mode === 'wide';
+    for (let i = 0; i < ns; i++) {
+      const a = r() * 6.2832, sp = (wide ? 6 : 1.2) * (0.3 + r());
+      this.sand.emit(x + (r() - 0.5) * (wide ? 30 : 1.2), y, z + (r() - 0.5) * (wide ? 30 : 1.2), Math.cos(a) * sp, (wide ? 3 : 2) + r() * (wide ? 6 : 3), Math.sin(a) * sp, t + r() * 0.2, 1.2 + r() * 2, 0.25 + r() * 0.6, r(), 2, gy, 0.15, 2 + r() * 3);
+    }
+    for (let i = 0; i < nd; i++) {
+      const a = r() * 6.2832, sp = (wide ? 5 : 1) * (0.2 + r());
+      this.dust.emit(x + (r() - 0.5) * (wide ? 40 : 1.5), y + 0.5, z + (r() - 0.5) * (wide ? 40 : 1.5), Math.cos(a) * sp, 0.5 + r() * 1.5, Math.sin(a) * sp, t + r() * 0.3, (wide ? 7 : 3) + r() * 4, (wide ? 14 : 3) + r() * (wide ? 18 : 4), r(), 1, gy, 0.7, 0.4 + r());
+    }
+  }
+
   /** Небольшой всплеск (повторный вход в песок, удар хвоста). */
   splash(x, y, z, power = 0.5) { this.breach(x, y, z, 0, power * 0.5); }
 
@@ -327,7 +410,8 @@ export class WormFX {
     if (this.jobs.length) this._runJobs(2600);
     const mw = ctx.mound;
     if (mw && mw.on) {
-      if (!this.mound.mesh.visible || (this.frame & 1) === 0) this.mound.update(ctx.head.x, ctx.head.z, ctx.yaw, mw.amp, mw.width, mw.trail, g, mw.intensity);
+      const ah = mw.ahead || 0;
+      if (!this.mound.mesh.visible || (this.frame & 1) === 0) this.mound.update(ctx.head.x + Math.cos(ctx.yaw) * ah, ctx.head.z + Math.sin(ctx.yaw) * ah, ctx.yaw, mw.amp, mw.width, mw.trail, g, mw.intensity);
       this.mound.mesh.visible = true;
       // брызги с гребня
       a.spray += dt * mw.spray * 60 * k;
@@ -373,7 +457,7 @@ export class WormFX {
       for (let i = 0; i < N_PTS; i++) {
         const px = P[i * 3], pz = P[i * 3 + 2], gy = g(px, pz);
         const h = P[i * 3 + 1] - gy;
-        if (h > 6) ex.push(i);
+        if (h > (ctx.tame ? -12 : 6)) ex.push(i);
       }
       // песок с колец (водопады): стекает по бокам и из-под пластин
       const rate = (100 + 520 * ctx.live) * k;
@@ -387,16 +471,16 @@ export class WormFX {
         const ang = r() * 6.2832;
         if (ctx.riderA != null && s < 100) { let da = (ang - ctx.riderA) % 6.2832; if (da > 3.1416) da -= 6.2832; if (da < -3.1416) da += 6.2832; if (Math.abs(da) < 0.7) continue; }
         sp.surfacePoint(s, ang, pP, pN, 0.1);
-        if (pN.y > 0.5) continue;
+        if (pN.y > 0.5 && !ctx.tame) continue;
         const gy = g(pP.x, pP.z);
         const h = pP.y - gy;
-        if (h < 3) continue;
+        if (h < (ctx.tame ? 1.5 : 3)) continue;
         const out = 0.4 + r() * 2.2;
         this.sand.emit(pP.x, pP.y, pP.z, pN.x * out, -r() * 2 + pN.y * out, pN.z * out, t, Math.min(7, Math.sqrt(2 * h / 9.8) + 0.4), 0.45 + r() * 0.8, r(), 2, gy, 0.04, 4 + r() * 5);
         if (r() < 0.04) this.dust.emit(pP.x + pN.x * 2, pP.y, pP.z + pN.z * 2, pN.x * 2, -2, pN.z * 2, t, 4 + r() * 3, 6 + r() * 8, r(), 1, gy, 0.7, 0);
       }
       // пересечения с песком: центр пересекает уровень земли
-      a.cross += dt * (60 + 700 * Math.min(1, ctx.speed / 30)) * k;
+      a.cross += ctx.tame ? 0 : dt * (60 + 700 * Math.min(1, ctx.speed / 30)) * k;
       let prevH = null; const crossIdx = [];
       for (let i = 0; i < N_PTS; i++) {
         const gy = g(P[i * 3], P[i * 3 + 2]);
@@ -415,9 +499,60 @@ export class WormFX {
         if (r() < 0.22) this.dust.emit(px, gy + 1, pz, Math.cos(ang) * 3, 2 + r() * 5, Math.sin(ang) * 3, t, 6 + r() * 6, 14 + r() * 22, r(), 1, gy, 0.5, 2 + r() * 3);
       }
 
+      // --- укрощённый червь: песчаная юбка, волна перед головой, шлейф с бортов ---
+      const tm = ctx.tame;
+      if (tm) {
+        if ((this.frame & 1) === 0 || !this.skirt.mesh.visible) this.skirt.update(sp, g, tm.skirt ?? 1, tm.skirtWid ?? 1);
+        const sf = Math.min(1, tm.speed / 12);
+        // шлейф: песчинки и пыль сходят с линии контакта
+        a.wake += dt * (14 + 160 * sf) * k;
+        const ct = this.skirt.contact;
+        let gw = 0;
+        while (a.wake >= 1 && gw++ < 60) {
+          a.wake -= 1;
+          const i = (r() * N_PTS) | 0;
+          const vis = ct[i * 4 + 3];
+          if (vis < 0.3) continue;
+          const sg = r() < 0.5 ? -1 : 1;
+          const half = ct[i * 4], lx = ct[i * 4 + 1], lz = ct[i * 4 + 2];
+          const px = P[i * 3] + lx * sg * (half + r() * 3), pz = P[i * 3 + 2] + lz * sg * (half + r() * 3), gy = g(px, pz);
+          const out = 0.6 + r() * (1.5 + 4.5 * sf);
+          this.sand.emit(px, gy + 0.6, pz, lx * sg * out, 0.8 + r() * (1.5 + 4 * sf), lz * sg * out, t, 1.0 + r() * 1.6, 0.25 + r() * 0.5, r(), 2, gy - 0.3, 0.2, 2 + r() * 3);
+          if (r() < 0.16 + 0.2 * sf) this.dust.emit(px, gy + 1, pz, lx * sg * (1 + r() * 2), 0.8 + r() * 1.6, lz * sg * (1 + r() * 2), t, 4 + r() * 4, 6 + r() * 9, r(), 1, gy, 0.8, 0.6 + r());
+        }
+        // носовая волна: перед головой песок вздымается и разлетается в стороны
+        if (sf > 0.05) {
+          a.bow += dt * 120 * sf * k;
+          const hx = Math.cos(ctx.yaw), hz = Math.sin(ctx.yaw);
+          let gb = 0;
+          while (a.bow >= 1 && gb++ < 60) {
+            a.bow -= 1;
+            const lat = (r() - 0.5) * 36, fw = 12 + r() * 20;
+            const px = ctx.head.x + hx * fw - hz * lat, pz = ctx.head.z + hz * fw + hx * lat, gy = g(px, pz);
+            const sd = Math.sign(lat) || 1, vo = 2 + r() * 6 * sf;
+            this.sand.emit(px, gy + 0.5, pz, -hz * sd * vo + hx * 2 * sf, 2 + r() * 8 * sf, hx * sd * vo + hz * 2 * sf, t, 1.4 + r() * 2, 0.3 + r() * 0.7, r(), 2, gy - 0.5, 0.12, 2 + r() * 3);
+            if (r() < 0.2) this.dust.emit(px, gy + 1, pz, -hz * sd * 2, 1 + r() * 2, hx * sd * 2, t, 5 + r() * 4, 9 + r() * 10, r(), 1, gy, 0.7, 0.8);
+          }
+        }
+        // покой: тонкие струйки песка по кольцам, редкие осыпи
+        if (tm.rest > 0) {
+          a.rest += dt * tm.rest * 7 * k;
+          let gr = 0;
+          while (a.rest >= 1 && gr++ < 20 && ex.length) {
+            a.rest -= 1;
+            const i = ex[(r() * ex.length) | 0];
+            const s2 = i * SEG_LEN + r() * SEG_LEN, ang = (r() < 0.5 ? 1 : -1) * (0.3 + r() * 0.9);
+            sp.surfacePoint(s2, ang, pP, pN, 0.1);
+            const gy = g(pP.x, pP.z), h = pP.y - gy;
+            if (h < 3) continue;
+            this.sand.emit(pP.x, pP.y, pP.z, pN.x * 0.3, -0.2, pN.z * 0.3, t, Math.min(8, Math.sqrt(2 * h / 9.8) + 0.5), 0.3 + r() * 0.35, r(), 2, gy, 0.05, 3 + r() * 4);
+          }
+        }
+      } else this.skirt.mesh.visible = false;
+
       // тень-лента
       if (!this.shadow.visible || (this.frame & 1) === 0) this._shadow(ctx);
-    } else this.shadow.visible = false;
+    } else { this.shadow.visible = false; this.skirt.mesh.visible = false; }
 
     // --- Камни ---
     this._rocks(dt, ctx);
@@ -447,7 +582,7 @@ export class WormFX {
       if (l < 0.5) { dx = -L.x; dz = -L.z; l = Math.hypot(dx, dz) || 1; }
       dx /= l; dz /= l;
       const h = P[i * 3 + 1] - g(P[i * 3], P[i * 3 + 2]);
-      const vis = smoothstep(RADIUS * 0.1, RADIUS * 0.9, h);
+      const vis = ctx.tame ? smoothstep(-RADIUS * 0.85, -RADIUS * 0.25, h) : smoothstep(RADIUS * 0.1, RADIUS * 0.9, h);
       if (vis > 0.01) any = true;
       const w = RADIUS * 1.05;
       const al = 0.55 * vis;
