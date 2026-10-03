@@ -16,8 +16,8 @@ SB_A2_06_EarlyTension,130,WormState:Listening,SetWeather,"Worm_Tension,6",0
 SB_A2_07_EarlyApproach,140,WormState:Approach,PlayDialogue,DLG_WRM_A01,0.5
 SB_A2_10_Tension,150,ZoneEnter:A2_Erg,SetWeather,"Worm_Tension,6",95.0
 SB_A2_11_ThreatMusic,160,Beat:SB_A2_10_Tension,SetMusic,WormThreat,0
-SB_A2_12_Stop,170,Beat:SB_A2_10_Tension,PlayDialogue,DLG_WRM_L01,2.0
-SB_A2_13_Tremble,180,Beat:SB_A2_12_Stop,PlayDialogue,DLG_WRM_L02,3.0
+SB_A2_12_Stop,170,Beat:SB_A2_10_Tension,PlayDialogue,DLG_A2_ARR_01,2.0
+SB_A2_13_Tremble,180,Beat:SB_A2_12_Stop,PlayDialogue,DLG_A2_ARR_03,3.0
 SB_A2_14_ForceWorm,190,Beat:SB_A2_13_Tremble,ForceWorm,Rakis.Worm.Reveal,2.0
 SB_A2_15_Silence,200,Beat:SB_A2_14_ForceWorm,SetMusic,Silence,7.0
 SB_A2_16_RevealWeather,210,Beat:SB_A2_15_Silence,SetWeather,"Worm_Reveal,3",1.5
