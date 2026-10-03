@@ -16,15 +16,8 @@ export function create(game) {
     game.camera.position.set(x, y + 2, z);
     game.camera.lookAt(x + Math.cos(yaw) * 20, y + 2, z + Math.sin(yaw) * 20);
   }
-  const sietchPos = (lx) => ({ x: SIETCH_ORIGIN.x + lx, z: SIETCH_ORIGIN.z });
-  // Сиетч бесшовный (внутри скалы): достаточно переместить игрока в его мировые координаты. Старый модуль с enter() тоже поддержан.
-  async function toSietch(lx = 2.4) {
-    const seamless = typeof game.sietch?.contains === 'function';
-    if (!seamless && game.space !== 'sietch') await game.sietch?.enter?.();
-    const s = sietchPos(lx);
-    tp(s.x, s.z, SIETCH_ORIGIN.yaw ?? 0, SIETCH_ORIGIN.y);
-    game.companions?.teleportBehind?.();
-  }
+  // Сиетч бесшовный и повёрнут в мире: отладочные точки — через game.sietch.enter(point) (внутренний телепорт без затемнения).
+  async function toSietch(point = 'B1') { await game.sietch?.enter?.(point); }
   const gardenSpot = () => {
     const c = game.garden?.spawn ?? game.garden?.center ?? GARDEN.center;
     const y = game.garden?.heightAt?.(c.x, c.z) ?? GARDEN.floorY;
@@ -59,9 +52,9 @@ export function create(game) {
           tp(g.x, g.z, Math.PI, g.y);
         }
         else if (name === 'sietch') await toSietch();
-        else if (name === 'gallery' || name === 'market') await toSietch((SIETCH.B2.x0 + SIETCH.B2.x1) / 2 - 20);
+        else if (name === 'gallery' || name === 'market') await toSietch('B2');
         else if (name === 'hall' || name === 'finale') {
-          await toSietch(SIETCH.B5.x0 + 12);
+          await toSietch('B5');
           if (game.story?.startRitual) game.story.startRitual();
           else game.sietch?.startRitual?.();
           if (name === 'finale') game.story?.fire?.('Beat:SB_B5_06_Feet');

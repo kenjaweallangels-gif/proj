@@ -21,68 +21,65 @@ function findChromium() {
 
 // Точки обзора: локальные координаты сиетча [x,y,z] → цель [x,y,z]. fov необязателен.
 const VIEWS = [
-  ['01_airlock', [3.0, 1.7, 0.3], [20, 1.8, 0], 70],
-  ['02_airlock_doors', [14, 1.7, 0.4], [26, 1.8, 0], 70],
-  ['03_gallery_entry', [41.5, 1.75, 0], [70, 2.5, 0], 75],
-  ['04_gallery_balcony', [52, 7.7, -5.8], [78, 4.5, 2], 78],
-  ['05_gallery_wide', [44, 5, 6.5], [80, 5, -2], 80],
-  ['06_market_close', [62, 1.7, 3.2], [67, 1.5, 6.4], 70],
-  ['07_market_water', [74, 1.7, 1.0], [79, 1.4, 5.8], 70],
-  ['08_stairs_children', [45, 1.7, 1.5], [49, 1.2, -1], 70],
-  ['09_passage', [102, 1.7, 0], [124, 1.6, 0], 68],
-  ['10_shrine', [106, 1.6, -0.6], [107, 1.0, 2.6], 68],
-  ['11_funeral', [122, 1.7, -15], [136, 1.5, -15], 68],
-  ['12_cistern', [122, 1.6, 6.2], [124, 0.6, 16], 72],
-  ['13_hall_entry', [150.8, 1.7, 0], [178, -0.5, 0], 74],
-  ['14_hall_wide', [152, 3.5, 12], [185, 0, -2], 80],
-  ['15_hall_vault', [160, 0, 0], [175, 19, 0], 82],
-  ['16_godray', [169, -1.0, 3.5], [175, 8, 0], 74],
-  ['17_hall_bowl', [163, -0.2, -5], [175, -2.2, 0], 66],
-  ['18_stall_goods', [60, 1.6, -2.4], [62, 1.1, -6.2], 62],
-  ['19_looms', [58, 1.6, 2.2], [60, 1.2, 6.5], 64],
-  ['20_repair_bench', [80, 1.6, -2.0], [80, 1.0, -6.2], 60],
-  ['21_balcony_mural', [66, 7.6, -5.9], [71, 8.0, -7.5], 70],
-  ['22_bridge', [68, 7.4, 0], [76, 6.6, 0], 75],
-  ['23_hooks_rack', [30, 1.6, 0.3], [34, 1.3, -1.6], 66],
-  ['24_door_slit', [4, 1.6, 0.0], [0.5, 1.7, -0.3], 66],
-  ['25_weaver', [57.6, 1.5, 3.8], [56, 1.0, 7.3], 55],
-  ['26_elders_bench', [50, 1.5, -1.2], [51.5, 0.9, -3.8], 55],
-  ['27_children', [50.5, 1.5, 3.2], [47, 0.8, -0.4], 62],
-  ['28_guard_check', [12, 1.6, 0.3], [19, 1.3, 0], 62],
-  ['29_cistern_water', [122, 1.7, 11.5], [125, -1.2, 21], 80],
+  ['01_cleft', [-1.2, 1.6, 4.8], [-3, 1.6, 9], 72],
+  ['02_seal_outer', [4.5, 1.5, 0.2], [8, 1.4, 0], 74],
+  ['02b_seal_opening', [5.6, 1.5, 0.1], [8, 1.3, 0], 70, 1000],
+  ['02c_seal_open', [5.6, 1.5, 0.1], [8, 1.3, 0], 70, 2600],
+  ['03_airlock', [12, 1.5, 0], [22, 1.4, 0], 72],
+  ['04_inner_passage', [27, 1.5, 0.3], [40, 1.6, 0], 72],
+  ['05_gallery_entry', [41.5, 1.7, 0], [70, 3, 0], 78],
+  ['06_gallery_wide', [44, 2.2, -2], [88, 7, 3], 84],
+  ['07_shelf', [58, 7.6, -6.3], [82, 7.8, -6.3], 76],
+  ['08_market_close', [62, 1.7, 0.6], [61, 1.4, -5.4], 66],
+  ['09_water_station', [80, 1.7, 0.8], [80, 1.3, 5.2], 62],
+  ['10_looms', [58, 1.7, 1.4], [58, 1.3, 6.2], 62],
+  ['11_niche_curtain', [114, 1.6, 0.4], [114, 1.4, -3.6], 66],
+  ['12_passage', [102, 1.6, 0.4], [124, 1.5, 0], 70],
+  ['13_shrine', [108, 1.6, 0.2], [108, 1.0, 3.4], 64],
+  ['14_cistern', [122, 1.6, 6.0], [124, 0.5, 16], 74],
+  ['15_hall_entry', [152, 1.7, 0], [178, -0.5, 0], 80],
+  ['16_hall_wide', [152, 3.5, 12], [185, 0, -2], 82],
+  ['17_hall_vault', [160, 0, 0], [175, 19, 0], 84],
+  ['18_godray', [169, -1.0, 3.5], [175, 8, 0], 74],
+  ['19_ledge', [176, -0.5, 0], [192, 3.8, 0], 70],
+  ['20_exit_tunnel', [206, -5.7, -27], [208, -7.2, -32], 74],
+  ['21_exit_portal', [181, -20.9, -44], [195, -23.6, -46.2], 76],
+  ['22_exit_start', [184, 0.0, -18.5], [195, -3.1, -23], 74],
 ];
 
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM || findChromium(),
-  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+  args: ['--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
 });
-const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const page = await browser.newPage({ viewport: { width: 896, height: 504 } });
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${m.type()}: ${m.text()}`); if (m.text().startsWith('[sietch]')) console.log(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
 const file = arg('file', 'sietch.html');
 await page.goto(`file://${join(root, 'dist', file)}?autotest=1&q=${q}&lang=RU`);
-await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.0, null, { timeout: 180000 });
-await page.evaluate(async () => { await window.__rakis.sietch.enter(); window.__rakis.cinematic = { active: true, owner: 'shots' }; });
+await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.0, null, { timeout: 480000 });
+await page.evaluate(async () => { const w = window.__rakis.world; if (w && !new URLSearchParams(location.search).has('keepworld')) { w.setVisible(false); w.setVisible = () => {}; } await window.__rakis.sietch.enter(); window.__rakis.cinematic = { active: true, owner: 'shots' }; });
+await page.waitForTimeout(500);
 
 const shoot = async (name, pos, tgt, fov = 70, wait = Number(arg('wait', 1500))) => {
   await page.evaluate(([pos, tgt, fov]) => {
-    const g = window.__rakis, o = g.sietch.root.position, cam = g.camera;
+    const g = window.__rakis, cam = g.camera, S = g.sietch;
     cam.fov = fov; cam.updateProjectionMatrix();
-    cam.position.set(o.x + pos[0], o.y + pos[1], o.z + pos[2]);
-    cam.lookAt(o.x + tgt[0], o.y + tgt[1], o.z + tgt[2]);
+    const w = S.toWorld(pos[0], pos[1], pos[2]), t = S.toWorld(tgt[0], tgt[1], tgt[2]);
+    cam.position.copy(w); cam.lookAt(t);
+    if (g.player?.position) { g.player.position.set(w.x, w.y - 1.6, w.z); }
     g.__shotCam = { pos: cam.position.clone(), quat: cam.quaternion.clone() };
     if (!g.__shotHook) { g.__shotHook = true; const r = g.render; g.render = (dt) => { if (g.__shotCam && g.cinematic.owner === 'shots') { g.camera.position.copy(g.__shotCam.pos); g.camera.quaternion.copy(g.__shotCam.quat); } r(dt); }; }
   }, [pos, tgt, fov]);
   await page.waitForTimeout(wait);
-  await page.screenshot({ path: join(outDir, `${name}.png`) });
+  await page.screenshot({ path: join(outDir, `${name}.png`), timeout: 420000 });
   const info = await page.evaluate(() => { const g = window.__rakis, r = g.renderer.info.render; return { fps: g.stats.fps, zone: g.sietch.zoneAt?.(g.camera.position), calls: r.calls, tris: r.triangles, lights: g.scene.children.length }; });
   console.log(name, JSON.stringify(info));
 };
 
-for (const [name, pos, tgt, fov] of VIEWS) {
+for (const [name, pos, tgt, fov, w] of VIEWS) {
   if (only.length && !only.some((o) => name.includes(o))) continue;
-  await shoot(name, pos, tgt, fov);
+  await shoot(name, pos, tgt, fov, w);
 }
 
 // Зал с толпой на ярусах (после рассадки).
@@ -91,13 +88,16 @@ if (!only.length || only.some((o) => o.startsWith('30'))) {
   await shoot('30_hall_crowd', [153, 3.2, 10], [180, -1.0, -2], 78, 2500);
   await shoot('31_hall_crowd_close', [166, 0.4, 9], [176, -0.5, 4], 68, 1500);
 }
-// Финал: кадры playFinale() по прогрессу (время кат-сцены идёт по game.dt, а не по реальному времени).
+// Финал (в реальном времени, без кат-сцен): наиб оборачивается к игроку, когда тот на помосте/рядом.
 if (!only.length || only.includes('finale')) {
-  await page.evaluate(() => { window.__rakis.cinematic = { active: false, owner: null }; window.__rakis.__shotCam = null; window.__rakis.sietch.crowd.debugSeatAll?.(); window.__finale = window.__rakis.sietch.playFinale(); });
-  for (const t of [1, 4, 7.5, 10.5, 13.5, 16, 18.5, 20.2]) {
-    await page.waitForFunction((t) => window.__rakis.sietch.finale.t >= t || !window.__rakis.sietch.finale.active, t, { timeout: 240000, polling: 100 });
-    await page.screenshot({ path: join(outDir, `finale_${String(Math.round(t * 10)).padStart(3, '0')}.png`) });
-    console.log('finale', t);
+  await page.evaluate(() => { window.__rakis.sietch.crowd.debugSeatAll?.(); window.__finale = window.__rakis.sietch.playFinale(); });
+  for (const [name, pos, tgt, fov, t] of [
+    ['finale_a', [150.5, 3.0, 6], [176, 0, -1], 78, 1],
+    ['finale_b', [178, -0.4, 5.5], [192.5, 4.0, 0.2], 62, 6],
+    ['finale_c', [184.5, 1.0, 2.0], [192.5, 4.2, 0.2], 50, 19],
+  ]) {
+    await page.waitForFunction((t) => window.__rakis.sietch.finale.t >= t || !window.__rakis.sietch.finale.active, t, { timeout: 480000, polling: 200 });
+    await shoot(name, pos, tgt, fov, 600);
   }
 }
 await browser.close();

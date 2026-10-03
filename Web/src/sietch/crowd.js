@@ -5,7 +5,8 @@ import * as THREE from 'three';
 import { makeFigure, PALETTES } from '../core/figures.js';
 import { clamp, lerp, damp, dampAngle, rng } from '../core/util.js';
 import { HALL, heightAtLocal, hallHeightSmooth } from './plan.js';
-import { faceYaw } from './props.js';
+import { faceYaw, pathZ } from './props.js';
+import { PATHS } from './cave/layout.js';
 import { U } from './mats.js';
 
 const SKIN = ['#9c7458', '#8a6048', '#b08462', '#7a523c', '#c09470', '#a07050'];
@@ -19,6 +20,14 @@ export function createCrowd(ctx) {
   const arch = Object.fromEntries((game.data?.CrowdArchetypes || []).map((a) => [a.id, a]));
   const npcs = [];
   const camL = new THREE.Vector3(), plL = new THREE.Vector3();
+  // твёрдые капсулы людей (мировые координаты) — чтобы игрок/спутники/червь не проходили сквозь толпу
+  const capsules = [];
+  const _tw = new THREE.Vector3();
+  const mkCap = (n) => {
+    const a = new THREE.Vector3(), b = new THREE.Vector3();
+    const id = game.colliders?.add({ type: 'capsule', a, b, r: n.arch === 'Child' ? 0.22 : 0.3, owner: 'sietch', tags: new Set(['npc']) });
+    capsules.push({ n, a, b, id });
+  };
   const maxFull = q === 'low' ? 4 : q === 'high' ? 10 : 7;
   const fullR = q === 'low' ? 8 : q === 'high' ? 13 : 11;
   const out = { npcs, ritualState: 'idle', seated: 0, guardReleased: false };
@@ -27,13 +36,13 @@ export function createCrowd(ctx) {
   const nodes = [];
   const node = (x, z, tag = '') => { const n = { x, z, nb: [], tag }; nodes.push(n); return n; };
   const link = (a, b) => { if (!a || !b) return; a.nb.push(b); b.nb.push(a); };
-  const xs = [44, 52, 60, 68, 76, 84, 92, 98], zs = [-2.8, 0, 2.8];
+  const xs = [44, 52, 60, 68, 76, 84, 92], zs = [-2.6, 0, 2.6];
   const grid = xs.map((x) => zs.map((z) => node(x, z, 'B2')));
   for (let i = 0; i < xs.length; i++) for (let j = 0; j < 3; j++) { if (j < 2) link(grid[i][j], grid[i][j + 1]); if (i < xs.length - 1) link(grid[i][j], grid[i + 1][j]); }
-  const b1 = [4, 12, 20, 28, 37].map((x) => node(x, 0, 'B1')); for (let i = 0; i < b1.length - 1; i++) link(b1[i], b1[i + 1]); link(b1[b1.length - 1], grid[0][1]);
-  const b3 = [104, 112, 120, 128, 136, 144, 152].map((x) => node(x, 0, 'B3')); for (let i = 0; i < b3.length - 1; i++) link(b3[i], b3[i + 1]); link(grid[xs.length - 1][1], b3[0]);
+  const b1 = [4, 12, 20, 28, 37].map((x) => node(x, pathZ(PATHS.B1, x), 'B1')); for (let i = 0; i < b1.length - 1; i++) link(b1[i], b1[i + 1]); link(b1[b1.length - 1], grid[0][1]);
+  const b3 = [100, 108, 116, 124, 132, 140, 148].map((x) => node(x, pathZ(PATHS.C, x), 'B3')); for (let i = 0; i < b3.length - 1; i++) link(b3[i], b3[i + 1]); link(grid[xs.length - 1][1], b3[0]);
   const ring = []; const NR = 20;
-  for (let i = 0; i < NR; i++) { const a = (i / NR) * TAU; ring.push(node(HALL.cx + Math.cos(a) * 21, HALL.cz + Math.sin(a) * 15.8, 'B5')); }
+  for (let i = 0; i < NR; i++) { const a = (i / NR) * TAU; ring.push(node(HALL.cx + Math.cos(a) * 20.5, HALL.cz + Math.sin(a) * 15.2, 'B5')); }
   for (let i = 0; i < NR; i++) link(ring[i], ring[(i + 1) % NR]);
   link(b3[b3.length - 1], ring[NR / 2]);
   // ближайший узел
@@ -94,9 +103,9 @@ export function createCrowd(ctx) {
   S.elder.forEach((s, i) => place('Elder', 'elder', s));
   S.coffee.forEach((s) => place(s.role === 'pour' ? 'Weaver' : 'Elder', 'coffee', s));
   // Ссора о десятине Кина: трое у прилавка.
-  { const c = { x: 73.2, z: 3.1 }; [0, 1, 2].forEach((i) => { const a = i * 2.1 + 0.4; place(['Trader', 'WaterCarrier', 'Trader'][i], 'quarrel', { x: c.x + Math.cos(a) * 0.85, z: c.z + Math.sin(a) * 0.85, yaw: faceYaw(-Math.cos(a), -Math.sin(a)) }, { group: 100 }); }); }
+  { const c = { x: 72.6, z: 2.4 }; [0, 1, 2].forEach((i) => { const a = i * 2.1 + 0.4; place(['Trader', 'WaterCarrier', 'Trader'][i], 'quarrel', { x: c.x + Math.cos(a) * 0.85, z: c.z + Math.sin(a) * 0.85, yaw: faceYaw(-Math.cos(a), -Math.sin(a)) }, { group: 100 }); }); }
   // Паломники шепчутся о Шиане (B2, у лестницы) и молятся у ниши в B3.
-  { const c = { x: 51.4, z: 3.8 }; [0, 1].forEach((i) => place('Pilgrim', 'whisper', { x: c.x + i * 0.9, z: c.z - i * 0.2, yaw: faceYaw(i ? -1 : 1, -0.2) }, { group: 101 })); }
+  { const c = { x: 52.2, z: 2.6 }; [0, 1].forEach((i) => place('Pilgrim', 'whisper', { x: c.x + i * 0.9, z: c.z - i * 0.2, yaw: faceYaw(i ? -1 : 1, -0.2) }, { group: 101 })); }
   S.shrine.forEach((s) => place('Pilgrim', 'shrine', s));
   S.funeral.forEach((s, i) => place(i ? 'Elder' : 'Pilgrim', 'funeral', s, { look: { cloth: '#2c3e57', accent: '#1f2d46', hood: true, mask: false } }));
   S.hooks.forEach((s) => place('Guard', 'hooks', s));
@@ -104,9 +113,9 @@ export function createCrowd(ctx) {
   // Блуждающие по галерее.
   const wanderArchs = ['Trader', 'Pilgrim', 'WaterCarrier', 'WaterCarrier', 'Artisan', 'Weaver', 'Pilgrim', 'Elder', 'Trader', 'Child'];
   const nWander = q === 'low' ? 5 : q === 'high' ? 24 : 16;
-  for (let i = 0; i < nWander; i++) { const nd = grid[Math.floor(R() * xs.length)][Math.floor(R() * 3)]; place(wanderArchs[i % wanderArchs.length], 'wander', { x: nd.x + (R() - 0.5), z: nd.z + (R() - 0.5), yaw: R() * TAU }); }
+  for (let i = 0; i < nWander; i++) { const nd = grid[Math.floor(R() * xs.length)][Math.floor(R() * 3)]; place(wanderArchs[i % wanderArchs.length], 'wander', { x: nd.x + (R() - 0.5), z: nd.z + (R() - 0.5) * 0.6, yaw: R() * TAU }); }
   // Жители проходов B3.
-  if (q !== 'low') for (let i = 0; i < 3; i++) place(i ? 'Elder' : 'Weaver', 'wanderB3', { x: 106 + R() * 36, z: (R() - 0.5) * 1.6, yaw: R() * TAU });
+  if (q !== 'low') for (let i = 0; i < 3; i++) { const wx = 106 + R() * 36; place(i ? 'Elder' : 'Weaver', 'wanderB3', { x: wx, z: pathZ(PATHS.C, wx) + (R() - 0.5) * 0.8, yaw: R() * TAU }); }
 
   // Водоносы несут кувшин на плече (лишь деталь для близких).
   const jarGeo = new THREE.LatheGeometry([[0, 0], [0.13, 0], [0.16, 0.08], [0.16, 0.22], [0.1, 0.34], [0.07, 0.4], [0, 0.4]].map((p) => new THREE.Vector2(p[0], p[1])), 12);
@@ -115,7 +124,7 @@ export function createCrowd(ctx) {
 
   // ------------------------------------------------------------------ спец-персонажи зала ----
   const cx = HALL.cx, cz = HALL.cz;
-  const rimY = HALL.bowlY + 0.55;
+  const rimY = heightAtLocal(HALL.cx, HALL.cz - 6.35, 0);
   const priestess = spawn('Elder', 'priestess', { x: cx, z: cz - 6.35, yaw: 0 }, { special: true, look: { preset: 'Priestess', height: 1.86, cloth: '#d9cfae', accent: '#2c3e57', hood: false, mask: false, robe: true } });
   { // головной убор-конус
     const cone = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.55, 14, 1, true), new THREE.MeshStandardMaterial({ color: '#cbbf9a', roughness: 0.9, side: THREE.DoubleSide }));
@@ -124,7 +133,7 @@ export function createCrowd(ctx) {
     band.rotation.x = Math.PI / 2; band.position.set(0, 0.08, 0); priestess.fig.parts.headPivot.add(band);
   }
   priestess.y = rimY; priestess.yaw = 0; priestess.goalYaw = 0;
-  const harmat = spawn('Elder', 'harmat', { x: cx + 14.3, z: cz + 0.2, yaw: -Math.PI / 2 }, { special: true, look: { preset: 'Harmat', height: 1.72, hood: false, mask: false, robe: true, eyesIbad: true } });
+  const harmat = spawn('Elder', 'harmat', { x: cx + 17.3, z: cz + 0.2, yaw: -Math.PI / 2 }, { special: true, look: { preset: 'Harmat', height: 1.72, hood: false, mask: false, robe: true, eyesIbad: true } });
   { // седые волосы, коса бороды, посох с крюком творца
     const staff = new THREE.Group();
     const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.026, 2.15, 8), new THREE.MeshStandardMaterial({ color: '#5a4430', roughness: 0.8 }));
@@ -146,6 +155,7 @@ export function createCrowd(ctx) {
   out.guard = guardCheck;
 
   // ------------------------------------------------------------------ импостеры ----
+  npcs.forEach(mkCap);
   const NI = npcs.length;
   const bodyGeo = new THREE.LatheGeometry([[0, 0], [0.3, 0], [0.33, 0.06], [0.26, 0.7], [0.21, 1.02], [0.2, 1.22], [0.1, 1.32], [0, 1.33]].map((p) => new THREE.Vector2(p[0], p[1])), 10);
   const headGeo = new THREE.SphereGeometry(0.125, 8, 6); headGeo.translate(0, 1.43, 0);
@@ -182,7 +192,7 @@ export function createCrowd(ctx) {
     if (game.dialogue?.isBusy || game.cinematic?.active) return false;
     if (barkGlobal > 0) return false;
     n.barkT = 38 + R() * 30; barkGlobal = 4.5;
-    game.dialogue?.bark?.(n.arch, ctxName, new THREE.Vector3(n.x + O.x, n.y + O.y + 1.5, n.z + O.z));
+    game.dialogue?.bark?.(n.arch, ctxName, ctx.toWorld(n.x, n.y + 1.5, n.z));
     return true;
   };
   let barkGlobal = 3;
@@ -195,11 +205,11 @@ export function createCrowd(ctx) {
   function pickWander(n) {
     const roll = R();
     let tx, tz;
-    if (n.kind === 'wanderB3') { tx = 104 + R() * 42; tz = (R() - 0.5) * 1.4; }
-    else if (roll < 0.34 && S.stall.length) { const s = S.stall[Math.floor(R() * S.stall.length)]; tx = s.x + (R() - 0.5) * 1.6; tz = s.side * 3.95; }
+    if (n.kind === 'wanderB3') { tx = 104 + R() * 42; tz = pathZ(PATHS.C, tx) + (R() - 0.5) * 0.9; }
+    else if (roll < 0.34 && S.stall.length) { const s = S.stall[Math.floor(R() * S.stall.length)]; tx = s.x + (R() - 0.5) * 1.6; tz = s.side * 3.2; }
     else if (roll < 0.46 && S.water.length) { const s = S.water[0]; tx = s.x + (R() - 0.5) * 1.4; tz = s.z - 1.85; }
     else if (roll < 0.56) { const s = S.loom[Math.floor(R() * S.loom.length)]; tx = s.x; tz = s.z - 1.9; }
-    else { const nd = grid[Math.floor(R() * xs.length)][Math.floor(R() * 3)]; tx = nd.x + (R() - 0.5) * 2; tz = nd.z + (R() - 0.5); }
+    else { const nd = grid[Math.floor(R() * xs.length)][Math.floor(R() * 3)]; tx = nd.x + (R() - 0.5) * 2; tz = nd.z + (R() - 0.5) * 0.8; }
     toSpot(n, tx, tz, () => {
       const r = R();
       actAt(n, 'act', r < 0.7 ? 'stand' : 'stand', 6 + R() * 14); n.talk = r < 0.45 && n.arch !== 'Child'; n.pose = 'stand';
@@ -256,8 +266,9 @@ export function createCrowd(ctx) {
       if (d < 4.5 && plL.x < n.x + 0.5 && guardTalkT < 0) { guardTalkT = 0; n.talk = true; n.barkT = 0; barkGlobal = 0; say(n, 'Stranger'); }
       if (guardTalkT < 0 && plL.x > n.x + 1.6) out.guardReleased = true;
       if (guardTalkT >= 0) { guardTalkT += dt; n.talk = guardTalkT < 14; if (guardTalkT > 16 || plL.x > n.x + 2.0) out.guardReleased = true; }
-    } else if (n.mode === 'act' && Math.abs(n.z - (-1.45)) > 0.15) {
-      n.talk = false; n.path = [[n.x, -1.45], [n.x + 0.5, -1.45]]; n.pi = 0; n.mode = 'walk'; n.speedBoost = 0.9; n.after = () => { actAt(n, 'act', 'stand', 0); n.goalYaw = faceYaw(0, 1); n.stand = true; };
+    } else if (n.mode === 'act' && Math.abs(n.z - (pathZ(PATHS.B1, n.x) - 1.25)) > 0.15) {
+      const gz = pathZ(PATHS.B1, n.x) - 1.25;
+      n.talk = false; n.path = [[n.x, gz], [n.x + 0.5, gz]]; n.pi = 0; n.mode = 'walk'; n.speedBoost = 0.9; n.after = () => { actAt(n, 'act', 'stand', 0); n.goalYaw = faceYaw(0, 1); n.stand = true; };
     } else if (n.mode === 'act') { n.pose = 'stand'; n.goalYaw = faceYaw(0, 1); if (d < 5) n.goalYaw = Math.atan2(dx, dz); }
   }
 
@@ -350,25 +361,17 @@ export function createCrowd(ctx) {
   // ------------------------------------------------------------------ обновление ----
   let lodT = 0, glowT = 0, ctxTime = 0;
   const upA = new THREE.Vector3(0, 1, 0);
-  function glowAt(x, y, z, region) {
-    let r = 0.05, g = 0.03, b = 0.015;
-    for (const s of ctx.sources) {
-      if (s.kind !== 'omni' || s.region !== region) continue;
-      const dx = s.x - x, dy = s.y - y, dz = s.z - z, d2 = dx * dx + dy * dy + dz * dz;
-      if (d2 > s.radius * s.radius) continue;
-      const d = Math.sqrt(d2);
-      const w = (1 / (1 + (d / s.d0) ** 2)) * (1 - d / s.radius) ** 1.5 * s.intensity * 0.8;
-      r += s.color[0] * w; g += s.color[1] * w; b += s.color[2] * w;
-    }
-    return [r, g, b];
+  function glowAt(x, y, z) {
+    const p = ctx.probes.sample(x, y, z);
+    return [0.05 + p.r * 0.8, 0.03 + p.g * 0.8, 0.015 + p.b * 0.8];
   }
   const regionAt = (x) => (x < 40 ? 'B1' : x < 100 ? 'B2' : x < 150 ? 'B3' : 'B5');
 
   out.update = (dt, t) => {
     ctxTime = t;
-    camL.copy(game.camera.position).sub(root.position);
+    root.worldToLocal(camL.copy(game.camera.position));
     const pw = game.player?.position;
-    if (pw) plL.set(pw.x - O.x, pw.y - O.y, pw.z - O.z); else plL.copy(camL);
+    if (pw) root.worldToLocal(plL.copy(pw)); else plL.copy(camL);
     barkGlobal -= dt; lodT -= dt; glowT -= dt;
     // LOD: ближайшие — полные фигуры.
     if (lodT <= 0) {
@@ -384,6 +387,10 @@ export function createCrowd(ctx) {
         if (n.lod === 'full' && !inScene) root.add(n.fig.group);
         else if (n.lod !== 'full' && inScene) root.remove(n.fig.group);
       }
+    }
+    for (const c of capsules) {
+      const n = c.n, sitting = n.pose === 'sitFloor' || n.mode === 'seat' || n.pose === 'pray' || n.pose === 'crouch', h = n.lk.height * (sitting ? 0.6 : 1);
+      ctx.toWorld(n.x, n.y + 0.3, n.z, c.a); ctx.toWorld(n.x, n.y + Math.max(0.5, h - 0.2), n.z, c.b);
     }
     const dyn = glowT <= 0; if (dyn) glowT = 0.4;
     for (let i = 0; i < npcs.length; i++) {
@@ -418,7 +425,7 @@ export function createCrowd(ctx) {
       if (dp < 1.15 && !n.special && n.mode !== 'seat') { const k = (1.15 - dp) / 1.15; n.x -= (dxp / (dp + 1e-3)) * k * sdt * 1.6; n.z -= (dzp / (dp + 1e-3)) * k * sdt * 1.6; }
       if (n.lod === 'full' && n.mode === 'act' && (n.pose === 'weave' || n.pose === 'measure' || n.pose === 'repair') && dp < 12) {
         n.sfxT = (n.sfxT ?? R() * 2) - sdt;
-        if (n.sfxT <= 0) { n.sfxT = n.pose === 'weave' ? 1.1 + R() * 0.6 : 5 + R() * 4; game.audio?.event?.(n.pose === 'weave' ? 'Loom.Clack' : n.pose === 'measure' ? 'Water.Measure' : 'Stillsuit.Repair', new THREE.Vector3(n.x + O.x, n.y + O.y + 1.0, n.z + O.z)); }
+        if (n.sfxT <= 0) { n.sfxT = n.pose === 'weave' ? 1.1 + R() * 0.6 : 5 + R() * 4; game.audio?.event?.(n.pose === 'weave' ? 'Loom.Clack' : n.pose === 'measure' ? 'Water.Measure' : 'Stillsuit.Repair', ctx.toWorld(n.x, n.y + 1.0, n.z)); }
       }
       if (n.lod === 'full') {
         n.y = n.special && n.kind === 'priestess' ? rimY : ground(n.x, n.z);
@@ -514,14 +521,14 @@ export function createCrowd(ctx) {
     _m.compose(_p, _q, _s); impBody.setMatrixAt(i, _m); impSash.setMatrixAt(i, _m);
     // голова не должна «проваливаться» — масштаб по Y как у тела
     impHead.setMatrixAt(i, _m);
-    if (dyn) { const g = glowAt(n.x, n.y + 1, n.z, regionAt(n.x)); impGlow[i * 3] = g[0]; impGlow[i * 3 + 1] = g[1]; impGlow[i * 3 + 2] = g[2]; }
+    if (dyn) { const g = glowAt(n.x, n.y + 1, n.z); impGlow[i * 3] = g[0]; impGlow[i * 3 + 1] = g[1]; impGlow[i * 3 + 2] = g[2]; }
   }
 
   // ------------------------------------------------------------------ прочее API ----
   out.speakerPos = (id) => {
     const n = id === 'Harmat' ? harmat : id === 'Priestess' ? priestess : id === 'Dancer' ? dancer : id === 'Guard' ? guardCheck : null;
     if (!n) return null;
-    return new THREE.Vector3(n.x + O.x, n.y + O.y + n.lk.height * 0.95, n.z + O.z);
+    return ctx.toWorld(n.x, n.y + n.lk.height * 0.95, n.z);
   };
   out.count = npcs.length;
   // тестовый хук: мгновенно рассадить толпу по местам
