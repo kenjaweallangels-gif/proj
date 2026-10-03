@@ -44,6 +44,7 @@ for (const t of location.hash.slice(1).split(/[-_.~]/).filter(Boolean)) {      /
   else if (t === 'tp') q.set('tp', '1');
   else if (['em1', 'sl1', 'me1'].includes(t)) { q.set('place', t); q.set('intro', '0'); }
   else if (t === 'narrow') q.set('field', '0');
+  else if (t === 'clean') q.set('view', 'clean');
   else if (t === 'autonomous') q.set('mode', 'auto');
   else if (t === 'manual') q.set('mode', 'manual');
 }
@@ -66,7 +67,9 @@ async function main() {
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(scene, 0.02, 0.1, 60, { position: V(0, 2.2, 3.5) }).texture;
   scene.environmentIntensity = 1.15;
-  renderer.shadowMap.autoUpdate = true;
+  // тени — не на каждый проход отрисовки (их 2–3 за кадр), а раз в shadowEvery кадров: статичный цех и так неподвижен
+  renderer.shadowMap.autoUpdate = false;
+  renderer.shadowMap.needsUpdate = true;
 
   // ---------- процесс ----------
   const run = new ProcessRun(STEPS, 0, new Set(DONE_BEFORE_SHIFT));
@@ -198,9 +201,10 @@ async function main() {
   const vision = new VisionRenderer(renderer, scene, cam);
   vision.ipdMM = params.ipd;
   vision.quality = Number(q.get('q')) || (navigator.webdriver ? 0.35 : 1);   // в проверках без GPU — сразу пониже
-  vision.setFieldMode(q.get('field') !== '0');                     // по умолчанию — полное поле ≈ 200°
+  // по умолчанию — полное поле ≈ 200°; ?field=0 — центр 72°; ?view=clean — без периферийного зрения
+  vision.setView(q.get('view') || (q.get('field') === '0' ? 'center' : 'field'));
   // адаптивное качество полного поля: долгий кадр (> 90 мс) несколько секунд подряд — разрешение ниже
-  const perf = { ema: 0.016, slow: 0 };
+  const perf = { ema: 0.016, slow: 0, shadowEvery: 2, gazeMs: 0 };
   const sim = { glasses: 0, display: 0, boot: 0, dimLevel: params.dim, dimMode: q.get('vision') === 'dimmed' ? 'manual' : 'auto', bright: 1, occlusion: false, tts: true,
     device: deviceById.get(q.get('glasses')) || deviceById.get(DEFAULT_DEVICE), wearMin: 0 };
   const STAND = V(0, 1.68, 3.4);            // место сборщика у стапеля: для него задана раскладка окон
@@ -528,6 +532,12 @@ async function main() {
     if (!quiet) app.notify(on ? `Алгоритм — в ${a.corner === 'tl' ? 'левом' : 'правом'} верхнем углу поля зрения (X — убрать, Shift+X — другой угол)` : 'Алгоритм из угла убран');
     updateBar();
   }
+  const VIEW_NOTE = {
+    field: 'Поле зрения: полное, ≈ 200° (два глаза, периферия, оправа целиком). Tab — центр 72°',
+    center: 'Поле зрения: центр 72° (как на мониторе, с периферией глаза). Tab — без периферии',
+    clean: 'Без периферийного зрения: резко по всему кадру, без оправы и носа, цвет до краёв (самый быстрый). Tab — полное поле',
+  };
+  const VIEW_LABEL = { field: 'Поле 200°', center: 'Центр 72°', clean: 'Без периферии' };
   const say2 = (text, voice) => { app.notify(text, 4); if (voice && sim.tts) speak(text); };
   function fmtLeft(m) { const h = Math.floor(m / 60), mm = Math.round(m % 60); return h ? `${h} ч ${mm} мин` : `${mm} мин`; }
   function act(cmd, arg = null, src = 'клавиатура') {
@@ -638,7 +648,14 @@ async function main() {
         app.notify(`${d.brand} ${d.name}: ${d.optics}; ${d.weightG} г. Мышь — осмотр, Esc — выход`, 6);
         break;
       }
-      case 'field': vision.setFieldMode(arg == null ? !vision.fieldMode : !!arg); app.notify(vision.fieldMode ? 'Поле зрения: полное, ≈ 200° (два глаза, периферия, оправа целиком). Tab — центр 72°' : 'Поле зрения: центр 72° (как на мониторе). Tab — полное поле', 5); updateBar(); break;
+      case 'view_clean': case 'view_field': case 'view_center': act('field', cmd.slice(5), src); break;
+      case 'field': {
+        // Tab: полное поле → центр 72° → без периферии → …
+        const order = ['field', 'center', 'clean'];
+        const want = arg == null ? order[(order.indexOf(vision.view) + 1) % 3] : arg === true || arg === '1' ? 'field' : arg === false || arg === '0' ? 'center' : arg;
+        vision.setView(want);
+        app.notify(VIEW_NOTE[vision.view], 5); updateBar(); break;
+      }
       case 'zones': sim.zones = !sim.zones; app.notify(sim.zones ? 'Схема зон: фовеа 2°, 5°, 10°, 30° (центр), 60° (периферия); зелёным — границы полей глаз; красным/синим — видит только правый/левый глаз; белым — линзы' : 'Схема зон скрыта', 7); break;
       case 'recenter': app.notify(mgr.recenter() ? 'Окна — по центру взгляда' : 'Окна закреплены у стапеля (6DoF) — центрировать не нужно'); break;
       case 'device': {
@@ -780,7 +797,7 @@ async function main() {
         ['WASD / стрелки', 'ходьба; Shift — быстрее; C — присесть'], ['мышь', 'обзор (щелчок — захват; ПКМ — без захвата)'], ['щелчок по окну', 'кнопки, поля, листы КД'],
         ['колесо над КД', 'зум к точке; перетаскивание — сдвиг листа'], ['F', 'осмотр точки узла + локальный алгоритм; Esc/Q — назад'], ['E', 'взаимодействие: очки, дверцы'],
         ['N / B', 'переход вперёд / назад'], ['P', 'фото в журнал'], ['G', 'закрепить окно перед глазами'], ['1–4', 'окна КД / переход / система / задание'],
-        ['Tab', 'поле зрения: полное ≈ 200° (два глаза) / центр 72°'], ['\\', 'схема зон поля зрения'],
+        ['Tab', 'вид: полное поле ≈ 200° (два глаза) / центр 72° / без периферии'], ['\\', 'схема зон поля зрения'],
         ['I', 'имитация сборки: запуск / пауза; Shift+I — стоп'],
         ['6', 'виртуальная сборка без деталей (плеер): пробел, , . [ ] − Home End'], ['5', 'вид от третьего лица (колесо — ближе/дальше)'], ['U', 'имитация: камера ведёт / хожу сам'], ['X', 'алгоритм в углу поля зрения; Shift+X — другой угол'], ['K', 'другие очки (Shift+K — назад)'], ['R', '3DoF: окна по центру взгляда'],
         ['T', 'ускорение времени участка ×1 / ×60 / ×600'], ['L', 'затемнение линз по ступеням очков → авто'], ['V', 'снять / надеть очки'], ['O', 'модель зрения'], ['Enter', 'пропустить вступление'],
@@ -799,7 +816,7 @@ async function main() {
       <div class="presets"><button id="b_insp">🔍 Рассмотреть модель ${dv.brand} ${dv.name} на витрине</button></div>
       <h3>Два глаза и поле зрения</h3>
       <div class="presets">
-        <button data-fm="1" aria-pressed="${vision.fieldMode}">Полное поле ≈ 200°</button><button data-fm="0" aria-pressed="${!vision.fieldMode}">Центр 72°</button>
+        <button data-fm="field" aria-pressed="${vision.view === 'field'}">Полное поле ≈ 200°</button><button data-fm="center" aria-pressed="${vision.view === 'center'}">Центр 72°</button><button data-fm="clean" aria-pressed="${vision.view === 'clean'}">Без периферии</button>
         <button id="b_zones" aria-pressed="${!!sim.zones}">Схема зон</button></div>
       <div class="presets">${[['both', 'Оба глаза'], ['L', 'Только левый'], ['R', 'Только правый']].map(([k, t]) => `<button data-eyes="${k}" aria-pressed="${params.eyes === k}">${t}</button>`).join('')}
         ${[['R', 'Ведущий правый'], ['L', 'Ведущий левый']].map(([k, t]) => `<button data-dom="${k}" aria-pressed="${params.domEye === k}">${t}</button>`).join('')}</div>
@@ -821,7 +838,7 @@ async function main() {
       Вес ${dv.weightG} г: усталость за смену <b id="v_wear"></b>.</div>`;
     c.querySelectorAll('[data-dev]').forEach((b) => b.onclick = () => setDevice(b.dataset.dev));
     $('b_insp').onclick = () => act('inspect_glasses');
-    c.querySelectorAll('[data-fm]').forEach((b) => b.onclick = () => { act('field', b.dataset.fm === '1'); toggleCard('x'); toggleCard('vision'); });
+    c.querySelectorAll('[data-fm]').forEach((b) => b.onclick = () => { act('field', b.dataset.fm); toggleCard('x'); toggleCard('vision'); });
     $('b_zones').onclick = () => { act('zones'); toggleCard('x'); toggleCard('vision'); };
     c.querySelectorAll('[data-eyes]').forEach((b) => b.onclick = () => { params.eyes = b.dataset.eyes; toggleCard('x'); toggleCard('vision'); });
     c.querySelectorAll('[data-dom]').forEach((b) => b.onclick = () => { params.domEye = b.dataset.dom; toggleCard('x'); toggleCard('vision'); });
@@ -853,7 +870,7 @@ async function main() {
       [tp.on ? '👁 От первого лица (5)' : '🧍 Вид от третьего лица (5)', 'tp', tp.on ? 'on' : ''],
       [activeSt ? `📍 ${activeSt.short.split(' · ')[0]}` : '📍 Участки', 'places', activeSt ? 'on' : ''],
       [`👓 ${sim.device.brand} ${sim.device.name} (K)`, 'dev', ''],
-      [vision.fieldMode ? '👁 Поле 200° (Tab)' : '👁 Центр 72° (Tab)', 'field', vision.fieldMode ? 'on' : ''], ['Клавиши (H)', 'help', ''], ['Зрение (O)', 'vision', ''], ['Окна 1–4', 'win', ''],
+      [`👁 ${VIEW_LABEL[vision.view]} (Tab)`, 'field', vision.view !== 'center' ? 'on' : ''], ['Клавиши (H)', 'help', ''], ['Зрение (O)', 'vision', ''], ['Окна 1–4', 'win', ''],
       [`Время ×${app.speed} (T)`, 'time', ''], ['Очки (V)', 'glasses', ''], ['Планшет (J)', 'tablet', ''], ['Голос', 'voice', ''],
     ].map(([t, k, c]) => `<button data-b="${k}" class="${c}">${t}</button>`).join('');
     $('bar').querySelectorAll('button').forEach((b) => b.onclick = (e) => {
@@ -1130,11 +1147,20 @@ async function main() {
     const rawDt = Math.max(0, (now - last) / 1000);
     const dt = Math.min(0.1, rawDt); last = now;
     perf.ema += (Math.min(rawDt, 1) - perf.ema) * 0.1;
-    if (vision.fieldMode && frame > 30) {
+    if (frame > 30) {
+      // адаптивное качество: долгий кадр (> 90 мс) 3 с подряд — по ступеням: тени реже, периферия через кадр,
+      // затем разрешение полного поля ниже
       perf.slow = perf.ema > 0.09 ? perf.slow + rawDt : 0;
-      if (perf.slow > 3 && (vision.quality ?? 1) > 0.31) { vision.setQuality((vision.quality ?? 1) * 0.75); perf.slow = 0; app.notify(`Полное поле: качество снижено до ${Math.round(vision.quality * 100)} % (слабая видеокарта)`, 3); }
+      if (perf.slow > 3) {
+        perf.slow = 0;
+        if (perf.shadowEvery < 3) perf.shadowEvery = 3;
+        else if (vision.fieldMode && !vision.faceSkip) { vision.faceSkip = true; app.notify('Полное поле: дальняя периферия обновляется через кадр (слабая видеокарта)', 3); }
+        else if (vision.fieldMode && (vision.quality ?? 1) > 0.31) { vision.setQuality((vision.quality ?? 1) * 0.75); app.notify(`Полное поле: качество снижено до ${Math.round(vision.quality * 100)} % (слабая видеокарта)`, 3); }
+        else if (!perf.hinted && vision.view !== 'clean') { perf.hinted = true; app.notify('Тормозит? Tab — режим «без периферии»: он самый быстрый', 5); }
+      }
     }
     const t = now / 1000;
+    if (frame % perf.shadowEvery === 0) renderer.shadowMap.needsUpdate = true;
     if (debug) orbit.update(); else player.update(dt);
     updateScenario(dt);
     // время участка и таймеры
@@ -1171,10 +1197,12 @@ async function main() {
     // взгляд: окно (голограмма) или предмет
     const ndc = pointerNdc();
     if (frame++ % 3 === 0) {
+      const tg = performance.now();
       gazeRay.setFromCamera(center, cam);
       const hit = gazeRay.intersectObjects([world.galley.root, world.jig.root, world.hall.root, world.rack, world.cart, world.showcase.root], true).find((h) => isVisible(h.object));
       const ph = mgr.enabled ? mgr.pick(center) : null;
       gaze = ph && (!hit || ph.distance < hit.distance + 0.3) ? { dist: ph.distance, holo: true } : { dist: hit ? hit.distance : 8, holo: false };
+      perf.gazeMs += (performance.now() - tg - perf.gazeMs) * 0.2;
       const h = mgr.pointer(ndc, 'move');
       $('ret').classList.toggle('hot', !!h?.used || !!(h && h.panel));
     }
@@ -1197,7 +1225,7 @@ async function main() {
     });
     vision.u.flash.value = Math.max(0, vision.u.flash.value - dt * 2.5);
     if (frame % 10 === 0) {
-      $('status').textContent = `${vision.fieldMode ? 'поле 200°' : 'центр 72°'}${params.eyes === 'both' ? '' : params.eyes === 'L' ? ', левый глаз' : ', правый глаз'} · ${app.plantClock()} ×${app.speed} · ${run.step.id} · фокус ${eye.focusDist > 20 ? '∞' : `${eye.focusDist.toFixed(2)} м`} · зрачок ${eye.pupil.toFixed(1)} мм · ${sim.glasses ? `${sim.device.name} ${sim.device.tracking === '6dof' ? '6DoF' : '3DoF'}, пропускание ${(transmitAt(sim.device, sim.dimLevel) * 100).toFixed(0)} %${sim.dimMode === 'auto' && sim.device.dimLevels ? ' (авто)' : ''}` : 'без очков'}${player.mode === 'inspect' ? ' · осмотр (Esc)' : ''}${auto.on ? (auto.paused ? ' · имитация: пауза (I)' : ` · имитация: ${auto.phaseLabel()}`) : ''}`;
+      $('status').textContent = `${VIEW_LABEL[vision.view].toLowerCase()}${params.eyes === 'both' ? '' : params.eyes === 'L' ? ', левый глаз' : ', правый глаз'} · ${app.plantClock()} ×${app.speed} · ${run.step.id} · фокус ${eye.focusDist > 20 ? '∞' : `${eye.focusDist.toFixed(2)} м`} · зрачок ${eye.pupil.toFixed(1)} мм · ${sim.glasses ? `${sim.device.name} ${sim.device.tracking === '6dof' ? '6DoF' : '3DoF'}, пропускание ${(transmitAt(sim.device, sim.dimLevel) * 100).toFixed(0)} %${sim.dimMode === 'auto' && sim.device.dimLevels ? ' (авто)' : ''}` : 'без очков'}${player.mode === 'inspect' ? ' · осмотр (Esc)' : ''}${auto.on ? (auto.paused ? ' · имитация: пауза (I)' : ` · имитация: ${auto.phaseLabel()}`) : ''}`;
       const c = $('card');
       if (!c.hidden && c.dataset.kind === 'vision' && $('v_focus')) {
         $('v_focus').textContent = eye.focusDist > 20 ? '∞' : `${eye.focusDist.toFixed(2)} м`;
@@ -1220,7 +1248,7 @@ async function main() {
   if (q.get('asm') === '1') togglePlayer(true);
   if (tp.on) setTP(true);
   window.__demo = {
-    ready: true, scene, world, run, cam, player, eye, vision, app, mgr, panels, viz, finishIntro, inspectAtGaze, sim, params, auto, setDevice, act, asm, tp, worker, stations,
+    ready: true, scene, world, run, cam, player, eye, vision, app, mgr, panels, viz, finishIntro, inspectAtGaze, sim, params, auto, setDevice, act, asm, tp, worker, stations, perf,
     get activeStation() { return activeSt; },
     // для проверок: перескочить к этапу сценария
     jump(state) {

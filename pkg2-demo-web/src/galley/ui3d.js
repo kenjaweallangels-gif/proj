@@ -14,14 +14,16 @@ const MONO = '"IBM Plex Mono", ui-monospace, monospace';
 
 /** Обёртка 2D-контекста с регистрацией областей нажатия. */
 class UI {
-  constructor(panel) { this.p = panel; this.c = panel.ctx; }
+  /** dry — «сухой» прогон: ничего не рисует, только собирает подпись содержимого (перерисовка лишь при изменении). */
+  constructor(panel, dry = false) { this.p = panel; this.c = panel.ctx; this.dry = dry; this.sig = []; }
   font(size, weight = 400, mono = false) { this.c.font = `${weight} ${size}px ${mono ? MONO : FONT}`; }
   text(str, x, y, { size = 22, color = C.text, weight = 600, align = 'left', max = 0, mono = false, base = 'alphabetic' } = {}) {
     const c = this.c; this.font(size, weight, mono);
     c.fillStyle = color; c.textAlign = align; c.textBaseline = base;
     let s = String(str ?? '');
     if (max) while (s.length > 1 && c.measureText(s).width > max) s = `${s.slice(0, -2)}…`;
-    c.fillText(s, x, y);
+    this.sig.push(`${s}|${x | 0}|${y | 0}|${color}|${size}|${weight}|${align}`);
+    if (!this.dry) c.fillText(s, x, y);
     return c.measureText(s).width;
   }
   /** Перенос строк по ширине; возвращает высоту. */
@@ -40,6 +42,8 @@ class UI {
     return Math.min(n + 1, maxLines) * size * lh;
   }
   rect(x, y, w, h, { fill = null, stroke = null, r = 8, lw = 2 } = {}) {
+    this.sig.push(`r${x | 0},${y | 0},${w | 0},${h | 0},${fill},${stroke},${lw}`);
+    if (this.dry) return;
     const c = this.c; c.beginPath(); c.roundRect(x, y, w, h, r);
     if (fill) { c.fillStyle = fill; c.fill(); }
     if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw; c.stroke(); }
@@ -113,12 +117,24 @@ export class Panel {
     this.mesh.geometry = new THREE.PlaneGeometry(w, h);
   }
 
-  redraw() {
+  /**
+   * Перерисовать окно. timed — плановая перерисовка «живого» окна: сначала сухой прогон, и если содержимое
+   * не изменилось, текстура не перезагружается в видеокарту (это и давало периодические рывки).
+   */
+  redraw(timed = false) {
+    if (timed && this._sig != null && this.paint(true) === this._sig) return false;
+    this._sig = this.paint(false);
+    this.tex.needsUpdate = true;
+    this.dirty = false;
+    return true;
+  }
+
+  paint(dry) {
     const c = this.ctx, W = this.px, H = this.py;
     c.setTransform(1, 0, 0, 1, 0, 0);
-    c.clearRect(0, 0, W, H);
+    if (!dry) c.clearRect(0, 0, W, H);
     this.hits = [];
-    const ui = new UI(this);
+    const ui = new UI(this, dry);
     let top = 0;
     if (this.chrome) {
       ui.rect(3, 3, W - 6, H - 6, { fill: 'rgba(30,110,140,0.018)', stroke: C.line, r: 18, lw: 3 });
@@ -132,8 +148,7 @@ export class Panel {
       if (this.state.coords) top = this.drawCoords(ui, top);
     }
     this.drawFn?.(ui, this, top);
-    this.tex.needsUpdate = true;
-    this.dirty = false;
+    return ui.sig.join('\n');
   }
 
   /** Строка координат: позиция окна в СК стапеля (мм), правка с клавиатуры. */
@@ -306,8 +321,16 @@ export class PanelManager {
     return true;
   }
 
+  inView(p) {
+    const m = p.mesh;
+    if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+    this._sph.copy(m.geometry.boundingSphere).applyMatrix4(m.matrixWorld);
+    return this._frustum.intersectsSphere(this._sph);
+  }
+
   update(dt, now) {
     const cam = this.camera;
+    this._frustum ??= new THREE.Frustum(); this._pm ??= new THREE.Matrix4(); this._sph ??= new THREE.Sphere();
     if (this.tracking === '3dof') {
       const r = this.rig;
       r.drift += dt * THREE.MathUtils.degToRad(r.driftRate / 60) * (0.6 + 0.4 * Math.sin(now * 0.05));
@@ -316,6 +339,8 @@ export class PanelManager {
       this.root.position.copy(cam.position).sub(r.origin.clone().applyQuaternion(this.root.quaternion));
       this.root.updateMatrixWorld(true);
     }
+    let timedDone = false;
+    this._frustum.setFromProjectionMatrix(this._pm.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
     for (const p of this.panels) {
       if (!p.group.visible) continue;
       if (p.mode === 'follow') {
@@ -328,8 +353,11 @@ export class PanelManager {
         const wp = p.group.getWorldPosition(new THREE.Vector3());
         p.group.lookAt(cam.position.x, wp.y, cam.position.z);
       }
-      if (p.dirty || (p.animated && now - (p._lastDraw || 0) > 0.25) || (this.focus?.panel === p && now - (p._lastDraw || 0) > 0.25)) {
-        p.redraw(); p._lastDraw = now;
+      if (p.dirty) { p.redraw(); p._lastDraw = now; }
+      else if (!timedDone && (p.animated || this.focus?.panel === p) && now - (p._lastDraw || 0) > 0.25) {
+        // плановые перерисовки — не больше одной за кадр и только у окон в поле зрения
+        p._lastDraw = now;
+        if (this.inView(p)) { p.redraw(true); timedDone = true; }
       }
     }
   }

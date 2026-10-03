@@ -150,7 +150,7 @@ uniform float focusD; uniform float pupilMM; uniform float dispD; uniform float 
 uniform float transmit; uniform float dispBright; uniform float blink; uniform float flash; uniform vec2 angVel;
 uniform float fatigueBlur; uniform float age; uniform float dirt; uniform float ipdErr; uniform vec4 disp; uniform float maxLod;
 uniform float exposureBias; uniform float bootFade; uniform float dbg; uniform float dispNits; uniform float sharpen; uniform float cdPerUnit;
-uniform float ghostK; uniform float edgeSoft;
+uniform float ghostK; uniform float edgeSoft; uniform float noPeriph;
 uniform float vergD; uniform float ipdM; uniform float domR; uniform vec2 eyeOn; uniform float diplo; uniform float overlay;
 uniform vec4 lensA; uniform vec4 frameA; uniform vec4 fieldA; uniform float lensFrac; uniform float dispDistD;
 in vec2 vUv;
@@ -211,6 +211,7 @@ float distAt(vec2 a){
 vec3 blurScene(vec2 a, float rDeg){
   float foot = 0.7 / outPPD();                                          // не мельче пикселя экрана (без ряби на сжатой периферии)
   if (rDeg < foot) return sceneR(a, foot);
+  if (rDeg < 2.5 * foot) return sceneR(a, rDeg);                       // пятно в 2–3 пикселя — хватает уровня mip
   float r2 = rDeg * 0.6;
   vec3 acc = sceneR(a, r2);
   for (int i = 0; i < 12; i++) acc += sceneR(a + P[i] * rDeg, r2);
@@ -240,18 +241,24 @@ float sdLens(vec2 e){                                                   // ли�
 
 // общие для обоих глаз величины (вычисляются в main)
 float gNF;
+vec3 gCol; float gColOk; vec3 gHolo; float gHoloOk; float gShared;
 vec2 gA; float gEcc; float gR; vec2 gSm; float gH; float gHH; float gExpo; vec3 gScat; vec3 gGhost; float gDesat; float gMeso; float gRH; float gOcc;
 
 vec4 eyeView(float s){
   vec2 e = vec2(s * gA.x, gA.y);                                        // для этого глаза: x — к виску
-  float field = eyeField(e);
+  float field = noPeriph > 0.5 ? 1.0 : eyeField(e);
   if (field <= 0.0) return vec4(0.0);
   // мир: диспаратность (вне зоны слияния — двоение), расфокусировка, острота периферии, смаз при повороте
-  vec2 aS = gA + vec2(s * gH, 0.0);
-  vec3 col = blurScene(aS, gR);
-  if (length(gSm) > 0.15) {
-    vec3 m = col; for (int i = 1; i <= 6; i++) m += sceneR(aS + gSm * (float(i) / 6.0 - 0.5), max(gR, 0.7 / outPPD()));
-    col = m / 7.0;
+  vec3 col;
+  if (gShared > 0.5 && gColOk > 0.5) col = gCol;                         // без двоения мир у глаз одинаков — считаем раз
+  else {
+    vec2 aS = gA + vec2(s * gH, 0.0);
+    col = blurScene(aS, gR);
+    if (length(gSm) > 0.15) {
+      vec3 m = col; for (int i = 1; i <= 6; i++) m += sceneR(aS + gSm * (float(i) / 6.0 - 0.5), max(gR, 0.7 / outPPD()));
+      col = m / 7.0;
+    }
+    gCol = col; gColOk = 1.0;
   }
   vec3 lin = col * gExpo + gScat;
   // сумеречный сдвиг и потеря цвета на периферии
@@ -259,7 +266,7 @@ vec4 eyeView(float s){
   lin = mix(lin, vec3(L) * vec3(0.85, 0.95, 1.15), clamp(gMeso * 0.7 + gDesat, 0.0, 1.0));
   // линза очков: свет мира через затемнение; блик от задней поверхности
   float lsd = sdLens(e);
-  float inLens = glassesOn * (1.0 - smoothstep(-2.0, 2.0, lsd));
+  float inLens = glassesOn * (noPeriph > 0.5 ? 1.0 : 1.0 - smoothstep(-2.0, 2.0, lsd));
   lin *= mix(vec3(1.0), transmit * vec3(0.94, 0.98, 1.0), inLens);
   lin += gGhost * inLens;
   // окно дисплея: у каждого глаза своё изображение; виртуальный экран на distM — при фиксации вблизи двоится
@@ -271,17 +278,22 @@ vec4 eyeView(float s){
     float edge = smoothstep(0.55, 1.0, length(ac / disp.zw));
     vec2 ca = ac * edge * 0.012 * edgeSoft;                              // хроматизм у края окна
     vec3 h;
-    h.r = holoAt(aH + ca, gRH).r; h.g = holoAt(aH, gRH).g; h.b = holoAt(aH - ca, gRH).b;
-    h += holoAt(aH + vec2(0.0, -0.22), gRH + 0.08) * ghostK;                       // вторичное отражение призмы
-    h += holoAt(vec2(aH.x, 2.0 * disp.y - aH.y), gRH + 0.3) * ghostK * 0.35;     // зеркальный «призрак» окна
-    vec3 hb = holoAt(aH, gRH + 0.11);
-    h = max(h + sharpen * (h - hb), 0.0);
+    if (gShared > 0.5 && ipdErr == 0.0 && gHoloOk > 0.5) h = gHolo;
+    else {
+      h.r = holoAt(aH + ca, gRH).r; h.g = holoAt(aH, gRH).g; h.b = holoAt(aH - ca, gRH).b;
+      h += holoAt(aH + vec2(0.0, -0.22), gRH + 0.08) * ghostK;                       // вторичное отражение призмы
+      h += holoAt(vec2(aH.x, 2.0 * disp.y - aH.y), gRH + 0.3) * ghostK * 0.35;     // зеркальный «призрак» окна
+      vec3 hb = holoAt(aH, gRH + 0.11);
+      h = max(h + sharpen * (h - hb), 0.0);
+      gHolo = h; gHoloOk = 1.0;
+    }
     // нит дисплея — в единицах мира: свет дисплея не проходит через затемнение и складывается со светом цеха
     h *= dispNits / cdPerUnit * dispBright * (1.0 - 0.55 * edgeSoft * edge) * bootFade;
     lin += h * gExpo * wm;
   }
   vec3 c = toSRGB(aces(lin));
   c += glassesOn * dispOn * inLens * vec3(0.25, 0.85, 0.75) * (1.0 - smoothstep(0.0, 0.3, abs(wsd))) * 0.03;
+  if (noPeriph > 0.5) return vec4(c, 1.0);                             // без периферии: оправы, носа и щёк не видно
   // ---- то, что у самого глаза (2–4 см) — всегда не в фокусе: рамка, модуль, дужка, нос ----
   float g = glassesOn;
   float inFrameX = 1.0 - smoothstep(frameA.y - 4.0, frameA.y + 4.0, e.x);
@@ -314,7 +326,7 @@ void main(){
   float d = max(distAt(gA), 0.05);
   float dD = max(0.0, abs(1.0 / d - focusD) - 0.25);                   // глубина резкости глаза ≈ ±0,25 дптр
   float rDef = degrees(pupilMM * 1e-3 * dD);
-  float rPer = 0.8 * (1.0 + gEcc / 2.5) / 60.0;                         // ≈ минимальный угол разрешения, град
+  float rPer = 0.8 * (1.0 + (1.0 - noPeriph) * gEcc / 2.5) / 60.0;                         // ≈ минимальный угол разрешения, град
   float fat = fatigueBlur * 0.08;
   gR = sqrt(rDef * rDef + rPer * rPer) + fat;
   gSm = vec2(-angVel.x, angVel.y) * degrees(0.012);                     // ≈ 12 мс «выдержки» сетчатки
@@ -326,6 +338,7 @@ void main(){
   gH = h * nf;
   gHH = 0.0;                                                            // окна стапеля рисуются стерео на своей глубине — сливаются
   gNF = nf;
+  gShared = gH == 0.0 ? 1.0 : 0.0; gColOk = 0.0; gHoloOk = 0.0;
   gRH = degrees(pupilMM * 1e-3 * max(0.0, abs(dispD - focusD) - 0.25)) + fat;
   // ---- адаптация: глаз видит мир через линзы (в режиме полного поля часть поля — мимо линз) ----
   float adapted = texture(tLum, vec2(0.5)).r * mix(1.0, transmit, glassesOn * lensFrac);
@@ -337,24 +350,28 @@ void main(){
   gScat = max(sg - 0.9, 0.0) * scatter * 3.0;
   gGhost = max(sceneAt(-gA * 0.9 + vec2(0.0, 2.0 * disp.y), 5.0) * gExpo - 1.5, 0.0) * 0.012;
   gMeso = 1.0 - smoothstep(0.003, 0.05, adapted);
-  gDesat = smoothstep(25.0, 90.0, gEcc) * 0.6;
+  gDesat = smoothstep(25.0, 90.0, gEcc) * 0.6 * (1.0 - noPeriph);
   // ---- два глаза: в зоне перекрытия — смесь (ведущий глаз весомее), по краям — монокулярные серпы ----
   // подавление: размытое близкое препятствие у одного глаза (рамка, нос) проигрывает чёткой сцене другого —
   // переносица и нос видны лишь «призраком»
-  gOcc = 0.0; vec4 cl = eyeOn.x > 0.0 ? eyeView(-1.0) : vec4(0.0); float ol = gOcc;
-  gOcc = 0.0; vec4 cr = eyeOn.y > 0.0 ? eyeView(1.0) : vec4(0.0); float orr = gOcc;
-  float dom = mix(domR, domR >= 0.5 ? 0.88 : 0.12, gNF);
-  float wl = cl.a * eyeOn.x * (1.0 - dom) * (1.0 - 0.8 * ol), wr = cr.a * eyeOn.y * dom * (1.0 - 0.8 * orr);
-  vec3 c = (cl.rgb * wl + cr.rgb * wr) / max(wl + wr, 1e-4);
-  float vis = max(cl.a * eyeOn.x, cr.a * eyeOn.y);
-  c *= vis;
-  // падение освещённости сетчатки на дальней периферии (наклонный зрачок)
-  c *= 1.0 - 0.35 * smoothstep(50.0, 100.0, gEcc);
-  if (fieldMode < 0.5) { vec2 qv = vUv - 0.5; qv.x *= aspect; c *= 1.0 - 0.35 * smoothstep(0.75, 1.2, length(qv * vec2(0.82, 1.28))); }
+  vec3 c; float vis;
+  if (noPeriph > 0.5) { c = eyeView(1.0).rgb; vis = 1.0; }              // режим «без периферии»: один глаз, резко везде
+  else {
+    gOcc = 0.0; vec4 cl = eyeOn.x > 0.0 ? eyeView(-1.0) : vec4(0.0); float ol = gOcc;
+    gOcc = 0.0; vec4 cr = eyeOn.y > 0.0 ? eyeView(1.0) : vec4(0.0); float orr = gOcc;
+    float dom = mix(domR, domR >= 0.5 ? 0.88 : 0.12, gNF);
+    float wl = cl.a * eyeOn.x * (1.0 - dom) * (1.0 - 0.8 * ol), wr = cr.a * eyeOn.y * dom * (1.0 - 0.8 * orr);
+    c = (cl.rgb * wl + cr.rgb * wr) / max(wl + wr, 1e-4);
+    vis = max(cl.a * eyeOn.x, cr.a * eyeOn.y);
+    c *= vis;
+    // падение освещённости сетчатки на дальней периферии (наклонный зрачок)
+    c *= 1.0 - 0.35 * smoothstep(50.0, 100.0, gEcc);
+    if (fieldMode < 0.5) { vec2 qv = vUv - 0.5; qv.x *= aspect; c *= 1.0 - 0.35 * smoothstep(0.75, 1.2, length(qv * vec2(0.82, 1.28))); }
+  }
   c = mix(c, vec3(1.0), flash * 0.5 * vis);
   // веки при моргании
   float lt = mix(64.0, -3.0, blink), lb = mix(-75.0, -3.0, blink);
-  float lid = max(smoothstep(lt - 6.0, lt + 1.0, gA.y), smoothstep(lb + 6.0, lb - 1.0, gA.y)) * step(0.001, blink);
+  float lid = max(smoothstep(lt - 6.0, lt + 1.0, gA.y), smoothstep(lb + 6.0, lb - 1.0, gA.y)) * step(0.001, blink) * (1.0 - noPeriph);
   c = mix(c, vec3(0.03, 0.012, 0.01), lid * vis);
   // ---- схема зон поля зрения ----
   if (overlay > 0.5) {
@@ -400,7 +417,7 @@ export class VisionRenderer {
         tReal: null, tDepth: null, tHolo: null, tLum: null, tDirt: dirtTexture(), res: new THREE.Vector2(1, 1), tanV: 1, aspect: 1, cNear: 0.05, cFar: 80,
         time: 0, focusD: 0.5, pupilMM: 4, dispD: 0.25, glassesOn: 0, dispOn: 0, transmit: 0.9, dispBright: 1, blink: 0, flash: 0,
         angVel: new THREE.Vector2(), fatigueBlur: 0, age: 30, dirt: 0.1, ipdErr: 0, disp: new THREE.Vector4(0, -2, 22, 12), maxLod: 7,
-        exposureBias: 1, bootFade: 1, dbg: 0, dispNits: DISPLAY.nits, sharpen: 0.45, cdPerUnit: CD_PER_UNIT, ghostK: 0.05, edgeSoft: 0.45,
+        exposureBias: 1, bootFade: 1, dbg: 0, dispNits: DISPLAY.nits, sharpen: 0.45, cdPerUnit: CD_PER_UNIT, ghostK: 0.05, edgeSoft: 0.45, noPeriph: 0,
         tAtlas: null, tAtlasDepth: null, tFront: null, tFrontDepth: null, frontTan: Math.tan(Math.PI * 35 / 180), frontN: 1024, cortS0: 20, cortC: CORTICAL_C,
         fieldMode: 0, fieldSpan: new THREE.Vector2(220, 140), atlasFace: 512, aNear: 0.03, aFar: 80,
         vergD: 0.5, ipdM: IPD_MM / 1000, domR: 0.55, eyeOn: new THREE.Vector2(1, 1), diplo: 0, overlay: 0,
@@ -423,8 +440,20 @@ export class VisionRenderer {
     });
   }
 
-  /** Режим «полное поле ≈ 200°» (развёртка куба, равнопромежуточная проекция) или «центр 72°» (перспектива). */
-  setFieldMode(on) {
+  /**
+   * Режим просмотра: 'field' — полное поле ≈ 200° (два глаза, корковая проекция), 'center' — центр 72°
+   * (перспектива с периферией глаза), 'clean' — без периферийного зрения: перспектива 72°, резко по всему кадру,
+   * без потери цвета к краю, виньетки, оправы, носа и век (самый быстрый).
+   */
+  setView(mode) {
+    this.view = mode === 'clean' || mode === 'center' ? mode : 'field';
+    this.u.noPeriph.value = this.view === 'clean' ? 1 : 0;
+    this.setFieldMode(this.view === 'field', true);
+  }
+
+  /** Полное поле ≈ 200° (развёртка куба) или перспектива (центр 72° / без периферии). */
+  setFieldMode(on, keepView = false) {
+    if (!keepView) { this.view = on ? 'field' : 'center'; this.u.noPeriph.value = 0; }
     this.fieldMode = !!on;
     this.u.fieldMode.value = on ? 1 : 0;
     this.u.lensFrac.value = on ? 0.75 : 1;
@@ -478,7 +507,10 @@ export class VisionRenderer {
     fc.fov = 90; fc.updateProjectionMatrix();
     renderer.setRenderTarget(atlas);
     atlas.scissorTest = true;
+    this.atlasFrame = (this.atlasFrame || 0) + 1;
     this.faceQ.forEach((q, i) => {
+      // экономия на слабой видеокарте: боковые грани (дальняя периферия) — через кадр, попарно
+      if (this.faceSkip && i > 0 && (i <= 2) !== (this.atlasFrame % 2 === 0)) return;
       const col = i % 3, row = Math.floor(i / 3);
       atlas.viewport.set(col * F, row * F, F, F); atlas.scissor.set(col * F, row * F, F, F);
       fc.quaternion.copy(camera.quaternion).multiply(q);

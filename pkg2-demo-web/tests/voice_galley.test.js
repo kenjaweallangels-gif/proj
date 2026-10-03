@@ -99,3 +99,13 @@ describe('голос: виртуальная сборка', () => {
     expect(parseGalley('сборка покажи готовое')).toEqual({ cmd: 'player_end', arg: null });
   });
 });
+
+describe('голос: режим просмотра', () => {
+  it('без периферии, полное поле, центр', async () => {
+    const { parseGalley } = await import('../src/galley/voice_cmd.js');
+    expect(parseGalley('сборка без периферии')).toEqual({ cmd: 'view_clean', arg: null });
+    expect(parseGalley('сборка полное поле')).toEqual({ cmd: 'view_field', arg: null });
+    expect(parseGalley('сборка центр семьдесят два')).toEqual({ cmd: 'view_center', arg: null });
+    expect(parseGalley('сборка по центру')).toEqual({ cmd: 'recenter', arg: null });
+  });
+});

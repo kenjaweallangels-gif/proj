@@ -149,9 +149,12 @@ export function buildPanels(mgr, app) {
       if (k.cx == null) { k.cx = FW / 2; k.cy = FH / 2; }
       const view = { s, ox: area.x + area.w / 2 - k.cx * s, oy: area.y + area.h / 2 - k.cy * s };
       k.view = view; k.area = area;
-      const c = p.ctx; c.save(); c.beginPath(); c.rect(area.x, area.y, area.w, area.h); c.clip();
-      drawDoc(c, k.code, k.sheet, view, { zone: k.zone });
-      c.restore();
+      if (!ui.dry) {
+        const c = p.ctx; c.save(); c.beginPath(); c.rect(area.x, area.y, area.w, area.h); c.clip();
+        drawDoc(c, k.code, k.sheet, view, { zone: k.zone });
+        c.restore();
+      }
+      ui.sig.push(`kd${k.code}${k.sheet}${k.zone}${view.s}${view.ox}${view.oy}`);
       ui.rect(area.x, area.y, area.w, area.h, { stroke: C.line, r: 4, lw: 1.5 });
       // физический размер: на панели шириной w м лист занимает …
       const mmOnPanel = (FW * s) / p.px * p.w * 1000;

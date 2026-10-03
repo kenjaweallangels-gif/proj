@@ -6,6 +6,7 @@ import { painted } from '../scene/materials.js';
 import { buildGalley } from './galley_build.js';
 import { HALL, PLACES, buildHall, solid } from './hall.js';
 import { FLOOR, JIG, buildJig } from './jig.js';
+import { freezeStatic, freezeStation } from './perf.js';
 import { DONE_BEFORE_SHIFT, STEPS, applyStep, stateFrom } from './process.js';
 import * as S from './spec.js';
 import { galleyMat as GM, textTexture } from './tex.js';
@@ -130,6 +131,13 @@ export function buildWorld(scene) {
   scene.add(showcase.root);
   // ---------- дополнительные участки: ЭМ-1 (жгуты), СЛ-1 (слесарный), МЭ-1 (монтаж электрооборудования) ----------
   const stations = buildStations(scene);
+  // ---------- производительность: неподвижное окружение — несколькими большими сетками ----------
+  if (!/[?&]merge=0/.test(globalThis.location?.search || '')) {
+    freezeStatic(hall.root, { exclude: [hall.dockLabel].filter(Boolean) });
+    freezeStatic(jig.root, { exclude: (jig.markers || []).map((m) => m.obj) });
+    freezeStatic(done.root);
+    for (const st of stations) freezeStation(st);
+  }
 
   return { hall, jig, galley, kit, rack, cart, finished: done, showcase, stations, colliders: hall.colliders };
 }
