@@ -1,7 +1,7 @@
 // Меш червя: тело-труба (деформация по позвоночнику на GPU), голова — тупой цилиндр с круглой миноговой пастью (maw.js).
 // Снаряжение наездников (крючья творца, канаты, сёдла) и фигуры — в gear.js.
 import * as THREE from 'three';
-import { LENGTH, RADIUS } from './spine.js';
+import { LENGTH, RADIUS, N_PTS } from './spine.js';
 import { patchChitin, patchSpineBack } from './shaders.js';
 import { Maw, HEAD_LEN } from './maw.js';
 
@@ -116,6 +116,22 @@ export class WormBody {
     this.head.matrix.copy(this._m);
     this.head.matrixWorldNeedsUpdate = true;
     this.head.updateMatrixWorld(true);
+    this._fitBounds();
+  }
+
+  /** Сфера охвата по каркасу: тело отсекается по пирамиде видимости (вершинный шейдер дорогой — вне кадра его не гоняем). */
+  _fitBounds() {
+    const p = this.spine.P, n = N_PTS;
+    let x0 = 1e9, y0 = 1e9, z0 = 1e9, x1 = -1e9, y1 = -1e9, z1 = -1e9;
+    for (let i = 0; i < n; i++) {
+      const x = p[i * 3], y = p[i * 3 + 1], z = p[i * 3 + 2];
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; if (z < z0) z0 = z; if (z > z1) z1 = z;
+    }
+    if (!(Number.isFinite(x0 + x1 + y0 + y1 + z0 + z1))) return;
+    const bs = this.tube.geometry.boundingSphere;
+    bs.center.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+    bs.radius = Math.hypot(x1 - x0, y1 - y0, z1 - z0) / 2 + RADIUS * this.headScale * 1.5 + 12;
+    this.tube.frustumCulled = this.tubeBack.frustumCulled = true;
   }
 
   /** Мировая точка/направление пасти. */

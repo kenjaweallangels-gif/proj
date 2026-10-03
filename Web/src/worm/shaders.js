@@ -188,7 +188,9 @@ vec3 wormSurf(float s, float a, out vec3 C){
   float macro = (wfbm(vec2(s*0.04, a*1.3)) - 0.5)*1.6;
   float dent = smoothstep(0.80, 0.92, wvn(vec2(s*0.09 + 13.0, a*2.4)));          // рубцы-вмятины
   float belly = smoothstep(2.2,3.14,abs(mod(a+3.14159,6.28318)-3.14159));
-  float r = (uR + stp + 0.55*dome + 0.18*ridge + macro*(1.0-0.4*belly) - 1.1*dent) * max(P.w, 0.02);
+  float wDet = stp + 0.55*dome + 0.18*ridge + macro*(1.0-0.4*belly) - 1.1*dent;
+  float wPw = max(P.w, 0.02);
+  float r = uR*wPw + wDet*(wPw < 1.0 ? wPw : 1.0 + (wPw - 1.0)*0.35);      // у раструба шеи швы не растут вместе с радиусом (иначе тарелки с щелями)
   vec3 dir = cos(a)*N + sin(a)*B;
   C = P.xyz;
   return P.xyz + dir*r;
@@ -361,7 +363,7 @@ export function patchTeeth(material, U) {
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvDepth = aDepth; vTip = uv.y;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\nvarying float vDepth; varying float vTip; uniform vec3 uSunV;\n${NOISE}`)
-      .replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb *= mix(vec3(1.0,0.93,0.80), vec3(0.82,0.92,1.0), smoothstep(0.3,1.0,vTip));')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb *= mix(vec3(1.0,0.93,0.80), vec3(0.82,0.92,1.0), smoothstep(0.3,1.0,vTip)) * mix(vec3(0.42,0.30,0.24), vec3(1.0), smoothstep(0.0,0.45,vTip));')
       .replace('#include <emissivemap_fragment>', /* glsl */`
         #include <emissivemap_fragment>
         {

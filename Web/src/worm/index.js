@@ -59,7 +59,7 @@ export function create(game) {
     const id = colliders.add({ type: 'capsule', owner: 'worm', a: new THREE.Vector3(0, -500, 0), b: new THREE.Vector3(0, -500, 1), r: RADIUS * 0.96, solid: false, tags: new Set(['worm']) });
     wormCols.push(colliders.get(id));
   }
-  let colsOn = false;
+  let colsOn = false, colT = 0;
   function syncColliders(exposedNow) {
     if (!exposedNow) { if (colsOn) { for (const c of wormCols) c.solid = false; colsOn = false; } return; }
     const P = spine.P, RS = spine.RS;
@@ -428,7 +428,8 @@ export function create(game) {
     }
     worm.exposed = exposed;
     body.group.visible = exposed && inDesert;
-    syncColliders(exposed && inDesert);
+    colT += dt;
+    if (!(resting && colsOn && colT < 0.12 && exposed)) { colT = 0; syncColliders(exposed && inDesert); }      // лежащий червь: капсулы раз в ~0,12 с
     if (exposed && inDesert) { body.update(); U.uTime.value = t; }
     // освещение/окружение
     getSun();

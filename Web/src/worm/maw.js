@@ -172,7 +172,7 @@ export class Maw {
       const r = C[i * 2] + (O[i * 2] - C[i * 2]) * e, z = C[i * 2 + 1] + (O[i * 2 + 1] - C[i * 2 + 1]) * e;
       const puck = (1 - e) * sm(0.3, 3, r) * (1 - sm(13, 18, r));
       const crest = sm(2, 5, i) * (1 - sm(8, 11, i));              // неровность кромки губ
-      const shade = z > -2 ? 1 : Math.max(0.05, Math.exp((z + 2) * 0.075));
+      const shade = z > -1.5 ? 1 : Math.max(0.03, Math.exp((z + 1.5) * 0.15));      // глотка быстро темнеет вглубь
       for (let j = 0; j <= na; j++) {
         const th = (j / na) * Math.PI * 2, k = i * (na + 1) + j;
         const pk = Math.pow(0.5 + 0.5 * Math.cos(7 * th + 0.8 * Math.sin(2 * th)), 4);
@@ -241,6 +241,11 @@ class Fangs {
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;
+    if (withDepth) {                                          // клыки: слоновая кость с разбросом оттенка (жёлтый налёт, серость)
+      const c = new THREE.Color();
+      for (let q = 0; q < total; q++) { c.setRGB(0.62 + 0.38 * rand(), 0.58 + 0.34 * rand(), 0.48 + 0.3 * rand()); this.mesh.setColorAt(q, c); }
+      this.mesh.instanceColor.needsUpdate = true;
+    }
     this._p = { r: 0, z: 0, dr: 0, dz: 0 };
     this._m = new THREE.Matrix4(); this._pos = new THREE.Vector3(); this._d = new THREE.Vector3(); this._x = new THREE.Vector3(); this._z = new THREE.Vector3();
   }
@@ -248,7 +253,7 @@ class Fangs {
   update(open) {
     const { maw, rings, th, sz, jt, ringOf, mesh } = this;
     const P = this._p, pos = this._pos, d = this._d, x = this._x, zax = this._z, m = this._m, e = m.elements;
-    const grow = sm(0.03, 0.4, open);
+    const grow = sm(0.1, 0.55, open);
     for (let q = 0; q < this.total; q++) {
       const R = rings[ringOf[q]];
       maw.at(R.u * (maw.ns - 1), open, P);

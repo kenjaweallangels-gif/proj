@@ -32,5 +32,10 @@ for (const o of opens) {
   }
   i++;
 }
+if (arg('nohead', '0') === '1') {
+  await page.evaluate(() => { window.__rakis.worm.body.head.visible = false; });
+  const r = await capture(page, outDir, 'zz_nohead_side', { minLum: 5, cameraFn: ([H, sc]) => { const g = window.__rakis, A = window.__A, cam = g.camera; cam.position.set(A.x - 150, A.gy + 20, A.z + 90); cam.fov = 50; cam.updateProjectionMatrix(); cam.lookAt(A.x, A.gy + H - 6, A.z); }, camArg: [H, scale] });
+  console.log('nohead side', r.lum);
+}
 await browser.close();
 const u = [...new Set(errors)]; if (u.length) console.error('КОНСОЛЬ:\n' + u.slice(0, 15).join('\n'));

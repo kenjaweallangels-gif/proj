@@ -146,6 +146,7 @@ export function create(game) {
         apply();
         const pl = game.player;
         if (pl?.figure) pl.figure.group.visible = true;          // свой персонаж виден и в режиме от первого лица
+        game.figures?.setFigureView?.(cam.position);              // детализация фигур (наездники, спутники) — по положению свободной камеры
       } else if (blend >= 0) {
         blend += dt / 0.8;
         const e = blend >= 1 ? 1 : blend * blend * (3 - 2 * blend);

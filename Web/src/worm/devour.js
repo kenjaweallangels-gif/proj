@@ -33,9 +33,9 @@ export const DEVOUR_TUNING = {
   noseAdvance: 8,               // м: ось пасти впереди носа харвестера
   eruptDelay: 1.4, riseTime: 4.6, headRise: 12, flare: 2.3, flareLen: 90, openDelay: 0.9, openTime: 3.4,
   slideDelay: 2.4, slideTime: 7.5, slideAccel: 7, closeDelay: 8.5, closeTime: 2.8,
-  retractTime: 8, retractDepth: 46,
+  retractTime: 11, retractDepth: 40,
   aftermathTime: 24, safeRadius: 120, knockSpeed: 22,
-  debrisPerSec: 9, spiceRate: 150, sandRate: 110, rainRate: 70, rimSandRate: 260,
+  debrisPerSec: 9, spiceRate: 60, sandRate: 110, rainRate: 70, rimSandRate: 260,
 };
 
 const T = DEVOUR_TUNING;
@@ -248,6 +248,7 @@ export class DevourDirector {
     if (!this.done.flare && t >= T.tFlare) { this.done.flare = true; hv.flare(); }
     if (!this.done.hold && t >= T.tAlarm + 1) { this.done.hold = true; hv.hold(true); }
 
+    if (!this.done.vortex && t >= this.tVortex0) { this.done.vortex = true; this.setPhase('vortex'); }
     this.updateHead(dt, t);
     this.updateCarryall(dt, t);
     this.updateHarvester(dt, t);
@@ -307,7 +308,7 @@ export class DevourDirector {
 
     // состояние для модуля (угроза, шум): гул растёт только вблизи
     const dPl = game.player ? Math.hypot(game.player.position.x - this.A.x, game.player.position.z - this.A.z) : 999;
-    this.worm.threat = clamp((0.2 + 0.7 * smoothstep(0, this.tErupt, t)) * (1 - smoothstep(160, 560, dPl)), 0, 1);
+    this.worm.threat = clamp((0.15 + 0.45 * smoothstep(0, this.tErupt, t)) * (1 - smoothstep(160, 560, dPl)), 0, 1);
     if (!this.breachDone && t >= this.tErupt) {
       this.breachDone = true;
       this.api.onBreach(1.25);
@@ -534,11 +535,11 @@ export class DevourDirector {
       this.spiceAcc += dt * T.spiceRate * qf * (this.phase === 'swallow' || this.phase === 'retreat' ? 1.4 : 0.6);
       while (this.spiceAcc >= 1) {
         this.spiceAcc -= 1;
-        const a = rand() * 6.2832, r = rad * (0.2 + rand() * 1.0), h = gE + 2 + rand() * 36;
-        hv.particles.emit(0, A.x + Math.cos(a) * r, h, A.z + Math.sin(a) * r, Math.cos(a) * (2 + rand() * 6), 3 + rand() * 6, Math.sin(a) * (2 + rand() * 6), 4 + rand() * 4, 8 + rand() * 9, 0.2, 3.2, { wind: 1.2, buoy: 1.3, drag: 0.35 });
+        const a = rand() * 6.2832, r = rad * (0.9 + rand() * 0.8), h = gE + 2 + rand() * 30;
+        hv.particles.emit(0, A.x + Math.cos(a) * r, h, A.z + Math.sin(a) * r, Math.cos(a) * (3 + rand() * 6), 3 + rand() * 6, Math.sin(a) * (3 + rand() * 6), 4 + rand() * 4, 7 + rand() * 7, 0.13, 3.0, { wind: 1.2, buoy: 1.3, drag: 0.35 });
       }
       // широкие облака пыли у основания колонны
-      this.dustAcc += dt * 3 * qf;
+      this.dustAcc += dt * 1.6 * qf;
       while (this.dustAcc >= 1) { this.dustAcc -= 1; fx.puff(A.x + (rand() - 0.5) * 90, gE + 2 + rand() * 12, A.z + (rand() - 0.5) * 90, 0.6, 'wide'); }
     }
     // песчаный дождь в радиусе ~170 м от оси
