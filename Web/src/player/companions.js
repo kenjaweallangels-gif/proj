@@ -39,6 +39,8 @@ export function create(game) {
       figure.onStep = (e) => onStep(c, e);
       game.scene.add(figure.group);
       const c = { id, figure, spec, position: new V3(), yaw: 0, speed: 0, nextStep: 0, idleT: 0, glanceT: 1, glanceDir: 0, weight: 0, vel: new V3() };
+      c.bodyA = new V3(); c.bodyB = new V3(); c.owner = 'companion:' + id;
+      c.bodyId = game.colliders?.add({ type: 'capsule', a: c.bodyA, b: c.bodyB, r: CFG.radius, owner: c.owner });
       list.push(c);
       const pl = player();
       if (pl) {
@@ -69,7 +71,7 @@ export function create(game) {
         // Смещение вбок (поочерёдно), чтобы не вставать на ось камеры третьего лица.
         const lat = (i % 2 === 0 ? 1 : -1) * 1.3;
         c.position.set(pl.position.x - fx * d - fz * lat, 0, pl.position.z - fz * d + fx * lat);
-        game.collide(c.position, CFG.radius);
+        game.collide(c.position, CFG.radius, { ignore: c.owner });
         c.position.y = game.heightAt(c.position.x, c.position.z);
         c.yaw = pl.yaw; c.speed = 0; c.vel.set(0, 0, 0);
         sync(c);
@@ -89,6 +91,7 @@ export function create(game) {
   function sync(c) {
     c.figure.group.position.copy(c.position);
     c.figure.group.rotation.y = Math.PI / 2 - c.yaw;
+    if (c.bodyA) { c.bodyA.set(c.position.x, c.position.y + CFG.radius, c.position.z); c.bodyB.set(c.position.x, c.position.y + c.figure.height - CFG.radius, c.position.z); }
   }
 
   function sampleTrail(s, out) {
@@ -169,7 +172,9 @@ export function create(game) {
             c.position.x += nx * push; c.position.z += nz * push;
           }
         }
-        game.collide(c.position, CFG.radius);
+        game.collide(c.position, CFG.radius, { ignore: c.owner });
+        // уступы: выше CFG.stepUp не лезем
+        if (game.heightAt(c.position.x, c.position.z, c.position.y) - c.position.y > CFG.stepUp) { c.position.x = ox; c.position.z = oz; c.vel.x = c.vel.z = 0; }
         const gy = game.heightAt(c.position.x, c.position.z, c.position.y);
         c.position.y = Math.abs(gy - c.position.y) > 1.2 ? gy : damp(c.position.y, gy, 16, dt);
       }

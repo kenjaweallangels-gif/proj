@@ -47,7 +47,26 @@ export function create(game) {
     position, velocity, figure,
     yaw: start.yaw, speed: 0, gait: 'idle', slope: 0, firstPerson: false, inputLocked: false,
     stepIntervalNow: 0.5, moveMode: 'normal', sandWalking: false,
+    /** Vector3|null — мировая точка, к которой тянется правая рука (занавес/полог). Ставится модулем сиетча; также подхватывается автоматически у interactable с reachPoint. */
+    reachTarget: null,
   };
+  // Твёрдое тело игрока (капсула) в реестре game.colliders — об него упираются червь/харвестер/NPC/спутники.
+  const bodyA = new THREE.Vector3(), bodyB = new THREE.Vector3();
+  const bodyId = game.colliders?.add({ type: 'capsule', a: bodyA, b: bodyB, r: CFG.radius, owner: 'player' });
+  const syncBody = () => { bodyA.set(position.x, position.y + CFG.radius, position.z); bodyB.set(position.x, position.y + CFG.height - CFG.radius, position.z); };
+  syncBody();
+  const OWN = { ignore: 'player' };
+  const reachAuto = new THREE.Vector3();
+  function pickReach() {
+    if (p.reachTarget) return p.reachTarget;
+    for (const it of game.interactables) {
+      const rp = it?.reachPoint;
+      if (!rp || it.enabled === false) continue;
+      const dx = rp.x - position.x, dz = rp.z - position.z, d = Math.hypot(dx, dz);
+      if (d < 1.9 && Math.abs(rp.y - position.y) < 2.5 && (d < 0.5 || (dx * Math.cos(p.yaw) + dz * Math.sin(p.yaw)) / d > 0.55)) return reachAuto.copy(rp);
+    }
+    return null;
+  }
   // Режим передвижения: C / LB — переключатель (обычный ⇄ походка по песку), Alt — «пока держишь». Shift (бег) отменяет песок.
   let desertToggle = false, altHeld = false, padLB = false;
   const onKey = (e) => {
@@ -167,8 +186,21 @@ export function create(game) {
       const ox = position.x, oz = position.z;
       position.x += (velocity.x + slide.x) * dt;
       position.z += (velocity.z + slide.z) * dt;
-      if (game.collide(position, CFG.radius) && dt > 0) {
+      if (game.collide(position, CFG.radius, OWN) && dt > 0) {
         velocity.x = (position.x - ox) / dt - slide.x; velocity.z = (position.z - oz) / dt - slide.z;
+      }
+      // уступы: подъём до CFG.stepUp (≈0.5 м) разрешён, выше — упираемся (пробуем скользить по осям)
+      {
+        const cur = position.y;
+        const rise = game.heightAt(position.x, position.z, cur) - cur;
+        if (rise > CFG.stepUp && dt > 0) {
+          const nx = position.x, nz = position.z;
+          const rX = game.heightAt(nx, oz, cur) - cur, rZ = game.heightAt(ox, nz, cur) - cur;
+          if (rX <= CFG.stepUp) { position.x = nx; position.z = oz; }
+          else if (rZ <= CFG.stepUp) { position.x = ox; position.z = nz; }
+          else { position.x = ox; position.z = oz; }
+          velocity.x = (position.x - ox) / dt - slide.x; velocity.z = (position.z - oz) / dt - slide.z;
+        }
       }
       const gy = game.heightAt(position.x, position.z, position.y);
       position.y = Math.abs(gy - position.y) > 1.2 ? gy : damp(position.y, gy, CFG.groundLambda, dt);
@@ -200,6 +232,8 @@ export function create(game) {
       setFigureWind(game.space === 'desert' && weather ? weather.windDir : null, weather ? weather.windSpeed : 0);
       figure.animate(p.speed, dt, sandHeld ? 1 : 0, { slope: slopeAlong, sliding: clamp(slideSpeed / 4, 0, 1), allowPause: true, desert: sandHeld });
       figure.group.visible = rig.blend < 0.55;
+      syncBody();
+      { const rt = frozen && !p.reachTarget ? null : pickReach(); figure.reachTo(rt, 'R', rt ? 1 : 0, { sweep: 0.2 }); }
       lastY = position.y;
     },
     lateUpdate(dt, t) { rig.apply(dt, t); setFigureView(game.camera.position); },

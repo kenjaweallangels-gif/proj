@@ -2,11 +2,12 @@
 // Источник значений: docs/design/mechanics.md, docs/06_demo_contract.md §2.6.
 export const CFG = {
   radius: 0.35,
+  stepUp: 0.5,     // максимальный уступ, на который можно шагнуть (м)
   height: 1.76,
   eye: 1.62,
   speed: { walk: 3.0, run: 6.0, sandWalk: 1.8, sandWalkBase: 2.45 }, // sandWalkBase × огибающая ритма (ср. ≈0.7) ≈ 1.8 м/с
   accelLambda: 7, decelLambda: 9, turnLambda: 10, groundLambda: 18,
-  slope: { probe: 0.6, slowDeg: 25, slowFactor: 0.7, slideDeg: 38, slideMax: 5, slideLambda: 3 },
+  slope: { probe: 0.6, slowDeg: 25, slowFactor: 0.7, slideDeg: 42, slideMax: 5, slideLambda: 3 },
   // Шаги: таблица [скорость м/с, интервал с] — ходьба 0.5 с, бег 0.32 с (таймер-фоллбек из mechanics §1.5).
   step: { table: [[0.4, 0.9], [2, 0.7], [3, 0.5], [6, 0.32]], jitter: 0.07, firstDelay: 0.2, minSpeed: 0.4, idleReset: 1.2 },
   noise: {

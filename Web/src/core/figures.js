@@ -8,14 +8,20 @@
 //     Ткань (плащ, подол, капюшон, шарф) реагирует на скорость/ускорение/поворот; ветер — глобальный (setFigureWind) или ctx.wind.
 //   • figure.onStep = ({foot:'L'|'R', side:0|1, intensity, mode:'walk'|'run'|'desert', speed}) — событие касания стопой земли (для звука/следов).
 //   • figure.gait: { env (множитель скорости для «рваного» ритма песка), desertness 0..1, stutter(), reset() }.
+//   • Лицо (LOD0): скульптурная голова (char_face.js), глаза с веками/радужкой; figure.blink(), figure.setMouth(0..1|null), setTalking(b).
+//     Автоматически: моргание, саккады (следуют за lookAt), слоговая анимация рта при setTalking.
+//   • Рука: figure.reachTo(worldPoint|null, 'L'|'R', weight, {sweep, palm, speed}) — IK плечо–локоть–кисть поверх анимации; figure.handWorld(side, out?) → Vector3.
+//   • Опции лица/кожи: age 0..1, gender 0..1, stubble, freckles, hair('short'|'crop'|'bun'|'long'|'none'), beard, beardLen, hairColor; всё детерминировано по seed.
 //   • parts: root, pelvis, spine, chest, neck, headPivot, limbs.L/R.{sh,el,hand,hip,kn,foot,toe} — Object3D-кости (скин-скелет).
 //   • Один скин-меш тела (+1 меш ткани), геометрия общая для фигур с одним «вариантом», 3 LOD (по расстоянию до setFigureView).
 // Глобально: setFigureWind(dir, speed) — ветер для всех (вызывает модуль игрока), setFigureView(camPos) — для LOD.
 import * as THREE from 'three';
 import { rng } from './util.js';
-import { BONE_NAMES, REST, REG, robeProfile, geometryFor, triCount } from '../player/char_geometry.js';
+import { BONE_NAMES, REST, REG, BUILDS, robeProfile, geometryFor, triCount } from '../player/char_geometry.js';
+import { faceParams, faceKey, faceUniformsSpec } from '../player/char_face.js';
 import { makeUniforms, makeBodyMaterial, makeClothMaterial } from '../player/char_material.js';
 import { createAnimator } from '../player/char_anim.js';
+import { createArmIK } from '../player/char_ik.js';
 
 // ------------------------------------------------------------------------------------------ глобальное состояние ----
 const WIND = { x: 0, z: 0, speed: 0 };
@@ -37,7 +43,7 @@ export const PALETTES = {
   Child: { cloth: '#9a7b55', accent: '#b5462c', suit: '#5a4a3a', height: 1.2, mask: false },
   Guard: { cloth: '#3a332c', accent: '#6e2b20', suit: '#2e2a26', bulk: 1.15 },
   Pilgrim: { cloth: '#b9a07a', accent: '#6b5a3a', suit: '#5a4d3e' },
-  Elder: { cloth: '#4e4438', accent: '#2c3e57', suit: '#3b342d', height: 1.66 },
+  Elder: { cloth: '#4e4438', accent: '#2c3e57', suit: '#3b342d', height: 1.66, age: 0.92 },
   Weaver: { cloth: '#7d4f3a', accent: '#2c3e57', suit: '#4a3d33' },
 };
 
@@ -45,40 +51,40 @@ export const PALETTES = {
 // Стили походки: см. char_anim DEFAULT_STYLE.
 export const PRESETS = {
   Kair: {
-    name: 'Kair', height: 1.76, build: 'm', skin: '#7a563a', suit: '#4a4038', cloth: '#8a6a44', cloth2: '#c9a46a', accent: '#2c3e57', leather: '#5a3e28',
+    name: 'Kair', age: 0.35, height: 1.76, build: 'm', skin: '#7a563a', suit: '#4a4038', cloth: '#8a6a44', cloth2: '#c9a46a', accent: '#2c3e57', leather: '#5a3e28',
     robe: true, robeStyle: 'tunic', layers: [{ style: 'cape', asym: 1, tear: 1, fold: 0.045, hemTrim: false }], hood: true, mask: true, pouches: 3, kris: false, staff: true,
     hair: 'short', hairColor: '#201812', wear: 0.55, dust: 0.65, cuffTrim: false, style: { stride: 1, armSwing: 1, tempo: 1 }, seed: 11,
   },
   Ilva: {
-    name: 'Ilva', height: 1.68, build: 'f', skin: '#b08a68', suit: '#3e3630', cloth: '#7e7466', cloth2: '#b8ae9c', accent: '#6b5a7a', lining: '#d8c8a8', leather: '#5a4a3a',
+    name: 'Ilva', age: 0.4, height: 1.68, build: 'f', skin: '#b08a68', suit: '#3e3630', cloth: '#7e7466', cloth2: '#b8ae9c', accent: '#6b5a7a', lining: '#d8c8a8', leather: '#5a4a3a',
     robe: true, robeStyle: 'jubba', robeTint: 2, layers: [{ style: 'shawl', hemTrim: true, fold: 0.06, folds: 7, lining: true }], hood: true, mask: 'down', pouches: 1, hemTrim: false, hair: 'bun', hairColor: '#2a1c14', wear: 0.2, dust: 0.45,
     style: { composed: 1, sway: 0.55, bounce: 0.8, armSwing: 0.55, stride: 0.95, shoulders: 0.0 }, seed: 23, staff: 'sling',
   },
   Rayn: {
-    name: 'Rayn', height: 1.6, build: 'm', bulk: 1.1, skin: '#a9805e', suit: '#3e3630', cloth: '#5a4a3a', cloth2: '#7a2e24', accent: '#c9a46a', leather: '#4a3524',
+    name: 'Rayn', age: 0.62, height: 1.6, build: 'm', bulk: 1.1, skin: '#a9805e', suit: '#3e3630', cloth: '#5a4a3a', cloth2: '#7a2e24', accent: '#c9a46a', leather: '#4a3524',
     robe: true, robeStyle: 'kaftan', layers: [{ style: 'cape', fold: 0.05, tear: 0.3 }], hood: true, mask: true, pouches: 5, frontTrim: true, hemTrim: true, pack: 'box', hair: 'short', hairColor: '#4a3a2a', wear: 0.25, dust: 0.7,
     style: { nervous: 1, stride: 0.82, tempo: 1.15, hunch: 0.05, shoulders: 1, armSwing: 0.7 }, seed: 31,
   },
   Ossana: {
-    name: 'Ossana', height: 1.72, build: 'a', skin: '#5a3e28', suit: '#3b302a', cloth: '#4a3b2c', cloth2: '#6b4f36', accent: '#2c3e57', leather: '#4a3222',
+    name: 'Ossana', age: 0.45, height: 1.72, build: 'a', skin: '#5a3e28', suit: '#3b302a', cloth: '#4a3b2c', cloth2: '#6b4f36', accent: '#2c3e57', leather: '#4a3222',
     robe: true, robeStyle: 'tunic', layers: [{ style: 'cape', fold: 0.04, tear: 0.5, scale: 0.97 }], hood: true, mask: 'down', pouches: 3, kris: true, armPads: true, harness: true, hooks: 2, hair: 'short', hairColor: '#1a1410',
     eyesIbad: true, wear: 0.7, dust: 0.6, style: { stride: 1.08, armSwing: 1.1, stance: 1, sway: 1.1 }, seed: 41, scarf: false,
   },
   Rider: {
-    name: 'Rider', height: 1.78, build: 'm', skin: '#6e4c34', suit: '#14120f', cloth: '#1d1a17', cloth2: '#2a2118', accent: '#5c2a1f', leather: '#3a2a1c',
+    name: 'Rider', age: 0.3, height: 1.78, build: 'm', skin: '#6e4c34', suit: '#14120f', cloth: '#1d1a17', cloth2: '#2a2118', accent: '#5c2a1f', leather: '#3a2a1c',
     robe: true, robeStyle: 'tunic', layers: [{ style: 'cape', fold: 0.04, tear: 0.8 }], hood: true, mask: true, pouches: 2, armPads: true, kris: true, hooks: 1, eyesIbad: true, wear: 0.6, scarf: true, style: { stride: 1.05 }, seed: 51,
   },
   Rider2: {
-    name: 'Rider2', height: 1.66, build: 'f', skin: '#7a563a', suit: '#3b302a', cloth: '#5e4b3c', cloth2: '#9c7c52', accent: '#2c3e57', leather: '#4a3222',
+    name: 'Rider2', age: 0.28, height: 1.66, build: 'f', skin: '#7a563a', suit: '#3b302a', cloth: '#5e4b3c', cloth2: '#9c7c52', accent: '#2c3e57', leather: '#4a3222',
     robe: true, robeStyle: 'tunic', layers: [{ style: 'cape', fold: 0.04, scale: 0.9 }], hood: true, mask: 'down', pouches: 2, armPads: true, hooks: 2, eyesIbad: true, wear: 0.5, scarf: true, hair: 'short', hairColor: '#241a14', style: { stride: 1.0, tempo: 1.05 }, seed: 52,
   },
   Harmat: {
-    name: 'Harmat', height: 1.72, build: 'e', bulk: 1.12, skin: '#7a563a', suit: '#2a221b', cloth: '#2b2420', cloth2: '#6b4f36', accent: '#2c62b8', leather: '#3a2a1a',
+    name: 'Harmat', age: 0.92, height: 1.72, build: 'e', bulk: 1.12, skin: '#7a563a', suit: '#2a221b', cloth: '#2b2420', cloth2: '#6b4f36', accent: '#2c62b8', leather: '#3a2a1a',
     robe: true, robeStyle: 'jubba', layers: [{ style: 'heavy', hemTrim: true, folds: 6, fold: 0.05 }], hood: false, mask: false, pouches: 2, kris: true, hair: 'short', hairColor: '#c9c6bd', beard: true, eyesIbad: true,
     wear: 0.8, dust: 0.5, staff: 'hook', style: { elder: 1, stride: 0.8, sway: 0.8, tempo: 0.85, armSwing: 0.6 }, seed: 61,
   },
   Priestess: {
-    name: 'Priestess', height: 1.86, build: 'f', skin: '#c2a083', suit: '#e0d6c2', cloth: '#e0d6c2', cloth2: '#e0d6c2', accent: '#3f5e7a', lining: '#f0e8d6', leather: '#8a6a3a', bare: true, barefoot: true, gloves: false,
+    name: 'Priestess', age: 0.3, height: 1.86, build: 'f', skin: '#c2a083', suit: '#e0d6c2', cloth: '#e0d6c2', cloth2: '#e0d6c2', accent: '#3f5e7a', lining: '#f0e8d6', leather: '#8a6a3a', bare: true, barefoot: true, gloves: false,
     robe: true, robeStyle: 'jubba', layers: [{ style: 'shawl', scale: 0.9, hemTrim: true, folds: 8, fold: 0.07 }], hood: false, mask: false, sleeve: 'short', pouches: 0, hair: 'bun', hairColor: '#1a1410', cowl: false, noTubes: true,
     eyesIbad: true, wear: 0.05, dust: 0.1, style: { composed: 1, sway: 0.5, stride: 0.9, armSwing: 0.4 }, seed: 71,
   },
@@ -131,16 +137,23 @@ function resolveOptions(opts) {
   // радиус пояса поверх одежды
   const layers = o.layers || [];
   let br = null;
-  const consider = (style, sc = 1) => { const rows = robeProfile(style).rows; let rx = 0.19, rz = 0.14; for (let i = 1; i < rows.length; i++) if (rows[i][0] >= 1.0) { const a = rows[i - 1], b = rows[i], t = (1.0 - a[0]) / (b[0] - a[0]); rx = a[1] + (b[1] - a[1]) * t; rz = a[2] + (b[2] - a[2]) * t; break; } rx *= sc; rz *= sc; if (!br) br = [rx, rz]; else br = [Math.max(br[0], rx), Math.max(br[1], rz)]; };
+  const consider = (style, sc = 1) => { const rows = robeProfile(style).rows; let rx = 0.19, rz = 0.14; for (let i = 1; i < rows.length; i++) if (rows[i][0] >= 1.0) { const a = rows[i - 1], b = rows[i], t = (1.0 - a[0]) / (b[0] - a[0]); rx = a[1] + (b[1] - a[1]) * t; rz = a[2] + (b[2] - a[2]) * t; break; } rx *= sc * 0.96; rz *= sc * 0.96; if (!br) br = [rx, rz]; else br = [Math.max(br[0], rx), Math.max(br[1], rz)]; };
   if (o.robe !== false) consider(o.robeStyle || 'jubba');
   o.beltR = br ? [br[0] + 0.012, br[1] + 0.012] : null;
+  // лицо: возраст/пол/черты — детерминированно по сиду
+  if (o.age === undefined && /NPC_Elder/.test(o.name || '')) o.age = 0.88;
+  o.faceP = faceParams(o);
+  o.hs = (BUILDS[o.build] || BUILDS.m).head;
+  o.faceSpec = faceUniformsSpec(o.build, o.faceP, BUILDS[o.build] || BUILDS.m);
+  if (o.stubble === undefined) o.stubble = o.faceP.g > 0.5 && !o.beard && o.faceP.age > 0.2 && R() < 0.6 ? 0.25 + R() * 0.5 : 0;
+  if (o.freckles === undefined) o.freckles = 0.15 + R() * 0.45;
   return o;
 }
 
 function geoKey(o) {
   const k = {};
   for (const f of ['build', 'robe', 'robeStyle', 'layers', 'hood', 'maskState', 'scarf', 'hair', 'beard', 'pouches', 'kris', 'armPads', 'gloves', 'bare', 'barefoot', 'asym', 'tear', 'hemTrim', 'frontTrim', 'fold', 'noDrape', 'cuffTrim', 'sleeve', 'hoodTrim', 'cowl', 'noTubes', 'harness', 'hoodUp', 'beltR']) k[f] = o[f];
-  k.lin = !!o.lining; k.hr = o.height < 1.4;
+  k.lin = !!o.lining; k.hr = o.height < 1.4; k.fk = faceKey(o.faceP); k.hv = (o.seed | 0) % 4;
   return JSON.stringify(k);
 }
 
@@ -253,6 +266,7 @@ export function makeFigure(opts = {}) {
 
   // --- анимация ---
   const anim = createAnimator(parts, { style: o.style, seed: o.seed });
+  const ik = createArmIK(parts, g);
   const V = THREE.Vector3;
   const cl = { lag: new V(), lv: new V(), prev: new V(), have: false, vel: new V(), lastPos: new V(), lodT: Math.random() * 0.3, skip: 0, acc: 0, wasCtxWind: false };
   const fig = {
@@ -281,9 +295,19 @@ export function makeFigure(opts = {}) {
       const adt = cl.acc; cl.acc = 0;
       const out = anim.update(adt, speed, irregular, ctx);
       clothStep(adt, speed, ctx, out);
+      if (lod === 0) faceStep(adt);
+      if (ik.active()) ik.apply(adt);
       return anim.state.ph * Math.PI * 2;
     },
-    setTalking(b) { anim.setTalking(!!b); },
+    /** Рука тянется к мировой точке (null — отпустить). side 'L'|'R', weight 0..1, opts {sweep: смещение вбок м, palm: ладонью вперёд, speed}. */
+    reachTo(point, side = 'R', weight = 1, opts) { ik.reachTo(point, side, weight, opts); },
+    /** Мировая позиция ладони (для деформации ткани/занавеса). */
+    handWorld(side = 'R', out) { return ik.handWorld(side, out); },
+    setTalking(b) { anim.setTalking(!!b); fa.talk = !!b; },
+    /** Открытие рта 0..1 (например, амплитуда голоса). null — вернуть управление автоанимации речи. */
+    setMouth(v) { fa.ext = v === null || v === undefined ? null : clamp01(v); },
+    /** Принудительное моргание / состояние глаз (для сцен): blink(0..1 постоянно закрыть) или blink() — разовое. */
+    blink(v) { if (v === undefined) fa.blinkPh = 0; else fa.hold = clamp01(v); },
     /** Повернуть голову к мировой точке (ограничение ±70°), w — вес 0..1. */
     lookAt(worldPos, weight = 1) {
       const local = g.worldToLocal(worldPos.clone());
@@ -298,6 +322,36 @@ export function makeFigure(opts = {}) {
     stutter: () => anim.stutter(), reset: () => anim.reset(),
   };
   anim.hooks.onStep = (e) => fig.onStep?.(e);
+
+  // --- лицо: моргание, саккады, речь ---
+  const clamp01 = (v) => Math.min(1, Math.max(0, v));
+  const FR = rng((o.seed | 0) + 991);
+  const fa = { talk: false, ext: null, hold: 0, blinkT: 1 + FR() * 3, blinkPh: -1, dbl: false, blink: 0, yaw: 0, pitch: 0, tyaw: 0, tpitch: 0, sacT: 0.3 + FR(), mouth: 0, t: FR() * 50 };
+  function faceStep(dt) {
+    fa.t += dt;
+    // моргание: смыкание 0.07 c, раскрытие 0.13 c; 15% — двойное
+    fa.blinkT -= dt;
+    if (fa.blinkPh < 0 && fa.blinkT <= 0) { fa.blinkPh = 0; fa.dbl = FR() < 0.15; }
+    let bl = 0;
+    if (fa.blinkPh >= 0) {
+      fa.blinkPh += dt; const p = fa.blinkPh;
+      bl = p < 0.07 ? p / 0.07 : Math.max(0, 1 - (p - 0.07) / 0.13);
+      if (p > 0.2) { fa.blinkPh = -1; fa.blinkT = fa.dbl ? 0.12 : 2.2 + FR() * 3.6; fa.dbl = false; }
+    }
+    fa.blink = Math.max(bl, fa.hold);
+    // саккады: короткие прыжки взгляда; взгляд ведёт голову (lookAt)
+    fa.sacT -= dt;
+    if (fa.sacT <= 0) { fa.sacT = 0.35 + FR() * 1.8; fa.tyaw = (FR() - 0.5) * 0.22; fa.tpitch = (FR() - 0.5) * 0.12; }
+    const st = anim.state, lead = THREE.MathUtils.clamp((st.lookYaw - st.headYaw) * 0.9, -0.45, 0.45);
+    const k = 1 - Math.exp(-dt * 38);
+    fa.yaw += (THREE.MathUtils.clamp(lead + fa.tyaw, -0.5, 0.5) - fa.yaw) * k; fa.pitch += (fa.tpitch - fa.pitch) * k;
+    // рот: внешняя амплитуда или слоговая огибающая
+    let tm = 0;
+    if (fa.ext !== null) tm = fa.ext;
+    else if (fa.talk) tm = Math.abs(Math.sin(fa.t * 6.3)) * (0.55 + 0.45 * Math.sin(fa.t * 2.1 + 1.0)) * (0.6 + 0.4 * Math.sin(fa.t * 11.7)) * 0.9;
+    fa.mouth += (tm - fa.mouth) * (1 - Math.exp(-dt * (tm > fa.mouth ? 30 : 18)));
+    U.uBlink.value = fa.blink; U.uEyeRot.value.set(fa.yaw, fa.pitch); U.uMouth.value = fa.mouth * (o.maskState === "up" ? 0.55 : 1);
+  }
 
   // --- вторичная анимация ткани (CPU: пружина «отставания»; GPU: вершинный шейдер) ---
   function clothStep(dt, speed, ctx, out) {

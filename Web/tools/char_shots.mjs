@@ -23,7 +23,7 @@ const errors = [];
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); if (m.text().startsWith('[char]')) console.log(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
 await page.goto(`file://${join(root, 'dist', arg('file', 'char.html'))}?autotest=1&q=${arg('q', 'med')}&lang=RU&skip=1`);
-await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.0, null, { timeout: 180000 });
+await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.0, null, { timeout: 600000 });
 
 await page.evaluate(() => {
   const g = window.__rakis, F = g.figures, T = F.THREE, V3 = T.Vector3;
