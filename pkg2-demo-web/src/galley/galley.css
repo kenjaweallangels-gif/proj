@@ -61,3 +61,14 @@ body.galley #view { position: fixed; inset: 0; width: 100vw; height: 100vh; disp
 .card .note.dev { font-size: 12.5px; line-height: 1.45; margin: 6px 0 12px; }
 .card .note.dev a { color: var(--g-acc); }
 .start .start-btns.small { margin-top: 0; } .start .start-btns.small button { font: 500 13px var(--sans); padding: 7px 12px; }
+/* плеер виртуальной сборки */
+.player { position: absolute; left: 50%; bottom: 58px; transform: translateX(-50%); width: min(980px, calc(100vw - 480px)); background: var(--g-bg); border: 1px solid var(--g-acc); border-radius: 10px; padding: 8px 12px; }
+.player[hidden] { display: none; }
+.player .pl-head { display: flex; gap: 12px; align-items: baseline; font-size: 13px; margin-bottom: 6px; color: var(--g-ink); }
+.player .pl-head b { color: var(--g-acc); font: 600 14px var(--sans); white-space: nowrap; }
+.player .pl-head span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player .pl-ctl { display: flex; gap: 6px; align-items: center; }
+.player button, .player select { background: #11171b; color: var(--g-ink); border: 1px solid var(--g-line); border-radius: 6px; padding: 5px 9px; font: 14px var(--sans); cursor: pointer; }
+.player button.main { background: var(--g-acc); color: #04161c; border-color: var(--g-acc); min-width: 44px; font-weight: 600; }
+.player button[aria-pressed="true"] { border-color: #ffc845; color: #ffe39a; }
+.player input[type=range] { flex: 1; min-width: 120px; accent-color: var(--g-acc); }

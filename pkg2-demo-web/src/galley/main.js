@@ -23,6 +23,8 @@ import { PHRASES, createRecognizer, parseGalley, speak } from './voice_cmd.js';
 import { OPERATIONS } from './process.js';
 import { searchDocs } from './catalog.js';
 import { buildGlassesModel } from './glasses_model.js';
+import { AssemblyPlayer, SPEEDS } from './assembly_player.js';
+import { galleyTarget } from './galley_player.js';
 import { DEFAULT_DEVICE, DEVICES, deviceById, deviceSummary, dimLevelOfStep, dimStepOf, fitDistance, matchDevice, transmitAt, weightFatigue, windowDeg } from './glasses.js';
 import '../style.css';
 import './galley.css';
@@ -36,6 +38,7 @@ for (const t of location.hash.slice(1).split(/[-_.~]/).filter(Boolean)) {      /
   else if (t === 'auto') q.set('auto', '1');
   else if (t === 'free') { q.set('auto', '1'); q.set('autocam', 'free'); }
   else if (t === 'corner') q.set('corner', '1');
+  else if (t === 'virtual') { q.set('asm', '1'); q.set('intro', '0'); }
   else if (t === 'narrow') q.set('field', '0');
   else if (t === 'autonomous') q.set('mode', 'auto');
   else if (t === 'manual') q.set('mode', 'manual');
@@ -136,7 +139,9 @@ async function main() {
   const mgr = new PanelManager(scene, cam, { toJig, fromJig });
   const panels = buildPanels(mgr, app);
 
+  let asm = null;                                                     // плеер виртуальной сборки (создаётся ниже)
   function applyState() {
+    if (asm?.open) return;                                             // идёт виртуальная сборка — вид задаёт плеер
     const st = stateFrom(run.index, run.done);
     const powered = STEPS.findIndex((s) => s.id === '170.03') < run.index;
     world.galley.setState(st, { powered });
@@ -235,6 +240,17 @@ async function main() {
       <p id="tlink"></p>
     </div>
     <div class="bar pe" id="bar"></div>
+    <div class="player pe" id="player" hidden>
+      <div class="pl-head"><b id="pl_name"></b><span id="pl_step"></span></div>
+      <div class="pl-ctl">
+        <button data-pl="start" title="В начало — пустое место">⏮</button><button data-pl="back" title="Шаг назад (,)">⏪</button>
+        <button data-pl="rev" id="pl_rev" title="Назад во времени — разборка (−)">◀</button><button data-pl="play" id="pl_play" class="main">▶</button>
+        <button data-pl="fwd" title="Шаг вперёд (.)">⏩</button><button data-pl="end" title="В конец — изделие готово">⏭</button>
+        <select id="pl_speed" title="Скорость ([ ])">${SPEEDS.map((v) => `<option value="${v}">×${String(v).replace('.', ',')}</option>`).join('')}</select>
+        <input type="range" id="pl_t" min="0" max="1" step="0.01" value="0" aria-label="Время сборки">
+        <button data-pl="style" id="pl_style"></button><button data-pl="close" title="Закрыть (6)">✕</button>
+      </div>
+    </div>
     <div class="status" id="status"></div>
     <canvas class="map" id="map" width="440" height="300"></canvas>
     <div class="card pe" id="card" hidden></div>
@@ -425,6 +441,17 @@ async function main() {
     if (k === 'KeyR') act('recenter');
     if (k === 'KeyX') act(e.shiftKey ? 'corner_side' : 'corner');
     if (k === 'KeyU') act('auto_cam');
+    if (k === 'Digit6') act('player');
+    if (asm.open) {
+      if (k === 'Space') { e.preventDefault(); act('player_play'); }
+      if (k === 'Comma') act('player_back');
+      if (k === 'Period') act('player_fwd');
+      if (k === 'BracketLeft') act('player_speed', 'down');
+      if (k === 'BracketRight') act('player_speed', 'up');
+      if (k === 'Minus') act('player_rev');
+      if (k === 'Home') act('player_start');
+      if (k === 'End') act('player_end');
+    }
     if (k === 'Tab') { e.preventDefault(); act('field'); }
     if (k === 'Backslash') act('zones');
   });
@@ -524,7 +551,16 @@ async function main() {
       case 'auto_cam': auto.setCam(auto.cam === 'free' ? 'guide' : 'free'); break;
       case 'corner': cornerAlgo(arg === 'on' ? true : arg === 'off' ? false : undefined); break;
       case 'corner_side': panels.algo.corner = panels.algo.corner === 'tl' ? 'tr' : 'tl'; cornerAlgo(true); break;
-      case 'auto_pause': auto.pause(true); break;
+      case 'auto_pause': if (asm.open) asm.pause(); else auto.pause(true); break;
+      case 'player': case 'player_close': togglePlayer(cmd === 'player_close' ? false : arg == null ? undefined : !!arg); break;
+      case 'player_play': if (!asm.open) togglePlayer(true); else asm.toggle(); break;
+      case 'player_rev': if (asm.open) asm.reverse(); break;
+      case 'player_back': if (asm.open) asm.stepBy(-1); break;
+      case 'player_fwd': if (asm.open) asm.stepBy(1); break;
+      case 'player_start': if (asm.open) asm.toStart(); break;
+      case 'player_end': if (asm.open) asm.toEnd(); break;
+      case 'player_speed': if (asm.open) { if (typeof arg === 'number') asm.setSpeed(arg); else asm.faster(arg === 'down' ? -1 : 1); } break;
+      case 'player_style': if (asm.open && asm.target.setStyle) { asm.target.setStyle(asm.target.style === 'holo' ? 'model' : 'holo'); asm.apply(true); playerUi(); } break;
       case 'auto_stop': auto.stop(); break;
       case 'auto_toggle': if (auto.on && !auto.paused) auto.pause(true); else auto.start(); break;
       case 'inspect_glasses': {
@@ -627,6 +663,7 @@ async function main() {
       panels: Object.fromEntries(Object.entries(PANEL_OF).map(([k, p]) => [k, !!p.visible])),
       dim: { mode: sim.dimMode, level: Math.round(sim.dimLevel * 100) / 100, t: Math.round(transmitAt(sim.device, sim.dimLevel) * 1000) / 1000 }, bright: sim.bright, light: params.light, lux: Math.round(lumCd * 5),
       device: sim.device.id, auto: { on: auto.on, paused: auto.paused, cam: auto.cam },
+      asm: asm?.open ? { name: asm.target.name, t: Math.round(asm.t * 100) / 100, n: asm.n, playing: asm.playing, speed: asm.speed, dir: asm.dir, step: asm.current.step ? `${asm.current.step.id} ${asm.current.step.title}` : '' } : null,
       inspect: app.local && player.mode === 'inspect' ? app.local.features.slice(0, 4).map(({ f }) => trimText(`${f.designation || f.id} — ${f.name || ''}`, 70)) : null,
       heard: voiceUi.last,
     };
@@ -674,7 +711,8 @@ async function main() {
         ['колесо над КД', 'зум к точке; перетаскивание — сдвиг листа'], ['F', 'осмотр точки узла + локальный алгоритм; Esc/Q — назад'], ['E', 'взаимодействие: очки, дверцы'],
         ['N / B', 'переход вперёд / назад'], ['P', 'фото в журнал'], ['G', 'закрепить окно перед глазами'], ['1–4', 'окна КД / переход / система / задание'],
         ['Tab', 'поле зрения: полное ≈ 200° (два глаза) / центр 72°'], ['\\', 'схема зон поля зрения'],
-        ['I', 'имитация сборки: запуск / пауза; Shift+I — стоп'], ['U', 'имитация: камера ведёт / хожу сам'], ['X', 'алгоритм в углу поля зрения; Shift+X — другой угол'], ['K', 'другие очки (Shift+K — назад)'], ['R', '3DoF: окна по центру взгляда'],
+        ['I', 'имитация сборки: запуск / пауза; Shift+I — стоп'],
+        ['6', 'виртуальная сборка без деталей (плеер): пробел, , . [ ] − Home End'], ['U', 'имитация: камера ведёт / хожу сам'], ['X', 'алгоритм в углу поля зрения; Shift+X — другой угол'], ['K', 'другие очки (Shift+K — назад)'], ['R', '3DoF: окна по центру взгляда'],
         ['T', 'ускорение времени участка ×1 / ×60 / ×600'], ['L', 'затемнение линз по ступеням очков → авто'], ['V', 'снять / надеть очки'], ['O', 'модель зрения'], ['Enter', 'пропустить вступление'],
       ].map(([a, b]) => `<tr><td><kbd>${a}</kbd></td><td>${b}</td></tr>`).join('')}</table>`;
       return;
@@ -729,6 +767,11 @@ async function main() {
     $('r_inserts').onchange = (e) => { params.inserts = e.target.checked; };
     $('r_occ').onchange = (e) => { sim.occlusion = e.target.checked; };
   }
+  $('player').querySelectorAll('[data-pl]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); act(`player_${b.dataset.pl}`); });
+  $('pl_t').oninput = (e) => { asm.pause(); asm.seek(Number(e.target.value)); };
+  $('pl_t').onmousedown = (e) => e.stopPropagation();
+  $('pl_speed').onchange = (e) => asm.setSpeed(Number(e.target.value));
+  $('pl_speed').onmousedown = (e) => e.stopPropagation();
   function updateBar() {
     const a = auto.on && !auto.paused;
     $('bar').innerHTML = [
@@ -736,6 +779,7 @@ async function main() {
       ...(auto.on ? [['⏹', 'stop', '']] : []),
       [auto.cam === 'free' ? '🚶 Хожу сам (U)' : '🎥 Камера ведёт (U)', 'cam', auto.cam === 'free' ? 'on' : ''],
       [panels.algo.visible ? '▣ Алгоритм в углу (X)' : '□ Алгоритм в угол (X)', 'corner', panels.algo.visible ? 'on' : ''],
+      [asm.open ? '⏹ Закрыть виртуальную сборку (6)' : '🧩 Виртуальная сборка (6)', 'asm', asm.open ? 'on' : ''],
       [`👓 ${sim.device.brand} ${sim.device.name} (K)`, 'dev', ''],
       [vision.fieldMode ? '👁 Поле 200° (Tab)' : '👁 Центр 72° (Tab)', 'field', vision.fieldMode ? 'on' : ''], ['Клавиши (H)', 'help', ''], ['Зрение (O)', 'vision', ''], ['Окна 1–4', 'win', ''],
       [`Время ×${app.speed} (T)`, 'time', ''], ['Очки (V)', 'glasses', ''], ['Планшет (J)', 'tablet', ''], ['Голос', 'voice', ''],
@@ -744,7 +788,7 @@ async function main() {
       e.stopPropagation();
       const k = b.dataset.b;
       if (k === 'auto') act('auto_toggle'); if (k === 'stop') act('auto_stop');
-      if (k === 'cam') act('auto_cam'); if (k === 'corner') act('corner'); if (k === 'field') act('field');
+      if (k === 'cam') act('auto_cam'); if (k === 'corner') act('corner'); if (k === 'field') act('field'); if (k === 'asm') act('player');
       if (k === 'dev') toggleCard('vision');
       if (k === 'help') toggleCard('help'); if (k === 'vision') toggleCard('vision');
       if (k === 'win') for (const p of [panels.kd, panels.step, panels.sys, panels.task]) mgr.toggle(p, true);
@@ -753,6 +797,40 @@ async function main() {
       if (k === 'tablet') toggleTablet();
       if (k === 'voice') toggleCard('voice');
     });
+  }
+
+  // ---------- плеер виртуальной сборки (без реальных деталей): стапель и участки ----------
+  asm = new AssemblyPlayer();
+  const galleyAsm = galleyTarget(world, viz, {
+    onBegin: () => { auto.pause(); app.notify('Виртуальная сборка: реальных деталей нет — модель собирается на месте. Пробел — пуск/пауза, , . — по шагу, [ ] — скорость, − — назад во времени, 6 — закрыть', 7); },
+    onEnd: () => { applyState(); showStep(); viz.setAnchored(sim.device.tracking === '6dof'); },
+  });
+  const asmTargets = () => [{ t: galleyAsm, at: V(0, 0, 0) }, ...(world.stations || []).map((st) => ({ t: st.asm, at: st.center }))];
+  function nearestAsmTarget() {
+    const p = player.pos; let best = null, bd = Infinity;
+    for (const x of asmTargets()) { const d = Math.hypot(p.x - x.at.x, p.z - x.at.z); if (d < bd) { bd = d; best = x.t; } }
+    return best;
+  }
+  function playerUi() {
+    const el = $('player');
+    el.hidden = !asm.open;
+    if (!asm.open) return;
+    const { i, f, step } = asm.current;
+    $('pl_name').textContent = asm.target.name;
+    $('pl_play').textContent = asm.playing ? '⏸' : '▶';
+    $('pl_play').title = asm.playing ? 'Пауза (пробел)' : 'Пуск (пробел)';
+    $('pl_rev').setAttribute('aria-pressed', String(asm.dir < 0));
+    $('pl_t').max = asm.n; $('pl_t').value = asm.t;
+    $('pl_speed').value = String(asm.speed);
+    $('pl_style').textContent = asm.target.style === 'holo' ? 'Вид: голограмма в очках' : 'Вид: модель';
+    $('pl_step').textContent = i >= asm.n ? `Готово: ${asm.n}/${asm.n} — изделие собрано` : `${step.id} · ${step.title} — ${Math.round(f * 100)} % · ${i + 1}/${asm.n}`;
+  }
+  asm.on(() => { playerUi(); pushState(true); });
+  function togglePlayer(on = !asm.open) {
+    if (!on) { asm.close(); return; }
+    const t = nearestAsmTarget() || galleyAsm;
+    asm.openFor(t, 0);
+    asm.play(1);
   }
 
   // ---------- имитация сборки: сборщик сам выполняет переходы ТП ----------
@@ -971,6 +1049,7 @@ async function main() {
     sim.wearMin = sim.glasses ? sim.wearMin + dMin : Math.max(0, sim.wearMin - dMin * 3);
     eye.wear = Math.min(0.5, (sim.wearMin / 480) * 0.35 * weightFatigue(sim.device));
     auto.update(dt);
+    if (asm.open) { asm.update(dt); if (asm.playing && frame % 4 === 0) playerUi(); }
     pushState();
     // взгляд: окно (голограмма) или предмет
     const ndc = pointerNdc();
@@ -1019,8 +1098,9 @@ async function main() {
     else if (navigator.webdriver || q.has('shot')) startScenario('intro');
   }
   if (q.get('corner') === '1') cornerAlgo(true, true);
+  if (q.get('asm') === '1') togglePlayer(true);
   window.__demo = {
-    ready: true, scene, world, run, cam, player, eye, vision, app, mgr, panels, viz, finishIntro, inspectAtGaze, sim, params, auto, setDevice, act,
+    ready: true, scene, world, run, cam, player, eye, vision, app, mgr, panels, viz, finishIntro, inspectAtGaze, sim, params, auto, setDevice, act, asm,
     // для проверок: перескочить к этапу сценария
     jump(state) {
       if (scen.state === 'choose') { scen.state = 'intro'; scen.mode = 'auto'; }

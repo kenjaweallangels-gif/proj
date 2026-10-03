@@ -109,7 +109,16 @@ export function mountTablet() {
       : `<button class="btn ok" data-c="auto_start">▶ ${au.on ? 'Продолжить имитацию' : 'Имитация сборки'}</button>`}${au.on ? '<button class="btn bad" data-c="auto_stop">⏹ Стоп</button>' : ''}
       <button class="btn" aria-pressed="${au.cam === 'free'}" data-c="auto_cam">${au.cam === 'free' ? '🚶 Хожу сам' : '🎥 Камера ведёт'}</button>
       <button class="btn" aria-pressed="${!!S.panels?.algo}" data-c="corner">Алгоритм в углу</button></div></div>`;
-    return `${autoRow}<div class="card"><span class="id">${esc(s.id)} · ${S.index + 1}/${S.total}</span>${s.critical ? '<span class="tag">критичный</span>' : ''}
+    const A = S.asm;
+    const asmRow = A ? `<div class="card"><div class="id">Виртуальная сборка · ${esc(A.name)}</div><h2 style="font-size:18px">${esc(A.step)}</h2>
+      <div class="timer"><div class="bar"><i style="width:${Math.round((A.t / A.n) * 100)}%"></i></div></div>
+      <div class="row" style="margin-top:8px"><button class="btn" data-c="player_start">⏮</button><button class="btn" data-c="player_back">⏪</button>
+      <button class="btn" aria-pressed="${A.dir < 0}" data-c="player_rev">◀ назад</button><button class="btn ok" data-c="player_play">${A.playing ? '⏸ пауза' : '▶ пуск'}</button>
+      <button class="btn" data-c="player_fwd">⏩</button><button class="btn" data-c="player_end">⏭</button>
+      <button class="btn" data-c="player_speed" data-a="down">−</button><button class="btn" disabled>×${num(A.speed)}</button><button class="btn" data-c="player_speed" data-a="up">+</button>
+      <button class="btn acc" data-c="player_style">Вид</button><button class="btn bad" data-c="player_close">✕</button></div></div>`
+      : '<div class="card"><div class="row"><button class="btn acc" data-c="player">🧩 Виртуальная сборка (без деталей)</button></div></div>';
+    return `${autoRow}${asmRow}<div class="card"><span class="id">${esc(s.id)} · ${S.index + 1}/${S.total}</span>${s.critical ? '<span class="tag">критичный</span>' : ''}
       <h2>${esc(s.title)}</h2>${S.preview ? `<div class="tag">в очках просмотр: ${esc(S.preview.id)}</div>` : ''}
       <ul class="txt">${s.text.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>${timers}
       <div class="row" style="margin-top:12px">

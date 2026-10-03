@@ -42,6 +42,8 @@ const cases = [
   ['galley_mono_right', 'galley.html?intro=0&vision=monoR'],
   // выбор режима на старте: ручной — стоит у входа, управление с первого шага
   ['galley_manual', 'galley.html#manual'],
+  // виртуальная сборка без деталей (плеер)
+  ['galley_virtual', 'galley.html?intro=0&asm=1&field=0'],
 ];
 let failed = 0;
 const only = process.env.SMOKE_ONLY?.split(',');            // SMOKE_ONLY=galley_manual,tablet — только эти сценарии
