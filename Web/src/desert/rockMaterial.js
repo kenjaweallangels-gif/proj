@@ -1,6 +1,7 @@
 // Материалы скальной породы и «реквизита»: страты, эрозионные желобки, песчаные наносы на уступах, песочная пыль.
 import * as THREE from 'three';
-import { patchMaterial } from './env.js';
+import { patchMaterial, ENV } from './env.js';
+import { triplanarKit } from '../core/triplanar.js';
 
 const VERT_PARS = /* glsl */`
 varying vec3 vWP;
@@ -20,9 +21,30 @@ vec3 transformed = vec3(position);
 }
 `;
 
+// Отверстия в скале (входы сиетча): sphere {x,y,z,r}; fragment discard + затемнённая кромка. Общие для материала и теневого прохода.
+export const MAX_HOLES = 8;
+ENV.uniforms.uHoles = { value: Array.from({ length: MAX_HOLES }, () => new THREE.Vector4(0, -1e5, 0, 0)) };
+ENV.uniforms.uHoleN = { value: 0 };
+export const HOLES_GLSL = /* glsl */`
+uniform vec4 uHoles[${MAX_HOLES}];
+uniform int uHoleN;
+// возвращает 0 внутри отверстия (discard), 0..1 — затемнение у кромки
+float rkHoleRim(vec3 P){
+  float rim = 1.0;
+  for (int i = 0; i < ${MAX_HOLES}; i++) {
+    if (i >= uHoleN) break;
+    float d = distance(P, uHoles[i].xyz);
+    if (d < uHoles[i].w) return -1.0;
+    rim = min(rim, smoothstep(uHoles[i].w, uHoles[i].w + 1.6, d));
+  }
+  return rim;
+}
+`;
+
 const ROCK_PARS = /* glsl */`
 varying vec3 vWP;
 varying vec3 vWN;
+${HOLES_GLSL}
 uniform float uBand;
 uniform float uSandAmt;
 uniform vec3 uRockA;
@@ -30,6 +52,8 @@ uniform vec3 uRockB;
 uniform vec3 uRockC;
 uniform vec3 uSandC;
 vec3 gNW;
+float gTpF = 0.0;
+float gSandA = 0.0;
 vec3 rkFbmD(vec2 p){
   vec3 s = vec3(0.0); float a = 0.5; float f = 1.0;
   for (int i = 0; i < 3; i++) { vec3 n = rkNoiseD(p * f); s += a * vec3(n.x, n.yz * f); a *= 0.5; f *= 2.1; p += 5.3; }
@@ -42,6 +66,8 @@ const ROCK_COLOR = /* glsl */`
 vec3 N = normalize(vWN);
 vec3 P = vWP;
 float dist = length(cameraPosition - P);
+float holeRim = rkHoleRim(P);
+if (holeRim < 0.0) discard;
 // страты
 float warp = (rkFbm3(P * vec3(0.012, 0.006, 0.012) / max(uBand / 5.5, 0.05)) - 0.5) * 70.0 * (uBand / 5.5) + (rkFbm3(P * vec3(0.05, 0.02, 0.05)) - 0.5) * 8.0 * (uBand / 5.5);
 float sy = (P.y + warp) / uBand;
@@ -71,6 +97,17 @@ bg.y += bandAmp * dLedge / uBand;
 bg *= 0.9 * min(uBand / 5.5, 1.0);
 bg *= bumpK;
 vec3 Np = normalize(N - (bg - N * dot(bg, N)) * 1.0);
+#ifdef RK_ROCK_TEX
+// фотограмметрия камня: нормаль (whiteout поверх процедурной), модуляция цвета, шероховатость
+vec3 tpMul = vec3(1.0);
+vec3 Npd = Np;
+gTpF = (1.0 - smoothstep(50.0, 650.0, dist)) * uRTexK.x;
+if (gTpF > 0.002) {
+  tpREval(P, Np);
+  Npd = normalize(mix(Np, tpRNW, gTpF));
+  tpMul = mix(vec3(1.0), tpRMul, gTpF * uRTexK.y);
+}
+#endif
 // цвет по слоям
 vec3 base = mix(uRockB, uRockA, smoothstep(0.0, 0.55, bR));
 base = mix(base, uRockC, smoothstep(0.62, 1.0, bR) * 0.85);
@@ -85,19 +122,36 @@ base *= 0.8 + 0.4 * clamp(bh * 1.6 + 0.4, 0.0, 1.0);
 // песок на уступах и подножии
 float up = smoothstep(0.48, 0.86, Np.y + 0.18 * (rkNoise(P.xz * 0.35) - 0.5));
 float sandA = clamp(up * (0.55 + 0.45 * ledge) * uSandAmt + smoothstep(0.7, 0.98, N.y) * 0.5, 0.0, 1.0);
+#ifdef RK_ROCK_TEX
+base *= tpMul;
+gSandA = sandA;
+#endif
 base = mix(base, uSandC * (0.9 + 0.2 * rkNoise(P.xz * 3.0)), sandA);
 // расщелина A4: тёмная, затенённая
 float inCleft = (1.0 - smoothstep(2.0, 14.0, abs(P.z - 326.0))) * step(P.x, 654.0) * step(600.0, P.x) * (1.0 - smoothstep(30.0, 90.0, P.y));
 base *= 1.0 - 0.55 * inCleft;
+base *= mix(0.12, 1.0, holeRim);
 diffuseColor.rgb = base;
+#ifdef RK_ROCK_TEX
+gNW = normalize(mix(Npd, Np, sandA * 0.8));
+#else
 gNW = Np;
+#endif
+`;
+const ROCK_ROUGH = /* glsl */`
+#ifdef RK_ROCK_TEX
+roughnessFactor = mix(roughnessFactor, clamp(0.5 + tpRRgh * 0.5, 0.4, 1.0), gTpF * (1.0 - gSandA) * uRTexK.z);
+#endif
 `;
 const ROCK_NORMAL = `normal = normalize((viewMatrix * vec4(gNW, 0.0)).xyz);`;
 
 export function createRockMaterial(opts = {}) {
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.93, metalness: 0 });
-  patchMaterial(mat, 'rk-rock', {
+  const kit = triplanarKit('tpR', opts.tex ?? 'rock_cliff', { scale: opts.texScale, quality: opts.quality, sharpness: 5, normal: opts.texNormal ?? 1, ao: 0.6, rough: 1, chroma: 0.5 });
+  patchMaterial(mat, 'rk-rock' + (kit ? 't' + (opts.tex ?? '') : ''), {
     uniforms: {
+      uRTexK: { value: new THREE.Vector4(1, 0.85, 0.8, 0) },
+      ...(kit ? kit.uniforms : {}),
       uBand: { value: opts.band ?? 5.5 },
       uSandAmt: { value: opts.sand ?? 1 },
       uRockA: { value: new THREE.Color('#8A6A50') },
@@ -106,7 +160,7 @@ export function createRockMaterial(opts = {}) {
       uSandC: { value: new THREE.Color('#CFB083') },
     },
     vertexPars: VERT_PARS, vertexMain: VERT_MAIN,
-    fragPars: ROCK_PARS, fragColor: ROCK_COLOR, fragNormal: ROCK_NORMAL,
+    fragPars: (kit ? '#define RK_ROCK_TEX\nuniform vec4 uRTexK;\n' + kit.pars : '') + ROCK_PARS, fragColor: ROCK_COLOR, fragNormal: ROCK_NORMAL, fragRough: ROCK_ROUGH,
   });
   return mat;
 }

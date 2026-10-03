@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { heightAt, masks } from './field.js';
 import { ENV, patchMaterial } from './env.js';
+import { triplanarKit } from '../core/triplanar.js';
 
 const CELLS = 160;               // ячеек на сторону кольца
 const TEX = 164;                 // размер текстуры уровня (> CELLS+1)
@@ -160,6 +161,26 @@ float fg = 1.0 - smoothstep(1.5, 9.0, dist);
 vec2 grn = vec2(0.0);
 if (fg > 0.001 && uQual > 0.5) { vec3 n = rkNoiseD(xz * 95.0); grn = n.yz * 0.0016 * fg; }
 g += grn * (1.0 - 0.5 * disturb);
+#ifdef RK_SAND_TEX
+// фотограмметрия песка: ближний слой (зерно/комочки) + средний (естественная рябь), цвет модулирует процедурную палитру
+vec3 tpMulA = vec3(1.0);
+float tpFn = (1.0 - smoothstep(30.0, 190.0, dist)) * (1.0 - rockM) * uTexK.x;
+if (tpFn > 0.002) {
+  tpSEval(vec3(xz.x, vWP.y, xz.y), vec3(0.0, 1.0, 0.0));
+  g -= tpSNW.xz / max(tpSNW.y, 0.2) * tpFn * uTexK.y * (1.0 - 0.7 * disturb);
+  tpMulA = tpSMul;
+  tpMulA = mix(vec3(1.0), tpMulA, tpFn * uTexK.z);
+}
+float tpFm = (1.0 - smoothstep(18.0, 120.0, dist)) * (1.0 - rockM) * uTexK.x;
+#ifdef RK_SAND_MID
+if (tpFm > 0.002) {
+  // естественная рябь: координаты повёрнуты по ветру, градиент возвращается в мировые оси
+  tpMEval(vec3(uu, vWP.y, vv), vec3(0.0, 1.0, 0.0));
+  vec2 gm = -tpMNW.xz / max(tpMNW.y, 0.2);
+  g += (uWind * gm.x + acr * gm.y) * tpFm * uTexK.w * calmR;
+}
+#endif
+#endif
 // следы
 g -= fgrad * 1.0;
 
@@ -202,6 +223,9 @@ float along = abs(dot(normalize(uKeyDir.xz + vec2(1e-4)), uWind));
 col *= 1.0 - clamp(rOcc, 0.0, 1.0) * grazing * (0.08 + 0.22 * along) * (1.0 - rockM) * (1.0 - disturb);
 float fgr = (1.0 - smoothstep(0.5, 6.0, dist));
 col *= 1.0 + 0.05 * fgr * (rkNoise(xz * 70.0) - 0.5) * 2.0;
+#ifdef RK_SAND_TEX
+col *= tpMulA;
+#endif
 col = mix(col, rockC, rockM);
 // следы: темнее и приглушённее, вал светлее
 col *= 1.0 - 0.28 * disturb + 0.08 * rimL;
@@ -281,7 +305,11 @@ export function createTerrain(game, foot) {
   const q = game.settings.quality;
   const qual = q === 'low' ? 0 : q === 'med' ? 1 : 2;
 
+  const kS = triplanarKit('tpS', 'sand', { axes: 'y', scale: 1.45, quality: q, rough: 0, ao: 0, normal: 1, chroma: 0.55, antiTile: q !== 'low' });
+  const kM = q === 'low' ? null : triplanarKit('tpM', 'sand_ripples', { axes: 'y', scale: 2.6, quality: q, rough: 0, ao: 0, normal: 1, chroma: 0, antiTile: q === 'high' });
   const sandU = {
+    uTexK: { value: new THREE.Vector4(1, 0.4, 0.5, 0.9) },     // x: включено, y: сила нормали, z: сила цвета, w: сила среднего слоя
+    ...(kS ? kS.uniforms : {}), ...(kM ? kM.uniforms : {}),
     uSandLoose: { value: new THREE.Color('#CFB083') },
     uSandPacked: { value: new THREE.Color('#B8936A') },
     uSandDist: { value: new THREE.Color('#DCC7A3') },
@@ -374,10 +402,11 @@ export function createTerrain(game, foot) {
     };
     const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0 });
     if (li > 0) { mat.polygonOffset = true; mat.polygonOffsetFactor = 1; mat.polygonOffsetUnits = 2 * li; }
-    patchMaterial(mat, 'rk-terrain', {
+    const ckey = 'rk-terrain' + (kS && li < 4 ? (kM ? 'tm' : 't') : '');
+    patchMaterial(mat, ckey, {
       uniforms: Object.assign({}, sandU, L.uniforms, { uFootRect: L.uniforms.uFootRect }),
       vertexCommon: true, vertexPars: VERT_PARS, vertexBeginNormal: VERT_BEGIN_NORMAL, vertexMain: VERT_MAIN,
-      fragPars: FRAG_PARS, fragColor: FRAG_COLOR, fragRough: FRAG_ROUGH, fragNormal: FRAG_NORMAL,
+      fragPars: (kS && li < 4 ? (kM ? '#define RK_SAND_MID\n' : '') + '#define RK_SAND_TEX\nuniform vec4 uTexK;\n' + kS.pars + (kM ? kM.pars : '') : '') + FRAG_PARS, fragColor: FRAG_COLOR, fragRough: FRAG_ROUGH, fragNormal: FRAG_NORMAL,
       fragLightsEnd: FRAG_LIGHTS_END, fragBeforeOut: FRAG_BEFORE_OUT, fragAfterFog: FRAG_FAR_FADE,
     });
     // вершинный шейдер видит ENV; uCamXZ — общий
@@ -416,6 +445,8 @@ export function createTerrain(game, foot) {
   return {
     levels, update, sandU,
     setVisible(b) { for (const L of levels) L.mesh.visible = b; },
+    /** Сбросить кэш высот (после изменения field.groundPatches) — кольца перезаливаются при следующем update. */
+    invalidate() { for (const L of levels) { L.cx = 1e9; L.cz = 1e9; L.colI.fill(NaN); L.rowJ.fill(NaN); } },
     /** принудительная первичная заливка */
     prime(x, z) { update({ x, z }); },
   };
