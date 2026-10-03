@@ -57,7 +57,9 @@ export function createGame(canvas, settings) {
      */
     groundAt(x, z, y) {
       const s = game.sietch;
-      if (s?.contains) {
+      // Только изнутри пещер: выборка у устья, уже лежащая снаружи, берётся с пустыни/сада.
+      // Снаружи (тропа у расщелины) остаётся прежнее поведение — им ведает рельеф подхода.
+      if (game.space === 'sietch' && s?.contains) {
         _gp.x = x; _gp.z = z; _gp.y = y ?? game.player?.position?.y ?? 0;
         return s.contains(_gp) ? s : game.world;
       }
