@@ -3,7 +3,6 @@
 import * as THREE from 'three';
 import { ENV, GLSL_COMMON } from './env.js';
 import { heightAt } from './field.js';
-import { TEX as TERRAIN_TEX } from './terrain.js';
 import { rng, smoothstep, clamp } from '../core/util.js';
 
 const GROUND_GLSL = /* glsl */`
@@ -119,6 +118,55 @@ void main(){
   if (al < 0.004) discard;
   vec3 col = rkApplyFog(vCol, vWP);
   gl_FragColor = vec4(col, al);
+}`;
+
+
+// ---------------------------------------------------------------- струи песка с гребней (spindrift): ленты по ветру от гребня дюны
+const PLUME_VERT = /* glsl */`
+attribute vec4 aP;     // x, y, z (гребень), длина
+attribute vec4 aQ;     // высота, seed, возраст/жизнь (0..1), сила
+uniform float uVis;
+varying vec2 vUv;
+varying float vA;
+varying vec3 vWP;
+varying vec3 vCol;
+varying float vSeed;
+${GLSL_COMMON}
+void main(){
+  vec2 w = normalize(uWind);
+  vec3 dirW = normalize(vec3(w.x, -0.07, w.y));
+  vec3 c = aP.xyz;
+  float u = position.x * 0.5 + 0.5;               // 0 у гребня .. 1 по ветру
+  vec3 toCam = normalize(cameraPosition - (c + dirW * aP.w * 0.4));
+  vec3 up = normalize(cross(toCam, dirW));
+  float hgt = aQ.x * (0.18 + 1.0 * pow(u, 0.8)) * (0.85 + 0.3 * sin(uTime * 0.6 + aQ.y * 40.0));
+  float lift = aQ.x * 0.25 * u;
+  vec3 wp = c + dirW * (u * aP.w) + vec3(0.0, lift, 0.0) + up * position.y * hgt;
+  float life = aQ.z;
+  vA = aQ.w * uVis * smoothstep(0.0, 0.12, life) * (1.0 - smoothstep(0.78, 1.0, life)) * (1.0 - u * 0.85) * smoothstep(0.0, 0.05, u);
+  float dist = length(cameraPosition - c);
+  vA *= smoothstep(8.0, 40.0, dist) * (1.0 - smoothstep(520.0, 760.0, dist));
+  float lit = rkClawShade(c + vec3(0.0, 1.0, 0.0));
+  vec3 base = vec3(0.88, 0.66, 0.42);
+  vec3 toS = normalize(wp - cameraPosition);
+  float mu = max(dot(toS, uKeyDir), 0.0);
+  vCol = base * (uKeyColor * (0.22 + 0.5 * smoothstep(0.0, 0.3, uKeyDir.y)) * lit * 0.35 + uAmbient * 0.30);
+  vCol += uKeyColor * lit * base * (0.7 * pow(mu, 4.0) + 1.3 * pow(mu, 16.0)) * 0.22;   // контровой свет: струи горят против солнца
+  vUv = vec2(u, position.y); vWP = wp; vSeed = aQ.y;
+  gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
+}`;
+const PLUME_FRAG = /* glsl */`
+varying vec2 vUv; varying float vA; varying vec3 vWP; varying vec3 vCol; varying float vSeed;
+${GLSL_COMMON}
+void main(){
+  float v = vUv.y;
+  float prof = 1.0 - smoothstep(0.0, 1.0, abs(v));
+  prof *= prof;
+  float t = uTime * (1.4 + uWindSpeed * 0.12);
+  float n = rkNoise(vec2(vUv.x * 6.0 - t, v * 2.2 + vSeed * 31.0)) * 0.6 + rkNoise(vec2(vUv.x * 17.0 - t * 1.7, v * 6.0 + vSeed * 7.0)) * 0.4;
+  float a = prof * smoothstep(0.25, 0.8, n + (1.0 - vUv.x) * 0.25) * vA;
+  if (a < 0.004) discard;
+  gl_FragColor = vec4(rkApplyFog(vCol, vWP), a);
 }`;
 
 // ---------------------------------------------------------------- пылинки
@@ -258,7 +306,7 @@ export function createFx(game, world, terrain, weather) {
   const gt = { value: L1.tex };
 
   // ---------- позёмка ----------
-  const nDrift = q === 'low' ? 350 : q === 'med' ? 2600 : 6500;
+  const nDrift = q === 'low' ? 300 : q === 'med' ? 1800 : 5200;
   const driftGeo = new THREE.InstancedBufferGeometry();
   driftGeo.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0], 3));
   driftGeo.setIndex([0, 1, 2, 0, 2, 3]);
@@ -269,7 +317,7 @@ export function createFx(game, world, terrain, weather) {
   driftGeo.instanceCount = nDrift;
   const driftMat = new THREE.ShaderMaterial({
     vertexShader: DRIFT_VERT, fragmentShader: DRIFT_FRAG, transparent: true, depthWrite: false,
-    uniforms: Object.assign({}, ENV.uniforms, { uR: { value: 120 }, uIntensity: { value: 1 }, uGT: gt, uTSize: { value: TERRAIN_TEX } }),
+    uniforms: Object.assign({}, ENV.uniforms, { uR: { value: 120 }, uIntensity: { value: 1 }, uGT: gt, uTSize: { value: terrain.texSize } }),
   });
   const drift = new THREE.Mesh(driftGeo, driftMat);
   drift.frustumCulled = false; drift.renderOrder = 5;
@@ -307,6 +355,72 @@ export function createFx(game, world, terrain, weather) {
   const motes = new THREE.Points(mg, moteMat);
   motes.frustumCulled = false; motes.renderOrder = 6;
   group.add(motes);
+
+  // ---------- струи песка с гребней (spindrift) ----------
+  const nPlume = q === 'low' ? 0 : q === 'med' ? 12 : 20;
+  const plumes = [];
+  let plumeMesh = null, plumeMat = null;
+  const pP = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, nPlume) * 4), 4);
+  const pQ = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, nPlume) * 4), 4);
+  if (nPlume) {
+    const pgeo = new THREE.InstancedBufferGeometry();
+    const SEG = 14;
+    const pos = [], idx = [];
+    for (let i = 0; i <= SEG; i++) { const x = -1 + 2 * i / SEG; pos.push(x, -1, 0, x, 1, 0); }
+    for (let i = 0; i < SEG; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    pgeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); pgeo.setIndex(idx);
+    pP.setUsage(THREE.DynamicDrawUsage); pQ.setUsage(THREE.DynamicDrawUsage);
+    pgeo.setAttribute('aP', pP); pgeo.setAttribute('aQ', pQ);
+    pgeo.instanceCount = nPlume;
+    plumeMat = new THREE.ShaderMaterial({
+      vertexShader: PLUME_VERT, fragmentShader: PLUME_FRAG, transparent: true, depthWrite: false,
+      uniforms: Object.assign({}, ENV.uniforms, { uVis: { value: 0 } }),
+    });
+    plumeMesh = new THREE.Mesh(pgeo, plumeMat);
+    plumeMesh.frustumCulled = false; plumeMesh.renderOrder = 5;
+    group.add(plumeMesh);
+    for (let i = 0; i < nPlume; i++) plumes.push({ x: 0, y: 0, z: 0, len: 40, h: 4, seed: R(), age: 1e9, life: 1, k: 0 });
+  }
+  /** Подбирает гребень: в кольце вокруг камеры идём по ветру и ищем локальный максимум высоты (с достаточной крутизной). */
+  function respawnPlume(pl, first) {
+    const wd = weather.windDir;
+    for (let tries = 0; tries < 6; tries++) {
+      const a = R() * Math.PI * 2, r = (first ? 50 : 70) + R() * 380;
+      let x = camera.position.x + Math.cos(a) * r, z = camera.position.z + Math.sin(a) * r;
+      // подъём против ветра к гребню (дюны бегут поперёк ветра, склон скольжения — по ветру)
+      let h = heightAt(x, z);
+      for (let it = 0; it < 14; it++) {
+        const hu = heightAt(x + wd.x * 6, z + wd.z * 6);
+        if (hu > h) { x += wd.x * 6; z += wd.z * 6; h = hu; } else break;
+      }
+      const hb = heightAt(x - wd.x * 8, z - wd.z * 8), hf = heightAt(x + wd.x * 14, z + wd.z * 14);
+      if (h - hf < 1.2 || h < hb) continue;        // нужен гребень со склоном скольжения по ветру
+      pl.x = x; pl.y = h; pl.z = z;
+      pl.len = 28 + R() * 60; pl.h = 2.2 + R() * 3.4; pl.age = first ? R() * 20 : 0; pl.life = 28 + R() * 40; pl.k = 0.5 + R() * 0.5;
+      return;
+    }
+    pl.life = 3; pl.age = 0; pl.k = 0;     // подходящего гребня не нашли — невидима, повтор через 3 с
+  }
+  plumes.forEach((pl) => respawnPlume(pl, true));
+  function updatePlumes(dt) {
+    if (!plumeMesh) return;
+    plumeRespawnBudget = 1;
+    const wspd = weather.windSpeed;
+    const vis = smoothstep(3.5, 9.0, wspd) * (1 - 0.6 * smoothstep(0.5, 1.0, weather.storm));
+    plumeMat.uniforms.uVis.value = vis;
+    plumeMesh.visible = vis > 0.01 && game.space !== 'sietch';
+    if (!plumeMesh.visible) return;
+    const cp = camera.position;
+    for (let i = 0; i < plumes.length; i++) {
+      const pl = plumes[i];
+      pl.age += dt;
+      if (pl.age > pl.life || Math.abs(pl.x - cp.x) + Math.abs(pl.z - cp.z) > 900) { if (plumeRespawnBudget > 0) { plumeRespawnBudget--; respawnPlume(pl, false); } }
+      pP.array.set([pl.x, pl.y + 0.15, pl.z, pl.len * (0.6 + 0.5 * smoothstep(3, 14, wspd))], i * 4);
+      pQ.array.set([pl.h * (0.7 + 0.5 * smoothstep(4, 14, wspd)), pl.seed, clamp(pl.age / pl.life, 0, 1), pl.k], i * 4);
+    }
+    pP.needsUpdate = true; pQ.needsUpdate = true;
+  }
+  let plumeRespawnBudget = 1;
 
   // ---------- пыльные вихри ----------
   const nDevil = q === 'low' ? 1 : q === 'med' ? 2 : 3;
@@ -412,7 +526,7 @@ export function createFx(game, world, terrain, weather) {
       const i = pHead; pHead = (pHead + 1) % NP;
       const sp = o.speed ?? 1.5, sp2 = o.spread ?? 0.8;
       pA.array.set([x + (R() - 0.5) * sp2, y + R() * 0.2, z + (R() - 0.5) * sp2, now], i * 4);
-      pV.array.set([(R() - 0.5) * sp, (R() * 0.6 + 0.2) * (o.up ?? 1) * sp, (R() - 0.5) * sp, (o.life ?? 2.2) * (0.7 + R() * 0.6)], i * 4);
+      pV.array.set([(R() - 0.5) * sp + (o.dx ?? 0) * (o.ds ?? 0), (R() * 0.6 + 0.2) * (o.up ?? 1) * sp, (R() - 0.5) * sp + (o.dz ?? 0) * (o.ds ?? 0), (o.life ?? 2.2) * (0.7 + R() * 0.6)], i * 4);
       pS.array.set([(o.size ?? 0.8) * (0.7 + R() * 0.6), o.alpha ?? 0.35, R(), o.grow ?? 2.2], i * 4);
     }
     pA.needsUpdate = true; pV.needsUpdate = true; pS.needsUpdate = true;
@@ -426,15 +540,61 @@ export function createFx(game, world, terrain, weather) {
   game.bus.on('thumper', (e) => { if (e) puff(e.x, heightAt(e.x, e.z), e.z, { count: 14, size: 1.6, life: 3, speed: 3, spread: 1.5, alpha: 0.4 }); });
   game.bus.on('worm:breach', (e) => { if (e) puff(e.x, heightAt(e.x, e.z), e.z, { count: 60, size: 12, life: 7, speed: 18, spread: 20, alpha: 0.5, up: 2.5, grow: 3 }); });
 
+
+  // ---------- осыпание песка на склонах скольжения и порывы ----------
+  const _n = new THREE.Vector3();
+  let slideT = 0, gustT = 0, gustPrev = 0, slideEvtT = 0;
+  function updateAvalanche(dt) {
+    slideT -= dt; slideEvtT -= dt;
+    if (slideT > 0 || game.space === 'sietch') return;
+    slideT = 0.18;
+    const pl = game.player, p = pl?.position ?? camera.position;
+    const wd = weather.windDir;
+    const moving = pl ? Math.hypot(pl.velocity?.x ?? 0, pl.velocity?.z ?? 0) > 0.8 : false;
+    // ищем крутой подветренный склон рядом (в 2..9 м по ходу движения и вокруг)
+    const dirs = pl?.velocity && moving ? [Math.atan2(pl.velocity.z, pl.velocity.x), 0.9, -0.9, 2.2, -2.2] : [0, 1.57, 3.14, -1.57];
+    let bestX = 0, bestZ = 0, bestS = 0, found = false;
+    for (let i = 0; i < dirs.length; i++) {
+      const a = i === 0 ? dirs[0] : (moving ? dirs[0] + dirs[i] : dirs[i]);
+      const d = 2.5 + 3.2 * ((i * 1.7) % 2.0);
+      const x = p.x + Math.cos(a) * d, z = p.z + Math.sin(a) * d;
+      world.normalAt(x, z, _n);
+      const slope = 1 - _n.y;
+      const lee = (_n.x * wd.x + _n.z * wd.z) / (Math.hypot(_n.x, _n.z) + 1e-4);
+      if (slope > 0.07 && lee > 0.25 && slope > bestS) { bestS = slope; bestX = x; bestZ = z; found = true; }
+    }
+    if (!found) return;
+    world.normalAt(bestX, bestZ, _n);
+    const hl = Math.hypot(_n.x, _n.z) + 1e-4, dx = _n.x / hl, dz = _n.z / hl;     // вниз по склону
+    const k = clamp((bestS - 0.07) / 0.14, 0.2, 1) * (moving ? 1 : 0.35);
+    const n = moving ? 3 : 1;
+    for (let i = 0; i < n; i++) {
+      const o = (R() - 0.5) * 3.0, ox = bestX - dz * o, oz = bestZ + dx * o;
+      puff(ox, heightAt(ox, oz) + 0.04, oz, { count: 1, size: 0.22 + 0.2 * k, life: 1.6 + R(), speed: 0.35, spread: 0.4, alpha: 0.2 * (0.5 + k), grow: 2.2, up: 0.15, dx, dz, ds: 1.2 + 1.5 * k });
+    }
+    if (slideEvtT <= 0 && moving) { slideEvtT = 2.5; game.bus.emit('desert:sandslide', { x: bestX, z: bestZ, intensity: k, dx, dz }); }
+  }
+  function updateGust(dt) {
+    gustT -= dt;
+    const g = weather.gust ?? 0.5;
+    if (gustT <= 0 && g > 0.72 && gustPrev <= 0.72 && weather.windSpeed > 3.5) {
+      gustT = 7;
+      game.bus.emit('desert:gust', { strength: clamp(weather.windSpeed / 20, 0, 1), speed: weather.windSpeed, wx: weather.windDir.x, wz: weather.windDir.z });
+    }
+    gustPrev = g;
+  }
+
   const fx = {
-    group, puff, drift, motes, devils, stormMeshes,
+    group, puff, plumeMesh, drift, motes, devils, stormMeshes,
     setVisible(b) { group.visible = b; },
     update(dt, t) {
       const cp = camera.position;
       const w = weather;
       const wspd = w.windSpeed;
+      updatePlumes(dt); updateAvalanche(dt); updateGust(dt);
       driftMat.uniforms.uGT.value = L1.tex;
       driftMat.uniforms.uIntensity.value = 1;
+      drift.visible = wspd + 3 * w.storm > 1.2;        // в штиль позёмку не рисуем вовсе
       { const kc = ENV.uniforms.uKeyColor.value, am = ENV.uniforms.uAmbient.value, nk = 0.5 * ENV.uniforms.uNight.value;
         moteMat.uniforms.uCol.value.setRGB(kc.r * 0.35 + am.r * nk, kc.g * 0.35 + am.g * nk, kc.b * 0.35 + am.b * nk); }
       // вихри

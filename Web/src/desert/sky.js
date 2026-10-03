@@ -292,6 +292,7 @@ void main(){
     vec3 dustTone = uFogColor * vec3(1.0, 0.82, 0.62);
     float dustMix = clamp(uDust * 0.75 + uStorm * 0.5, 0.0, 0.95);
     // подсветка снизу закатным/рассветным светом (облака горят у солнца и розовеют по всему небу)
+    float cNight = 1.0 - 0.62 * uSkyNight;      // ночью облака тусклее (иначе «белые пятна» на тёмном небе)
     vec3 sunsetC = uHorizonSun * (0.25 + 1.1 * sideW) * lowSun * (1.0 - 0.7 * uStorm);
     // перистые (тонкие, вытянутые по ветру): всегда есть немного, гуще при облачности
     {
@@ -303,17 +304,17 @@ void main(){
       vec3 cc = (keyL * (0.30 + 0.9 * pow(mup, 5.0)) + cAmb * 0.8) * 0.85;
       cc += sunsetC * 0.55 * (0.5 + 0.5 * pow(mup, 2.0));
       cc = mix(cc, dustTone * (cAmb + keyL * 0.15) , dustMix * 0.6);
-      sky = mix(sky, cc, cl);
+      sky = mix(sky, cc * cNight, cl);
     }
     // кучевой/пылевой слой
     if (uQ > 0.5 && (uClouds > 0.04 || uStorm > 0.02)) {
       vec2 uv = cloudUV(d, 1.35) + w * uTime * 0.006;
       vec2 wuv = uv + 0.35 * vec2(rkNoise(uv * 1.7 + 4.0), rkNoise(uv * 1.7 + 9.0)) - 0.17;
-      float n = rkFbm(wuv * 1.0 + 2.0) * 0.78 + 0.22 * rkNoise(wuv * 7.0);
+      float n = rkFbm(wuv * 1.0 + 2.0) * 0.86 + 0.14 * rkNoise(wuv * 7.0);
       float thr = 0.74 - 0.5 * clamp(uClouds, 0.0, 1.0) - 0.16 * uStorm;
-      float dn = smoothstep(thr, thr + 0.42, n);
+      float dn = smoothstep(thr, thr + 0.5, n);
       vec2 sl = normalize(uKeyDir.xz + vec2(1e-5)) * 0.09;
-      float n2 = rkFbm((wuv + sl) + 2.0) * 0.78 + 0.22 * rkNoise((wuv + sl) * 7.0);
+      float n2 = rkFbm((wuv + sl) + 2.0) * 0.86 + 0.14 * rkNoise((wuv + sl) * 7.0);
       float sh = clamp(0.62 + (n - n2) * 5.0, 0.0, 1.0);
       float thin = dn * (1.0 - dn) * 4.0;
       vec3 lit = keyL * 0.30 * (0.3 + 0.7 * sh) + cAmb * 0.9;
@@ -322,7 +323,7 @@ void main(){
       lit += sunsetC * 0.5 * (0.35 + 0.65 * sh);
       lit = mix(lit, dustTone * (cAmb * 0.9 + keyL * 0.22 * (0.4 + 0.6 * sh)), dustMix);
       float a = dn * dn * (3.0 - 2.0 * dn) * smoothstep(0.012, 0.22, y) * (0.8 - 0.2 * uStorm);
-      sky = mix(sky, lit, a);
+      sky = mix(sky, lit * cNight, a);
     }
     // альтокумулюс («барашки»): мелкие ячеистые гряды выше кучевых, подсвеченные с солнечной стороны
     #ifndef SKY_LITE
@@ -332,16 +333,16 @@ void main(){
       float cov = smoothstep(0.16, 0.85, uClouds);
       float n = rkNoise(uv * 0.9 + 17.0) * 0.55 + rkNoise(uv * 2.6 + 3.0) * 0.3 + rkNoise(uv * 7.0) * 0.15;
       float band = smoothstep(0.30, 0.65, rkNoise(uv * vec2(0.22, 0.7) + 5.0));
-      float dn = smoothstep(0.66 - 0.2 * cov, 0.80 - 0.14 * cov, n + (band - 0.5) * 0.3);
+      float dn = smoothstep(0.62 - 0.2 * cov, 0.86 - 0.12 * cov, n + (band - 0.5) * 0.3);
       vec2 sl = normalize(uKeyDir.xz + vec2(1e-5)) * 0.12;
       float n2 = rkNoise((uv + sl) * 2.6 + 3.0) * 0.55 + rkNoise((uv + sl) * 0.9 + 17.0) * 0.3 + rkNoise((uv + sl) * 7.0) * 0.15;
       float sh = clamp(0.65 + (n - n2) * 6.0, 0.0, 1.0);
       float edge = dn * (1.0 - dn) * 4.0;
-      float a = dn * smoothstep(0.04, 0.3, y) * (1.0 - smoothstep(0.7, 0.95, y) * 0.5) * 0.7;
+      float a = dn * dn * smoothstep(0.04, 0.3, y) * (1.0 - smoothstep(0.7, 0.95, y) * 0.5) * 0.65;
       vec3 lit = keyL * 0.26 * (0.3 + 0.7 * sh) + cAmb * 0.85;
       lit += keyL * 0.2 * edge * (0.3 + 1.6 * pow(mup, 5.0)) + sunsetC * 0.65 * (0.4 + 0.6 * sh);
       lit = mix(lit, dustTone * (cAmb * 0.9 + keyL * 0.2), dustMix);
-      sky = mix(sky, lit, a);
+      sky = mix(sky, lit * cNight, a);
     }
     #endif
   }

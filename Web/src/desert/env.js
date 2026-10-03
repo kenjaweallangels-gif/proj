@@ -33,6 +33,7 @@ export const ENV = {
     uCamXZ: { value: new THREE.Vector2() },
     uClaw: { value: claw },
     uWet: { value: 0 },
+    uHeat: { value: 0 },            // 0..1 зной (мираж на плоских участках при высоком солнце)
   },
 };
 
@@ -57,6 +58,7 @@ uniform float uWindSpeed;
 uniform float uStorm;
 uniform float uDust;
 uniform vec2 uCamXZ;
+uniform float uHeat;
 
 float rkHash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 vec2 rkHash22(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973)); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.xx + p3.yz) * p3.zy); }

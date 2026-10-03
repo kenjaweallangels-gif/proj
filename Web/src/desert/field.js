@@ -227,10 +227,11 @@ function heightRaw(x, z, spacing = 0) {
   for (const s of SAFE_ISLANDS) {
     const dx = x - s.x, dz = z - s.z;
     const d2 = dx * dx + dz * dz;
-    if (d2 > (s.r * 1.6) * (s.r * 1.6)) continue;
+    if (d2 > (s.r * 2.6) * (s.r * 2.6)) continue;
     const re = s.r * (1 + 0.2 * noise2(x * 0.22, z * 0.22));
     const q = Math.sqrt(d2) / re;
-    if (q < 1.15) h = lerp(h, 0.4 + s.r * 0.2 * Math.pow(Math.max(0, 1 - q * q), 0.55), 1 - smoothstep(0.9, 1.15, q));
+    // пологий «фартук» вокруг выхода породы: дюна плавно сходит на нет за ~1.8 радиуса, а не обрывается стеной
+    if (q < 2.0) h = lerp(h, 0.4 + s.r * 0.2 * Math.pow(Math.max(0, 1 - q * q), 0.55), 1 - smoothstep(0.95, 2.0, q));
   }
   // Плиты A3 (чуть приподняты)
   h += plateRaise(x, z);

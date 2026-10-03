@@ -5,10 +5,11 @@ import { heightAt, masks } from './field.js';
 import { ENV, patchMaterial } from './env.js';
 import { triplanarKit } from '../core/triplanar.js';
 
-const CELLS = 160;               // ячеек на сторону кольца
-export const TEX = 192;          // размер текстуры уровня (> CELLS+1): запас по краям — «мягкая» зона, заливается постепенно
-const HARD = CELLS / 2 + 2;      // эти клетки вокруг центра должны быть валидны к кадру (иначе дыры/ошибки)
-const SOFT = TEX / 2 - 3;        // опережающая заливка: дальше HARD, но в пределах окна; делается порциями по бюджету
+// Размеры зависят от качества (задаются в createTerrain): low 96 / med 128 / high 160 ячеек на сторону кольца.
+let CELLS = 160;                 // ячеек на сторону кольца
+let TEX = 192;                   // размер текстуры уровня (> CELLS+1): запас по краям — «мягкая» зона, заливается постепенно
+let HARD = CELLS / 2 + 2;        // эти клетки вокруг центра должны быть валидны к кадру (иначе дыры/ошибки)
+let SOFT = TEX / 2 - 3;          // опережающая заливка: дальше HARD, но в пределах окна; делается порциями по бюджету
 const SOFT_BUDGET_MS = 1.2;      // бюджет опережающей заливки на кадр (все уровни), мс
 
 export const LEVEL_SPACING = [1, 2, 4, 8, 16, 32, 64];
@@ -148,7 +149,7 @@ float f2 = 1.0 - smoothstep(22.0, 110.0, dist);
 float f3 = 1.0 - smoothstep(90.0, 480.0, dist);
 float rOcc = 0.0;
 if (f1 > 0.001 && uQual > 0.5) { vec3 r = rkRipple(xz, 0.095, 1.7, 1.0, 0.7); g += r.yz * f1 * 0.5; }
-if (f2 > 0.001) { vec3 r = rkRipple(xz, 0.62, 1.8, 5.0, 0.72); g += r.yz * f2 * 0.17; rOcc += (1.0 - gRH) * f2 * 0.55 * (1.0 - smoothstep(20.0, 70.0, dist)); }
+if (f2 > 0.001) { vec3 r = rkRipple(xz, 0.62, 1.8, 5.0, 0.72); g += r.yz * f2 * 0.12; rOcc += (1.0 - gRH) * f2 * 0.55 * (1.0 - smoothstep(20.0, 70.0, dist)); }
 if (f3 > 0.001) { vec3 r = rkRipple(xz, 2.9, 2.5, 9.0, 0.75); g += r.yz * f3 * 0.1; rOcc += (1.0 - gRH) * f3 * 0.15 * (1.0 - smoothstep(60.0, 300.0, dist)); }
 g *= calmR;
 // лавинные полосы на подветренных склонах: потоки зерна вдоль линии падения (вытянуты по склону), веер у подошвы
@@ -292,6 +293,21 @@ const FRAG_FAR_FADE = /* glsl */`
   float rr = max(abs(vWP.x - uCamXZ.x), abs(vWP.z - uCamXZ.y)) / 5000.0;
   float fe = smoothstep(0.62, 0.97, rr);
   if (fe > 0.0) gl_FragColor.rgb = mix(gl_FragColor.rgb, rkFogColorDir(normalize(vWP - cameraPosition)), fe);
+  // мираж: на дальних плоских участках при скользящем взгляде и зное песок «отражает» небо (лужи света у горизонта)
+  if (uHeat > 0.02) {
+    vec3 vd = vWP - cameraPosition;
+    float dd = length(vd);
+    float graz = 1.0 - smoothstep(0.003, 0.028, -vd.y / dd);
+    float far = smoothstep(260.0, 1500.0, dd) * (1.0 - smoothstep(4200.0, 5200.0, dd));
+    if (graz * far > 0.01) {
+      float flatK = 1.0 - smoothstep(0.015, 0.09, 1.0 - normalize(vTN).y);
+      float cell = rkFbm(vWP.xz / 340.0 + vec2(uTime * 0.004, 3.0));
+      float wob = 0.75 + 0.25 * sin(vWP.x * 0.021 + vWP.z * 0.017 + uTime * 1.3 + cell * 9.0);
+      float mm = uHeat * graz * far * flatK * smoothstep(0.46, 0.68, cell) * wob;
+      vec3 skyR = mix(uHorizon, uZenith, 0.28) * 1.12 + uKeyColor * 0.012;
+      gl_FragColor.rgb = mix(gl_FragColor.rgb, skyR, clamp(mm * 0.7, 0.0, 0.7));
+    }
+  }
 }
 `;
 
@@ -319,11 +335,15 @@ export function createTerrain(game, foot) {
   const { scene } = game;
   const q = game.settings.quality;
   const qual = q === 'low' ? 0 : q === 'med' ? 1 : 2;
+  CELLS = q === 'low' ? 96 : q === 'med' ? 128 : 160;
+  TEX = CELLS + 32;
+  HARD = CELLS / 2 + 2;
+  SOFT = TEX / 2 - 3;
 
   const kS = triplanarKit('tpS', 'sand', { axes: 'y', scale: 1.45, quality: q, rough: 0, ao: 0, normal: 1, chroma: 0.55, antiTile: q === 'high' });
   const kM = q === 'low' ? null : triplanarKit('tpM', 'sand_ripples', { axes: 'y', scale: 2.6, quality: q, rough: 0, ao: 0, normal: 1, chroma: 0, antiTile: q === 'high' });
   const sandU = {
-    uTexK: { value: new THREE.Vector4(1, 0.4, 0.5, 0.9) },     // x: включено, y: сила нормали, z: сила цвета, w: сила среднего слоя
+    uTexK: { value: new THREE.Vector4(1, 0.4, 0.4, 0.6) },     // x: включено, y: сила нормали, z: сила цвета, w: сила среднего слоя
     ...(kS ? kS.uniforms : {}), ...(kM ? kM.uniforms : {}),
     uSandLoose: { value: new THREE.Color('#CFB083') },
     uSandPacked: { value: new THREE.Color('#B8936A') },
@@ -426,6 +446,24 @@ export function createTerrain(game, foot) {
     return false;
   }
 
+  /** Локальная перезаливка круга (заплатка рельефа): только texel внутри окна каждого уровня. */
+  function invalidateRect(x, z, r) {
+    for (const L of levels) {
+      const i0 = Math.floor((x - r) / L.s) - 1, i1 = Math.ceil((x + r) / L.s) + 1;
+      const j0 = Math.floor((z - r) / L.s) - 1, j1 = Math.ceil((z + r) / L.s) + 1;
+      if (i1 - i0 > TEX || j1 - j0 > TEX) { L.cx = 1e9; L.cz = 1e9; L.softDone = false; L.colI.fill(NaN); L.rowJ.fill(NaN); continue; }
+      for (let j = j0; j <= j1; j++) {
+        const b = wrapT(j); if (L.rowJ[b] !== j) continue;
+        for (let i = i0; i <= i1; i++) { const a = wrapT(i); if (L.colI[a] === i) fillH(L, a, b, i, j); }
+      }
+      for (let j = j0 - 1; j <= j1 + 1; j++) {
+        const b = wrapT(j); if (L.rowJ[b] !== j) continue;
+        for (let i = i0 - 1; i <= i1 + 1; i++) { const a = wrapT(i); if (L.colI[a] === i) fillN(L, a, b); }
+      }
+      L.dirty = true;
+    }
+  }
+
   function recenter(L, cx, cz) {
     syncHard(L, cx, cz);
     L.cx = cx; L.cz = cz; L.softDone = false;
@@ -500,10 +538,13 @@ export function createTerrain(game, foot) {
   }
 
   return {
-    levels, update, sandU,
+    levels, update, sandU, texSize: TEX, cells: CELLS,
     setVisible(b) { for (const L of levels) L.mesh.visible = b; },
     /** Сбросить кэш высот (после изменения field.groundPatches) — кольца перезаливаются при следующем update. */
-    invalidate() { for (const L of levels) { L.cx = 1e9; L.cz = 1e9; L.softDone = false; L.colI.fill(NaN); L.rowJ.fill(NaN); } },
+    invalidate(rect) {
+      if (rect && Number.isFinite(rect.x)) return invalidateRect(rect.x, rect.z, rect.radius ?? rect.r ?? 0);
+      for (const L of levels) { L.cx = 1e9; L.cz = 1e9; L.softDone = false; L.colI.fill(NaN); L.rowJ.fill(NaN); }
+    },
     /** принудительная первичная заливка */
     prime(x, z) { update({ x, z }); },
   };

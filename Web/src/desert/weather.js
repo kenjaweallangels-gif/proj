@@ -456,6 +456,8 @@ export function createWeather(game, sky, world) {
       game.scene.fog.color.copy(ENV.uniforms.uFogColor.value);
       game.scene.fog.density = Math.sqrt(ENV.uniforms.uFogDensity.value * 700) / 700;
     }
+    ENV.uniforms.uHeat.value = smoothstep(20, 52, el) * (1 - smoothstep(0.1, 0.5, S)) * (1 - 0.55 * clamp(eff.clouds, 0, 1)) * (0.55 + 0.45 * clamp(1 - eff.wind / 12, 0, 1));
+    weather.heat = ENV.uniforms.uHeat.value;
     weather.haze = eff.haze * (0.2 + 0.8 * smoothstep(6, 46, el));   // марево — от жары: сильнее при высоком солнце
 
     // --- события ---

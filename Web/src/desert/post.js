@@ -101,9 +101,9 @@ const AtmoShader = {
       if (k > 0.001) {
         float t = uTime;
         vec2 q = vec2(vUv.x * 38.0 * uAspect, vUv.y * 120.0);
-        float nx = vn(q + vec2(t * 0.35, -t * 1.5)) - 0.5;
-        float ny = vn(q * 0.7 + vec2(-t * 0.2, -t * 1.1) + 9.0) - 0.5;
-        vec2 off = vec2(nx * 1.4, ny) * k * 0.0075 * vec2(1.0 / uAspect, 1.0);
+        float nx = vn(q + vec2(t * 0.25, -t * 0.7)) - 0.5;
+        float ny = vn(q * 0.7 + vec2(-t * 0.15, -t * 0.5) + 9.0) - 0.5;
+        vec2 off = vec2(nx * 1.4, ny) * k * 0.0042 * vec2(1.0 / uAspect, 1.0);   // тоньше и медленнее: марево, а не «дрожь»
         vec2 uv2 = vUv + off;
         float d1 = texture2D(tDepth, uv2).x;
         if (!(d1 < 0.99999) || lin(d1) > dist * 0.75) uv = uv2;
@@ -258,8 +258,8 @@ export function createPost(game, weather, sky) {
   let haze = null, bloom = null;
   if (useDepth) {
     const def = AtmoShader.defines;
-    def.RAY_STEPS = q === 'high' ? 44 : 26;
-    def.AO_STEPS = q === 'high' ? 14 : 9;
+    def.RAY_STEPS = q === 'high' ? 36 : 18;
+    def.AO_STEPS = q === 'high' ? 12 : 7;
     haze = new AtmoPass(AtmoShader);
     composer.addPass(haze);
   } else {
@@ -277,16 +277,36 @@ export function createPost(game, weather, sky) {
   composer.setSize(innerWidth, innerHeight);
   const envmap = sky ? createEnvMap(game, sky) : null;
 
+  // ---- динамическое разрешение: если кадр стабильно дольше ~20 мс, снижаем масштаб рендера (до 0.55), при запасе — возвращаем.
+  // Отключается: ?dyn=0 и в автотестах (swiftshader). Масштаб — post.dynScale.
+  const baseRatio = renderer.getPixelRatio();
+  const dynOn = !game.settings.autotest && (typeof location === 'undefined' || new URLSearchParams(location.search).get('dyn') !== '0');
+  let dynScale = 1, slowT = 0, fastT = 0, emaMs = 16.7;
+  function dynRes(dt) {
+    if (!dynOn || !(dt > 0) || dt > 0.25) return;
+    emaMs += (dt * 1000 - emaMs) * 0.06;
+    if (emaMs > 20.5) { slowT += dt; fastT = 0; } else if (emaMs < 14.0) { fastT += dt; slowT = 0; } else { slowT = 0; fastT = 0; }
+    let ns = dynScale;
+    if (slowT > 1.2 && dynScale > 0.56) ns = Math.max(0.55, dynScale - 0.1);
+    else if (fastT > 8 && dynScale < 1) ns = Math.min(1, dynScale + 0.05);
+    if (ns === dynScale) return;
+    dynScale = ns; slowT = 0; fastT = 0; emaMs = 16.7;
+    post.dynScale = ns;
+    const pr = baseRatio * ns;
+    renderer.setPixelRatio(pr); composer.setPixelRatio(pr); composer.setSize(innerWidth, innerHeight);
+  }
+
   const HEMI_K = 0.55;
   let hemiBase = 1, hemiLast = -1;
   const world_visible = () => game.world?.visible !== false;
   const sunV = new THREE.Vector3(), fwd = new THREE.Vector3();
   const post = {
-    composer, haze, bloom, grade, envmap, enabled: true,
+    composer, haze, bloom, grade, envmap, enabled: true, dynScale: 1,
     refreshEnv() { envmap?.refresh(); },
     dust: 0, rays: 0,
     render(dt) {
       const t = game.realTime;
+      dynRes(dt);
       const wp = weather;
       const threat = game.worm?.threat ?? 0;
       const targetDust = clamp(wp.storm * 0.55 + threat * 0.65 + (wp.dust > 0.6 ? (wp.dust - 0.6) * 0.8 : 0), 0, 1);

@@ -43,7 +43,7 @@ export function createEnvMap(game, sky) {
       const kd = ENV.uniforms.uKeyDir.value;
       const moved = Math.abs(kd.x - lastKey.x) + Math.abs(kd.y - lastKey.y) + Math.abs(kd.z - lastKey.z)
         + Math.abs(ENV.uniforms.uNight.value - lastNight) * 2 + Math.abs(ENV.uniforms.uStorm.value - lastStorm) * 2;
-      if (!rt || (age > 1.0 && moved > 0.012) || age > 8) api.refresh();
+      if (!rt || (age > 1.0 && moved > 0.012) || (age > 45 && moved > 0.002)) api.refresh();   // без движения света/погоды карту не пересобираем (каждая пересборка — всплеск GPU)
     },
   };
   return api;

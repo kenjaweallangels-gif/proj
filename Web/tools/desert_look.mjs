@@ -57,21 +57,33 @@ for (const [name, hours, preset, ov, cm] of todo) {
   console.log('shot', name);
 }
 if (arg('perf', '0') === '1') {
+  // CPU: update() модуля пустыни при ходьбе 6 м/с (шаг 0.1 м/кадр) по эргу и у скалы; среднее / p99 / максимум, мс
   const r = await page.evaluate(async () => {
     const g = window.__rakis;
-    const mods = ['desertRoot', 'weather', 'world'];
+    const cam = g.camera;
     const out = {};
-    // CPU update(): 300 вызовов с движением камеры (как при ходьбе 6 м/с)
-    const cam = g.camera; const x0 = cam.position.x;
-    for (const m of ['desertRoot', 'weather']) {
-      const mod = g[m]; let t0 = performance.now();
-      for (let i = 0; i < 300; i++) { cam.position.x = x0 + i * 0.1; mod.update(0.016, g.realTime + i * 0.016); }
-      out[m] = (performance.now() - t0) / 300;
-    }
-    cam.position.x = x0;
-    let t0 = performance.now(); let n = 0;
-    while (performance.now() - t0 < 6000) { await new Promise((r) => requestAnimationFrame(r)); n++; }
-    out.frameMs = 6000 / n;
+    const run = (name, x0, z0, dx, dz, n) => {
+      g.weather.setOverride({ wind: 9 }, 0); g.weather.snap();
+      const ts = [];
+      cam.position.set(x0, g.world.heightAt(x0, z0) + 1.7, z0);
+      g.desertRoot.update(0.016, g.realTime);
+      for (let i = 0; i < n; i++) {
+        cam.position.set(x0 + dx * i, g.world.heightAt(x0 + dx * i, z0 + dz * i) + 1.7, z0 + dz * i);
+        const t0 = performance.now();
+        g.desertRoot.update(0.016, g.realTime + i * 0.016);
+        ts.push(performance.now() - t0);
+      }
+      ts.sort((a, b) => a - b);
+      out[name] = { mean: +(ts.reduce((a, b) => a + b, 0) / ts.length).toFixed(2), p99: +ts[Math.floor(ts.length * 0.99)].toFixed(2), max: +ts[ts.length - 1].toFixed(2) };
+    };
+    run('walk_erg', 40, 20, 0.1, 0.04, 600);
+    run('walk_claw', 560, 260, 0.1, 0.02, 600);
+    const t0 = performance.now(); g.world.terrain.invalidate(); g.desertRoot.update(0.016, g.realTime);
+    out.teleport_full_refill_ms = +(performance.now() - t0).toFixed(0);
+    let t1 = performance.now(); let n = 0;
+    while (performance.now() - t1 < 6000) { await new Promise((r) => requestAnimationFrame(r)); n++; }
+    out.frameMs_swiftshader = +(6000 / n).toFixed(0);
+    out.stats = g.world.stats;
     return out;
   });
   console.log('perf', JSON.stringify(r));
