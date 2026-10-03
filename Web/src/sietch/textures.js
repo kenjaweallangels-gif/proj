@@ -166,7 +166,7 @@ export function makeTextures() {
     for (let k = 0; k < 4; k++) {
       const x = 70 + k * 120 + R() * 20, y = 90 + R() * 40, s = 46 + R() * 8, rot = (R() - 0.5) * 0.5, col = cols[k % 3];
       if (P.mode === 'color') {
-        c.save(); c.fillStyle = col; c.beginPath(); c.ellipse(x, y - 8, s * 1.15, s * 1.25, rot, 0, Math.PI * 2); c.fill();
+        c.save(); c.fillStyle = col; c.beginPath(); c.ellipse(x, y - 6, s * 0.95, s * 1.05, rot, 0, Math.PI * 2); c.fill();
         c.globalCompositeOperation = 'destination-out'; c.fillStyle = '#000'; handPath(x, y, s, rot, k % 2 ? 1 : -1); c.fill(); c.restore();
       }
     }

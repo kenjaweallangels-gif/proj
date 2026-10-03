@@ -55,6 +55,14 @@ const pts = [
   [104, -7.4, 'N ветка'], [130, -14.9, 'N тупик'], [153, 0, 'B5 вход'], [167, 0, 'чаша край'], [175, 0, 'чаша центр'], [185, 6, 'ярус'], [192.2, 0.2, 'помост наиба'],
   [194, 7, 'лестница помоста'], [183, -14, 'выход: начало'], [187, -45, 'выход: портал'], [194, -46, 'портал (конец)'],
 ];
+// споты реквизита (места NPC)
+{
+  const { Builder } = await import('../src/sietch/builder.js');
+  const { buildProps } = await import('../src/sietch/props.js');
+  const ctx = { anchors: H.anchors, poi: {}, niches: [], curtains: [] };
+  const spots = buildProps(new Builder(), ctx);
+  for (const [kind, list] of Object.entries(spots)) list.forEach((sp, i) => { if (sp.x !== undefined) pts.push([+sp.x.toFixed(2), +sp.z.toFixed(2), `spot ${kind}#${i}`]); });
+}
 let bad = 0;
 for (const [x, z, l] of pts) if (!reach(x, z, l)) bad++;
 // посадка внутри скалы

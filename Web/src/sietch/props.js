@@ -118,7 +118,7 @@ export function buildProps(B, ctx) {
   const stallAlcove = (x, side, kind) => {
     B.region = 'B2';
     const zc = side * 4.6; // прилавок на границе ниши
-    B.box('clay', [x, 0.5, zc], [2.5, 1.0, 0.7], { par: [0.5, 0.1, 0], color: [0.92, 0.78, 0.6] });
+    B.box('clay', [x, 0.42, zc], [2.5, 1.2, 0.7], { par: [0.5, 0.1, 0], color: [0.92, 0.78, 0.6] });
     B.box('wood', [x, 1.03, zc], [2.65, 0.07, 0.85], { color: [0.6, 0.45, 0.32], par: [0.6, 0, 0] });
     addBlock({ x0: x - 1.35, x1: x + 1.35, z0: Math.min(zc - 0.45, zc + 0.45), z1: Math.max(zc - 0.45, zc + 0.45) }, 0);
     const key = clothKeys[Math.floor(R() * 4)];
@@ -178,7 +178,7 @@ export function buildProps(B, ctx) {
   {
     B.region = 'B2';
     const x = 80, z = 4.6;
-    B.box('clay', [x, 0.45, z], [2.3, 0.9, 0.8], { par: [0.6, 0.1, 0], color: [0.85, 0.72, 0.58] });
+    B.box('clay', [x, 0.38, z], [2.3, 1.06, 0.8], { par: [0.6, 0.1, 0], color: [0.85, 0.72, 0.58] });
     B.box('wood', [x, 0.93, z], [2.45, 0.07, 0.95], { color: [0.6, 0.45, 0.32], par: [0.9, 0, 0] });
     B.box('cloth', [x, 0.975, z], [1.6, 0.012, 0.6], { color: [0.15, 0.3, 0.55], par: [0, 0, 0] });
     for (let i = 0; i < 5; i++) B.lathe('brass', CUP, [x - 0.7 + i * 0.28, 0.97, z + 0.2], 10, { scale: [1.4, 1.4, 1.4] });
@@ -203,7 +203,7 @@ export function buildProps(B, ctx) {
   {
     B.region = 'B2';
     const x = 79, z = -6.1;
-    B.box('clay', [x, 0.42, z], [2.1, 0.84, 0.9], { par: [0.7, 0.1, 0], color: [0.85, 0.72, 0.58] });
+    B.box('clay', [x, 0.34, z], [2.1, 1.0, 0.9], { par: [0.7, 0.1, 0], color: [0.85, 0.72, 0.58] });
     B.box('wood', [x, 0.88, z], [2.2, 0.08, 1.0], { color: [0.55, 0.42, 0.3] });
     B.cyl('metal', [x - 0.6, 1.12, z], 0.05, 0.05, 0.4, 8, { color: [0.5, 0.42, 0.34] });
     B.sphere('metal', [x - 0.6, 1.36, z], 0.07, { color: [0.55, 0.45, 0.34] });
@@ -237,7 +237,7 @@ export function buildProps(B, ctx) {
     rug('carpetBlue', 84, 0.3, 3.2, 2.2, 0.05, 0); rug('carpetRed', 91, -0.8, 2.8, 2, 0.3, 0); rug('carpetOchre', 91.4, -0.6, 1.5, 1.1, -0.3, 1);
     for (let i = 0; i < 7; i++) cushion(58 + R() * 36, (R() - 0.5) * 3.2, goodsCols[(i + 1) % 6], 0.9);
     // кофейная ниша у восточного торца: низкая скамья-плита, кофейник, чашки
-    const cx = 96.2, cz = 2.8;
+    const cx = 89.0, cz = 2.4;
     B.box('clay', [cx, 0.25, cz + 0.9], [2.4, 0.5, 0.6], { par: [0.9, 0, 0], color: [0.85, 0.72, 0.58] });
     B.lathe('brass', POT, [cx - 0.3, 0.5, cz + 0.9], 10, { scale: [1.8, 1.8, 1.8] });
     for (let i = 0; i < 3; i++) B.lathe('brass', CUP, [cx + 0.3 + i * 0.22, 0.5, cz + 0.8], 8, { scale: [1.3, 1.3, 1.3] });

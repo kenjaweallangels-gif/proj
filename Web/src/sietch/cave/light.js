@@ -19,6 +19,9 @@ export function buildLights(globes) {
   omni.push({ x: H.cx, y: H.bowlY + 1.0, z: H.cz, color: [1.0, 0.8, 0.55], intensity: 1.0, d0: 5, radius: 22, shadow: true });
   for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2 + 0.2; omni.push({ x: H.cx + Math.cos(a) * 11, y: 15, z: H.cz + Math.sin(a) * 9, color: [1.0, 0.7, 0.4], intensity: 1.0, d0: 6, radius: 22, shadow: true }); }
   for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; omni.push({ x: H.cx + Math.cos(a) * 4, y: 10, z: H.cz + Math.sin(a) * 4, color: [1.0, 0.8, 0.55], intensity: 0.7, d0: 5, radius: 14, shadow: true }); }
+  // тёплый свет над помостом наиба (подсветка говорящего и рельефа «Глотка»)
+  omni.push({ x: 193, y: 5.4, z: 0, color: [1.0, 0.78, 0.5], intensity: 1.0, d0: 4.5, radius: 14, shadow: true });
+  omni.push({ x: 196, y: 8.5, z: 0, color: [1.0, 0.72, 0.42], intensity: 0.7, d0: 4.5, radius: 12, shadow: true });
   // дневной свет снаружи: расщелина-вход (запад) и портал в котловину (юго-восток)
   omni.push({ x: -2.6, y: 1.7, z: 8.4, color: [0.62, 0.74, 0.95], intensity: 1.1, d0: 3.2, radius: 14, shadow: true });
   omni.push({ x: -1.4, y: 1.7, z: 4.4, color: [0.62, 0.74, 0.95], intensity: 0.4, d0: 3.0, radius: 9, shadow: true });

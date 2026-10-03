@@ -23,6 +23,8 @@ function findChromium() {
 const VIEWS = [
   ['01_cleft', [-1.2, 1.6, 4.8], [-3, 1.6, 9], 72],
   ['02_seal_outer', [4.5, 1.5, 0.2], [8, 1.4, 0], 74],
+  ['02b_seal_opening', [5.6, 1.5, 0.1], [8, 1.3, 0], 70, 1000],
+  ['02c_seal_open', [5.6, 1.5, 0.1], [8, 1.3, 0], 70, 2600],
   ['03_airlock', [12, 1.5, 0], [22, 1.4, 0], 72],
   ['04_inner_passage', [27, 1.5, 0.3], [40, 1.6, 0], 72],
   ['05_gallery_entry', [41.5, 1.7, 0], [70, 3, 0], 78],
@@ -40,22 +42,23 @@ const VIEWS = [
   ['17_hall_vault', [160, 0, 0], [175, 19, 0], 84],
   ['18_godray', [169, -1.0, 3.5], [175, 8, 0], 74],
   ['19_ledge', [176, -0.5, 0], [192, 3.8, 0], 70],
-  ['20_exit_tunnel', [199, -2.6, -23.5], [207, -4.5, -28], 74],
-  ['21_exit_portal', [178, -22.5, -43.5], [194, -24, -46.5], 76],
+  ['20_exit_tunnel', [206, -5.7, -27], [208, -7.2, -32], 74],
+  ['21_exit_portal', [181, -20.9, -44], [195, -23.6, -46.2], 76],
+  ['22_exit_start', [184, 0.0, -18.5], [195, -3.1, -23], 74],
 ];
 
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM || findChromium(),
   args: ['--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
 });
-const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const page = await browser.newPage({ viewport: { width: 896, height: 504 } });
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${m.type()}: ${m.text()}`); if (m.text().startsWith('[sietch]')) console.log(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
 const file = arg('file', 'sietch.html');
 await page.goto(`file://${join(root, 'dist', file)}?autotest=1&q=${q}&lang=RU`);
 await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.0, null, { timeout: 480000 });
-await page.evaluate(async () => { await window.__rakis.sietch.enter(); window.__rakis.cinematic = { active: true, owner: 'shots' }; });
+await page.evaluate(async () => { const w = window.__rakis.world; if (w && !new URLSearchParams(location.search).has('keepworld')) { w.setVisible(false); w.setVisible = () => {}; } await window.__rakis.sietch.enter(); window.__rakis.cinematic = { active: true, owner: 'shots' }; });
 await page.waitForTimeout(500);
 
 const shoot = async (name, pos, tgt, fov = 70, wait = Number(arg('wait', 1500))) => {
@@ -69,14 +72,14 @@ const shoot = async (name, pos, tgt, fov = 70, wait = Number(arg('wait', 1500)))
     if (!g.__shotHook) { g.__shotHook = true; const r = g.render; g.render = (dt) => { if (g.__shotCam && g.cinematic.owner === 'shots') { g.camera.position.copy(g.__shotCam.pos); g.camera.quaternion.copy(g.__shotCam.quat); } r(dt); }; }
   }, [pos, tgt, fov]);
   await page.waitForTimeout(wait);
-  await page.screenshot({ path: join(outDir, `${name}.png`) });
+  await page.screenshot({ path: join(outDir, `${name}.png`), timeout: 420000 });
   const info = await page.evaluate(() => { const g = window.__rakis, r = g.renderer.info.render; return { fps: g.stats.fps, zone: g.sietch.zoneAt?.(g.camera.position), calls: r.calls, tris: r.triangles, lights: g.scene.children.length }; });
   console.log(name, JSON.stringify(info));
 };
 
-for (const [name, pos, tgt, fov] of VIEWS) {
+for (const [name, pos, tgt, fov, w] of VIEWS) {
   if (only.length && !only.some((o) => name.includes(o))) continue;
-  await shoot(name, pos, tgt, fov);
+  await shoot(name, pos, tgt, fov, w);
 }
 
 // Зал с толпой на ярусах (после рассадки).

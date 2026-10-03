@@ -103,7 +103,7 @@ export function planGlobePositions() {
   for (const x of SHELF_BAYS) { add('B2', x, -7.3, 8.3, 0.65); add('B2', x + 1, 7.3, 8.3, 0.65); }
   add('B2', 44, 0, 3.3, 0.85); add('B2', 45, 6, 4.5, 0.7); add('B2', 45, -6, 4.5, 0.7);
   // B3: у ниш и по проходам.
-  for (let x = 102; x < 150; x += 6) add('B3', x, (Math.round(x) % 2 ? -0.4 : 0.4), 2.25, 0.8);
+  for (let x = 102; x < 150; x += 6) add('B3', x, (Math.round(x) % 2 ? -0.4 : 0.4), 2.25, 1.0);
   for (const n of NICHES) add('B3', n.xc, n.side * 3.0, 1.9, n.open ? 0.9 : 0.55, { niche: n.id });
   for (let x = 104; x < 120; x += 6) { add('B3', x + 2, -7.5, 2.2, 0.65); add('B3', x + 2, 7.5, 2.2, 0.65); }
   add('B3', 118, -12, 2.2, 0.65); add('B3', 121, -15.2, 2.2, 0.65); add('B3', 128, -15, 2.2, 0.65); add('B3', 134, -14.8, 2.2, 0.65);
@@ -117,7 +117,7 @@ export function planGlobePositions() {
   add('B5', 153, -1.7, 2.4, 0.8); add('B5', 153, 1.7, 2.4, 0.8);
   for (const z of [-2.8, 0, 2.8]) add('B5', 193.5, z, 5.8 + (z === 0 ? 0.6 : 0), 1.2);
   add('B5', 197, -4, 5.0, 1.0); add('B5', 197, 4, 5.0, 1.0);
-  EXIT.nodes.forEach((n, i) => { if (i % 3 === 1 && i < 13) add('B5', n[0], n[1], EXIT.floorAt(EXIT.cum[i]) + 2.3, 0.7); });
+  EXIT.nodes.forEach((n, i) => { if (i % 2 === 1 && i < 13) add('B5', n[0], n[1], EXIT.floorAt(EXIT.cum[i]) + 2.3, 0.85); });
   for (const x of [-1.5, 3]) add('B1', x, x < 0 ? 5 : 0.2, 2.3, 0.45);
   return G;
 }
