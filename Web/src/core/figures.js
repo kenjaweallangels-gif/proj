@@ -132,7 +132,7 @@ function resolveOptions(opts) {
   // радиус пояса поверх одежды
   const layers = o.layers || [];
   let br = null;
-  const consider = (style, sc = 1) => { const rows = robeProfile(style).rows; let rx = 0.19, rz = 0.14; for (let i = 1; i < rows.length; i++) if (rows[i][0] >= 1.0) { const a = rows[i - 1], b = rows[i], t = (1.0 - a[0]) / (b[0] - a[0]); rx = a[1] + (b[1] - a[1]) * t; rz = a[2] + (b[2] - a[2]) * t; break; } rx *= sc; rz *= sc; if (!br) br = [rx, rz]; else br = [Math.max(br[0], rx), Math.max(br[1], rz)]; };
+  const consider = (style, sc = 1) => { const rows = robeProfile(style).rows; let rx = 0.19, rz = 0.14; for (let i = 1; i < rows.length; i++) if (rows[i][0] >= 1.0) { const a = rows[i - 1], b = rows[i], t = (1.0 - a[0]) / (b[0] - a[0]); rx = a[1] + (b[1] - a[1]) * t; rz = a[2] + (b[2] - a[2]) * t; break; } rx *= sc * 0.96; rz *= sc * 0.96; if (!br) br = [rx, rz]; else br = [Math.max(br[0], rx), Math.max(br[1], rz)]; };
   if (o.robe !== false) consider(o.robeStyle || 'jubba');
   o.beltR = br ? [br[0] + 0.012, br[1] + 0.012] : null;
   // лицо: возраст/пол/черты — детерминированно по сиду

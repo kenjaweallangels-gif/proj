@@ -81,7 +81,7 @@ const CAST = [
   ['Kair', { preset: 'Kair' }], ['Ilva', { preset: 'Ilva' }], ['Rayn', { preset: 'Rayn' }], ['Ossana', { preset: 'Ossana' }], ['Harmat', { preset: 'Harmat' }], ['Priestess', { preset: 'Priestess' }],
   ['Child', { name: 'NPC_Child_1', height: 1.2, cloth: '#9a7b55', accent: '#b5462c', suit: '#5a4a3a', mask: false, hood: false, hair: 'short', seed: 5 }],
   ['Elder', { name: 'NPC_Elder_1', height: 1.66, cloth: '#4e4438', accent: '#2c3e57', suit: '#3b342d', mask: false, hood: true, hair: 'short', beard: true, seed: 8, build: 'm', hairColor: '#b9b5ac', age: 0.9 }],
-  ['Rider', { preset: 'Rider' }],
+  ['Rider', { preset: 'Rider' }], ['Stillsuit', { preset: 'Stillsuit' }], ['Guard', { preset: 'Guard' }],
   ['KairBare', { preset: 'Kair', hood: false, mask: false }], ['IlvaBare', { preset: 'Ilva', hood: false, mask: false }], ['RaynBare', { preset: 'Rayn', hood: false, mask: false }], ['OssanaBare', { preset: 'Ossana', hood: false, mask: false }],
 ];
 const list = CAST.filter(([n]) => !only.length || only.includes(n));

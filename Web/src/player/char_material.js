@@ -256,8 +256,8 @@ if (rg == 0) {
   sheenK = 1.0;
 } else if (rg == 15) {
   // бахрома подола: нити с разной длиной, alpha-test
-  float u = vAux.x, v = vAux.y, cell = floor(u * 90.0), fu = fract(u * 90.0);
-  float len = 0.35 + 0.65 * hash11(cell * 1.7 + vAux.z * 13.0);
+  float u = vAux.w, v = vAux.y, cell = floor(u * 560.0), fu = fract(u * 560.0);
+  float len = 0.35 + 0.65 * hash11(cell * 1.7 + vFace.x * 13.0);
   float a = (1.0 - smoothstep(0.28, 0.5, abs(fu - 0.5))) * step(v, len);
   diffuseColor.a = max(a, step(v, 0.05));
   base = uCloth2 * (0.6 + 0.5 * hash11(cell)) * mix(1.0, 0.72, v);
@@ -322,6 +322,10 @@ if (rg == 0) {
   base = vec3(0.045, 0.04, 0.038); rough = 0.8;
   float tr = smoothstep(0.1, 0.0, abs(fract(vBind.z * 55.0) - 0.5) - 0.18) * 0.0;
   rh += (step(0.5, fract(vBind.z * 70.0)) - 0.5) * 0.8 * fadeAt(70.0); bumpAmt = 0.0012;
+} else if (rg == 16) {
+  // шланг: тёмная резина, гофра даёт блики
+  base = vec3(0.09, 0.085, 0.078) * (0.8 + 0.4 * nz2); rough = 0.42; dustK = 0.35;
+  base = mix(base, vec3(0.26, 0.21, 0.15), 0.12 * uWear);
 } else if (rg == 13) {
   base = vec3(0.62, 0.58, 0.48); rough = 0.28;
 } else if (rg == 14) {

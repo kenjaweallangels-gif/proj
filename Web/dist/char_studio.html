@@ -41988,6 +41988,8 @@ void main() {
       v -= 3e-3 * G(ax, y, 0.074, 0.04, 0.02, 0.035);
       v -= 35e-4 * G(ax, y, ex, ey, 0.019, 0.013);
       v -= (16e-4 + 45e-4 * age) * G(ax, y, ex, ey - 0.0155, 0.012, 55e-4);
+      v -= 16e-4 * G(ax, y, ex, ey + 0.0105, 0.016, 22e-4);
+      v += 22e-4 * G(ax, y, ex, ey + 0.0175, 0.018, 5e-3);
       v += P.cheek * 75e-4 * G(ax, y, 0.054, -0.012, 0.019, 0.014);
       v -= (25e-4 + 6e-3 * age * (1.1 - P.fat)) * (1.15 - P.fat * 0.6) * G(ax, y, 0.052, -0.05, 0.02, 0.02);
       const pr = tab(PR, y * (1 / nl) + (nl !== 1 ? 0 : 0)) * P.nprot * (0.78 + 0.22 * P.g), wn = tab(WN, y) * P.nwid;
@@ -42002,7 +42004,7 @@ void main() {
       v += 46e-4 * P.lips * G(ax, y, 0, -0.0575, 0.0165, 42e-4) * (1 - 0.35 * age);
       v += 56e-4 * P.lips * G(ax, y, 0, -0.0705, 0.015, 48e-4) * (1 - 0.3 * age);
       v -= 12e-4 * G(ax, y, 45e-4, -0.0485, 22e-4, 6e-3);
-      const gy = Math.exp(-(((y - YM) / 13e-4) ** 2)) * wf;
+      const gy = Math.exp(-(((y - YM) / 16e-4) ** 2)) * wf;
       v -= 45e-4 * gy;
       dark = Math.max(dark, gy * 0.95);
       v -= 22e-4 * G(ax, y, mw * 1.08, YM, 45e-4, 45e-4);
@@ -42347,7 +42349,7 @@ void main() {
   for (const s of ["L", "R"]) ["sh", "el", "hand", "hip", "kn", "foot", "toe"].forEach((n, i) => {
     BI[n + s] = SB[s] + i;
   });
-  var REG = { SUIT: 0, SKIN: 1, CLOTH: 2, ACCENT: 3, LEATHER: 4, METAL: 5, HAIR: 6, SCLERA: 7, IRIS: 8, LIP: 9, SOLE: 10, LINING: 11, CLOTH2: 12, TOOTH: 13, MOUTH: 14 };
+  var REG = { SUIT: 0, SKIN: 1, CLOTH: 2, ACCENT: 3, LEATHER: 4, METAL: 5, HAIR: 6, SCLERA: 7, IRIS: 8, LIP: 9, SOLE: 10, LINING: 11, CLOTH2: 12, TOOTH: 13, MOUTH: 14, FRINGE: 15, HOSE: 16 };
   var clamp4 = (v, a, b) => Math.min(b, Math.max(a, v));
   var sstep2 = (a, b, v) => {
     const t = clamp4((v - a) / (b - a), 0, 1);
@@ -42563,7 +42565,7 @@ void main() {
       rings.push(ring);
     }
     const aux = o.aux || [0, 0, 0.2, 0];
-    b.loft(rings, (j, i, p) => ({ reg, aux: [aux[0], aux[1], aux[2], aux[3]], sk: skFn(p[1], p) }), { capStart: true, capEnd: true });
+    b.loft(rings, (j, i, p) => ({ reg, aux: o.auxFn ? o.auxFn(p) : [aux[0], aux[1], aux[2], aux[3]], sk: skFn(p[1], p) }), { capStart: !o.noCaps, capEnd: !o.noCaps });
   }
   var BUILDS = {
     m: { sh: 1, chest: 1, waist: 1, hip: 1, depth: 1, bust: 0, limb: 1, head: 1 },
@@ -42595,6 +42597,27 @@ void main() {
   }
   var TORSO_SK = [[1.52, BI.neck], [1.43, BI.chest], [1.15, BI.chest], [1, BI.spine], [0.9, BI.pelvis]];
   var ribs = (y, s = 1) => [y, s, 0, 0];
+  var bump = (y, c, w) => Math.exp(-(((y - c) / w) ** 2));
+  var zLeg = (y) => 0.16 + 0.84 * Math.max(bump(y, 0.49, 0.075), bump(y, 0.16, 0.05), bump(y, 0.93, 0.06));
+  var zArm = (y) => 0.16 + 0.84 * Math.max(bump(y, 1.13, 0.07), bump(y, 0.9, 0.045), bump(y, 1.42, 0.05));
+  var zTor = (y) => 0.2 + 0.8 * Math.max(bump(y, 1.02, 0.07), bump(y, 1.46, 0.04), bump(y, 0.8, 0.05));
+  function band(b, cx, cz, y, rx, rz, h, reg, stops, N, ang) {
+    const R = (yy, d) => ringY(yy, cx, cz, rx + d, rz + d, N);
+    b.loft([R(y - h / 2, 8e-4), R(y - h / 2, 46e-4), R(y + h / 2, 46e-4), R(y + h / 2, 8e-4)], (j, i, p) => ({ reg, aux: [0, 0, 0.45, 0], sk: skY(p[1], stops) }));
+    const x = cx + Math.sin(ang) * (rx + 65e-4), z = cz + Math.cos(ang) * (rz + 65e-4);
+    ellipsoid(b, [x, y, z], [85e-4, h * 0.62, 35e-4], REG.METAL, skY(y, stops), { u: 6, v: 4, rot: [0, ang, 0], aux: [0, 0, 0.1, 0] });
+  }
+  function hose(b, ctrl, r0, skFn, o = {}) {
+    const curve = new CatmullRomCurve3(ctrl.map((p) => new Vector3(...p)), false, "centripetal");
+    const L = curve.getLength(), n = Math.max(6, Math.round(L / (o.step ?? 55e-4)));
+    const pts = curve.getSpacedPoints(n).map((v) => [v.x, v.y, v.z]);
+    const period = o.period ?? 0.011;
+    tube(b, pts, (t) => r0 * (0.86 + 0.2 * Math.abs(Math.sin(t * L / period * Math.PI))) * (t < 0.03 || t > 0.97 ? 0.92 : 1), o.reg ?? REG.HOSE, skFn, { seg: o.seg ?? 6, aux: [0, 0, 0.1, 0] });
+    if (o.clamps !== false) for (const t of [0.015, 0.985]) {
+      const p = curve.getPoint(t), q = curve.getPoint(t < 0.5 ? t + 0.02 : t - 0.02);
+      tube(b, [[p.x, p.y, p.z], [(p.x + q.x) / 2, (p.y + q.y) / 2, (p.z + q.z) / 2]], r0 * 1.32, REG.METAL, skFn, { seg: 6, aux: [0, 0, 0.1, 0] });
+    }
+  }
   function buildBody(o, lod) {
     const b = new GB();
     const B = BUILDS[o.build] || BUILDS.m;
@@ -42614,10 +42637,10 @@ void main() {
       ys.push(torso[torso.length - 1][0]);
       const rings = ys.map((y) => {
         const rx = interp(torso, y, 1), rz = interp(torso, y, 2), cz = interp(torso, y, 3);
-        const rib = hiRibs && !bare ? (a) => 1 + 6e-3 * Math.sin(y * 150) : null;
+        const rib = hiRibs && !bare ? (a) => 1 + 6e-3 * zTor(y) * Math.sin(y * 150) : null;
         return ringY(y, 0, cz, rx, rz, N, rib);
       });
-      b.loft(rings, (j, i, p) => ({ reg: p[1] > 1.5 ? REG.SKIN : bodyReg, aux: [ribs(p[1])[0], p[1] > 1.5 ? 0 : ribAmt, 0.15 * (1 - Math.abs(Math.cos(i / N * 6.2832))), i / N], sk: skY(p[1], TORSO_SK) }), { capStart: true });
+      b.loft(rings, (j, i, p) => ({ reg: p[1] > 1.5 ? REG.SKIN : bodyReg, aux: [ribs(p[1])[0], p[1] > 1.5 ? 0 : ribAmt * zTor(p[1]), 0.15 * (1 - Math.abs(Math.cos(i / N * 6.2832))), i / N], sk: skY(p[1], TORSO_SK) }), { capStart: true });
     }
     if (!bare) {
       const rings = [1.44, 1.47, 1.5, 1.53].map((y, k) => ringY(y, 0, 0, [0.075, 0.07, 0.062, 0.06][k], [0.07, 0.066, 0.06, 0.058][k], N));
@@ -42660,9 +42683,13 @@ void main() {
       const rings = useRows.map((y) => {
         const rx = interp(legRows, y, 1) * B.limb, rz = interp(legRows, y, 2) * B.limb, cz = interp(legRows, y, 3);
         const knee = Math.exp(-(((y - 0.49) / 0.03) ** 2)) * 6e-3;
-        return ringY(y, cx, cz + knee * 0.5, rx, rz, N, hiRibs && !bare ? () => 1 + 6e-3 * Math.sin(y * 160) : null);
+        return ringY(y, cx, cz + knee * 0.5, rx, rz, N, hiRibs && !bare ? () => 1 + 6e-3 * zLeg(y) * Math.sin(y * 160) : null);
       });
-      b.loft(rings, (j, i, p) => ({ reg: bodyReg, aux: [p[1], ribAmt, 0.15 + 0.5 * Math.exp(-(((p[1] - 0.49) / 0.05) ** 2)), i / N], sk: skY(p[1], stops) }), { capEnd: false });
+      b.loft(rings, (j, i, p) => ({ reg: bodyReg, aux: [p[1], ribAmt * zLeg(p[1]), 0.15 + 0.5 * Math.exp(-(((p[1] - 0.49) / 0.05) ** 2)), i / N], sk: skY(p[1], stops) }), { capEnd: false });
+      if (lod < 2 && !bare) {
+        band(b, cx, 0, 0.69, 0.083 * B.limb, 0.088 * B.limb, 0.03, REG.LEATHER, stops, 14, s * 0.9);
+        band(b, cx, 0, 0.39, 0.052 * B.limb, 0.057 * B.limb, 0.022, REG.LEATHER, stops, 12, s * 0.9);
+      }
       if (lod < 2) ellipsoid(b, [cx, 0.5, 0.064 * B.limb], [0.044, 0.05, 0.016], REG.LEATHER, [BI["kn" + side], 1], { u: 8, v: 5, aux: [0.5, 0, 0.5, 0] });
       if (lod < 2 && !bare) {
         ellipsoid(b, [cx + s * 0.065, 0.74, 0.045], [0.026, 0.085, 0.05], REG.LEATHER, [BI["hip" + side], 1], { u: 8, v: 6, rot: [0, 0, s * 0.06], aux: [0.74, 0, 0.6, 0] });
@@ -42683,6 +42710,12 @@ void main() {
       b.loft(rings, (j, i, p) => ({ reg: REG.LEATHER, aux: [p[2] * 2, 0, 0.5, 0], sk: footSk(p[2]) }), { capStart: true, capEnd: true });
       const sole = [[-0.098, 0.016, 0.032], [-0.04, 0.012, 0.047], [0.08, 0.012, 0.05], [0.2, 0.012, 0.034], [0.238, 0.014, 0.022]];
       b.loft((lod === 2 ? [sole[0], sole[2], sole[4]] : sole).map(([z, cy, rx]) => ringZ(z, cx, cy, rx * B.limb, 0.014, [10, 6, 4][lod])), (j, i, p) => ({ reg: REG.SOLE, aux: [0, 0, 0.7, 0], sk: footSk(p[2]) }), { capStart: true, capEnd: true });
+      if (lod < 2) {
+        band(b, cx, 0, 0.25, 0.057 * B.limb, 0.062 * B.limb, 0.02, REG.LEATHER, shaftStops, 12, s * 0.8);
+        band(b, cx, 0, 0.19, 0.053 * B.limb, 0.059 * B.limb, 0.018, REG.LEATHER, shaftStops, 12, s * 0.8);
+        ellipsoid(b, [cx, 0.052, 0.185], [0.034 * B.limb, 0.026, 0.05], REG.LEATHER, [BI["foot" + side], 0.3, BI["toe" + side], 0.7], { u: 10, v: 6, aux: [0, 0, 0.6, 0] });
+        ellipsoid(b, [cx, 0.014, -0.058], [0.04 * B.limb, 0.016, 0.04], REG.SOLE, [BI["foot" + side], 1], { u: 8, v: 5, aux: [0, 0, 0.7, 0] });
+      }
       if (lod < 2) ellipsoid(b, [cx, 0.1, -0.094], [0.024, 0.034, 0.018], REG.METAL, [BI["foot" + side], 1], { u: 8, v: 5, aux: [0, 0, 0.2, 0] });
     }
     else for (const s of [-1, 1]) {
@@ -42709,20 +42742,37 @@ void main() {
       const useRows = lod === 2 ? [0, 3, 5, 8].map((i) => armRows[i]) : lod === 1 ? armRows.filter((_, i) => i % 2 === 0) : armRows;
       const rings = useRows.map(([y]) => {
         const rx = interp(armRows, y, 1) * B.limb, rz = interp(armRows, y, 2) * B.limb, cz = interp(armRows, y, 3);
-        return ringY(y, cx, cz, rx, rz, [12, 8, 5][lod], hiRibs && !bare ? () => 1 + 6e-3 * Math.sin(y * 150) : null);
+        return ringY(y, cx, cz, rx, rz, [12, 8, 5][lod], hiRibs && !bare ? () => 1 + 6e-3 * zArm(y) * Math.sin(y * 150) : null);
       });
-      b.loft(rings, (j, i, p) => ({ reg: bodyReg, aux: [p[1], ribAmt, 0.12 + 0.5 * Math.exp(-(((p[1] - 1.13) / 0.05) ** 2)), i / N], sk: skY(p[1], stops) }), { capEnd: false });
+      b.loft(rings, (j, i, p) => ({ reg: bodyReg, aux: [p[1], ribAmt * zArm(p[1]), 0.12 + 0.5 * Math.exp(-(((p[1] - 1.13) / 0.05) ** 2)), i / N], sk: skY(p[1], stops) }), { capEnd: false });
+      if (lod < 2 && !bare) {
+        band(b, cx, 0, 1.02, 0.037 * B.limb, 0.04 * B.limb, 0.02, REG.LEATHER, stops, 10, -s * 0.9);
+        ellipsoid(b, [cx, 1.13, -0.036 * B.limb], [0.03, 0.036, 0.012], REG.LEATHER, [BI["el" + side], 1], { u: 8, v: 5, aux: [0, 0, 0.5, 0] });
+      }
       if (o.armPads && lod < 2) b.loft([1.12, 1.06, 0.98, 0.92].map((y, k) => ringY(y, cx, 0, [0.046, 0.047, 0.042, 0.036][k], [0.048, 0.049, 0.044, 0.038][k], N)), (j, i, p) => ({ reg: REG.LEATHER, aux: [0, 0, 0.5, 0], sk: skY(p[1], stops) }));
       const hreg = gloves ? REG.SUIT : REG.SKIN, hsk = [BI["hand" + side], 1], inw = -s;
       if (gloves) b.loft([0.915, 0.9, 0.88, 0.86].map((y, k) => ringY(y, cx, 0, [0.036, 0.034, 0.03, 0.028][k], [0.037, 0.036, 0.034, 0.03][k], 10)), (j, i, p) => ({ reg: REG.ACCENT, aux: [0, 0, 0.3, 0], sk: skY(p[1], stops) }));
       b.loft([0.87, 0.82, 0.77, 0.745].map((y, k) => ringY(y, cx, 0, [0.019, 0.02, 0.019, 0.015][k], [0.032, 0.039, 0.04, 0.036][k], [10, 7, 5][lod])), (j, i, p) => ({ reg: hreg, aux: [p[1], gloves ? 0.6 : 0, 0.2, 0], sk: hsk }), { capEnd: true });
       if (lod === 0) {
-        const lens = [0.085, 0.1, 0.094, 0.076], zs = [-0.027, -9e-3, 9e-3, 0.026];
+        const lens = [0.086, 0.1, 0.093, 0.074], zs = [-0.0265, -88e-4, 92e-4, 0.0268], curl = [0.78, 0.92, 1.05, 1.2], fan = [-0.1, -0.03, 0.04, 0.12];
         zs.forEach((z, k) => {
-          const L = lens[k], pts = [[cx, 0.752, z], [cx + inw * 2e-3, 0.752 - L * 0.36, z + 2e-3], [cx + inw * 0.012, 0.752 - L * 0.66, z + 4e-3], [cx + inw * 0.03, 0.752 - L * 0.88, z + 4e-3], [cx + inw * 0.042, 0.752 - L * 0.99 - 4e-3, z + 3e-3]];
-          tube(b, pts, (t) => 83e-4 - t * 25e-4, hreg, () => hsk, { seg: 6, aux: [0.6, gloves ? 0.4 : 0, 0.25, 0] });
+          const L = lens[k], ph = [0.46, 0.3, 0.24];
+          let x = cx, y = 0.754, zz = z, ang = 0;
+          const pts = [[x, y, zz]];
+          for (let q = 0; q < 3; q++) {
+            ang += [0.16, 0.42, 0.62][q] * curl[k];
+            const len = L * ph[q];
+            x += inw * Math.sin(ang) * len;
+            y -= Math.cos(ang) * len;
+            zz += fan[k] * len;
+            pts.push([x, y, zz]);
+          }
+          const dense = new CatmullRomCurve3(pts.map((p) => new Vector3(...p))).getPoints(9).map((v) => [v.x, v.y, v.z]);
+          tube(b, dense, (t) => (86e-4 - t * 28e-4) * (1 + 0.1 * Math.abs(Math.sin(t * Math.PI * 2.9))), hreg, () => hsk, { seg: 6, aux: [0.6, gloves ? 0.4 : 0, 0.25, 0] });
+          const e = dense[dense.length - 1];
+          if (!gloves) ellipsoid(b, [e[0] - inw * 2e-3, e[1] + 6e-3, e[2]], [42e-4, 75e-4, 35e-4], REG.SKIN, hsk, { u: 6, v: 4, rot: [0, 0, inw * 0.9], aux: [0, 0, 0, 0] });
         });
-        tube(b, [[cx + inw * 0.01, 0.8, 0.03], [cx + inw * 0.022, 0.77, 0.048], [cx + inw * 0.034, 0.75, 0.056], [cx + inw * 0.044, 0.73, 0.056]], (t) => 0.0105 - t * 35e-4, hreg, () => hsk, { seg: 6, aux: [0.6, gloves ? 0.4 : 0, 0.25, 0] });
+        tube(b, new CatmullRomCurve3([[cx + inw * 9e-3, 0.8, 0.028], [cx + inw * 0.022, 0.775, 0.045], [cx + inw * 0.034, 0.752, 0.056], [cx + inw * 0.046, 0.733, 0.057]].map((p) => new Vector3(...p))).getPoints(8).map((v) => [v.x, v.y, v.z]), (t) => (0.0108 - t * 36e-4) * (1 + 0.08 * Math.sin(t * Math.PI * 2)), hreg, () => hsk, { seg: 6, aux: [0.6, gloves ? 0.4 : 0, 0.25, 0] });
       } else {
         ellipsoid(b, [cx + inw * 0.018, 0.7, 2e-3], [0.016, 0.052, 0.034], hreg, hsk, { u: 8, v: 4, aux: [0, 0, 0.2, 0] });
       }
@@ -42817,10 +42867,10 @@ void main() {
     if (maskUp && lod < 2) {
       for (const s of [-1, 1]) {
         const pts2 = [[0.012 * s, HEAD_Y - 0.034 * hs, 0.104 * hs], [0.026 * s, HEAD_Y - 0.04 * hs, 0.1 * hs], [0.056 * s, HEAD_Y - 0.052 * hs, 0.085 * hs], [0.082 * s, HEAD_Y - 0.085 * hs, 0.05 * hs], [0.078 * s, HEAD_Y - 0.14 * hs, 0.036 * hs], [0.07 * s, HEAD_Y - 0.19 * hs, 0.03 * hs], [0.09 * s, 1.43, 0.045]];
-        tube(b, pts2, 72e-4, REG.METAL, (y) => y > HEAD_Y - 0.15 ? HSK2 : [BI.neck, 1], { seg: 6, aux: [0, 0, 0.1, 0] });
+        hose(b, pts2, 66e-4, (y) => y > HEAD_Y - 0.15 ? HSK2 : [BI.neck, 1], { seg: 5, step: 45e-4, period: 8e-3, clamps: false });
       }
       const pts = [[0.032, HEAD_Y - 0.066 * hs, 0.096 * hs], [0.045, HEAD_Y - 0.085 * hs, 0.1 * hs], [0.05, HEAD_Y - 0.13 * hs, 0.098 * hs], [0.04, 1.44, 0.11], [0.03, 1.36, 0.125], [0.05, 1.28, 0.145], [0.075, 1.2, 0.152]];
-      tube(b, pts, 78e-4, REG.METAL, (y) => y > 1.49 ? HSK2 : y > 1.4 ? [BI.neck, 1] : [BI.chest, 1], { seg: 6, aux: [0, 0, 0.1, 0] });
+      hose(b, pts, 92e-4, (y) => y > 1.49 ? HSK2 : y > 1.4 ? [BI.neck, 1] : [BI.chest, 1], { seg: 6, period: 95e-4, clamps: true });
       ellipsoid(b, [0.03, HEAD_Y - 0.068 * hs, 0.103 * hs], [0.015, 0.011, 0.012], REG.METAL, HSK2, { u: 8, v: 5, aux: [0, 0, 0.1, 0] });
       ellipsoid(b, [0.075, 1.19, 0.153], [0.014, 0.01, 0.012], REG.METAL, [BI.chest, 1], { u: 6, v: 4, aux: [0, 0, 0, 0] });
     }
@@ -42828,13 +42878,26 @@ void main() {
   function buildSuitTubes(b, o, lod, torso) {
     for (const s of [-1, 1]) {
       const pts = [];
-      const ys = [0.84, 0.95, 1.06, 1.17, 1.28, 1.38, 1.45, 1.49];
+      const ys = [1.49, 1.43, 1.35, 1.25, 1.15, 1.05, 0.95, 0.86];
       ys.forEach((y, k) => {
         const rx = interp(torso, y, 1), rz = interp(torso, y, 2), cz = interp(torso, y, 3);
-        const a = (0.95 - k * 0.07) * s;
-        pts.push([Math.sin(a) * (rx + 0.01), y, Math.cos(a) * (rz + 0.01) + cz]);
+        const a = (0.5 + Math.sin(k * 0.9) * 0.08 + k * 0.1) * s;
+        pts.push([Math.sin(a) * (rx + 0.014), y, Math.cos(a) * (rz + 0.014) + cz]);
       });
-      tube(b, pts, 95e-4, REG.METAL, (y) => skY(y, TORSO_SK), { seg: 6, aux: [0, 0, 0.1, 0] });
+      hose(b, pts, 0.0105, (y) => skY(y, TORSO_SK), { seg: lod === 0 ? 6 : 5 });
+    }
+    if (o.robe === false && lod < 2) {
+      const rowsY = [1.44, 1.38, 1.3, 1.22, 1.15];
+      const arc = 1;
+      const rings = rowsY.map((y) => {
+        const rx = interp(torso, y, 1) + 85e-4, rz = interp(torso, y, 2) + 85e-4, cz = interp(torso, y, 3);
+        return ringY(y, 0, cz, rx, rz, 14, null, -arc, arc, true);
+      });
+      b.loft(rings, (j, i, p) => ({ reg: REG.SUIT, aux: [0, 0, 0.2, i / 14], sk: skY(p[1], TORSO_SK) }), { closed: false });
+      const edgeL = rings.map((r) => r[0]), edgeR = rings.map((r) => r[r.length - 1]), bot = rings[rings.length - 1];
+      tube(b, [...edgeL, ...bot.slice(1, -1), ...edgeR.slice().reverse()], 42e-4, REG.LEATHER, (y) => skY(y, TORSO_SK), { seg: 5, aux: [0, 0, 0.4, 0] });
+      ellipsoid(b, [0, 1.17, interp(torso, 1.17, 3) - interp(torso, 1.17, 2) - 0.02], [0.115, 0.15, 0.03], REG.SUIT, [BI.chest, 1], { u: 12, v: 8, aux: [0, 0, 0.3, 0] });
+      for (const s of [-1, 1]) hose(b, [[s * 0.05, 1.3, -0.1], [s * 0.1, 1.38, -0.09], [s * 0.14, 1.43, -0.04], [s * 0.1, 1.48, 0.02]], 85e-4, () => [BI.chest, 1], { clamps: true });
     }
   }
   function buildBelt(b, o, lod, torso, B) {
@@ -42884,37 +42947,79 @@ void main() {
     const r = ROBE_ROWS[style] || ROBE_ROWS.jubba;
     return { rows: r, hemY: r[0][0] };
   }
-  function clothLayer(b, layer, lod, B, N) {
+  function makePleat(R, nf) {
+    const H = [{ k: nf, ph: R() * 6.283, w: 1, tw: (R() - 0.5) * 2.2 }, { k: Math.round(nf * 2.1), ph: R() * 6.283, w: 0.42, tw: (R() - 0.5) * 3 }, { k: Math.round(nf * 0.5) + 1, ph: R() * 6.283, w: 0.55, tw: (R() - 0.5) * 1.5 }, { k: Math.round(nf * 3.7), ph: R() * 6.283, w: 0.16, tw: 0 }];
+    const norm = H.reduce((a, h) => a + h.w, 0);
+    return (a, y) => {
+      let f = 0;
+      for (const h of H) f += h.w * Math.cos(h.k * a + h.ph + h.tw * y);
+      f /= norm;
+      return f > 0 ? f : f * 0.8;
+    };
+  }
+  function clothLayer(b, layer, lod, B, N, seed = 1) {
     const { style } = layer, rows = ROBE_ROWS[style] || ROBE_ROWS.jubba;
     const hemY = rows[0][0], topY = 1.49;
+    const R = rng(seed);
     const fold = layer.fold ?? (style === "heavy" ? 0.045 : 0.05), nf = layer.folds ?? 9;
-    const nRings = [22, 12, 6][lod];
+    const pleat = makePleat(R, nf), sc = layer.scale ?? 1;
+    const nRings = [30, 14, 7][lod];
     const ys = [];
     for (let k = 0; k < nRings; k++) ys.push(lerp4(hemY, topY, k / (nRings - 1)));
-    const cs = [[1.05, BI.spine], [0.95, BI.pelvis]];
     const sk = (y) => skY(y, [[1.52, BI.neck], [1.43, BI.chest], [1.18, BI.chest], [1.05, BI.spine], [0.93, BI.pelvis]]);
     const hemSkew = layer.asym ?? 0, tear = layer.tear ?? 0;
     const th0 = layer.open ?? (style === "cape" ? 0.55 : style === "shawl" ? 0.5 : style === "heavy" ? 0.42 : 0);
-    const rings = ys.map((y) => {
-      const rx = interp(rows, y, 1) * (layer.scale ?? 1), rz = interp(rows, y, 2) * (layer.scale ?? 1), cz = interp(rows, y, 3);
-      const below = clamp4((1.12 - y) / 0.9, 0, 1), amp = fold * 2.6 * (0.25 + 0.75 * below * below) + 4e-3;
-      const pts = ringY(y, 0, cz, rx * (y < 1.45 ? B.sh * 0.5 + 0.5 : 1), rz, N, (a) => 1 + amp * (Math.sin(a * nf + 0.7) * 0.6 + Math.sin(a * nf * 2.3 + 1.9) * 0.28 + Math.sin(a * 3.1) * 0.3), th0, Math.PI * 2 - th0, th0 > 0);
-      if (y - hemY < 1e-4) pts.forEach((p, i) => {
-        const a = th0 + (Math.PI * 2 - 2 * th0) * i / N;
-        p[1] += 0.03 * Math.sin(a * 3 + 0.5) + 0.018 * Math.sin(a * 7) + hemSkew * 0.1 * Math.max(0, Math.sin(a)) + tear * 0.06 * Math.max(0, Math.sin(a * 5 + 2));
-      });
+    const beltable = !layer.noBelt && (style === "jubba" || style === "kaftan" || style === "tunic");
+    const aOf = (i) => th0 + (Math.PI * 2 - 2 * th0) * i / N;
+    const closedRing = th0 === 0;
+    const cols = closedRing ? N : N + 1;
+    const hemPts = [];
+    const rings = ys.map((y, j) => {
+      const rx = interp(rows, y, 1) * sc, rz = interp(rows, y, 2) * sc, cz = interp(rows, y, 3);
+      const below = clamp4((1.12 - y) / 0.9, 0, 1), amp = fold * 2.9 * (0.12 + 0.88 * below * below) + 3e-3;
+      const cinch = beltable ? 1 - 0.04 * Math.exp(-(((y - 1) / 0.045) ** 2)) + 0.028 * Math.exp(-(((y - 1.1) / 0.06) ** 2)) : 1;
+      const gather = beltable ? Math.exp(-(((y - 1.1) / 0.07) ** 2)) * 0.012 : 0;
+      const pts = [];
+      for (let i = 0; i < cols; i++) {
+        const a = closedRing ? i / N * Math.PI * 2 : aOf(i);
+        const f = pleat(a, y), m = cinch * (1 + amp * f) + gather * Math.cos(a * (nf * 3 + 2) + 0.5);
+        const hemLift = j === 0 ? 0.03 * Math.sin(a * 3 + 0.5) + 0.018 * Math.sin(a * 7) + hemSkew * 0.1 * Math.max(0, Math.sin(a)) + tear * 0.06 * Math.max(0, Math.sin(a * 5 + 2)) + 0.022 * Math.max(0, f) : 0;
+        const flare = j < 2 ? (1 - j) * 0.012 + 6e-3 * (j === 1 ? 1 : 0) : 0;
+        pts.push([Math.sin(a) * (rx * (y < 1.45 ? B.sh * 0.5 + 0.5 : 1)) * (m + flare), y + hemLift, cz + Math.cos(a) * rz * (m + flare)]);
+        if (j === 0) hemPts.push(pts[pts.length - 1]);
+      }
       return pts;
     });
     b.loft(rings, (j, i, p) => {
-      const y = p[1], hemBand = y < hemY + 0.045;
+      const y = p[1], hemBand = y < hemY + 0.05;
       const flex = clamp4((1.08 - y) / (1.08 - hemY), 0, 1);
-      const a = th0 + (Math.PI * 2 - 2 * th0) * i / N;
+      const a = closedRing ? i / N * Math.PI * 2 : aOf(i);
+      const f = pleat(a, y);
       const edge = th0 > 0 ? i <= 1 || i >= N - 1 : a < 0.08 || a > Math.PI * 2 - 0.08;
       const trim = hemBand && layer.hemTrim || layer.frontTrim && edge && y > 1;
-      return { reg: trim ? REG.ACCENT : layer.reg ?? REG.CLOTH, aux: [flex * flex, layer.lining ? 1 : 0, y * 2, a], sk: sk(y) };
-    }, { capStart: false, closed: th0 === 0 });
+      return { reg: trim ? REG.ACCENT : layer.reg ?? REG.CLOTH, aux: [flex * flex, layer.lining ? 1 : 0, 0.5 + 0.5 * f, a], sk: sk(y) };
+    }, { capStart: false, closed: closedRing });
+    if (lod < 2) {
+      const hemReg = layer.hemTrim ? REG.ACCENT : layer.reg ?? REG.CLOTH;
+      const rr = 75e-4;
+      tube(b, closedRing ? [...hemPts, hemPts[0]] : hemPts, rr, hemReg, (y, p) => sk(y), { seg: 5, auxFn: (p) => [clamp4((1.08 - p[1]) / (1.08 - hemY), 0, 1) ** 2, 0, 0.7, 0], noCaps: closedRing });
+      if (!closedRing) for (const side of [0, cols - 1]) tube(b, rings.map((r) => r[side]), 65e-4, layer.frontTrim ? REG.ACCENT : layer.reg ?? REG.CLOTH, (y) => sk(y), { seg: 5, auxFn: (p) => [clamp4((1.08 - p[1]) / (1.08 - hemY), 0, 1) ** 2, 0, 0.8, 0] });
+      const fr = layer.fringe ?? (tear > 0.2 || (layer.wear ?? 0) > 0.45);
+      if (fr && lod === 0) {
+        const depth = 0.04, base = b.n, K = hemPts.length;
+        for (let i = 0; i < K; i++) for (let r = 0; r < 2; r++) {
+          const p = hemPts[i], v = r, y = p[1] - 4e-3 - depth * r, a = closedRing ? i / N * Math.PI * 2 : aOf(i);
+          b.vert(p[0] * (1.004 + 6e-3 * r), y, p[2] * (1.004 + 6e-3 * r) - 0, REG.FRINGE, [clamp4((1.08 - p[1]) / (1.08 - hemY), 0, 1) ** 2, v, 0.5, a / (Math.PI * 2)], sk(y), [Math.random() * 0 + i % 7 / 7, 0, 0, 0]);
+        }
+        for (let i = 0; i < K - 1; i++) {
+          const a0 = base + i * 2;
+          b.idx.push(a0, a0 + 1, a0 + 2, a0 + 1, a0 + 3, a0 + 2);
+          b.idx.push(a0, a0 + 2, a0 + 1, a0 + 1, a0 + 2, a0 + 3);
+        }
+      }
+    }
     if (layer.collar && lod < 2) {
-      b.loft([1.5, 1.47, 1.43].map((y, k) => ringY(y, 0, 0, [0.095, 0.115, 0.15][k], [0.085, 0.1, 0.12][k], N, (a) => 1 + 0.07 * Math.sin(a * 7))), (j, i, p) => ({ reg: REG.CLOTH, aux: [0, 0, p[1], 0], sk: skY(p[1], [[1.52, BI.neck], [1.43, BI.chest]]) }), {});
+      b.loft([1.5, 1.47, 1.43].map((y, k) => ringY(y, 0, 0, [0.095, 0.115, 0.15][k], [0.085, 0.1, 0.12][k], N, (a) => 1 + 0.07 * Math.sin(a * 7))), (j, i, p) => ({ reg: REG.CLOTH, aux: [0, 0, 0.7, i / N * 6.28], sk: skY(p[1], [[1.52, BI.neck], [1.43, BI.chest]]) }), {});
     }
   }
   function sleeves(b, o, lod, B, N) {
@@ -42932,7 +43037,7 @@ void main() {
         const nn = Math.max(6, [12, 8, 5][lod]);
         return ringY(y, cx + s * 6e-3, 0, r, r * 1.04, nn, (a) => 1 + 0.06 * Math.sin(a * 3 + y * 11) * sstep2(1.3, to, y));
       });
-      b.loft(rings, (j, i, p) => ({ reg: p[1] < to + 0.04 && o.cuffTrim ? REG.ACCENT : REG.CLOTH2, aux: [0.25 * sstep2(1.25, to, p[1]) ** 2, 0, p[1] * 2, i], sk: skY(p[1], stops) }), { capStart: false });
+      b.loft(rings, (j, i, p) => ({ reg: p[1] < to + 0.04 && o.cuffTrim ? REG.ACCENT : REG.CLOTH2, aux: [0.25 * sstep2(1.25, to, p[1]) ** 2, 0, 0.55 + 0.4 * Math.sin(i * 1.7 + p[1] * 9), i * 0.7], sk: skY(p[1], stops) }), { capStart: false });
     }
   }
   function clothHood(b, o, lod, B) {
@@ -42948,7 +43053,7 @@ void main() {
     });
     b.loft(rings, (j, i, p) => {
       const y = p[1] - HEAD_Y, back = clamp4(Math.abs(i / N - 0.5) * 2, 0, 1);
-      return { reg: REG.CLOTH, aux: [0.18 * (y < -0.1 ? 1 : 0.4) * back + (y > 0.1 ? 0.12 * back : 0), 0, p[1] * 2, i], sk: y < -0.15 ? skY(p[1], [[1.5, BI.head], [1.43, BI.chest]]) : HSK2 };
+      return { reg: REG.CLOTH, aux: [0.18 * (y < -0.1 ? 1 : 0.4) * back + (y > 0.1 ? 0.12 * back : 0), 0, 0.5 + 0.4 * Math.sin(i * 1.3 + y * 20), i * 0.3], sk: y < -0.15 ? skY(p[1], [[1.5, BI.head], [1.43, BI.chest]]) : HSK2 };
     }, { closed: false, capEnd: true });
     if (lod < 2) {
       const k0 = 3, e0 = rings.slice(k0).map((r) => r[0]), e1 = rings.slice(k0).map((r) => r[r.length - 1]);
@@ -42961,7 +43066,7 @@ void main() {
       const t = (1.5 - y) / 0.4;
       return ringY(y, 0, -0.04 - t * 0.04, 0.12 + t * 0.07, 0.1 + t * 0.03, N, (a) => 1 + 0.04 * Math.sin(a * 5 + y * 8), Math.PI * 0.55, Math.PI * 1.45, true);
     });
-    b.loft(rings, (j, i, p) => ({ reg: REG.CLOTH, aux: [clamp4((1.5 - p[1]) / 0.4, 0, 1) ** 1.5, 0, p[1] * 2, i], sk: skY(p[1], [[1.52, BI.neck], [1.43, BI.chest], [1.15, BI.chest]]) }), { closed: false });
+    b.loft(rings, (j, i, p) => ({ reg: REG.CLOTH, aux: [clamp4((1.5 - p[1]) / 0.4, 0, 1) ** 1.5, 0, 0.5 + 0.45 * Math.sin(i * 1.9 + p[1] * 6), i * 0.4], sk: skY(p[1], [[1.52, BI.neck], [1.43, BI.chest], [1.15, BI.chest]]) }), { closed: false });
   }
   function scarf(b, o, lod, B) {
     const ys = lod === 0 ? 14 : 7, pts = [], N = 4;
@@ -42975,11 +43080,11 @@ void main() {
   function buildCloth(o, lod) {
     const b = new GB();
     const B = BUILDS[o.build] || BUILDS.m;
-    const N = [44, 24, 12][lod];
+    const N = [64, 30, 14][lod];
     const hasRobe = o.robe !== false;
     const layers = o.layers || [];
-    if (hasRobe) clothLayer(b, { reg: REG.CLOTH2, style: o.robeStyle || "jubba", hemTrim: o.hemTrim, frontTrim: o.frontTrim, asym: o.asym, tear: o.tear, lining: o.lining, collar: true, fold: o.fold }, lod, B, N);
-    for (const l of layers) clothLayer(b, l, lod, B, N);
+    if (hasRobe) clothLayer(b, { reg: REG.CLOTH2, style: o.robeStyle || "jubba", hemTrim: o.hemTrim, frontTrim: o.frontTrim, asym: o.asym, tear: o.tear, lining: o.lining, collar: true, fold: o.fold, wear: o.wear }, lod, B, N, (o.seed | 0) + 3);
+    layers.forEach((l, li) => clothLayer(b, { wear: o.wear, ...l }, lod, B, N, (o.seed | 0) + 17 + li * 5));
     if (hasRobe) sleeves(b, o, lod, B, Math.max(8, N / 3 | 0));
     if (o.cowl !== false && o.hoodUp !== false && o.hood !== false) {
       clothHood(b, o, lod, B);
@@ -43242,12 +43347,12 @@ if (rg == 0) {
   sk = mix(sk, sk * vec3(0.78, 0.5, 0.5), vFace.y * 0.85 * hd);
   sk *= 1.0 - 0.8 * lash * hd;
   // \u0431\u0440\u043E\u0432\u0438 (\u0448\u0442\u0440\u0438\u0445\u0438)
-  float yb = 0.0405 + 0.009 * min(1.0, hax / 0.055) + 0.002;
-  float bd = (hp.y - yb) - (-0.007 * smoothstep(0.012, 0.0, hax - 0.052) * 0.0);
-  float bm = (1.0 - smoothstep(0.0052, 0.0075, abs(hp.y - (yb - 0.0045 + 0.012 * smoothstep(0.03, 0.062, hax) * 0.6))) ) * smoothstep(0.012, 0.018, hax) * (1.0 - smoothstep(0.052, 0.066, hax));
-  float strokes = 0.55 + 0.45 * vnoise(vec3(hp.x * 850.0, hp.y * 160.0, hp.z * 100.0));
-  bm *= smoothstep(0.1, 0.5, strokes) * uBrowK * step(0.0, hp.z - 0.04) * hd;
-  sk = mix(sk, uHair * 0.7, bm * 0.8);
+  float yc = 0.0385 + 0.011 * min(1.0, hax / 0.055);
+  float bth = 0.0042 * (1.0 - 0.45 * smoothstep(0.045, 0.068, hax)) + 0.0006;
+  float bm = (1.0 - smoothstep(bth * 0.45, bth, abs(hp.y - yc - 0.0008 * sin(hp.x * 700.0)))) * smoothstep(0.011, 0.02, hax) * (1.0 - smoothstep(0.05, 0.067, hax));
+  float strokes = 0.5 + 0.5 * vnoise(vec3(hp.x * 900.0, hp.y * 220.0, hp.z * 100.0));
+  bm *= smoothstep(0.05, 0.4, strokes) * uBrowK * step(0.0, hp.z - 0.04) * hd;
+  sk = mix(sk, uHair * 0.6, bm * 0.75);
   // \u0449\u0435\u0442\u0438\u043D\u0430
   float stub = (1.0 - smoothstep(-0.045, -0.062, hp.y) * 0.0) * smoothstep(-0.052, -0.07, hp.y) * smoothstep(-0.123, -0.11, hp.y) * smoothstep(0.075, 0.05, hax) * step(0.0, hp.z - 0.0) + 0.7 * smoothstep(-0.032, -0.042, hp.y) * smoothstep(-0.052, -0.045, hp.y) * smoothstep(0.03, 0.014, hax) * step(hp.y, -0.037);
   stub += 0.55 * smoothstep(0.0, -0.03, hp.y) * smoothstep(0.052, 0.062, hax) * smoothstep(0.085, 0.07, hax) * smoothstep(-0.06, -0.02, hp.y);
@@ -43259,7 +43364,7 @@ if (rg == 0) {
   vec3 lipC = uSkin * vec3(1.0, 0.55, 0.5) * 0.9;
   sk = mix(sk, lipC, lip * 0.9 * hd);
   // \u043D\u043E\u0441/\u0440\u043E\u0442: \u0442\u0451\u043C\u043D\u044B\u0435 \u043F\u043E\u043B\u043E\u0441\u0442\u0438
-  sk = mix(sk, vec3(0.09, 0.02, 0.02), clamp(vFace.z, 0.0, 1.0));
+  sk = mix(sk, vec3(0.05, 0.012, 0.012), clamp(vFace.z * 1.25, 0.0, 1.0));
   base = sk;
   // \u0448\u0435\u0440\u043E\u0445\u043E\u0432\u0430\u0442\u043E\u0441\u0442\u044C: \u0436\u0438\u0440\u043D\u0430\u044F \u0422-\u0437\u043E\u043D\u0430 \u0431\u043B\u0435\u0441\u0442\u0438\u0442
   float oily = clamp(G2(hax, hp.y, 0.0, 0.07, 0.05, 0.03) + 0.9 * G2(hax, hp.y, 0.0, -0.01, 0.012, 0.035) + 0.5 * G2(hax, hp.y, 0.05, -0.012, 0.025, 0.02), 0.0, 1.0);
@@ -43270,11 +43375,11 @@ if (rg == 0) {
   float wr = 0.0;
   float fa = clamp(uAge * 1.2 - 0.12, 0.0, 1.0);
   float foreh = smoothstep(0.06, 0.075, hp.y) * (1.0 - smoothstep(0.125, 0.14, hp.y)) * smoothstep(0.075, 0.04, hax);
-  wr += foreh * (1.0 - smoothstep(0.0, 0.35, abs(sin(hp.y * 300.0 + vnoise(vec3(hp.x * 40.0, 0.0, 0.0)) * 1.4)))) * fa;
+  wr += foreh * (1.0 - smoothstep(0.0, 0.5, abs(sin(hp.y * 260.0 + vnoise(vec3(hp.x * 55.0, 0.0, 0.0)) * 2.2)))) * fa * (0.5 + 0.5 * vnoise(vec3(hp.x * 30.0, hp.y * 5.0, 1.0)));
   vec2 ec2 = vec2(hax - uEyeC.x / uHs, hp.y - eyeY);
   float cf = smoothstep(0.012, 0.016, ec2.x) * (1.0 - smoothstep(0.03, 0.04, length(ec2))) * (1.0 - smoothstep(0.012, 0.02, abs(ec2.y)));
-  wr += cf * (1.0 - smoothstep(0.0, 0.3, abs(sin(atan(ec2.y, ec2.x) * 16.0)))) * fa;
-  wr += smoothstep(-0.012, -0.02, hp.y - eyeY) * (1.0 - smoothstep(0.0, 0.25, abs(sin(hp.y * 400.0)))) * G2(hax, hp.y, uEyeC.x / uHs, eyeY - 0.019, 0.016, 0.006) * fa;
+  wr += cf * (1.0 - smoothstep(0.0, 0.5, abs(sin(atan(ec2.y, ec2.x) * 9.0 + vnoise(vBind * 60.0))))) * fa * fa * 0.6;
+  wr += (1.0 - smoothstep(0.0, 0.3, abs(sin(hp.y * 330.0 + hp.x * 20.0)))) * G2(hax, hp.y, uEyeC.x / uHs, eyeY - 0.019, 0.014, 0.0045) * fa * fa;
   rh = pore * 0.45 - wr * 1.0;
   sk = base * (1.0 - 0.35 * wr * clamp(uAge + 0.2, 0.0, 1.0));
   base = sk;
@@ -43313,8 +43418,8 @@ if (rg == 0) {
   sheenK = 1.0;
 } else if (rg == 15) {
   // \u0431\u0430\u0445\u0440\u043E\u043C\u0430 \u043F\u043E\u0434\u043E\u043B\u0430: \u043D\u0438\u0442\u0438 \u0441 \u0440\u0430\u0437\u043D\u043E\u0439 \u0434\u043B\u0438\u043D\u043E\u0439, alpha-test
-  float u = vAux.x, v = vAux.y, cell = floor(u * 90.0), fu = fract(u * 90.0);
-  float len = 0.35 + 0.65 * hash11(cell * 1.7 + vAux.z * 13.0);
+  float u = vAux.w, v = vAux.y, cell = floor(u * 560.0), fu = fract(u * 560.0);
+  float len = 0.35 + 0.65 * hash11(cell * 1.7 + vFace.x * 13.0);
   float a = (1.0 - smoothstep(0.28, 0.5, abs(fu - 0.5))) * step(v, len);
   diffuseColor.a = max(a, step(v, 0.05));
   base = uCloth2 * (0.6 + 0.5 * hash11(cell)) * mix(1.0, 0.72, v);
@@ -43379,6 +43484,10 @@ if (rg == 0) {
   base = vec3(0.045, 0.04, 0.038); rough = 0.8;
   float tr = smoothstep(0.1, 0.0, abs(fract(vBind.z * 55.0) - 0.5) - 0.18) * 0.0;
   rh += (step(0.5, fract(vBind.z * 70.0)) - 0.5) * 0.8 * fadeAt(70.0); bumpAmt = 0.0012;
+} else if (rg == 16) {
+  // \u0448\u043B\u0430\u043D\u0433: \u0442\u0451\u043C\u043D\u0430\u044F \u0440\u0435\u0437\u0438\u043D\u0430, \u0433\u043E\u0444\u0440\u0430 \u0434\u0430\u0451\u0442 \u0431\u043B\u0438\u043A\u0438
+  base = vec3(0.09, 0.085, 0.078) * (0.8 + 0.4 * nz2); rough = 0.42; dustK = 0.35;
+  base = mix(base, vec3(0.26, 0.21, 0.15), 0.12 * uWear);
 } else if (rg == 13) {
   base = vec3(0.62, 0.58, 0.48); rough = 0.28;
 } else if (rg == 14) {
@@ -44352,8 +44461,8 @@ if (rg == 7) totalEmissiveRadiance += uEye * uEyeGlow;
         rz = a[2] + (b[2] - a[2]) * t;
         break;
       }
-      rx *= sc;
-      rz *= sc;
+      rx *= sc * 0.96;
+      rz *= sc * 0.96;
       if (!br) br = [rx, rz];
       else br = [Math.max(br[0], rx), Math.max(br[1], rz)];
     };
