@@ -78,7 +78,7 @@ const FRAG_COLOR = /* glsl */`
     float r = min(e.x < 0.4 ? r1 : 9.0, e.y < 0.4 ? r2 : 9.0);
     riv = (1.0 - smoothstep(0.05, 0.075, r)) * lod;
   }
-  base *= (0.9 + 0.24 * ch) * 1.25;
+  base *= (0.95 + 0.12 * ch) * 1.12;
   // латаные листы: более светлые оливково-серые
   float patchK = step(0.9, ch2) * step(float(tag), 0.5);
   base = mix(base, vec3(0.30, 0.31, 0.26) * (0.8 + 0.4 * ch), patchK);
@@ -86,7 +86,7 @@ const FRAG_COLOR = /* glsl */`
   base += vec3(0.07) * riv * (1.0 - patchK * 0.5);
 
   float n1 = 0.55, n2 = 0.5, n3 = 0.5, dirt = 0.35, chip = 0.0, oil = 0.0, scour = 0.0;
-  float low = smoothstep(14.0, 0.0, vLP.y);
+  float low = smoothstep(19.0, 5.0, vLP.y);
   vec3 sand = vec3(0.62, 0.46, 0.28);
   if (dist < 320.0) {
   // --- грязь, масляные потёки, ржавчина
@@ -96,7 +96,7 @@ const FRAG_COLOR = /* glsl */`
   dirt = smoothstep(0.30, 0.85, n1) * (0.5 + 0.5 * uWear);
   base = mix(base, base * vec3(0.62, 0.54, 0.46), dirt * 0.55);
   float rustN = rkFbm(uv * 0.9 + 11.0 + ax * 3.0) + seam * 0.22 + (1.0 - smoothstep(0.0, 9.0, vLP.y)) * 0.12;
-  float rustK = (tag == 3 ? 1.7 : 0.8) * uWear;
+  float rustK = (tag == 3 ? 1.5 : 0.42) * uWear;
   float rust = smoothstep(0.56, 0.78, rustN) * clamp(rustK, 0.0, 1.0);
   vec3 rustC = mix(vec3(0.30, 0.11, 0.045), vec3(0.50, 0.22, 0.07), n2);
   if (tag != 2) base = mix(base, rustC, rust * 0.85);
@@ -112,7 +112,7 @@ const FRAG_COLOR = /* glsl */`
   // --- пескоструй: внизу краска стёрта, налёт песка
   scour = low * smoothstep(0.35, 0.75, n1 + n3 * 0.25);
   if (tag != 2) base = mix(base, vec3(0.38, 0.34, 0.30), scour * 0.5 * uWear);
-  base = mix(base, sand * (0.8 + 0.4 * n2), low * (0.18 + 0.3 * n1) * uWear);
+  base = mix(base, sand * (0.8 + 0.4 * n2), low * (0.32 + 0.4 * n1) * uWear);
   } else {
     base = mix(base, base * vec3(0.62, 0.54, 0.46), 0.2);
     base = mix(base, sand * 0.8, low * 0.25);
@@ -124,9 +124,10 @@ const FRAG_COLOR = /* glsl */`
   }
   // --- пыль на верхних гранях
   float top = smoothstep(0.55, 0.95, N.y) * (0.55 + 0.45 * rkFbm(uv * 1.7));
-  base = mix(base, sand * (0.85 + 0.3 * n3), top * 0.8 * (tag == 2 ? 0.5 : 1.0));
+  vec3 spiceC = mix(sand, vec3(0.62, 0.32, 0.14), 0.35 * smoothstep(0.4, 0.8, n1));
+  base = mix(base, spiceC * (0.85 + 0.3 * n3), top * 0.8 * (tag == 2 ? 0.5 : 1.0));
 
-  gH = (-seam * 0.02 + riv * 0.025 + (n3 - 0.5) * 0.01 * lod - chip * 0.01) ;
+  gH = (-seam * 0.02 + riv * 0.02 + (n1 - 0.5) * 0.004 * lod);
   gR = mix(0.5, 0.92, clamp(dirt + top + scour, 0.0, 1.0));
   gR = mix(gR, 0.28, oil * 0.8);
   if (tag == 2) gR = 0.9;
@@ -135,7 +136,7 @@ const FRAG_COLOR = /* glsl */`
   float tpK = (1.0 - smoothstep(60.0, 320.0, dist)) * uHTexK.x * (tag == 4 ? 0.3 : 1.0);
   if (tpK > 0.002) {
     tpHEval(vLP, N);
-    base *= mix(vec3(1.0), clamp(tpHMul, 0.62, 1.45), tpK * uHTexK.y * (tag == 2 ? 0.5 : 1.0));
+    base *= mix(vec3(1.0), clamp(tpHMul, 0.8, 1.22), tpK * uHTexK.y * (tag == 2 ? 0.5 : 1.0));
     gR = mix(gR, clamp(gR * (0.35 + tpHRgh), 0.05, 1.0), tpK * uHTexK.z);
     gTpD = (tpHNW - N) * tpK * uHTexK.w;
   }
@@ -147,7 +148,7 @@ const FRAG_FILL = `reflectedLight.indirectDiffuse += diffuseColor.rgb * uAmbient
 const FRAG_ROUGH = `roughnessFactor = gR;`;
 const FRAG_NORMAL = /* glsl */`
 {
-  vec2 dH = vec2(dFdx(gH), dFdy(gH)) * 40.0;
+  vec2 dH = vec2(dFdx(gH), dFdy(gH)) * 14.0;
   vec3 sX = dFdx(-vViewPosition), sY = dFdy(-vViewPosition);
   vec3 R1 = cross(sY, normal), R2 = cross(normal, sX);
   float det = dot(sX, R1) * faceDirection;
@@ -161,9 +162,9 @@ const FRAG_NORMAL = /* glsl */`
 export function createHullMaterial(quality) {
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7, metalness: 0.12, vertexColors: true });
   mat.userData.wear = { value: 1 };
-  const kit = triplanarKit('tpH', 'metal_rusty', { scale: 1.3, sharpness: 6, quality, ao: 0, normal: 1, chroma: 0.3 });
+  const kit = triplanarKit('tpH', 'metal_rusty', { scale: 2.2, sharpness: 6, quality, ao: 0, normal: 1, chroma: 0.25 });
   patchMaterial(mat, 'hv-hull' + (quality === 'low' ? 'L' : '') + (kit ? 't' : ''), {
-    uniforms: { uWear: mat.userData.wear, uHTexK: { value: new THREE.Vector4(1, 0.5, 0.6, 0.45) }, ...(kit ? kit.uniforms : {}) },
+    uniforms: { uWear: mat.userData.wear, uHTexK: { value: new THREE.Vector4(1, 0.55, 0.6, 0.28) }, ...(kit ? kit.uniforms : {}) },
     vertexPars: VERT_PARS, vertexMain: VERT_MAIN,
     fragPars: (kit ? '#define HV_TEX\nuniform vec4 uHTexK;\n' + kit.pars : '') + FRAG_PARS, fragColor: FRAG_COLOR, fragRough: FRAG_ROUGH, fragLightsEnd: FRAG_FILL,
     fragNormal: quality === 'low' ? '' : FRAG_NORMAL,

@@ -5,3 +5,4 @@ assets_src/raw/
 dist/base.html
 dist/real*.html
 dist/before*.html
+dist/harvester*.html
