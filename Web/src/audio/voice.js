@@ -183,11 +183,16 @@ export function createVoice(game, eng) {
     if (hint) return hint;
     const g = game;
     const sp = (m) => { try { return m?.speakerPos?.(speaker) || null; } catch { return null; } };
+    const sp2 = (m, id) => { try { return m?.speakerPos?.(id) || null; } catch { return null; } };
     if (speaker === 'Rider' || speaker === 'Rider1' || speaker === 'Rider2') return sp(g.worm) || g.worm?.riderPos || null;
     let named = g.space === 'sietch' ? (sp(g.sietch) || sp(g.companions)) : (sp(g.companions) || sp(g.sietch));
     // страж у шлюза далеко от галереи: для сцен стражи в других залах берём ближайшего стража-жителя
     if (named && NPC_ARCH[speaker]?.length && playerPos() && Math.hypot(named.x - playerPos().x, named.z - playerPos().z) > 28) named = null;
     if (named) return named;
+    if (speaker === 'Ossana' && g.space === 'sietch') {   // в зале Оссана стоит рядом с наибом
+      const h = sp2(g.sietch, 'Harmat');
+      if (h) return { x: h.x + 1.4, y: h.y, z: h.z + 0.6 };
+    }
     if (NPC_ARCH[speaker]) {
       const n = npcFor(speaker, chain);
       if (n) return npcWorld(n);
