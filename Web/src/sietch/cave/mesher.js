@@ -91,18 +91,18 @@ export function surfaceNets(sdf, bounds, h, blockActive, log = () => {}) {
     const gl = Math.hypot(gx, gy, gz) || 1;
     N[v * 3] = -gx / gl; N[v * 3 + 1] = -gy / gl; N[v * 3 + 2] = -gz / gl; // в сторону воздуха
   }
-  // ориентация треугольников по нормали
+  // ориентация треугольников по нормали: каждый треугольник сверяем с усреднённой нормалью вершин
   const I = new Uint32Array(idx);
-  let agree = 0, dis = 0;
+  let flipped = 0;
   for (let t = 0; t < I.length; t += 3) {
     const a = I[t], b = I[t + 1], c = I[t + 2];
     const ux = P[b * 3] - P[a * 3], uy = P[b * 3 + 1] - P[a * 3 + 1], uz = P[b * 3 + 2] - P[a * 3 + 2];
     const vx = P[c * 3] - P[a * 3], vy = P[c * 3 + 1] - P[a * 3 + 1], vz = P[c * 3 + 2] - P[a * 3 + 2];
     const nx2 = uy * vz - uz * vy, ny2 = uz * vx - ux * vz, nz2 = ux * vy - uy * vx;
     const dot = nx2 * (N[a * 3] + N[b * 3] + N[c * 3]) + ny2 * (N[a * 3 + 1] + N[b * 3 + 1] + N[c * 3 + 1]) + nz2 * (N[a * 3 + 2] + N[b * 3 + 2] + N[c * 3 + 2]);
-    if (dot >= 0) agree++; else dis++;
+    if (dot < 0) { I[t + 1] = c; I[t + 2] = b; flipped++; }
   }
-  if (dis > agree) for (let t = 0; t < I.length; t += 3) { const q = I[t + 1]; I[t + 1] = I[t + 2]; I[t + 2] = q; }
+  const agree = I.length / 3 - flipped, dis = flipped;
   log(`mesher: tris ${I.length / 3} (orientation agree ${agree} / disagree ${dis})`);
   return { positions: P, normals: N, indices: I, h };
 }

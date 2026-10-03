@@ -239,6 +239,7 @@ export function create(game) {
     /** Отладочный телепорт (внутри сиетча без затемнений): point = 'B1'|'B2'|'B3'|'B4'|'B5'|'bowl'|'exit'|'cleft'. */
     enter(point = 'B1') {
       const P = SPAWN[point] || SPAWN.B1;
+      if (game.space !== 'sietch') { const from = game.space; game.space = 'sietch'; game.bus.emit('space', { space: 'sietch', from }); }
       const ly = plan.heightAtLocal(P.x, P.z, 0);
       const w = toWorld(P.x, ly, P.z);
       const yaw = P.yaw + YAW;

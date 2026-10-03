@@ -22,7 +22,7 @@ function findChromium() {
 
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM || findChromium(),
-  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+  args: ['--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
 });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = [];
@@ -31,11 +31,11 @@ page.on('pageerror', (e) => errors.push(String(e)));
 const file = arg('file', 'rakis_demo.html');
 const url = `file://${join(root, 'dist', file)}?autotest=1&q=${q}&lang=RU`;
 await page.goto(url);
-await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.5, null, { timeout: 120000 });
+await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.5, null, { timeout: 420000 });
 for (const s of shots) {
   await page.evaluate((s) => window.__rakis.debug?.goto?.(s), s);
   await page.waitForTimeout(Number(arg('wait', 2500)));
-  await page.screenshot({ path: join(outDir, `${s}.png`) });
+  await page.screenshot({ path: join(outDir, `${s}.png`), timeout: 300000 });
   const info = await page.evaluate(() => ({ fps: window.__rakis.stats.fps, zone: window.__rakis.zone, space: window.__rakis.space, worm: window.__rakis.worm?.state }));
   console.log(s, JSON.stringify(info));
 }
