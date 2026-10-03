@@ -3,9 +3,9 @@
 // полка для совы, валуны у подножия, проём устья туннеля в грани Когтя. Чистый JS (node-тестируемый).
 import { Volume, noise3, fbm3, smin, smooth, mix, clamp, sdEllipsoid, sdBox } from '../level/sdf.js';
 import { rng } from '../core/util.js';
-import { C, FLOOR_Y, MOUTH, ang, ringIn, ringH, ridgePads, owlLedge, radius } from './layout.js';
+import { C, FLOOR_Y, MOUTH, RAVINE, polyDist, ang, ringIn, ringH, ridgePads, owlLedge, radius } from './layout.js';
 
-export const RIM_ZONE = { x0: 764, x1: 916, z0: 322, z1: 470, y0: -1.2, y1: 36, h: 0.8 };
+export const RIM_ZONE = { x0: 764, x1: 960, z0: 322, z1: 470, y0: -1.2, y1: 36, h: 0.8 };
 
 export function createRim({ base, faceX, h = RIM_ZONE.h }) {
   const Z = { ...RIM_ZONE, h };
@@ -29,6 +29,7 @@ export function createRim({ base, faceX, h = RIM_ZONE.h }) {
     const x = C.x + Math.cos(th) * r, z = C.z + Math.sin(th) * r;
     if (x < faceX(z, 8) + 2) continue;
     if (Math.hypot(x - 806, z - 394) < 12) continue;
+    if (x > 850 && polyDist(RAVINE.pts, x, z).d < RAVINE.w + 3.5) continue;
     const s = 0.9 + Math.pow(R(), 2) * 2.6;
     BOUL.push({ x, y: base(x, z) + s * 0.1, z, rx: s * (0.9 + R() * 0.6), ry: s * (0.55 + R() * 0.35), rz: s * (0.8 + R() * 0.5), yaw: R() * 6.28 });
   }
@@ -73,7 +74,7 @@ export function createRim({ base, faceX, h = RIM_ZONE.h }) {
   const mouthD = (x, y, z) => {
     const w = faceX(MOUTH.z, MOUTH.y + 2);
     const len = (w + 10 - Z.x0) / 2;
-    return sdBox(x - (Z.x0 + len - 1), y - (MOUTH.y + MOUTH.h / 2), z - MOUTH.z, len, MOUTH.h / 2, MOUTH.w / 2, 0.5);
+    return sdBox(x - (Z.x0 + len - 1), y - (MOUTH.y + MOUTH.h / 2 - 0.2), z - MOUTH.z, len, MOUTH.h / 2 + 0.4, MOUTH.w / 2 + 0.1, 0.5);
   };
   const wallD = (x, y, z) => {
     if (x > 860) return 99;
@@ -82,8 +83,18 @@ export function createRim({ base, faceX, h = RIM_ZONE.h }) {
     return Math.max(d, -mouthD(x, y, z));
   };
 
+  // выходной овраг: вырез над дном (борта слегка расходятся с высотой — V-образный каньон)
+  const cutTmp = { d: 0, s: 0 };
+  const ravineCut = (x, y, z) => {
+    if (x < 850) return 99;
+    const q = polyDist(RAVINE.pts, x, z);
+    const g = base(x, z);
+    const wy = RAVINE.w + 0.5 + 0.32 * Math.max(0, y - g) + 0.5 * noise3(x * 0.3, y * 0.2, z * 0.3);
+    return Math.max(q.d - wy, g - y);
+  };
   function dfCheap(x, y, z) {
     let d = (y - surf(x, z)) * 0.8;
+    { const c = ravineCut(x, y, z); if (c < 3) d = Math.max(d, -c); }
     const b = boulderD(x, y, z); if (b < d) d = smin(d, b, 0.5);
     const l = ledgeD(x, y, z); if (l < d) d = smin(d, l, 0.4);
     const w = wallD(x, y, z); d = smin(d, w, 1.0);
@@ -100,7 +111,9 @@ export function createRim({ base, faceX, h = RIM_ZONE.h }) {
     const sy = y * 0.52 + 0.9 * noise3(x * 0.05, y * 0.02, z * 0.05);
     const fr = sy - Math.floor(sy);
     const strata = smooth(0.78, 0.97, fr) - 0.55 * smooth(0, 0.25, fr);
-    return d + n * (0.8 + 0.9 * wallK) + strata * 0.4 * wallK;
+    // у самой земли шум гасим: пол должен быть ровным (его рисует и держит отдельная сетка), скала «вырастает» из него
+    const gk = smooth(0.1, 2.8, y - base(x, z));
+    return d + (n * (0.8 + 0.9 * wallK) + strata * 0.4 * wallK) * gk;
   }
 
   const nx = Math.round((Z.x1 - Z.x0) / h) + 1, nz = Math.round((Z.z1 - Z.z0) / h) + 1, ny = Math.round((Z.y1 - Z.y0) / h) + 1;
