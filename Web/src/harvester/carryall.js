@@ -57,6 +57,18 @@ function wingGeo() {
   return P.merge();
 }
 
+/** Спасательная капсула экипажа: веретено 8 м с иллюминатором; в сценарии «пожирание» взлетает с крыши к переносчику. */
+function podGeo() {
+  const P = new Parts(1210);
+  P.cyl(0, 0, 0, 2.2, 2.2, 6.4, '#c4b08a', 0, { axis: 'x', seg: 14, jit: 0.03 });
+  P.cyl(3.6, 0, 0, 0.9, 2.2, 1.6, '#c4b08a', 0, { axis: 'x', seg: 14, jit: 0.03 });
+  P.cyl(-3.6, 0, 0, 2.0, 1.6, 0.9, '#4b4640', 1, { axis: 'x', seg: 14 });
+  P.cyl(1.0, 0, 0, 2.28, 2.28, 0.5, C.TEAL, 1, { axis: 'x', seg: 14 });
+  P.box(0.2, 2.35, 0, 1.6, 0.35, 0.6, C.YEL, 4);
+  P.cyl(0, 2.6, 0, 0.16, 0.16, 1.5, '#7a2e1e', 2, { seg: 6 });
+  return P.merge();
+}
+
 export function createCarryall(game, hullMat, glowMat, lampMat, quality) {
   const group = new THREE.Group();
   group.name = 'Carryall';
@@ -80,11 +92,66 @@ export function createCarryall(game, hullMat, glowMat, lampMat, quality) {
   const q = new THREE.Quaternion(), qy = new THREE.Quaternion(), pos = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
   const xAx = new THREE.Vector3(1, 0, 0), yAx = new THREE.Vector3(0, 1, 0);
   const state = { a: Math.random() * 6.28, hd: 0, x: 0, z: 0 };
+  // Сценарный режим (пожирание харвестера): позу задаёт червь/сцена. on=false — штатная орбита над харвестером.
+  const script = { on: false, pos: new THREE.Vector3(), yaw: 0, pitch: 0, roll: 0, flap: 12, strain: 0, hidden: false };
+
+  // Подъёмные тросы: 4 стальных каната от лап-захватов переносчика к крышевым захватам харвестера
+  const CAB_N = 4, CAB_SEG = 10;
+  const cabMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.3, 0.3, 1, 6, 1, true), new THREE.MeshStandardMaterial({ color: '#34322e', roughness: 0.5, metalness: 0.8 }), CAB_N * CAB_SEG);
+  cabMesh.frustumCulled = false; cabMesh.count = 0; cabMesh.castShadow = false;
+  const LUG_LOCAL = [[4, -7.8, 3.4], [4, -7.8, -3.4], [-9, -7.8, 3.0], [-9, -7.8, -3.0]];
+  const lugWorld = LUG_LOCAL.map(() => new THREE.Vector3());
+  const cabQ = new THREE.Quaternion(), cabM = new THREE.Matrix4(), cabP = Array.from({ length: CAB_SEG + 1 }, () => new THREE.Vector3()), cabD = new THREE.Vector3(), cabC = new THREE.Vector3(), cabS = new THREE.Vector3();
+  const UPV = new THREE.Vector3(0, 1, 0);
+  /** targets: 4 мировых точки на харвестере; tension 0 (провис) … 1 (струна); vib — амплитуда дрожи, м. */
+  function setCables(targets, tension = 1, vib = 0, time = 0) {
+    if (!targets) { cabMesh.count = 0; return; }
+    let n = 0;
+    for (let i = 0; i < CAB_N; i++) {
+      const A = lugWorld[i], B = targets[i];
+      const len = A.distanceTo(B);
+      const sag = (1 - tension) * len * 0.16;
+      for (let k = 0; k <= CAB_SEG; k++) {
+        const u = k / CAB_SEG, w = u * (1 - u) * 4;
+        cabP[k].lerpVectors(A, B, u);
+        cabP[k].y -= sag * w;
+        const wig = vib * w * Math.sin(u * 9 + time * 19 + i * 1.7);
+        cabP[k].x += wig; cabP[k].z += wig * 0.6;
+      }
+      for (let k = 0; k < CAB_SEG; k++) {
+        const a = cabP[k], b = cabP[k + 1];
+        cabD.subVectors(b, a); const l = cabD.length();
+        if (!(l > 1e-4)) { cabS.set(0, 0, 0); cabM.compose(a, cabQ.identity(), cabS); cabMesh.setMatrixAt(n++, cabM); continue; }
+        cabD.multiplyScalar(1 / l);
+        cabQ.setFromUnitVectors(UPV, cabD);
+        cabC.addVectors(a, b).multiplyScalar(0.5);
+        cabM.compose(cabC, cabQ, cabS.set(1, l, 1));
+        cabMesh.setMatrixAt(n++, cabM);
+      }
+    }
+    cabMesh.count = n;
+    cabMesh.instanceMatrix.needsUpdate = true;
+  }
+  // капсула экипажа
+  const pod = new THREE.Mesh(podGeo(), hullMat);
+  pod.frustumCulled = false; pod.visible = false;
+  const podGlow = new THREE.Mesh(new THREE.SphereGeometry(0.7, 8, 6), glowMat); podGlow.position.set(2.2, 0.5, 1.9); pod.add(podGlow);
+  const podGlow2 = podGlow.clone(); podGlow2.position.z = -1.9; pod.add(podGlow2);
+
   const hover = { orbit: 0, flap: 0 };
   const _p = new THREE.Vector3();
 
   function update(dt, time, H) {
     if (!group.visible) return;
+    if (script.on) {
+      group.position.copy(script.pos);
+      body.rotation.set(script.roll, -script.yaw, script.pitch, 'YZX');
+      hover.flap += dt * script.flap;
+      flapWings();
+      body.updateMatrixWorld(true);
+      for (let i = 0; i < 4; i++) lugWorld[i].set(LUG_LOCAL[i][0], LUG_LOCAL[i][1], LUG_LOCAL[i][2]).applyMatrix4(body.matrixWorld);
+      return;
+    }
     hover.orbit += dt * 0.045;
     const R = 34;
     const cx = H.x - 4 + Math.cos(hover.orbit) * R, cz = H.z + Math.sin(hover.orbit) * R * 0.75;
@@ -97,10 +164,15 @@ export function createCarryall(game, hullMat, glowMat, lampMat, quality) {
     // взмахи: частота выше при работающем комбайне (пилоты «на связи»)
     const w = 9 + (H.running ? 3 : 0);
     hover.flap += dt * w;
+    flapWings();
+    group.visible = true;
+  }
+  function flapWings() {
+    const amp = 1 + 0.5 * script.strain;
     for (let i = 0; i < 4; i++) {
       const [x, y, z, left] = WROOT[i];
       const ph = hover.flap + (x < 0 ? 0.9 : 0);
-      const ang = -(0.12 + 0.38 * Math.sin(ph)) * (1 + 0.15 * Math.sin(ph * 0.5));
+      const ang = -(0.12 + 0.38 * amp * Math.sin(ph)) * (1 + 0.15 * Math.sin(ph * 0.5));
       q.setFromAxisAngle(xAx, ang);
       if (left) { qy.setFromAxisAngle(yAx, Math.PI); q.premultiply(qy); }
       _p.set(x, y, z);
@@ -108,7 +180,11 @@ export function createCarryall(game, hullMat, glowMat, lampMat, quality) {
       wings.setMatrixAt(i, _m);
     }
     wings.instanceMatrix.needsUpdate = true;
-    group.visible = true;
   }
-  return { group, update };
+  /** Поставить капсулу: pos — центр (мир), yaw — курс. */
+  function setPod(pos, yaw, visible = true, pitch = 0) {
+    pod.visible = visible;
+    if (visible) { pod.position.copy(pos); pod.rotation.set(0, -yaw, pitch, 'YZX'); }
+  }
+  return { group, update, script, setCables, setPod, pod, cabMesh, lugWorld, body, get lugLocal() { return LUG_LOCAL; } };
 }

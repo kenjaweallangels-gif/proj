@@ -18,6 +18,7 @@ import { Gear } from './gear.js';
 import { Riders } from './riders.js';
 import { WormFX } from './fx.js';
 import { EncounterDirector, DIALOGUE_ID } from './encounter.js';
+import { DevourDirector, DEVOUR_TUNING } from './devour.js';
 
 const wrapPi = (a) => { a = (a + Math.PI) % (Math.PI * 2); if (a < 0) a += Math.PI * 2; return a - Math.PI; };
 
@@ -145,7 +146,7 @@ export function create(game) {
   }
 
   function sensingOn() {
-    return worm.sensing && game.space === 'desert' && !game.cinematic.active && !director.active && game.zone !== 'A4_Crevice';
+    return worm.sensing && game.space === 'desert' && !game.cinematic.active && !director.active && !devour.active && game.zone !== 'A4_Crevice';
   }
 
   // ---- вспомогательное ----
@@ -254,7 +255,7 @@ export function create(game) {
   /** Сцена «Встреча» с укрощённым червём. Promise<{skipped}> выполняется, когда червь ушёл ('gone'). */
   worm.playReveal = () => director.play();
   worm.playEncounter = worm.playReveal;
-  worm.isBusy = () => director.active && !director.resting;
+  worm.isBusy = () => (director.active && !director.resting) || devour.active;
   /** Червь отдыхает у места встречи (после разговора) — остаётся на месте до dismiss()/playDevour(). */
   Object.defineProperty(worm, 'resting', { get: () => director.active && director.resting });
   worm.dismiss = () => director.dismiss();
@@ -281,7 +282,7 @@ export function create(game) {
 
   // ---- режиссёр ----
   const api = {
-    game, K, spine, body, riders, gear, fx, tune, ground, bus, placeHead, setState, getSun,
+    game, scene, K, spine, body, riders, gear, fx, tune, ground, bus, placeHead, setState, getSun,
     getState: () => worm.state,
     clearForced() { forced = null; },
     setRidden(b) { if (b) setState('Ridden'); },
@@ -299,12 +300,34 @@ export function create(game) {
   };
   const director = new EncounterDirector(api, worm);
   worm.director = director;
+  const devour = new DevourDirector(api, worm);
+  worm.devourDirector = devour;
+  Object.assign(tune, { autoDevourAfter: DEVOUR_TUNING.autoAfter });
+  worm.devourTuning = DEVOUR_TUNING;
+
+  /**
+   * Сценарий «Червь пожирает харвестер» (реальное время, управление игрока не отбирается). opts: {teleport: true — поставить игрока в безопасную точку обзора}.
+   * Promise<{skipped, devoured}> выполняется в конце ('aftermath' → 'end'); шина 'worm:devour' {phase}.
+   */
+  worm.playDevour = (opts) => devour.play(opts);
+  worm.isDevouring = () => devour.active;
+  worm.devourPhase = () => (devour.active ? devour.phase : 'none');
+  /** Автозапуск сценария после N секунд непрерывной работы харвестера (0 — выключить; по умолчанию выключен). */
+  worm.setAutoDevour = (sec) => { tune.autoDevourAfter = Math.max(0, +sec || 0); harvRun = 0; };
+  let harvRun = 0, harvRunning = false;
+  bus.on('harvester', (e) => { harvRunning = e?.state === 'running'; if (!harvRunning) harvRun = 0; });
+  function autoDevour(dt) {
+    if (!(tune.autoDevourAfter > 0) || devour.active || !harvRunning || game.space !== 'desert') return;
+    harvRun += dt;
+    if (harvRun >= tune.autoDevourAfter) { harvRun = 0; devour.play({ auto: true }); }
+  }
 
   // ---- основной цикл ----
   function updateMachine(dt) {
     stateT += dt;
     const pl = game.player?.position;
     cooldown = Math.max(0, cooldown - dt);
+    if (devour.active) return;           // состояниями управляет сценарий пожирания
     senseT += dt;
     let best = null;
     if (senseT >= tune.senseInterval) { senseT = 0; best = sense(); if (best) lastTarget = best; }
@@ -385,7 +408,7 @@ export function create(game) {
   function visualUpdate(dt, t) {
     const st = worm.state;
     const inDesert = game.space !== 'sietch';
-    const active = st === 'Pass' || st === 'Ridden' || worm.exposed || director.active;
+    const active = st === 'Pass' || st === 'Ridden' || worm.exposed || director.active || devour.active;
     const resting = tame && K.speed < 0.5;
     spine.waveAmp = tame ? (resting ? 0.35 : 0.9) : 0;
     spine.breath = tame ? (resting ? 1 : 0.4) : 0;
@@ -498,6 +521,8 @@ export function create(game) {
   worm.update = (dt, t) => {
     _guard();
     if (director.active) director.update(dt, t);
+    if (devour.active) devour.update(dt, t);
+    autoDevour(dt);
     updateMachine(dt);
     stepHead(dt);
     visualUpdate(dt, t);
@@ -505,7 +530,7 @@ export function create(game) {
     idleRipple(dt);
     autoQuality(dt);
   };
-  worm.lateUpdate = (dt, t) => { if (director.active) director.lateUpdate(dt, t); };
+  worm.lateUpdate = (dt, t) => { if (director.active) director.lateUpdate(dt, t); if (devour.active) devour.lateUpdate(dt, t); };
 
   // Отладка/тесты: сразу поставить сцену в нужную стадию ('arrive' по u, 'stop', 'dismount') без ожидания.
   worm.debugEncounter = ({ stage = 'stop', u } = {}) => { director.debugStage(stage, u); };

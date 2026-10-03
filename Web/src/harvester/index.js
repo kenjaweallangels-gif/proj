@@ -9,6 +9,7 @@ import { createTracks, TRK, UNITS } from './tracks.js';
 import { createParticles, createBeams, P_SPICE, P_SAND, P_SMOKE, P_HEAT } from './fx.js';
 import { createCarryall } from './carryall.js';
 import { colliders } from '../core/colliders.js';
+import { createWreck, createStain } from './wreck.js';
 
 export const START = { x: 330, z: -60, heading: 0 };   // метры раскладки; heading — направление (cos, sin) в (x, z); 0 = вдоль +X
 const V_MAX = 1.5;           // м/с
@@ -129,13 +130,17 @@ export function create(game) {
 
   // перевозчик (тяжёлый орнитоптер)
   const carryall = createCarryall(game, hullMat, glowMat, lampMat, quality);
-  scene.add(carryall.group);
+  scene.add(carryall.group, carryall.cabMesh, carryall.pod);
+  const wreck = createWreck(game);
+  const stain = createStain(game);
+  const stainGroup = new THREE.Group(); stainGroup.add(stain.mesh);
+  scene.add(wreck.group, stainGroup);
 
   // ------------------------------------------------------------ состояние
   const S = { state: 'off', t: 0, eng: 0, scoop: 0, belt: 0, drive: 0, plume: 0, smoke: 0, heat: 0, klax: 0, klaxT: 0 };
   const H = {
     x: START.x, z: START.z, h: START.heading, v: 0, omega: 0, y: 0, pitch: 0, roll: 0,
-    beltPhase: 0, blockT: 0, brake: 0, blockedByWorm: false, drumA: 0, fanA: 0, augerA: 0, radarA: 0, klaxA: 0, footAcc: 0, footSide: 0, noiseT: 0, trackSpeed: [0, 0, 0, 0],
+    beltPhase: 0, alarm: 0, alarmTarget: 0, flareT: -1, flareP: new THREE.Vector3(), flareV: new THREE.Vector3(), lift: 0, devoured: false, blockT: 0, brake: 0, blockedByWorm: false, drumA: 0, fanA: 0, augerA: 0, radarA: 0, klaxA: 0, footAcc: 0, footSide: 0, noiseT: 0, trackSpeed: [0, 0, 0, 0],
   };
   const dir = new THREE.Vector3(), tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
   const consoleWorld = new THREE.Vector3();
@@ -238,11 +243,20 @@ export function create(game) {
     const roll = -Math.atan2((hFR + hRR) / 2 - (hFL + hRL) / 2, 2 * TRK.cz);
     return { y, pitch, roll };
   }
+  // Сценарная поза (червь «пожирает» харвестер): {x,y,z — начало координат модели (мир), pitch — нос вниз, рад, roll}. null — штатное движение.
+  let scriptPose = null;
+  const _eul = new THREE.Euler(), _qq = new THREE.Quaternion();
   function applyTransform(dt, first) {
+    if (scriptPose) {
+      root.position.set(scriptPose.x, scriptPose.y, scriptPose.z);
+      root.rotation.set(scriptPose.roll || 0, -H.h, -scriptPose.pitch, 'YZX');
+      root.updateMatrixWorld(true);
+      return;
+    }
     const g = sampleGround();
     const k = first ? 1 : 1 - Math.exp(-dt * 3);
     H.y += (g.y - 0.25 - H.y) * k; H.pitch += (g.pitch - H.pitch) * k; H.roll += (g.roll - H.roll) * k;
-    root.position.set(H.x, H.y, H.z);
+    root.position.set(H.x, H.y + H.lift, H.z);
     root.rotation.set(H.roll, -H.h, H.pitch, 'YZX');
     root.updateMatrixWorld(true);
   }
@@ -333,6 +347,89 @@ export function create(game) {
     }
   }
 
+
+  // ------------------------------------------------------------ сценарий «червь пожирает харвестер»: тревога, ракета, поза, обломки
+  const _flareTex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const x = c.getContext('2d'); const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, 'rgba(255,255,235,1)'); g.addColorStop(0.18, 'rgba(255,170,110,0.9)'); g.addColorStop(0.5, 'rgba(255,60,30,0.28)'); g.addColorStop(1, 'rgba(255,40,10,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(c);
+  })();
+  const flareSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: _flareTex, color: 0xffffff, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, fog: false }));
+  flareSprite.visible = false; flareSprite.renderOrder = 8; scene.add(flareSprite);
+  const flashK = () => (0.55 + 0.45 * Math.sin(game.time * 31)) * (H.flareT < 1 ? H.flareT : H.flareT > 12 ? Math.max(0, (16 - H.flareT) / 4) : 1);
+  function flareTick(dt, inDesert) {
+    if (H.flareT < 0) { flareSprite.visible = false; return; }
+    H.flareT += dt;
+    const t = H.flareT;
+    if (t > 16) { H.flareT = -1; flareSprite.visible = false; return; }
+    // взлёт ~3 с (быстрое торможение), затем медленно падает на парашюте со сносом ветром
+    const wind = game.weather?.windDir, ws = game.weather?.windSpeed ?? 4;
+    if (t < 3.2) H.flareV.y = 62 * Math.exp(-t * 0.9) - 2;
+    else H.flareV.y += ((-4.5) - H.flareV.y) * (1 - Math.exp(-dt * 1.5));
+    H.flareP.x += (wind ? wind.x * ws * 0.7 : 2) * dt + H.flareV.x * dt; H.flareP.z += (wind ? wind.z * ws * 0.7 : 1) * dt + H.flareV.z * dt; H.flareP.y += H.flareV.y * dt;
+    flareSprite.position.copy(H.flareP);
+    const f = flashK();
+    flareSprite.scale.setScalar(16 + 10 * f);
+    flareSprite.material.opacity = Math.min(1, 0.55 + 0.45 * f);
+    flareSprite.visible = inDesert;
+    if (t < 3.2 || (rnd() < dt * 8 * qf)) particles.emit(P_SMOKE, H.flareP.x, H.flareP.y, H.flareP.z, 0, t < 3.2 ? -2 : 0.5, 0, 3.5 + rnd() * 2, 1.4 + rnd(), 0.45, 4, { wind: 1, buoy: 0.2, drag: 0.8 });
+  }
+  const _lug = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  const LUG_TOP = [[-4, 29.7, 10.5], [-4, 29.7, -10.5], [-26.5, 34.9, 8], [-26.5, 34.9, -8]];
+  /** Мировые точки крышевых захватов переносчика (4: нос ±z, корма ±z) — к ним крепятся тросы. */
+  function hookPoints(out = _lug) {
+    root.updateMatrixWorld(true);
+    for (let i = 0; i < 4; i++) out[i].set(LUG_TOP[i][0], LUG_TOP[i][1], LUG_TOP[i][2]).applyMatrix4(root.matrixWorld);
+    return out;
+  }
+  /** Вихрь от винтов переносчика: песчаное кольцо у земли под ним. */
+  function carryallFx(dt, inDesert) {
+    const cs = carryall.script;
+    if (!cs.on || !inDesert || cs.hidden) return;
+    const gx = cs.pos.x, gz = cs.pos.z, gy = ground(gx, gz);
+    const alt = cs.pos.y - gy;
+    const k = 1 - smoothstep(60, 190, alt);
+    if (k <= 0.02) return;
+    acc.wash = (acc.wash || 0) + dt * 90 * qf * k * (0.6 + 0.4 * cs.strain);
+    while (acc.wash >= 1) {
+      acc.wash -= 1;
+      const a = rnd() * 6.2832, r0 = 6 + rnd() * 26, sp = 12 + rnd() * 16;
+      particles.emit(P_SAND, gx + Math.cos(a) * r0, gy + 0.5, gz + Math.sin(a) * r0, Math.cos(a) * sp, 1.5 + rnd() * 3, Math.sin(a) * sp, 2 + rnd() * 2, 3 + rnd() * 3, 0.35, 3.5, { wind: 0.5, buoy: 0, drag: 0.7 });
+    }
+    game.shake = Math.max(game.shake || 0, 0.05 * k * (1 - smoothstep(40, 260, game.camera.position.distanceTo(cs.pos))));
+  }
+  function devourNow() {
+    H.devoured = true; H.alarmTarget = 0; H.alarm = 0;
+    Object.assign(S, { state: 'devoured', t: 0, eng: 0, scoop: 0, belt: 0, drive: 0, plume: 0, smoke: 0, heat: 0, klax: 0 });
+    scriptPose = null; colsEnabled = false; syncColliders();
+    root.visible = false;
+    interactable.enabled = false;
+    H.v = 0;
+    emitState('devoured');
+  }
+  function restore() {
+    H.devoured = false; scriptPose = null; colsEnabled = true;
+    H.x = START.x; H.z = START.z; H.h = START.heading; H.lift = 0; H.pitch = 0; H.roll = 0; H.v = 0; H.alarm = 0; H.alarmTarget = 0; H.flareT = -1; H.brake = 0;
+    Object.assign(S, { state: 'off', t: 0, eng: 0, scoop: 0, belt: 0, drive: 0, plume: 0, smoke: 0, heat: 0, klax: 0, klaxT: 0 });
+    wreck.clear(); stain.hide();
+    carryall.script.on = false; carryall.script.hidden = false; carryall.setCables(null); carryall.setPod(_lug[0], 0, false);
+    applyTransform(0, true); syncColliders(); updateInteractable(); emitState('off');
+  }
+  function devouredTick(dt, time, inDesert) {
+    root.visible = false;
+    particles.mesh.visible = inDesert;
+    particles.flush(time);
+    carryall.update(dt, time, { x: H.x, y: H.y, z: H.z, h: H.h, running: false, eng: 0, night: lastNight });
+    carryall.group.visible = inDesert && carryall.script.on && !carryall.script.hidden;
+    carryall.cabMesh.visible = carryall.group.visible;
+    carryallFx(dt, inDesert);
+    flareTick(dt, inDesert);
+    wreck.update(dt);
+    wreck.group.visible = inDesert; stainGroup.visible = inDesert;
+  }
+
   // ------------------------------------------------------------ обновление
   const frustum = new THREE.Frustum(), pm = new THREE.Matrix4(), sph = new THREE.Sphere(new THREE.Vector3(), 78);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), yAx = new THREE.Vector3(0, 1, 0), xAx = new THREE.Vector3(1, 0, 0);
@@ -358,14 +455,16 @@ export function create(game) {
   function update(dt, time) {
     if (dt <= 0) return;
     const inDesert = game.space !== 'sietch';
+    if (H.devoured) { devouredTick(dt, time, inDesert); return; }
     stageValues(dt);
+    H.alarm += (H.alarmTarget - H.alarm) * (1 - Math.exp(-dt * 4));
 
     // не ползти на червя: раз в 0.25 с проверяем, не заденет ли корпус (сейчас и через ~5 с по дуге) тело червя; тормозим и ждём
     H.blockT -= dt;
     if (H.blockT <= 0) { H.blockT = 0.25; H.blockedByWorm = S.drive > 0.05 && wormInTheWay(); }
     H.brake += ((H.blockedByWorm ? 1 : 0) - H.brake) * (1 - Math.exp(-dt * (H.blockedByWorm ? 2.5 : 0.8)));
     // кинематика: ползёт по большой петле влево (к -z)
-    H.v = V_MAX * S.drive * (1 - H.brake);
+    H.v = (scriptPose || H.holdScript) ? 0 : V_MAX * S.drive * (1 - H.brake);
     H.omega = H.v / R_TURN;
     if (H.v > 1e-4) {
       H.h -= H.omega * dt;
@@ -380,14 +479,15 @@ export function create(game) {
     // видимость и LOD
     pm.multiplyMatrices(game.camera.projectionMatrix, game.camera.matrixWorldInverse);
     frustum.setFromProjectionMatrix(pm);
-    sph.center.set(H.x, H.y + 16, H.z);
+    sph.center.set(0, 17, 0).applyMatrix4(root.matrixWorld);
     const inView = inDesert && frustum.intersectsSphere(sph);
     root.visible = inView;
     const isNear = camD < 420;
     near.visible = isNear; far.visible = !isNear;
     const shadowOn = shadows && camD < 260;
     mainMesh.castShadow = scoopMesh.castShadow = shadowOn;
-    particles.mesh.visible = inDesert; carryall.group.visible = inDesert;
+    particles.mesh.visible = inDesert; carryall.group.visible = inDesert && !carryall.script.hidden;
+    carryall.cabMesh.visible = inDesert && !carryall.script.hidden; wreck.group.visible = inDesert; stainGroup.visible = inDesert;
 
     // интерактив: пульт у трапа
     consoleWorld.set(CONSOLE_POS.x, 0, CONSOLE_POS.z).applyMatrix4(root.matrixWorld);
@@ -429,6 +529,7 @@ export function create(game) {
     glowMat.color.setScalar(lerp(0.2, 0.95, night) + run * 0.2);
     spots.forEach((l) => { l.intensity = 3200 * night * (0.6 + 0.4 * run) + 400 * run; });
     workLight.intensity = 1400 * lit * S.scoop;
+    if (H.flareT >= 0 && H.flareT < 16) { workLight.color.setHex(0xff4a2a); workLight.intensity += 5200 * flashK(); } else if (workLight.color.getHex() !== 0xffb060) workLight.color.setHex(0xffb060);
     consoleLight.intensity = 260 * night;
     // маяки
     const tt = game.time;
@@ -436,11 +537,12 @@ export function create(game) {
     const col = new THREE.Color();
     for (let i = 0; i < BEACONS.length; i++) { const k = 0.1 + 1.6 * blinkRed * (0.35 + 0.65 * (i % 2 ? 1 : 0.7)); lamps.setColorAt(i, col.setRGB(k, k * 0.14, k * 0.07)); }
     H.klaxA += dt * 3.6;
-    const kl = S.klax * (0.5 + 0.5 * Math.sin(H.klaxA * 2.2));
-    for (let i = 0; i < KLAXON.length; i++) { const k = 0.12 + 1.9 * S.klax * (0.55 + 0.45 * Math.sin(H.klaxA * 2 + i)); lamps.setColorAt(BEACONS.length + i, col.setRGB(k, k * 0.52, k * 0.08)); }
+    const klx = Math.max(S.klax, H.alarm);
+    for (let i = 0; i < KLAXON.length; i++) { const k = 0.12 + 1.9 * klx * (0.55 + 0.45 * Math.sin(H.klaxA * 2 + i)); lamps.setColorAt(BEACONS.length + i, col.setRGB(k, k * 0.52, k * 0.08)); }
     lamps.instanceColor.needsUpdate = true;
     lampMat.color.setScalar(1.0);
-    beams.update(H.klaxA, S.klax * (0.6 + 0.4 * (1 - night * 0.5)));
+    beams.update(H.klaxA, klx * (0.6 + 0.4 * (1 - night * 0.5)));
+    flareTick(dt, inDesert);
 
     // частицы
     particles.flush(time);
@@ -458,6 +560,8 @@ export function create(game) {
       }
     }
     carryall.update(dt, time, { x: H.x, y: H.y, z: H.z, h: H.h, running: S.state !== 'off', eng: S.eng, night });
+    carryallFx(dt, inDesert);
+    wreck.update(dt);
     harvester.rpm = S.eng;
   }
 
@@ -484,11 +588,39 @@ export function create(game) {
     toggle() { return S.state === 'off' ? this.start() : this.stop(); },
     /** Выталкивает pos (Vector3) из силуэта корпуса/ковша. true — было столкновение. */
     collide(pos, r = 0.4) { return collideLocal(pos, r); },
+    /** 'devoured' — харвестер съеден (скрыт, без коллизий, интерактив отключён); 'off'|'running'|'starting' — отладочное состояние (снимает 'devoured'). */
+    setState(st, t = 0) {
+      if (st === 'devoured') { devourNow(); return true; }
+      if (H.devoured) restore();
+      if (st === 'off' || st === 'running' || st === 'starting') { harvester.debugSet(st, t); return true; }
+      return false;
+    },
+    get isDevoured() { return H.devoured; },
+    /** Вернуть харвестер на место и убрать обломки/пятно (повторный запуск сценария). */
+    restore,
+    /** Поза сценария {x,y,z,pitch,roll}: начало координат модели в мире; pitch>0 — нос вниз. null — штатное движение. */
+    script(pose) { scriptPose = pose; if (!pose) applyTransform(0, true); },
+    get scripted() { return !!scriptPose; },
+    /** Поднять над землёй на m метров (штатное движение, без наклона): подвес на тросах переносчика. */
+    setLift(m) { H.lift = m; },
+    get lift() { return H.lift; },
+    /** Тревога экипажа: клаксон и проблесковые маяки даже при остановленных двигателях. */
+    alarm(on) { H.alarmTarget = on ? 1 : 0; if (on) audio('Harvester.Start'); },
+    /** Сигнальная ракета наблюдателя (красная, взлетает с крыши и снижается на парашюте). */
+    flare() { H.flareT = 0; hookPoints(); H.flareP.copy(_lug[2]); H.flareP.y += 6; H.flareV.set(0, 60, 0); },
+    /** Мировые точки крышевых захватов [нос+z, нос-z, корма+z, корма-z] (переносчик цепляет тросы). */
+    hookPoints,
+    /** Мировая точка в локальной системе модели. */
+    toWorld(lx, ly, lz, out = new THREE.Vector3()) { root.updateMatrixWorld(true); return out.set(lx, ly, lz).applyMatrix4(root.matrixWorld); },
+    /** Тормоз по сценарию (останавливает ход, не трогая двигатели). */
+    hold(b) { H.holdScript = !!b; },
+    wreck, stain, particles, H, S,
     /** Включить/выключить твёрдость (на время проглатывания червём). */
     setCollidersEnabled(b) { colsEnabled = !!b; syncColliders(); },
     get colliderEntries() { return cols.map((c) => c.e); },
     /** Для тестов: мгновенно в состояние 'off' | 'running' (поза «ковш опущен»). */
     debugSet(st, t = 0) {
+      if (H.devoured) restore();
       if (st === 'running') { Object.assign(S, { state: 'running', t: 0, eng: 1, scoop: 1, belt: 1, drive: 1, plume: 1, smoke: 0.08, heat: 1, klax: 1, klaxT: 0 }); emitState('running'); }
       else if (st === 'starting') { S.state = 'starting'; S.t = t; emitState('starting'); }
       else { Object.assign(S, { state: 'off', t: 0, eng: 0, scoop: 0, belt: 0, drive: 0, plume: 0, smoke: 0, heat: 0, klax: 0 }); emitState('off'); }

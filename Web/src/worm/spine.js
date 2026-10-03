@@ -84,6 +84,17 @@ export class Spine {
     this.e = e;
   }
 
+  /** Откатить голову назад по истории на d метров (червь втягивается): тело тянется обратно по тому же пути. Возвращает фактический шаг. */
+  retract(d) {
+    const n = Math.min(CAP - 120, Math.max(0, Math.round(d / STEP)));
+    if (!n) return 0;
+    this.w = ((this.w - n) % CAP + CAP) % CAP;
+    const i = (this.w - 1 + CAP) % CAP;
+    this.last.set(this.pts[i * 3], this.pts[i * 3 + 1], this.pts[i * 3 + 2]);
+    this.hp.copy(this.last); this.e = 0;
+    return n * STEP;
+  }
+
   _at(k, out) { // k шагов назад от последней сохранённой точки
     const kk = Math.min(Math.max(k, 0), CAP - 2.001);
     const i = Math.floor(kk), t = kk - i;

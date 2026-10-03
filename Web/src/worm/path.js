@@ -14,30 +14,47 @@ export const PATH_DEFAULTS = {
   tail: 1200,               // м прямого отхода
 };
 
-/** Сдвинуть точки пути из препятствий и сгладить смещение (скользящее среднее ±W). Возвращает максимальное смещение, м. */
-function relaxPath(X, Z, clear, iters = 10, W = 22) {
+/**
+ * Сдвинуть точки пути из препятствий и сгладить смещение. clear(x, z, extra) → [x', z'] | null — позиция головы, вытолкнутая из тел с запасом
+ * radius+extra. Сначала итерации с большим запасом и размытием смещения (плавный обход), затем жёсткая проверка без запаса.
+ * Возвращает максимальное смещение, м.
+ */
+function relaxPath(X, Z, clear, iters = 16, W = 28, extra = 26) {
   const m = X.length;
   const dx = new Float32Array(m), dz = new Float32Array(m), tx = new Float32Array(m), tz = new Float32Array(m);
-  let maxD = 0;
+  const blur = (w) => {
+    for (let pass = 0; pass < 2; pass++) {
+      let sx = 0, sz = 0, lo = 0, hi = -1;
+      for (let i = 0; i < m; i++) {
+        const nl = Math.max(0, i - w), nh = Math.min(m - 1, i + w);
+        while (hi < nh) { hi++; sx += dx[hi]; sz += dz[hi]; }
+        while (lo < nl) { sx -= dx[lo]; sz -= dz[lo]; lo++; }
+        tx[i] = sx / (nh - nl + 1); tz[i] = sz / (nh - nl + 1);
+      }
+      dx.set(tx); dz.set(tz);
+    }
+  };
   for (let it = 0; it < iters; it++) {
     let any = false;
     for (let i = 0; i < m; i++) {
       const x = X[i] + dx[i], z = Z[i] + dz[i];
-      const c = clear(x, z);
-      if (c && (Math.abs(c[0] - x) > 0.05 || Math.abs(c[1] - z) > 0.05)) { dx[i] += (c[0] - x) * 1.15; dz[i] += (c[1] - z) * 1.15; any = true; }
+      const c = clear(x, z, extra);
+      if (c) { dx[i] += c[0] - x; dz[i] += c[1] - z; any = true; }
     }
     if (!any) break;
-    for (let pass = 0; pass < 2; pass++) {       // два прохода скользящего среднего, максимум с исходным (чтобы не «втягивало» обратно)
-      for (let i = 0; i < m; i++) {
-        let sx = 0, sz = 0, n = 0;
-        for (let k = Math.max(0, i - W); k <= Math.min(m - 1, i + W); k++) { sx += dx[k]; sz += dz[k]; n++; }
-        tx[i] = sx / n; tz[i] = sz / n;
-      }
-      for (let i = 0; i < m; i++) {
-        if (Math.hypot(tx[i], tz[i]) > Math.hypot(dx[i], dz[i])) { dx[i] = tx[i]; dz[i] = tz[i]; } else { dx[i] = (dx[i] + tx[i]) * 0.5; dz[i] = (dz[i] + tz[i]) * 0.5; }
-      }
-    }
+    blur(W);
   }
+  for (let it = 0; it < 4; it++) {                     // жёсткая проверка без запаса + лёгкое сглаживание стыков
+    let any = false;
+    for (let i = 0; i < m; i++) {
+      const x = X[i] + dx[i], z = Z[i] + dz[i];
+      const c = clear(x, z, 0);
+      if (c) { dx[i] += c[0] - x; dz[i] += c[1] - z; any = true; }
+    }
+    if (!any) break;
+    blur(5);
+  }
+  let maxD = 0;
   for (let i = 0; i < m; i++) { X[i] += dx[i]; Z[i] += dz[i]; maxD = Math.max(maxD, Math.hypot(dx[i], dz[i])); }
   return maxD;
 }

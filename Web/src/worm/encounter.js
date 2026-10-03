@@ -65,9 +65,9 @@ export class EncounterDirector {
     const camHead = Math.atan2(fwd.z, fwd.x);
     const preferred = Number.isFinite(camHead) && (fwd.x * fwd.x + fwd.z * fwd.z) > 0.04 ? camHead + Math.PI - 0.55 : -1.35;
     const tmp = new THREE.Vector3();
-    const clear = (x, z) => {
+    const clear = (x, z, extra = 0) => {
       tmp.set(x, ground(x, z), z);
-      return game.collide(tmp, RADIUS + T.avoidMargin, { ignore: 'worm', height: 3 }) ? [tmp.x, tmp.z] : null;
+      return game.collide(tmp, RADIUS + T.avoidMargin + extra, { ignore: 'worm', height: 3 }) ? [tmp.x, tmp.z] : null;
     };
     this.path = choosePath(G, preferred, { clear });
     const p0 = this.path.at(0);
@@ -170,7 +170,11 @@ export class EncounterDirector {
       this._lookBackup = [];
     }
   }
-  attention() { const K = this.api.K; return this._p.set(K.pos.x, K.pos.y + 12, K.pos.z); }
+  attention() {
+    const K = this.api.K, o = this.tasks[1];
+    if (o && (this.phase === 'dismount' || this.phase === 'talk') && o.it.free) return this._p.set(o.pos.x, o.pos.y + 1.6, o.pos.z);
+    return this._p.set(K.pos.x, K.pos.y + 12, K.pos.z);
+  }
 
   bark(speaker, name, ru, en, dur = 3.4) {
     const { game, bus } = this.api;
@@ -566,6 +570,7 @@ export class EncounterDirector {
 
   /** Для тестов/отладки: поставить сцену в стадию без ожидания. stage: 'arrive' (u) | 'stop' | 'dismount' | 'rest'. */
   debugStage(stage = 'stop', u) {
+    this.cancel();
     this.play();
     const p = this.path;
     this.api.fx.jobs.length = 0;

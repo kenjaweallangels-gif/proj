@@ -61,7 +61,7 @@ export function lumStats(png) {
 
 
 /** Открыть игру (autotest), поставить игрока у P4, пауза основного цикла, ручной __step(sec, dt), NaN-проба HDR. */
-export async function openGame({ file = 'worm.html', q = 'med', w = 1280, h = 720, gl = 'swiftshader', at = [279, 95], yaw } = {}) {
+export async function openGame({ file = 'worm.html', q = 'med', w = 1280, h = 720, gl = 'swiftshader', at = [279, 95], yaw, hideSubs = false } = {}) {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || findChromium(), args: GL[gl] });
   const page = await browser.newPage({ viewport: { width: w, height: h } });
   const errors = [];
@@ -70,8 +70,9 @@ export async function openGame({ file = 'worm.html', q = 'med', w = 1280, h = 72
   await page.goto(`file://${join(root, 'dist', file)}?autotest=1&q=${q}&lang=RU`);
   await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.5, null, { timeout: 900000 });
   console.log('GL:', gl, '|', await page.evaluate(() => { const gl = window.__rakis.renderer.getContext(); const e = gl.getExtension('WEBGL_debug_renderer_info'); return e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : 'n/a'; }));
-  await page.evaluate(([at, yaw]) => {
+  await page.evaluate(([at, yaw, hideSubs]) => {
     const g = window.__rakis;
+    if (hideSubs && g.ui?.el) for (const k of ['subs', 'lore', 'tcard', 'hintEl']) if (g.ui.el[k]) g.ui.el[k].style.visibility = 'hidden';
     g.zone = 'A2_Erg';
     g.player.teleport?.(at[0], g.heightAt(at[0], at[1]), at[1], yaw ?? 0.3);
     g.paused = true;
@@ -97,7 +98,7 @@ export async function openGame({ file = 'worm.html', q = 'med', w = 1280, h = 72
       for (let i = 0; i < buf.length; i++) { const e = buf[i] & 0x7c00; if (e === 0x7c00) { if (buf[i] & 0x3ff) nan++; else inf++; } }
       window.__nan = { nan, inf }; window.__probe = false;
     };
-  }, [at, yaw]);
+  }, [at, yaw, hideSubs]);
   return { browser, page, errors };
 }
 
