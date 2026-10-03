@@ -280,9 +280,9 @@ export function buildHall(scene) {
   fsign.position.set(-4.5, 1.6, z0 + 0.12); root.add(fsign);
 
   // ---------- освещение ----------
-  const hemi = new THREE.HemisphereLight('#eef3f7', '#5b5f63', 0.35);
+  const hemi = new THREE.HemisphereLight('#eef3f7', '#5b5f63', 0.6);          // цех ≈ 500–750 лк
   root.add(hemi);
-  const key = new THREE.DirectionalLight('#fff3e3', 1.6);
+  const key = new THREE.DirectionalLight('#fff3e3', 3.0);
   key.position.set(4, h - 1, 5);
   key.target.position.set(0, 0, 0);
   key.castShadow = true;
@@ -292,7 +292,7 @@ export function buildHall(scene) {
   key.shadow.bias = -0.0003; key.shadow.normalBias = 0.02;
   root.add(key, key.target);
   // местный свет над стапелем (подвесной линейный светильник)
-  const task = new THREE.SpotLight('#fff6ea', 120, 12, Math.PI / 4, 0.7, 1.4);
+  const task = new THREE.SpotLight('#fff6ea', 230, 12, Math.PI / 4, 0.7, 1.4);
   task.position.set(0.8, 5.2, 2.6); task.target.position.set(0, 1.0, 0);
   task.castShadow = true; task.shadow.mapSize.set(2048, 2048); task.shadow.radius = 3; task.shadow.bias = -0.0002; task.shadow.normalBias = 0.01;
   Object.assign(task.shadow.camera, { near: 0.5, far: 12 });

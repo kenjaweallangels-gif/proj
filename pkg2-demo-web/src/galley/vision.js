@@ -28,6 +28,9 @@ export const PRESETS = {
   ipd: { label: 'Межзрачковое не настроено (+6 мм)', age: 30, refraction: 0, inserts: false, dial: 0, dirt: 0.1, fatigue: 0, ipdErr: 6, dim: 0 },
 };
 
+/** Калибровка: 1 ед. яркости рендера ≈ 120 кд/м² (белая поверхность при ≈ 500 лк — около 1 ед.). */
+export const CD_PER_UNIT = 120;
+
 export const DISPLAY = { diagDeg: 52, aspect: 16 / 9, centerDeg: [0, -2], distM: 4, nits: 1250, latencyMs: 22 };
 
 /** Окно дисплея: 52° по диагонали, 16:9 → градусы по горизонтали и вертикали. */
@@ -127,7 +130,7 @@ uniform vec2 res; uniform float tanV; uniform float aspect; uniform float cNear;
 uniform float focusD; uniform float pupilMM; uniform float dispD; uniform float glassesOn; uniform float dispOn;
 uniform float transmit; uniform float dispBright; uniform float blink; uniform float flash; uniform vec2 angVel;
 uniform float fatigueBlur; uniform float age; uniform float dirt; uniform float ipdPx; uniform vec4 disp; uniform float maxLod;
-uniform float exposureBias; uniform float bootFade; uniform float dbg;
+uniform float exposureBias; uniform float bootFade; uniform float dbg; uniform float dispNits; uniform float sharpen; uniform float cdPerUnit;
 in vec2 vUv;
 
 const vec2 P[12] = vec2[12](vec2(-0.326,-0.406),vec2(-0.840,-0.074),vec2(-0.696,0.457),vec2(-0.203,0.621),vec2(0.962,-0.195),vec2(0.473,-0.480),vec2(0.519,0.767),vec2(0.185,-0.893),vec2(0.507,0.064),vec2(0.896,0.412),vec2(-0.322,-0.933),vec2(-0.792,-0.598));
@@ -146,7 +149,7 @@ vec3 blurReal(vec2 uv, float r){
 }
 vec3 blurHolo(vec2 uv, float r){
   if (r < 0.6) return texture(tHolo, uv).rgb;
-  float lod = clamp(log2(r) - 0.6, 0.0, maxLod);
+  float lod = clamp(log2(r) + 0.4, 0.0, maxLod + 1.0);            // текстура голограмм — ×2 к экрану
   vec3 acc = textureLod(tHolo, uv, lod).rgb;
   for (int i = 0; i < 12; i++) acc += textureLod(tHolo, uv + P[i] * r / res, lod).rgb;
   return acc / 13.0;
@@ -178,7 +181,8 @@ void main(){
     col = m / 7.0;
   }
   // ---- адаптация ----
-  float adapted = texture(tLum, vec2(0.5)).r;
+  // глаз адаптируется к тому, что прошло через линзы: при затемнении зрачок и адаптация «открываются»
+  float adapted = texture(tLum, vec2(0.5)).r * mix(1.0, transmit, glassesOn);
   float expo = clamp(0.18 / max(adapted, 1e-4), 0.08, 12.0) * exposureBias;
   vec3 lin = col * expo;
   // ---- рассеяние в глазу и на линзах: ореолы ярких источников ----
@@ -197,8 +201,6 @@ void main(){
   float lensSD = sdBox(a - vec2(0.0, -6.0), vec2(56.0, 26.0), 16.0);
   float inLens = glassesOn * (1.0 - smoothstep(-3.5, 3.5, lensSD));
   lin *= mix(vec3(1.0), transmit * vec3(0.94, 0.98, 1.0), inLens);
-  vec3 c = toSRGB(aces(lin));
-
   // ---- голограммы: окно дисплея, фокус дисплея, двоение (МЗР), хроматизм у края, задержка (в позе камеры) ----
   vec2 ac = a - disp.xy;
   float wsd = sdBox(ac, disp.zw, 1.2);
@@ -211,12 +213,16 @@ void main(){
     h.r = blurHolo(vUv + ca, rH).r; h.g = blurHolo(vUv, rH).g; h.b = blurHolo(vUv - ca, rH).b;
     h += blurHolo(vUv + vec2(ipdPx, 0.0) / res, rH) * (ipdPx > 0.5 ? 0.45 : 0.0);
     h += blurHolo(vUv + vec2(0.0, 3.0) / res, rH + 1.0) * 0.05;                    // вторичное отражение призмы
-    h *= dispBright * (1.0 - 0.25 * edge) * bootFade;
-    vec3 hd = 1.0 - exp(-h * 2.6);
-    hd = pow(hd, vec3(1.0 / 1.15));
-    c = 1.0 - (1.0 - c) * (1.0 - hd * wm);
-    c += glassesOn * vec3(0.25, 0.85, 0.75) * (1.0 - smoothstep(0.0, 0.3, abs(wsd))) * 0.04 * dispOn;
+    // резкость дисплея: лёгкое нерезкое маскирование (micro-OLED + обработка изображения в очках)
+    vec3 hb = blurHolo(vUv, rH + 1.4);
+    h = max(h + sharpen * (h - hb), 0.0);
+    // яркость дисплея в нитах в тех же единицах, что и мир (калибровка cdPerUnit): свет дисплея не проходит
+    // через затемняющую плёнку и складывается со светом цеха до тональной компрессии — как на сетчатке
+    h *= dispNits / cdPerUnit * dispBright * (1.0 - 0.25 * edge) * bootFade;
+    lin += h * expo * wm;
   }
+  vec3 c = toSRGB(aces(lin));
+  c += glassesOn * dispOn * vec3(0.25, 0.85, 0.75) * (1.0 - smoothstep(0.0, 0.3, abs(wsd))) * 0.03;
   // ---- оправа и корпус очков (в 2–3 см от глаза — всегда не в фокусе), нос, щёки ----
   float housing = glassesOn * smoothstep(15.0, 24.0, a.y) * (1.0 - smoothstep(55.0, 70.0, abs(a.x)));
   c = mix(c, vec3(0.012, 0.013, 0.016) + vec3(0.03) * (1.0 - smoothstep(19.0, 32.0, a.y)), housing * 0.97);
@@ -265,7 +271,7 @@ export class VisionRenderer {
         tReal: null, tDepth: null, tHolo: null, tLum: null, tDirt: dirtTexture(), res: new THREE.Vector2(1, 1), tanV: 1, aspect: 1, cNear: 0.05, cFar: 80,
         time: 0, focusD: 0.5, pupilMM: 4, dispD: 0.25, glassesOn: 0, dispOn: 0, transmit: 0.9, dispBright: 1, blink: 0, flash: 0,
         angVel: new THREE.Vector2(), fatigueBlur: 0, age: 30, dirt: 0.1, ipdPx: 0, disp: new THREE.Vector4(0, -2, 22, 12), maxLod: 7,
-        exposureBias: 1, bootFade: 1, dbg: 0,
+        exposureBias: 1, bootFade: 1, dbg: 0, dispNits: DISPLAY.nits, sharpen: 0.45, cdPerUnit: CD_PER_UNIT,
       }).map(([k, v]) => [k, { value: v }])) });
     this.u = this.finalMat.uniforms;
     this.u.disp.value.set(DISPLAY.centerDeg[0], DISPLAY.centerDeg[1], this.win.h / 2, this.win.v / 2);
@@ -277,7 +283,8 @@ export class VisionRenderer {
 
   setSize(w, h, pr) {
     const W = Math.floor(w * pr), H = Math.floor(h * pr);
-    this.rtReal.setSize(W, H); this.rtHolo.setSize(W, H);
+    this.rtReal.setSize(W, H);
+    this.rtHolo.setSize(Math.min(4096, W * 2), Math.min(4096, H * 2));      // голограммы — с суперсэмплингом ×2: чётче текст окон
     this.u.res.value.set(W, H);
     this.u.aspect.value = w / h;
     this.u.maxLod.value = Math.floor(Math.log2(Math.max(W, H))) - 1;
@@ -354,10 +361,10 @@ export class VisionRenderer {
     renderer.render(this.qScene, this.qCam);
   }
 
-  /** Средняя адаптированная яркость (для зрачка), отн. ед. → кд/м² — по калибровке «цех ≈ 150 кд/м²». */
+  /** Средняя адаптированная яркость поля зрения, кд/м² (по калибровке CD_PER_UNIT). */
   readLum() {
     const buf = new Float32Array(4);
     try { this.renderer.readRenderTargetPixels(this.lum[this.lumIdx], 0, 0, 1, 1, buf); } catch { return 150; }
-    return buf[0] * 600;
+    return buf[0] * CD_PER_UNIT;
   }
 }

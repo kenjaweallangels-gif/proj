@@ -7,13 +7,14 @@
 |---|---|
 | `pkg1-sim-vm/` | имитация очков, ядро (трекинг, шаги, голос), сервер цеха, конвейер CAD → GLB, клиент Godot |
 | `pkg2-demo-web/` | веб-демо Vite + Three.js, фотореалистичный рендер — `pkg2-demo-web/README.md` |
-| `pkg2-demo-web/galley.html` | **симулятор участка**: приход сборщика, AR-очки, сборка кухонного модуля КМ-2 на стапеле, окна КД/ТП/чата, модель зрения |
+| `pkg2-demo-web/galley.html` | **симулятор участка**: приход сборщика, AR-очки, сборка кухонного модуля КМ-2 на стапеле, окна КД/ТП/чата, модель зрения, голосовое управление |
+| `pkg2-demo-web/tablet.html` | **планшет сборщика** — пульт к очкам (переход, контроль, КД, чат, настройки); связь через сервер участка `/ws/remote/{стапель}` |
 | `data/examples/` | пакеты операций 040 (верстак) и 070 (полка в фюзеляже), GLB, листы КД |
 
 ## Быстрый старт демо
 ```bash
 cd pkg2-demo-web && npm install && npm run dev      # http://localhost:5173/?op=070&view=split
-npm test && npm run build && npm run smoke          # 48 тестов + 8 сценариев в Chromium
+npm test && npm run build && npm run smoke          # 56 тестов + 9 сценариев в Chromium
 # симулятор: http://localhost:5173/galley.html
 ```
 

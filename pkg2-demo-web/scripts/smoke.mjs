@@ -31,6 +31,7 @@ const cases = [
   ['galley_free', 'galley.html?intro=0'],
   ['galley_step_090', 'galley.html?step=090.02'],
   ['galley_myopia', 'galley.html?intro=0&vision=myopia'],
+  ['tablet', 'tablet.html'],
 ];
 let failed = 0;
 for (const [name, qs] of cases) {

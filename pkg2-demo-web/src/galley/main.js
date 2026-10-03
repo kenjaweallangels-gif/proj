@@ -15,6 +15,10 @@ import { PanelManager } from './ui3d.js';
 import { DISPLAY, Eye, PRESETS, VisionRenderer } from './vision.js';
 import { StepViz } from './viz.js';
 import { GALLEY_ORIGIN, PLACES, buildWorld } from './world.js';
+import { createLink, trimText } from './link.js';
+import { PHRASES, createRecognizer, parseGalley, speak } from './voice_cmd.js';
+import { OPERATIONS } from './process.js';
+import { searchDocs } from './catalog.js';
 import '../style.css';
 import './galley.css';
 
@@ -43,6 +47,8 @@ function glassesModel() {
 }
 
 async function main() {
+  // тот же адрес с #tablet — пульт сборщика вместо 3D (второе устройство открывает общую ссылку)
+  if (/(^|[#\-_.~])tablet(\b|$)/.test(location.hash)) { const { mountTablet } = await import('./tablet.js'); mountTablet(); window.__demo = { ready: true, tablet: true }; return; }
   const canvas = $('view');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: q.has('shot'), powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, Number(q.get('pr')) || 1.5));
@@ -54,7 +60,7 @@ async function main() {
   const world = buildWorld(scene);
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(scene, 0.02, 0.1, 60, { position: V(0, 2.2, 3.5) }).texture;
-  scene.environmentIntensity = 0.9;
+  scene.environmentIntensity = 1.15;
   renderer.shadowMap.autoUpdate = true;
 
   // ---------- процесс ----------
@@ -157,7 +163,8 @@ async function main() {
   const params = { light: 1, ...(PRESETS[q.get('vision')] || PRESETS.norm) };
   const eye = new Eye(params);
   const vision = new VisionRenderer(renderer, scene, cam);
-  const sim = { glasses: 0, display: 0, boot: 0, dimLevel: params.dim, bright: 1, occlusion: false };
+  const sim = { glasses: 0, display: 0, boot: 0, dimLevel: params.dim, dimMode: q.get('vision') === 'dimmed' ? 'manual' : 'auto', bright: 1, occlusion: false, tts: true };
+  let lumCd = 150;
   vision.beforeHolo = (hc) => placeHud(panels.hud, hc, vision.win);
   const glasses = glassesModel();
   const [dx, dy, dz] = PLACES.workplace.dock;
@@ -180,6 +187,15 @@ async function main() {
     <div class="reticle" id="ret"></div>
     <div class="prompt" id="prompt"></div>
     <div class="subs" id="subs"></div>
+    <div class="voice pe" id="voice">
+      <button id="vbtn" title="Голос: распознавание речи браузера (M)">🎤 Голос</button>
+      <input id="vline" placeholder="Голосовая строка: «сборка дальше», «сборка лист два», «сборка значение 1105»… (Y)" aria-label="Голосовая команда">
+      <span id="vheard"></span>
+    </div>
+    <div class="tablet-drawer pe" id="tdrawer" hidden>
+      <div class="tablet-frame"><iframe id="tframe" title="Планшет сборщика"></iframe></div>
+      <p id="tlink"></p>
+    </div>
     <div class="bar pe" id="bar"></div>
     <div class="status" id="status"></div>
     <canvas class="map" id="map" width="440" height="300"></canvas>
@@ -307,7 +323,11 @@ async function main() {
     if (k === 'KeyO') toggleCard('vision');
     if (k === 'KeyH') toggleCard('help');
     if (k === 'KeyV') { sim.glasses = sim.glasses ? 0 : 1; sim.display = sim.glasses; mgr.setEnabled(!!sim.glasses && app.aligned); app.notify(sim.glasses ? 'Очки надеты' : 'Очки сняты'); }
-    if (k === 'KeyL') { sim.dimLevel = sim.dimLevel >= 0.75 ? 0 : sim.dimLevel + 0.25; app.notify(`Затемнение линз ${Math.round(sim.dimLevel * 100)} %`); }
+    if (k === 'KeyL') { if (sim.dimMode === 'auto') act('dim_set', 0); else if (sim.dimLevel >= 0.75) act('dim_auto'); else act('dim_more'); }
+    if (k === 'KeyZ') act('pull');
+    if (k === 'KeyY' || k === 'Backquote') { e.preventDefault(); $('vline').focus(); }
+    if (k === 'KeyM') voiceUi.toggle();
+    if (k === 'KeyJ') toggleTablet();
   });
   function featureOf(o) { while (o) { if (o.userData?.featureId) return o.userData.featureId; o = o.parent; } return null; }
 
@@ -333,11 +353,170 @@ async function main() {
     viz.show(null, { features: near.slice(0, 6).map((x) => x.f.id), focus: pm.toArray() });
   }
 
+  // ---------- единый диспетчер: клавиатура, голос, планшет ----------
+  const PANEL_OF = { kd: panels.kd, task: panels.task, system: panels.sys, step: panels.step, local: panels.local };
+  const say2 = (text, voice) => { app.notify(text, 4); if (voice && sim.tts) speak(text); };
+  function fmtLeft(m) { const h = Math.floor(m / 60), mm = Math.round(m % 60); return h ? `${h} ч ${mm} мин` : `${mm} мин`; }
+  function act(cmd, arg = null, src = 'клавиатура') {
+    const voice = src === 'голос';
+    switch (cmd) {
+      case 'next': app.next(); break;
+      case 'prev': app.prev(); break;
+      case 'repeat': { const s = run.step; showStep(); say2(`${s.id}. ${s.title}. ${s.text[0] || ''}`, voice); break; }
+      case 'photo': app.photo(); break;
+      case 'value': app.value(arg); break;
+      case 'ok': app.notify('Отмечено: норма'); break;
+      case 'reject': app.sendChat(`Брак на переходе ${run.step.id}: остановил работу`); app.notify('Брак: мастер уведомлён', 4); break;
+      case 'timer': { const t = run.activeTimers()[0]; say2(t ? `${t.label}: осталось ${fmtLeft(run.remaining(t))}` : 'Активных таймеров нет', voice); break; }
+      case 'open_kd': app.openKD(app.kd.code, app.kd.sheet, app.kd.zone); break;
+      case 'kd_sheet': { const d = docByCode.get(app.kd.code); app.kd.sheet = Math.max(1, Math.min(d?.sheets.length || 1, Number(arg) || 1)); app.kdFit(); mgr.toggle(panels.kd, true); break; }
+      case 'kd_next': app.kdSheet(1); break;
+      case 'kd_prev': app.kdSheet(-1); break;
+      case 'kd_zone': app.openKD(app.kd.code, app.kd.sheet, arg); break;
+      case 'zoom_in': app.kdZoom(1.4); break;
+      case 'zoom_out': app.kdZoom(0.7); break;
+      case 'kd_fit': app.kdFit(); break;
+      case 'overlay': app.kdOverlay(); break;
+      case 'open_task': mgr.toggle(panels.task, true); break;
+      case 'open_chat': mgr.toggle(panels.task, true); break;
+      case 'open_system': mgr.toggle(panels.sys, true); break;
+      case 'open_step': mgr.toggle(panels.step, true); break;
+      case 'show': if (PANEL_OF[arg]) mgr.toggle(PANEL_OF[arg], true); break;
+      case 'close': if (PANEL_OF[arg]) mgr.toggle(PANEL_OF[arg], false); else { const h = mgr.pick(center); if (h) mgr.toggle(h.panel, false); } break;
+      case 'toggle': if (PANEL_OF[arg]) mgr.toggle(PANEL_OF[arg]); break;
+      case 'search': {
+        const res = searchDocs(String(arg || ''));
+        app.openSystem(String(arg || ''));
+        if (res[0] && res[0].kind !== 'ТП') app.openKD(res[0].code, 1);
+        say2(res.length ? `Найдено ${res.length}: ${res[0].code}` : `Не найдено: ${arg}`, voice);
+        break;
+      }
+      case 'open_doc': app.openKD(arg.code, arg.sheet || 1, arg.zone || null); break;
+      case 'preview': app.setPreview(arg); break;
+      case 'goto': if (stepById.has(arg)) { run.goto(arg); } break;
+      case 'inspect': inspectAtGaze(); break;
+      case 'exit': if (player.mode === 'inspect') { player.exitInspect(); mgr.toggle(panels.local, false); showStep(); } break;
+      case 'dim_more': sim.dimMode = 'manual'; sim.dimLevel = Math.min(0.9, sim.dimLevel + 0.2); app.notify(`Затемнение ${Math.round(sim.dimLevel * 100)} %`); break;
+      case 'dim_less': sim.dimMode = 'manual'; sim.dimLevel = Math.max(0, sim.dimLevel - 0.2); app.notify(`Затемнение ${Math.round(sim.dimLevel * 100)} %`); break;
+      case 'dim_auto': sim.dimMode = 'auto'; app.notify('Затемнение: авто по освещённости'); break;
+      case 'dim_set': sim.dimMode = 'manual'; sim.dimLevel = THREE.MathUtils.clamp(Number(arg) || 0, 0, 0.95); break;
+      case 'bright_up': sim.bright = Math.min(1, sim.bright + 0.15); app.notify(`Яркость дисплея ${Math.round(sim.bright * 100)} %`); break;
+      case 'bright_down': sim.bright = Math.max(0.2, sim.bright - 0.15); app.notify(`Яркость дисплея ${Math.round(sim.bright * 100)} %`); break;
+      case 'bright_set': sim.bright = THREE.MathUtils.clamp(Number(arg) || 1, 0.2, 1); break;
+      case 'pin': { const h = mgr.pick(center); if (h) mgr.pinHere(h.panel); break; }
+      case 'pull': { const h = (arg && PANEL_OF[arg] && { panel: PANEL_OF[arg] }) || mgr.pick(center); if (h?.panel) app.notify(mgr.pull(h.panel) ? 'Окно ближе — для чтения' : 'Окно на месте'); break; }
+      case 'follow': { const h = mgr.pick(center); if (h) { h.panel.mode = h.panel.mode === 'follow' ? 'world' : 'follow'; h.panel.dirty = true; } break; }
+      case 'call': app.sendChat(`Прошу подойти к стапелю СТ-3: переход ${run.step.id}`); app.notify('Мастер вызван'); break;
+      case 'message': if (arg) { app.sendChat(String(arg)); app.notify('Сообщение отправлено'); } break;
+      case 'preset': if (PRESETS[arg]) { Object.assign(params, { light: 1 }, PRESETS[arg]); sim.dimLevel = params.dim; } break;
+      case 'light': params.light = THREE.MathUtils.clamp(Number(arg) || 1, 0.3, 3); break;
+      case 'glasses': sim.glasses = sim.glasses ? 0 : 1; sim.display = sim.glasses; mgr.setEnabled(!!sim.glasses && app.aligned); break;
+      case 'speed': app.speed = Number(arg) || 60; break;
+      case 'help': say2(`Скажите: ${PHRASES.slice(0, 6).join(', ')}`, voice); toggleCard('voice'); break;
+      case 'listen': voiceUi.armed = performance.now() + 6000; app.notify('Слушаю…'); break;
+      case 'stop': voiceUi.stop(); break;
+      default: return false;
+    }
+    panels.step.dirty = true;
+    pushState(true);
+    return true;
+  }
+
+  // ---------- голос: распознавание браузера или голосовая строка ----------
+  const voiceUi = {
+    rec: null, armed: 0, last: '',
+    handle(alts, src = 'голос') {
+      const arr = [].concat(alts);
+      const armed = performance.now() < voiceUi.armed;
+      for (const text of arr) {
+        const p = parseGalley(text) || (armed ? parseGalley(text, { requireWake: false }) : null);
+        if (p) {
+          voiceUi.last = `«${text}» → ${p.cmd}${p.arg != null ? ` ${typeof p.arg === 'object' ? '' : p.arg}` : ''}`;
+          $('vheard').textContent = voiceUi.last;
+          if (p.cmd !== 'listen') voiceUi.armed = 0;
+          act(p.cmd, p.arg, src);
+          link.send('state', { heard: voiceUi.last });
+          return true;
+        }
+      }
+      $('vheard').textContent = `«${arr[0]}» — не команда`;
+      return false;
+    },
+    toggle() {
+      if (!voiceUi.rec) voiceUi.rec = createRecognizer({
+        onPhrase: (alts) => voiceUi.handle(alts),
+        onInterim: (t) => { $('vheard').textContent = `… ${t}`; },
+        onState: (st) => { $('vbtn').setAttribute('aria-pressed', String(st.on)); if (st.error) $('vheard').textContent = `микрофон: ${st.error} — используйте голосовую строку`; },
+      });
+      if (!voiceUi.rec) { $('vheard').textContent = 'Распознавание речи недоступно в этом браузере — голосовая строка ниже или планшет'; $('vline').focus(); return; }
+      voiceUi.rec.active ? voiceUi.rec.stop() : voiceUi.rec.start();
+    },
+    stop() { voiceUi.rec?.stop(); },
+  };
+
+  // ---------- планшет: связь и состояние ----------
+  const link = createLink({ role: 'glasses', room: q.get('room') || 'ST3', ws: q.get('ws') });
+  link.on('cmd', (m) => { act(m.cmd, m.arg, m.src === 'голос' ? 'голос' : 'планшет'); if (m.cmd !== 'value') app.notify(`Планшет: ${m.label || m.cmd}`, 2); });
+  link.on('voice', (m) => voiceUi.handle(m.alts || [m.text], 'голос'));
+  link.on('hello', () => pushState(true));
+  let lastState = '', lastPush = 0, lastBeat = 0;
+  function pushState(force = false) {
+    const now = performance.now();
+    if (!force && now - lastPush < 500) return;
+    lastPush = now;
+    const s = run.step, pv = app.preview ? stepById.get(app.preview) : null;
+    const st = {
+      clock: app.plantClock(), speed: app.speed, aligned: app.aligned, glasses: !!sim.glasses,
+      step: { id: s.id, op: s.op, title: s.title, kind: s.kind, text: s.text.map((t) => trimText(t, 160)).slice(0, 4),
+        check: s.check, photo: s.photo, critical: s.critical, need: run.needs(), value: run.values[s.id] ?? null, kd: s.kd.slice(0, 2) },
+      preview: pv ? { id: pv.id, title: pv.title } : null,
+      index: run.index, total: STEPS.length,
+      timers: run.activeTimers().slice(0, 3).map((t) => ({ label: trimText(t.label, 40), left: Math.round(run.remaining(t)), total: Math.round(t.endMin - t.startMin), blocking: t.blocking })),
+      chat: app.chat.slice(-4).map((m) => ({ from: m.from, text: trimText(m.text, 140), time: m.time, mine: !!m.mine })),
+      kd: { code: app.kd.code, sheet: app.kd.sheet, zone: app.kd.zone, zoom: Math.round(app.kd.zoom * 10) / 10 },
+      panels: Object.fromEntries(Object.entries(PANEL_OF).map(([k, p]) => [k, !!p.visible])),
+      dim: { mode: sim.dimMode, level: Math.round(sim.dimLevel * 100) / 100 }, bright: sim.bright, light: params.light, lux: Math.round(lumCd * 5),
+      inspect: app.local && player.mode === 'inspect' ? app.local.features.slice(0, 4).map(({ f }) => trimText(`${f.designation || f.id} — ${f.name || ''}`, 70)) : null,
+      heard: voiceUi.last,
+    };
+    const js = JSON.stringify(st);
+    if (!force && js === lastState && now - lastBeat < 1500) return;      // сердцебиение для планшета — раз в 1,5 с
+    lastBeat = now;
+    lastState = js;
+    link.send('state', st);
+  }
+
   // ---------- карточки: модель зрения, клавиши ----------
+  // голосовая строка и кнопка микрофона
+  $('vbtn').onclick = (e) => { e.stopPropagation(); voiceUi.toggle(); };
+  $('vline').addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { const t = e.target.value.trim(); if (t) voiceUi.handle([t.toLowerCase().startsWith('сборка') ? t : `сборка ${t}`], 'голос'); e.target.value = ''; }
+    if (e.key === 'Escape') e.target.blur();
+  });
+  // планшет в выдвижной панели (та же страница в режиме #tablet; связь — BroadcastChannel)
+  function toggleTablet() {
+    const d = $('tdrawer');
+    d.hidden = !d.hidden;
+    if (!d.hidden && !$('tframe').src) {
+      const base = location.href.split('#')[0];
+      $('tframe').src = /\/galley\.html/.test(base) ? base.replace(/galley\.html/, 'tablet.html') : `${base}#tablet`;
+      const ext = /\/galley\.html/.test(base) ? base.replace(/galley\.html.*/, `tablet.html?room=${q.get('room') || 'ST3'}${q.get('ws') ? `&ws=${encodeURIComponent(q.get('ws'))}` : ''}`) : `${base}#tablet`;
+      $('tlink').textContent = `На отдельном планшете: ${ext}${q.get('ws') ? '' : ' (между устройствами — через сервер участка: &ws=ws://сервер:8080, или общей ссылкой артефакта)'}`;
+    }
+  }
+
   function toggleCard(kind) {
     const c = $('card');
     if (!c.hidden && c.dataset.kind === kind) { c.hidden = true; return; }
     c.dataset.kind = kind; c.hidden = false;
+    if (kind === 'voice') {
+      c.innerHTML = `<h3>Голосовое управление</h3><p class="note">Слово активации — «сборка». Распознавание: кнопка 🎤 (речь браузера, нужен микрофон),
+        голосовая строка внизу (Y) или микрофон планшета. На очках в цеху — офлайн Vosk, тот же словарь.</p>
+        <div class="presets">${PHRASES.map((p) => `<button data-ph="${p}">${p}</button>`).join('')}</div>`;
+      c.querySelectorAll('[data-ph]').forEach((b) => b.onclick = () => voiceUi.handle([b.dataset.ph], 'голос'));
+      return;
+    }
     if (kind === 'help') {
       c.innerHTML = `<h3>Управление</h3><table>${[
         ['WASD / стрелки', 'ходьба; Shift — быстрее; C — присесть'], ['мышь', 'обзор (щелчок — захват; ПКМ — без захвата)'], ['щелчок по окну', 'кнопки, поля, листы КД'],
@@ -368,7 +547,7 @@ async function main() {
     $('r_inserts').onchange = (e) => { params.inserts = e.target.checked; };
     $('r_occ').onchange = (e) => { sim.occlusion = e.target.checked; };
   }
-  $('bar').innerHTML = ['Клавиши (H)', 'Зрение (O)', 'Окна 1–4', 'Время ×60 (T)', 'Очки (V)'].map((t, i) => `<button data-b="${i}">${t}</button>`).join('');
+  $('bar').innerHTML = ['Клавиши (H)', 'Зрение (O)', 'Окна 1–4', 'Время ×60 (T)', 'Очки (V)', 'Планшет (J)', 'Голосовые команды'].map((t, i) => `<button data-b="${i}">${t}</button>`).join('');
   $('bar').querySelectorAll('button').forEach((b) => b.onclick = (e) => {
     e.stopPropagation();
     const i = Number(b.dataset.b);
@@ -376,6 +555,8 @@ async function main() {
     if (i === 2) for (const p of [panels.kd, panels.step, panels.sys, panels.task]) mgr.toggle(p, true);
     if (i === 3) { app.speed = { 1: 60, 60: 600, 600: 1 }[app.speed] || 60; b.textContent = `Время ×${app.speed} (T)`; }
     if (i === 4) dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyV' }));
+    if (i === 5) toggleTablet();
+    if (i === 6) toggleCard('voice');
   });
 
   // ---------- мини-карта ----------
@@ -411,7 +592,7 @@ async function main() {
   // ---------- кадр ----------
   const gazeRay = new THREE.Raycaster();
   gazeRay.layers.set(LAYER_REAL);
-  let gaze = { dist: 2, holo: false }, frame = 0, last = performance.now(), lumCd = 150, chatIdx = 0;
+  let gaze = { dist: 2, holo: false }, frame = 0, last = performance.now(), chatIdx = 0;
   const lights = [world.hall.key, world.hall.task];
   const baseI = lights.map((l) => l.intensity);
   renderer.setAnimationLoop((now) => {
@@ -428,6 +609,12 @@ async function main() {
       d.rotation.y += (tgt - d.rotation.y) * (1 - Math.exp(-dt * 4));
     }
     lights.forEach((l, i) => { l.intensity = baseI[i] * params.light; });
+    // электрохромное затемнение «авто»: по освещённости, отклик ≈ 0,1 с (как у плёнки очков)
+    if (sim.dimMode === 'auto') {
+      const want = THREE.MathUtils.clamp((lumCd - 60) / 260, 0, 0.7);
+      sim.dimLevel += (want - sim.dimLevel) * (1 - Math.exp(-dt / 0.1));
+    }
+    pushState();
     // взгляд: окно (голограмма) или предмет
     const ndc = pointerNdc();
     if (frame++ % 3 === 0) {
@@ -449,7 +636,7 @@ async function main() {
       transmit: 0.88 * (1 - sim.dimLevel * 0.95), dispBright: sim.bright,
       blink: eye.lid, angVel: player.angVel, age: params.age, dirt: params.dirt,
       fatigueBlur: params.fatigue * Math.min(1, Math.max(0, (eye.sinceBlink - 2) / 6)) * 1.5, ipdPx: params.ipdErr * 1.2,
-      exposureBias: 1.2,
+      exposureBias: 1.15,
     });
     vision.u.flash.value = Math.max(0, vision.u.flash.value - dt * 2.5);
     if (frame % 10 === 0) {

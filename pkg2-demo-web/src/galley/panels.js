@@ -16,7 +16,7 @@ const KIND_RU = { prep: 'подготовка', install: 'установка', g
 export function buildPanels(mgr, app) {
   // ---------- Задание и чат ----------
   const task = mgr.add(new Panel(mgr, {
-    id: 'task', title: 'Сменное задание и чат с мастером', w: 0.78, h: 0.72, ppm: 1150, home: { pos: [1.95, 1.58, 2.9], look: [0, 1.6, 3.8] },
+    id: 'task', title: 'Сменное задание и чат с мастером', w: 0.94, h: 0.864, ppm: 958, home: { pos: [2.2, 1.6, 2.75], look: [0, 1.6, 3.8] },
     draw(ui, p, top) {
       const W = p.px;
       let y = top + 34;
@@ -62,7 +62,7 @@ export function buildPanels(mgr, app) {
 
   // ---------- Система сборщика: поиск ТП и КД ----------
   const sys = mgr.add(new Panel(mgr, {
-    id: 'system', title: 'Система сборщика · ТП и КД', w: 0.8, h: 0.72, ppm: 1150, home: { pos: [-1.95, 1.58, 2.9], look: [0, 1.6, 3.8] },
+    id: 'system', title: 'Система сборщика · ТП и КД', w: 0.96, h: 0.864, ppm: 958, home: { pos: [-2.2, 1.6, 2.75], look: [0, 1.6, 3.8] },
     onWheel(dy, pt, p) { p.state.scroll = Math.max(0, (p.state.scroll || 0) + Math.sign(dy) * 3); },
     draw(ui, p, top) {
       const W = p.px;
@@ -122,7 +122,7 @@ export function buildPanels(mgr, app) {
 
   // ---------- КД: лист в масштабе, зум, зоны ----------
   const kd = mgr.add(new Panel(mgr, {
-    id: 'kd', title: 'КД', w: 1.0, h: 0.72, ppm: 1250, home: { pos: [-1.0, 1.58, 1.9], look: [0, 1.6, 3.8] },
+    id: 'kd', title: 'КД', w: 1.2, h: 0.864, ppm: 1042, home: { pos: [-1.15, 1.6, 1.7], look: [0, 1.6, 3.8] },
     onWheel(dy, pt, p) { app.kdZoom(dy < 0 ? 1.25 : 0.8, pt); },
     onDrag(d) { app.kdPan(d); },
     draw(ui, p, top) {
@@ -161,7 +161,7 @@ export function buildPanels(mgr, app) {
 
   // ---------- Переход: текст, таймеры, контроль ----------
   const step = mgr.add(new Panel(mgr, {
-    id: 'step', title: 'Переход', w: 0.78, h: 0.72, ppm: 1150, home: { pos: [1.0, 1.58, 1.9], look: [0, 1.6, 3.8] },
+    id: 'step', title: 'Переход', w: 0.94, h: 0.864, ppm: 958, home: { pos: [1.15, 1.6, 1.7], look: [0, 1.6, 3.8] },
     draw(ui, p, top) {
       const W = p.px;
       const run = app.run;
@@ -267,14 +267,14 @@ export function buildPanels(mgr, app) {
   return { task, sys, kd, step, local, hud };
 }
 
-/** Строка состояния: держать у верхнего края окна дисплея (привязка к голове, с задержкой дисплея). */
+/** Строка состояния: держать у нижнего края окна дисплея (привязка к голове, с задержкой дисплея). */
 export function placeHud(hud, camera, win) {
   const d = 1.6;
   const up = Math.tan(THREE.MathUtils.degToRad(win.v / 2 - 4)) * d;
   hud.group.position.copy(camera.position);
   hud.group.quaternion.copy(camera.quaternion);
   hud.group.translateZ(-d);
-  hud.group.translateY(up + 0.01);
+  hud.group.translateY(-up - 0.07);              // у нижнего края окна дисплея — не перекрывает окна КД и перехода
 }
 
 export { STEPS };

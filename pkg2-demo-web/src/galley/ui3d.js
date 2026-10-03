@@ -7,7 +7,7 @@ import { LAYER_HOLO } from '../engine/holo.js';
 
 export const C = {
   text: '#dcf6ff', dim: '#86b4c4', acc: '#58e6ff', ok: '#5dffa8', warn: '#ffc845', bad: '#ff7a66',
-  line: 'rgba(88,230,255,0.55)', fill: 'rgba(88,230,255,0.07)', hover: 'rgba(88,230,255,0.18)', active: 'rgba(88,230,255,0.28)',
+  line: 'rgba(88,230,255,0.7)', fill: 'rgba(88,230,255,0.025)', hover: 'rgba(88,230,255,0.16)', active: 'rgba(88,230,255,0.26)',
 };
 const FONT = '"IBM Plex Sans", "IBM Plex Sans Condensed", system-ui, sans-serif';
 const MONO = '"IBM Plex Mono", ui-monospace, monospace';
@@ -16,7 +16,7 @@ const MONO = '"IBM Plex Mono", ui-monospace, monospace';
 class UI {
   constructor(panel) { this.p = panel; this.c = panel.ctx; }
   font(size, weight = 400, mono = false) { this.c.font = `${weight} ${size}px ${mono ? MONO : FONT}`; }
-  text(str, x, y, { size = 22, color = C.text, weight = 500, align = 'left', max = 0, mono = false, base = 'alphabetic' } = {}) {
+  text(str, x, y, { size = 22, color = C.text, weight = 600, align = 'left', max = 0, mono = false, base = 'alphabetic' } = {}) {
     const c = this.c; this.font(size, weight, mono);
     c.fillStyle = color; c.textAlign = align; c.textBaseline = base;
     let s = String(str ?? '');
@@ -25,7 +25,7 @@ class UI {
     return c.measureText(s).width;
   }
   /** Перенос строк по ширине; возвращает высоту. */
-  wrap(str, x, y, w, { size = 20, color = C.text, lh = 1.3, weight = 500, maxLines = 99 } = {}) {
+  wrap(str, x, y, w, { size = 20, color = C.text, lh = 1.3, weight = 600, maxLines = 99 } = {}) {
     const c = this.c; this.font(size, weight);
     const words = String(str).split(' ');
     let line = '', n = 0;
@@ -78,7 +78,7 @@ export class Panel {
     this.ctx = this.canvas.getContext('2d');
     this.tex = new THREE.CanvasTexture(this.canvas);
     this.tex.colorSpace = THREE.SRGBColorSpace;
-    this.tex.anisotropy = 8;
+    this.tex.anisotropy = 16;
     this.tex.generateMipmaps = true;
     this.mat = new THREE.MeshBasicMaterial({ map: this.tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: true, toneMapped: false, side: THREE.DoubleSide });
     this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), this.mat);
@@ -118,7 +118,7 @@ export class Panel {
     const ui = new UI(this);
     let top = 0;
     if (this.chrome) {
-      ui.rect(3, 3, W - 6, H - 6, { fill: 'rgba(30,110,140,0.10)', stroke: C.line, r: 18, lw: 3 });
+      ui.rect(3, 3, W - 6, H - 6, { fill: 'rgba(30,110,140,0.018)', stroke: C.line, r: 18, lw: 3 });
       ui.text(this.title, 22, 40, { size: 26, weight: 600, color: C.acc, max: W - 470 });
       const pinned = this.mode === 'world';
       ui.button(W - 444, 12, 130, 38, pinned ? 'Закреплено' : 'Закрепить', () => this.mgr.pinHere(this), { active: pinned, size: 18 });
@@ -202,6 +202,21 @@ export class PanelManager {
     panel.placeAt(pos, this.camera.position);
     panel.mode = 'world';
     panel.group.visible = this.enabled && panel.visible;
+  }
+
+  /** Притянуть окно для чтения (0,75–1 м перед глазами) или вернуть на место. */
+  pull(panel) {
+    if (!panel) return false;
+    if (panel._home) {
+      panel.group.position.copy(panel._home.p); panel.group.quaternion.copy(panel._home.q); panel.mode = panel._home.mode; panel._home = null;
+      return false;
+    }
+    panel._home = { p: panel.group.position.clone(), q: panel.group.quaternion.clone(), mode: panel.mode };
+    const dir = new THREE.Vector3(); this.camera.getWorldDirection(dir);
+    const d = Math.max(0.75, Math.min(1.0, panel.h * 1.3));
+    panel.placeAt(this.camera.position.clone().addScaledVector(dir, d).add(new THREE.Vector3(0, -0.03, 0)), this.camera.position);
+    panel.mode = 'world';
+    return true;
   }
 
   setFocus(panel, id, opts = {}) {

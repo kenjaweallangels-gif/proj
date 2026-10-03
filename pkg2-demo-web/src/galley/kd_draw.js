@@ -424,7 +424,7 @@ export function drawDoc(ctx, code, sheet, view, { zone = null } = {}) {
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const p = new Pen(ctx, view);
   const [W, H] = FORMATS[fmt];
-  ctx.fillStyle = 'rgba(8,30,40,0.35)'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(8,30,40,0.12)'; ctx.fillRect(0, 0, W, H);
   if (!doc) p.text(`Документ ${code} не найден`, 20, 40, 8);
   else if (doc.kind === 'СБ') sheetAssembly(p, sheet);
   else if (doc.kind === 'СП') sheetSpec(p);

@@ -173,6 +173,33 @@ def create_app(database_url: str | None = None) -> FastAPI:
         except WebSocketDisconnect:
             rooms[run_id].discard(ws)
 
+    # пульт сборщика: планшет ↔ очки на одном рабочем месте (комната = стапель, например ST3).
+    # Сервер только пересылает JSON остальным участникам комнаты: команды с планшета, состояние перехода с очков.
+    remote: dict[str, set[WebSocket]] = {}
+
+    @app.websocket("/ws/remote/{room}")
+    async def remote_relay(ws: WebSocket, room: str):
+        if token and ws.query_params.get("token") != token:
+            await ws.close(code=4401)
+            return
+        await ws.accept()
+        peers = remote.setdefault(room, set())
+        peers.add(ws)
+        try:
+            while True:
+                msg = await ws.receive_json()
+                if not isinstance(msg, dict) or len(str(msg)) > 16384:
+                    continue
+                for peer in list(peers):
+                    if peer is ws:
+                        continue
+                    try:
+                        await peer.send_json(msg)
+                    except Exception:
+                        peers.discard(peer)
+        except WebSocketDisconnect:
+            peers.discard(ws)
+
     @app.get("/api/health")
     def health():
         return {"ok": True}

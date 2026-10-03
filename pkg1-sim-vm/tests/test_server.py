@@ -52,3 +52,16 @@ def test_token(tmp_path, monkeypatch):
     c = TestClient(create_app(f"sqlite:///{tmp_path / 'x.db'}"))
     assert c.get("/api/operations").status_code == 401
     assert c.get("/api/operations", headers={"X-Device-Token": "secret"}).status_code == 200
+
+
+def test_remote_relay_tablet_to_glasses(client):
+    """Пульт: команда с планшета доходит до очков той же комнаты, но не до другой комнаты и не обратно отправителю."""
+    with client.websocket_connect("/ws/remote/ST3") as glasses, client.websocket_connect("/ws/remote/ST3") as tablet, \
+            client.websocket_connect("/ws/remote/ST4") as other:
+        tablet.send_json({"type": "cmd", "cmd": "next", "id": "m1"})
+        assert glasses.receive_json() == {"type": "cmd", "cmd": "next", "id": "m1"}
+        glasses.send_json({"type": "state", "step": {"id": "060.02"}, "id": "m2"})
+        assert tablet.receive_json()["step"]["id"] == "060.02"
+        other.send_json({"type": "ping", "id": "m3"})
+        tablet.send_json({"type": "cmd", "cmd": "photo", "id": "m4"})
+        assert glasses.receive_json()["cmd"] == "photo"      # «ping» из ST4 сюда не пришёл
