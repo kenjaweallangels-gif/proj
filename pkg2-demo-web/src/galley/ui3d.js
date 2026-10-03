@@ -101,6 +101,7 @@ export class Panel {
   /** Поставить окно в точку мира pos лицом к lookAt (с учётом системы окон: стапель или «вокруг головы» в 3DoF). */
   placeAt(pos, lookAt) {
     const par = this.group.parent;
+    this.group.scale.setScalar(1);
     if (par) { par.updateMatrixWorld(); this.group.position.copy(par.worldToLocal(pos.clone())); } else this.group.position.copy(pos);
     this.group.lookAt(lookAt.x, pos.y, lookAt.z);
     this.dirty = true;

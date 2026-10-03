@@ -218,6 +218,35 @@ export function buildPanels(mgr, app) {
   step.onEnter = (id, text) => { if (id === 'value') app.value(text); };
   step.animated = true;
 
+  // ---------- Алгоритм в углу поля зрения: привязан к голове сборщика (как HUD), крупный текст ----------
+  // Окно стоит в плоскости дисплея (на расстоянии виртуального экрана) — без конфликта вергенции и аккомодации,
+  // поэтому текст резкий при любом взгляде; фон почти прозрачный, мир за ним виден.
+  const algo = mgr.add(new Panel(mgr, {
+    id: 'algo', title: 'Алгоритм', w: 0.6, h: 0.42, ppm: 1600, chrome: false,
+    draw(ui, p) {
+      const W = p.px, H = p.py, run = app.run, s = run.step;
+      const idx = STEPS.indexOf(s) + 1;
+      ui.rect(3, 3, W - 6, H - 6, { fill: 'rgba(30,110,140,0.035)', stroke: 'rgba(88,230,255,0.55)', r: 22, lw: 3 });
+      const ai = app.autoInfo?.();
+      ui.text(`${s.id} · ${KIND_RU[s.kind] || s.kind}`, 28, 62, { size: 48, color: s.critical ? C.warn : C.acc, weight: 600, max: W - 260 });
+      ui.text(`${idx}/${STEPS.length}${ai ? (ai.includes('пауза') ? ' ⏸' : ' ▶') : ''}`, W - 28, 62, { size: 42, color: ai ? C.warn : C.dim, align: 'right' });
+      let y = 88;
+      y += ui.wrap(s.title, 28, y + 56, W - 56, { size: 58, weight: 600, color: '#ffffff', lh: 1.12, maxLines: 2 }) + 10;
+      if (s.text[0]) ui.wrap(s.text[0], 28, y + 44, W - 56, { size: 44, lh: 1.18, maxLines: Math.max(1, Math.floor((H - 110 - y) / 52)) });
+      // нижняя строка: что нужно для перехода дальше, таймер
+      const tm = run.blockingTimer() || run.activeTimers()[0];
+      const need = run.needs();
+      const msg = need === 'timer' ? 'Идёт выдержка' : need === 'value' ? `Замер: ${s.check.name}` : need === 'photo' ? 'Нужно фото' : 'Можно дальше ▸';
+      ui.text(msg, 28, H - 32, { size: 46, weight: 600, color: need ? C.warn : C.ok, max: tm ? W - 290 : W - 56 });
+      if (tm) ui.text(`⏱ ${fmtMin(run.remaining(tm))}`, W - 28, H - 32, { size: 50, color: C.warn, align: 'right', mono: true });
+    },
+  }));
+  algo.animated = true;
+  algo.mode = 'corner';
+  algo.visible = false;
+  algo.mat.depthTest = false;
+  algo.mesh.renderOrder = 40;
+
   // ---------- В этой точке (локальный алгоритм) ----------
   const local = mgr.add(new Panel(mgr, {
     id: 'local', title: 'В этой точке', w: 0.5, h: 0.6, ppm: 1300,
@@ -267,7 +296,7 @@ export function buildPanels(mgr, app) {
   }));
   hud.mode = 'head';
   hud.animated = true;
-  return { task, sys, kd, step, local, hud };
+  return { task, sys, kd, step, local, hud, algo };
 }
 
 /** Строка состояния: держать у нижнего края окна дисплея (привязка к голове, с задержкой дисплея). */
@@ -288,3 +317,33 @@ export function placeHud(hud, camera, win, centerDeg = -2) {
 }
 
 export { STEPS };
+
+/** Перевести позу группы из мира в СК родителя (система окон может быть повёрнута — 3DoF). */
+function toParent(g) {
+  if (!g.parent) return;
+  g.parent.updateMatrixWorld();
+  const m = new THREE.Matrix4().compose(g.position, g.quaternion, g.scale).premultiply(g.parent.matrixWorld.clone().invert());
+  m.decompose(g.position, g.quaternion, g.scale);
+}
+
+/**
+ * Окно, привязанное к голове, в углу окна дисплея. corner: 'tr' | 'tl'. Расстояние — плоскость виртуального
+ * экрана очков (distM), размер — доля окна дисплея (у Aura 70° окно крупнее по углу, у Air 2 Pro 46° — меньше).
+ */
+export function placeCorner(panel, camera, win, centerDeg = -2, distM = 4, corner = 'tr') {
+  const g = panel.group, D2R = Math.PI / 180;
+  const aspect = panel.w / panel.h;
+  let wDeg = win.h * 0.5, hDeg = wDeg / aspect;
+  if (hDeg > win.v * 0.58) { hDeg = win.v * 0.58; wDeg = hDeg * aspect; }
+  const k = (2 * distM * Math.tan((wDeg / 2) * D2R)) / panel.w;
+  const m = 1.2;                                   // поле от края окна, °
+  const ax = (win.h / 2 - m - wDeg / 2) * (corner === 'tl' ? -1 : 1);
+  const ay = centerDeg + win.v / 2 - m - hDeg / 2;
+  g.position.copy(camera.position);
+  g.quaternion.copy(camera.quaternion);
+  g.translateX(Math.tan(ax * D2R) * distM);
+  g.translateY(Math.tan(ay * D2R) * distM);
+  g.translateZ(-distM);
+  g.scale.setScalar(k);
+  toParent(g);
+}

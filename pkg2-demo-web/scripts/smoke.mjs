@@ -36,6 +36,7 @@ const cases = [
   ['galley_auto_aura', 'galley.html?intro=0&auto=1&glasses=aura'],
   ['galley_onepro_3dof', 'galley.html?intro=0&glasses=onepro'],
   ['galley_air2pro_090', 'galley.html?step=090.02&glasses=air2pro'],
+  ['galley_free_corner', 'galley.html?step=070.01&auto=1&autocam=free'],
 ];
 let failed = 0;
 for (const [name, qs] of cases) {

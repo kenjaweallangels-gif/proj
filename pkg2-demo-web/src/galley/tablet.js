@@ -106,7 +106,9 @@ export function mountTablet() {
       <div class="keypad">${['7', '8', '9', '⌫', '4', '5', '6', '−', '1', '2', '3', ',', '0', '00', 'C', 'OK'].map((k) => `<button class="btn ${k === 'OK' ? 'ok' : ''}" data-k="${k}">${k}</button>`).join('')}</div></div>` : '';
     const au = S.auto || {};
     const autoRow = `<div class="card"><div class="row">${au.on && !au.paused ? '<button class="btn warn" data-c="auto_pause">⏸ Пауза имитации</button>'
-      : `<button class="btn ok" data-c="auto_start">▶ ${au.on ? 'Продолжить имитацию' : 'Имитация сборки'}</button>`}${au.on ? '<button class="btn bad" data-c="auto_stop">⏹ Стоп</button>' : ''}</div></div>`;
+      : `<button class="btn ok" data-c="auto_start">▶ ${au.on ? 'Продолжить имитацию' : 'Имитация сборки'}</button>`}${au.on ? '<button class="btn bad" data-c="auto_stop">⏹ Стоп</button>' : ''}
+      <button class="btn" aria-pressed="${au.cam === 'free'}" data-c="auto_cam">${au.cam === 'free' ? '🚶 Хожу сам' : '🎥 Камера ведёт'}</button>
+      <button class="btn" aria-pressed="${!!S.panels?.algo}" data-c="corner">Алгоритм в углу</button></div></div>`;
     return `${autoRow}<div class="card"><span class="id">${esc(s.id)} · ${S.index + 1}/${S.total}</span>${s.critical ? '<span class="tag">критичный</span>' : ''}
       <h2>${esc(s.title)}</h2>${S.preview ? `<div class="tag">в очках просмотр: ${esc(S.preview.id)}</div>` : ''}
       <ul class="txt">${s.text.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>${timers}
@@ -161,7 +163,7 @@ export function mountTablet() {
       <p style="font-size:14px;color:var(--mute)">${esc(deviceSummary(dev))}. ${esc(dev.note)}</p>
       ${dev.tracking === '3dof' ? '<div class="row"><button class="btn acc" data-c="recenter">Окна по центру взгляда</button></div>' : ''}</div>
       <div class="card"><div class="id">Окна в очках</div><div class="row" style="margin-top:8px">
-      ${[['kd', 'КД'], ['step', 'Переход'], ['system', 'Система'], ['task', 'Задание и чат']].map(([k, t]) => `<button class="btn" aria-pressed="${!!p[k]}" data-c="toggle" data-a="${k}">${t}</button>`).join('')}
+      ${[['kd', 'КД'], ['step', 'Переход'], ['system', 'Система'], ['task', 'Задание и чат'], ['algo', 'Алгоритм в углу']].map(([k, t]) => `<button class="btn" aria-pressed="${!!p[k]}" data-c="toggle" data-a="${k}">${t}</button>`).join('')}
       <button class="btn" data-c="pull" data-a="step">Переход ближе</button><button class="btn" data-c="glasses">${S?.glasses ? 'Снять очки' : 'Надеть очки'}</button></div></div>
       <div class="card"><div class="id">Затемнение линз и яркость дисплея</div>
       ${dev.dimLevels ? `<div class="row" style="margin-top:8px"><button class="btn" aria-pressed="${d.mode === 'auto'}" data-c="dim_auto">Авто по свету</button>

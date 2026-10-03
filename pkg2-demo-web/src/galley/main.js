@@ -10,7 +10,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { HOLO, LAYER_HOLO, LAYER_REAL, markerFrame } from '../engine/holo.js';
 import { AUTO_REPLIES, CHAT_SCRIPT, docByCode } from './catalog.js';
 import { docFormat, FORMATS } from './kd_draw.js';
-import { buildPanels, placeHud } from './panels.js';
+import { buildPanels, placeCorner, placeHud } from './panels.js';
 import { Player } from './player.js';
 import { DONE_BEFORE_SHIFT, ProcessRun, STEPS, stateFrom, stepById, stepsForFeature } from './process.js';
 import * as S from './spec.js';
@@ -33,6 +33,8 @@ for (const t of location.hash.slice(1).split(/[-_.~]/).filter(Boolean)) {      /
   else if (/^s\d{6}$/.test(t)) q.set('step', `${t.slice(1, 4)}.${t.slice(4, 6)}`);
   else if (deviceById.has(t)) q.set('glasses', t);
   else if (t === 'auto') q.set('auto', '1');
+  else if (t === 'free') { q.set('auto', '1'); q.set('autocam', 'free'); }
+  else if (t === 'corner') q.set('corner', '1');
 }
 const $ = (id) => document.getElementById(id);
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -173,7 +175,11 @@ async function main() {
     device: deviceById.get(q.get('glasses')) || deviceById.get(DEFAULT_DEVICE), wearMin: 0 };
   const STAND = V(0, 1.68, 3.4);            // место сборщика у стапеля: для него задана раскладка окон
   let lumCd = 150;
-  vision.beforeHolo = (hc) => placeHud(panels.hud, hc, vision.win, vision.u.disp.value.y);
+  vision.beforeHolo = (hc) => {
+    placeHud(panels.hud, hc, vision.win, vision.u.disp.value.y);
+    // окна «в углу» — привязаны к голове, в плоскости виртуального экрана очков
+    for (const p of mgr.panels) if (p.mode === 'corner' && p.group.visible) placeCorner(p, hc, vision.win, vision.u.disp.value.y, sim.device.distM, p.corner || 'tr');
+  };
   /** Выбрать очки: окно дисплея, яркость, линзы, оптика, трекинг, задержка, расстояние экрана, коррекция. */
   function setDevice(id, { quiet = false } = {}) {
     const d = deviceById.get(id) || sim.device;
@@ -231,7 +237,7 @@ async function main() {
     <div class="start pe" id="start"><div><b>Участок сборки монументов · КМ-2</b>
       Сборщик приходит на участок, надевает AR-очки и подходит к стапелю.
       <span class="start-dev">Очки: <select id="sdev" aria-label="Модель очков">${DEVICES.map((d) => `<option value="${d.id}">${d.brand} ${d.name} — ${d.fovDiag}°, ${d.tracking === '6dof' ? '6DoF' : '3DoF'}</option>`).join('')}</select></span>
-      <span class="start-btns"><button id="sauto" class="primary">▶ Имитация сборки (автоматически)</button><button id="sself">Управлять самому</button></span>
+      <span class="start-btns"><button id="sauto" class="primary">▶ Имитация: камера ведёт</button><button id="sfree" class="primary">▶ Имитация: хожу сам</button><button id="sself">Управлять самому</button></span>
       <small><b style="display:inline;font-size:13px">WASD</b> — ходьба, мышь — обзор, <b style="display:inline;font-size:13px">I</b> — имитация / пауза, <b style="display:inline;font-size:13px">K</b> — другие очки,
       <b style="display:inline;font-size:13px">Enter</b> — пропустить вступление, <b style="display:inline;font-size:13px">H</b> — все клавиши.</small></div></div>`;
   const say = (t) => { $('subs').textContent = t; };
@@ -324,7 +330,9 @@ async function main() {
   $('sdev').value = sim.device.id;
   $('sdev').onclick = (e) => e.stopPropagation();
   $('sdev').onchange = (e) => setDevice(e.target.value);
-  $('sauto').onclick = (e) => { e.stopPropagation(); $('start').hidden = true; auto.start(); };
+  $('sauto').onclick = (e) => { e.stopPropagation(); $('start').hidden = true; auto.cam = 'guide'; auto.start(); };
+  // свободное движение: захват мыши для обзора, сборка идёт сама, алгоритм — в углу
+  $('sfree').onclick = (e) => { e.stopPropagation(); $('start').hidden = true; auto.setCam('free'); auto.start(); canvas.requestPointerLock?.(); };
   $('start').addEventListener('click', () => { $('start').hidden = true; canvas.requestPointerLock?.(); });
   canvas.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
@@ -370,6 +378,8 @@ async function main() {
     if (k === 'KeyI') act(e.shiftKey ? 'auto_stop' : 'auto_toggle');
     if (k === 'KeyK') act('device', e.shiftKey ? -1 : 1);
     if (k === 'KeyR') act('recenter');
+    if (k === 'KeyX') act(e.shiftKey ? 'corner_side' : 'corner');
+    if (k === 'KeyU') act('auto_cam');
   });
   function featureOf(o) { while (o) { if (o.userData?.featureId) return o.userData.featureId; o = o.parent; } return null; }
 
@@ -397,7 +407,15 @@ async function main() {
   }
 
   // ---------- единый диспетчер: клавиатура, голос, планшет ----------
-  const PANEL_OF = { kd: panels.kd, task: panels.task, system: panels.sys, step: panels.step, local: panels.local };
+  const PANEL_OF = { kd: panels.kd, task: panels.task, system: panels.sys, step: panels.step, local: panels.local, algo: panels.algo };
+  /** Алгоритм в углу поля зрения: вкл/выкл; side — сменить угол (справа/слева). */
+  function cornerAlgo(on = !panels.algo.visible, quiet = false) {
+    const a = panels.algo;
+    if (a.mode !== 'corner') { a.mode = 'corner'; }
+    mgr.toggle(a, on);
+    if (!quiet) app.notify(on ? `Алгоритм — в ${a.corner === 'tl' ? 'левом' : 'правом'} верхнем углу поля зрения (X — убрать, Shift+X — другой угол)` : 'Алгоритм из угла убран');
+    updateBar();
+  }
   const say2 = (text, voice) => { app.notify(text, 4); if (voice && sim.tts) speak(text); };
   function fmtLeft(m) { const h = Math.floor(m / 60), mm = Math.round(m % 60); return h ? `${h} ч ${mm} мин` : `${mm} мин`; }
   function act(cmd, arg = null, src = 'клавиатура') {
@@ -426,7 +444,7 @@ async function main() {
       case 'open_step': mgr.toggle(panels.step, true); break;
       case 'show': if (PANEL_OF[arg]) mgr.toggle(PANEL_OF[arg], true); break;
       case 'close': if (PANEL_OF[arg]) mgr.toggle(PANEL_OF[arg], false); else { const h = mgr.pick(center); if (h) mgr.toggle(h.panel, false); } break;
-      case 'toggle': if (PANEL_OF[arg]) mgr.toggle(PANEL_OF[arg]); break;
+      case 'toggle': if (PANEL_OF[arg]) { mgr.toggle(PANEL_OF[arg]); updateBar(); } break;
       case 'search': {
         const res = searchDocs(String(arg || ''));
         app.openSystem(String(arg || ''));
@@ -454,6 +472,11 @@ async function main() {
       case 'dim_auto': if (sim.device.dimLevels) { sim.dimMode = 'auto'; app.notify('Затемнение: авто по освещённости'); } else app.notify('Затемнения нет у этих очков'); break;
       case 'dim_set': sim.dimMode = 'manual'; sim.dimLevel = sim.device.dimLevels ? THREE.MathUtils.clamp(Number(arg) || 0, 0, 1) : 0; break;
       case 'auto_start': auto.start(); break;
+      case 'auto_free': auto.setCam('free'); if (!auto.on) auto.start(); break;
+      case 'auto_guide': auto.setCam('guide'); if (!auto.on) auto.start(); break;
+      case 'auto_cam': auto.setCam(auto.cam === 'free' ? 'guide' : 'free'); break;
+      case 'corner': cornerAlgo(arg === 'on' ? true : arg === 'off' ? false : undefined); break;
+      case 'corner_side': panels.algo.corner = panels.algo.corner === 'tl' ? 'tr' : 'tl'; cornerAlgo(true); break;
       case 'auto_pause': auto.pause(true); break;
       case 'auto_stop': auto.stop(); break;
       case 'auto_toggle': if (auto.on && !auto.paused) auto.pause(true); else auto.start(); break;
@@ -540,7 +563,7 @@ async function main() {
       kd: { code: app.kd.code, sheet: app.kd.sheet, zone: app.kd.zone, zoom: Math.round(app.kd.zoom * 10) / 10 },
       panels: Object.fromEntries(Object.entries(PANEL_OF).map(([k, p]) => [k, !!p.visible])),
       dim: { mode: sim.dimMode, level: Math.round(sim.dimLevel * 100) / 100, t: Math.round(transmitAt(sim.device, sim.dimLevel) * 1000) / 1000 }, bright: sim.bright, light: params.light, lux: Math.round(lumCd * 5),
-      device: sim.device.id, auto: { on: auto.on, paused: auto.paused },
+      device: sim.device.id, auto: { on: auto.on, paused: auto.paused, cam: auto.cam },
       inspect: app.local && player.mode === 'inspect' ? app.local.features.slice(0, 4).map(({ f }) => trimText(`${f.designation || f.id} — ${f.name || ''}`, 70)) : null,
       heard: voiceUi.last,
     };
@@ -587,7 +610,7 @@ async function main() {
         ['WASD / стрелки', 'ходьба; Shift — быстрее; C — присесть'], ['мышь', 'обзор (щелчок — захват; ПКМ — без захвата)'], ['щелчок по окну', 'кнопки, поля, листы КД'],
         ['колесо над КД', 'зум к точке; перетаскивание — сдвиг листа'], ['F', 'осмотр точки узла + локальный алгоритм; Esc/Q — назад'], ['E', 'взаимодействие: очки, дверцы'],
         ['N / B', 'переход вперёд / назад'], ['P', 'фото в журнал'], ['G', 'закрепить окно перед глазами'], ['1–4', 'окна КД / переход / система / задание'],
-        ['I', 'имитация сборки: запуск / пауза; Shift+I — стоп'], ['K', 'другие очки (Shift+K — назад)'], ['R', '3DoF: окна по центру взгляда'],
+        ['I', 'имитация сборки: запуск / пауза; Shift+I — стоп'], ['U', 'имитация: камера ведёт / хожу сам'], ['X', 'алгоритм в углу поля зрения; Shift+X — другой угол'], ['K', 'другие очки (Shift+K — назад)'], ['R', '3DoF: окна по центру взгляда'],
         ['T', 'ускорение времени участка ×1 / ×60 / ×600'], ['L', 'затемнение линз по ступеням очков → авто'], ['V', 'снять / надеть очки'], ['O', 'модель зрения'], ['Enter', 'пропустить вступление'],
       ].map(([a, b]) => `<tr><td><kbd>${a}</kbd></td><td>${b}</td></tr>`).join('')}</table>`;
       return;
@@ -628,6 +651,8 @@ async function main() {
     $('bar').innerHTML = [
       [a ? '⏸ Пауза имитации (I)' : auto.on ? '▶ Продолжить имитацию (I)' : '▶ Имитация сборки (I)', 'auto', a ? 'on' : 'primary'],
       ...(auto.on ? [['⏹', 'stop', '']] : []),
+      [auto.cam === 'free' ? '🚶 Хожу сам (U)' : '🎥 Камера ведёт (U)', 'cam', auto.cam === 'free' ? 'on' : ''],
+      [panels.algo.visible ? '▣ Алгоритм в углу (X)' : '□ Алгоритм в угол (X)', 'corner', panels.algo.visible ? 'on' : ''],
       [`👓 ${sim.device.brand} ${sim.device.name} (K)`, 'dev', ''], ['Клавиши (H)', 'help', ''], ['Зрение (O)', 'vision', ''], ['Окна 1–4', 'win', ''],
       [`Время ×${app.speed} (T)`, 'time', ''], ['Очки (V)', 'glasses', ''], ['Планшет (J)', 'tablet', ''], ['Голос', 'voice', ''],
     ].map(([t, k, c]) => `<button data-b="${k}" class="${c}">${t}</button>`).join('');
@@ -635,6 +660,7 @@ async function main() {
       e.stopPropagation();
       const k = b.dataset.b;
       if (k === 'auto') act('auto_toggle'); if (k === 'stop') act('auto_stop');
+      if (k === 'cam') act('auto_cam'); if (k === 'corner') act('corner');
       if (k === 'dev') toggleCard('vision');
       if (k === 'help') toggleCard('help'); if (k === 'vision') toggleCard('vision');
       if (k === 'win') for (const p of [panels.kd, panels.step, panels.sys, panels.task]) mgr.toggle(p, true);
@@ -652,7 +678,19 @@ async function main() {
   const FLY_KINDS = new Set(['panel', 'bracket', 'fitting', 'equipment', 'trim', 'decor', 'door', 'hinge', 'latch', 'plumbing', 'sheet', 'sink', 'faucet', 'siphon', 'valve', 'light', 'handle', 'placard', 'retainer', 'stdunit', 'trolley', 'turnbutton']);
   const auto = {
     on: false, paused: false, phase: 'show', t: 0, fly: null, ff: false, rate: 1,
-    phaseLabel() { return { show: `переход ${run.step.id} — голограмма`, move: 'подход к месту', act: `переход ${run.step.id} — выполнение`, fly: `установка ${this.fly?.ids?.join(', ') || ''}`, wait: 'выдержка (ускорено)' }[this.phase] || ''; },
+    // guide — камера ведёт к месту работы; free — сборщик ходит и смотрит сам, сборка идёт своим ходом
+    cam: q.get('autocam') === 'free' ? 'free' : 'guide',
+    setCam(c) {
+      this.cam = c;
+      if (c === 'free') {
+        if (player.mode === 'auto' && this.phase === 'move') { player.path = null; player.mode = 'walk'; this.phase = 'show'; }
+        if (!panels.algo.visible) cornerAlgo(true, true);
+        app.notify('Имитация: свободное движение — ходите и смотрите сами (WASD, мышь); алгоритм — в углу поля зрения. U — камера ведёт', 6);
+      } else app.notify('Имитация: камера ведёт к месту работы. U — свободное движение', 4);
+      updateBar(); pushState(true);
+    },
+    phaseLabel() {
+      if (this.cam === 'free' && this.phase === 'show') return `переход ${run.step.id} — голограмма (свободно)`; return { show: `переход ${run.step.id} — голограмма`, move: 'подход к месту', act: `переход ${run.step.id} — выполнение`, fly: `установка ${this.fly?.ids?.join(', ') || ''}`, wait: 'выдержка (ускорено)' }[this.phase] || ''; },
     start() {
       if (!this.on) { this.phase = 'show'; this.t = 0; }
       this.on = true; this.paused = false;
@@ -661,8 +699,9 @@ async function main() {
       updateBar(); pushState(true);
     },
     begin() {
-      if (player.mode === 'inspect') { player.exitInspect(); mgr.toggle(panels.local, false); }
+      if (player.mode === 'inspect' && this.cam === 'guide') { player.exitInspect(); mgr.toggle(panels.local, false); }
       mgr.toggle(panels.step, true);
+      if (this.cam === 'free' && !panels.algo.visible) cornerAlgo(true, true);
       app.preview = null; showStep();
       app.notify(`Имитация сборки: с перехода ${run.step.id}. I — пауза, N/B — вручную`, 4);
       this.begun = true;
@@ -728,10 +767,11 @@ async function main() {
       const focus = this.fly ? new THREE.Box3().setFromObject(this.fly.its[0].o).getCenter(V()) : this.focusOf(s);
       // сначала взгляд на окно перехода (прочитать), затем — на место работы
       const look = this.phase === 'show' && this.t < 1.6 && panels.step.group.visible ? panels.step.group.getWorldPosition(V()) : focus;
-      if (player.mode === 'walk' && !player.keys.size) player.turnTo([look.x, look.y, look.z], dt, 2.4);
+      const guide = this.cam === 'guide';
+      if (guide && player.mode === 'walk' && !player.keys.size) player.turnTo([look.x, look.y, look.z], dt, 2.4);
       if (this.phase === 'show') {
         // подойти к месту работы, если сборщик далеко или место сбоку модуля
-        if (this.t < dt * 1.5 && player.mode === 'walk') {
+        if (guide && this.t < dt * 1.5 && player.mode === 'walk') {
           const want = V(THREE.MathUtils.clamp(focus.x, -1.3, 1.3), 0, 3.0);
           if (Math.hypot(player.pos.x - want.x, player.pos.z - want.z) > 0.6) {
             this.phase = 'move';
@@ -877,7 +917,8 @@ async function main() {
   });
   setDevice(sim.device.id, { quiet: true });
   updateBar();
-  if (q.get('auto') === '1') { $('start').hidden = true; auto.start(); }
+  if (q.get('auto') === '1') { $('start').hidden = true; if (auto.cam === 'free') auto.setCam('free'); auto.start(); }
+  if (q.get('corner') === '1') cornerAlgo(true, true);
   window.__demo = {
     ready: true, scene, world, run, cam, player, eye, vision, app, mgr, panels, viz, finishIntro, inspectAtGaze, sim, params, auto, setDevice, act,
     // для проверок: перескочить к этапу сценария

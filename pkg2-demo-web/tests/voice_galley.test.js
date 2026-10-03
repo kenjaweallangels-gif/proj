@@ -79,3 +79,13 @@ describe('голос: имитация и очки', () => {
     expect(parseGalley('сборка очки иксреал аура')).toEqual({ cmd: 'device', arg: 'иксреал аура' });
   });
 });
+
+describe('голос: свободное движение и алгоритм в углу', () => {
+  it('команды', async () => {
+    const { parseGalley } = await import('../src/galley/voice_cmd.js');
+    expect(parseGalley('сборка хожу сам')).toEqual({ cmd: 'auto_free', arg: null });
+    expect(parseGalley('сборка веди меня')).toEqual({ cmd: 'auto_guide', arg: null });
+    expect(parseGalley('сборка алгоритм в угол')).toEqual({ cmd: 'corner', arg: null });
+    expect(parseGalley('сборка дальше')).toEqual({ cmd: 'next', arg: null });
+  });
+});
