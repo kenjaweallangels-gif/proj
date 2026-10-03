@@ -6,12 +6,15 @@ import { bus } from './bus.js';
 import { createInput } from './input.js';
 import { colliders } from './colliders.js';
 import { createPerf } from './perf.js';
+import { createDRS } from './quality.js';
 
 const _gp = { x: 0, y: 0, z: 0 };
+const _s0 = new THREE.Vector3(), _s1 = new THREE.Vector3();
 
 export function createGame(canvas, settings) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: settings.quality !== 'low', powerPreference: 'high-performance', stencil: false });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, settings.quality === 'high' ? 2 : 1.25) * (settings.quality === 'low' ? 0.6 : 1));
+  const basePR = Math.min(devicePixelRatio, settings.quality === 'high' ? 2 : 1.25) * (settings.quality === 'low' ? 0.6 : 1);
+  renderer.setPixelRatio(basePR);
   renderer.setSize(innerWidth, innerHeight, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -78,12 +81,33 @@ export function createGame(canvas, settings) {
      * затем все зарегистрированные тела. opt: {ignore: owner|Set, height}. Возвращает true при столкновении.
      */
     collide(pos, r, opt) {
-      const a = game.ground()?.collide?.(pos, r) ?? false;
+      let a;
+      if (game.space === 'sietch' && game.world && game.sietch?.collide) {
+        // Шов щели: рядом с границей пещеры «contains» шире, чем сетка стен сиетча, и с этой стороны стена выталкивала бы назад
+        // (из пещеры наружу по щели не выйти, хотя внутрь заходили свободно). Если сиетч оттолкнул, а пустыня в исходной точке
+        // свободна и её земля под ногами — решает пустыня.
+        _s0.copy(pos);
+        a = game.sietch.collide(pos, r);
+        if (a && Math.abs(game.world.heightAt(_s0.x, _s0.z, _s0.y) - _s0.y) < 1.6) {
+          _s1.copy(_s0);
+          if (!game.world.collide(_s1, r)) { pos.x = _s0.x; pos.z = _s0.z; a = false; }
+        }
+      } else a = game.ground()?.collide?.(pos, r) ?? false;
       const b = colliders.push(pos, r, opt);
       return a || b;
     },
   };
 
+  /** Масштаб разрешения рендера (динамическое разрешение): 1 = базовое для пресета. Пост-композер подхватывает тот же pixel ratio. */
+  game.setRenderScale = (sc) => {
+    const pr = Math.max(0.45, basePR * sc);
+    if (Math.abs(pr - renderer.getPixelRatio()) < 1e-3) return;
+    renderer.setPixelRatio(pr);
+    renderer.setSize(innerWidth, innerHeight, false);
+    game.post?.composer?.setPixelRatio?.(pr);
+    game.perf.res = sc;
+  };
+  game.drs = createDRS(game, basePR);
   game.perf = createPerf(game, new URLSearchParams(location.search).get('perf') === '1');
 
   addEventListener('resize', () => {
@@ -95,16 +119,12 @@ export function createGame(canvas, settings) {
 
   let last = performance.now();
   let fpsAcc = 0, fpsN = 0;
-  function frame(now) {
-    requestAnimationFrame(frame);
-    const rawDt = Math.min(0.1, (now - last) / 1000);
-    last = now;
+  function tick(rawDt, doRender) {
     game.realTime += rawDt;
-    fpsAcc += rawDt; fpsN++;
-    if (fpsAcc > 0.5) { game.stats.fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; }
     game.input.poll(rawDt);
+    colliders.tick(); // широкая фаза: перекладываем в сетке тела, ушедшие из своих ячеек
     const perf = game.perf;
-    const P = perf.on;
+    const P = perf.on && doRender;
     if (P) perf.beginFrame(rawDt * 1000);
     const dt = game.paused ? 0 : rawDt * game.timeScale;
     game.dt = dt;
@@ -123,12 +143,31 @@ export function createGame(canvas, settings) {
       try { mod.lateUpdate(mod.alwaysUpdate ? rawDt : dt, game.time); } catch (e) { reportError(name, e); }
       if (P) perf.modEnd(name, true);
     }
-    renderer.info.reset();
-    if (P) perf.renderStart();
-    try { game.render(rawDt); } catch (e) { reportError('render', e); }
-    if (P) perf.renderEnd();
+    if (doRender) {
+      renderer.info.reset();
+      if (P) perf.renderStart();
+      try { game.render(rawDt); } catch (e) { reportError('render', e); }
+      if (P) perf.renderEnd();
+    }
     game.input.endFrame();
   }
+  function frame(now) {
+    requestAnimationFrame(frame);
+    const rawDt = Math.min(0.05, (now - last) / 1000); // длинные кадры (компиляция шейдеров, фоновая вкладка) не взрывают симуляцию
+    last = now;
+    fpsAcc += rawDt; fpsN++;
+    if (fpsAcc > 0.5) { game.stats.fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; }
+    game.drs.update(rawDt);
+    tick(rawDt, true);
+  }
+  /**
+   * Отладка/автотесты: прокрутить симуляцию на `sec` секунд без рендера (шаг dt, по умолчанию 1/30). Ввод (клавиши) остаётся как есть.
+   * Позволяет ботам проходить маршрут за секунды даже в SwiftShader. onTick(game) вызывается каждый шаг (для управления/записи).
+   */
+  game.simulate = (sec, dt = 1 / 30, onTick) => {
+    const n = Math.round(sec / dt);
+    for (let i = 0; i < n; i++) { tick(dt, false); if (onTick && onTick(game, i) === false) break; }
+  };
   const reported = new Set();
   function reportError(name, e) {
     const key = `${name}:${e?.message}`;

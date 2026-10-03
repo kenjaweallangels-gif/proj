@@ -348,7 +348,7 @@ export function createTerrain(game, foot) {
     tex.generateMipmaps = false; tex.needsUpdate = true;
     levels.push({
       s, li, data, tex, cx: 1e9, cz: 1e9,
-      colI: new Float64Array(TEX).fill(NaN), rowJ: new Float64Array(TEX).fill(NaN),
+      colI: new Float64Array(TEX).fill(NaN), rowJ: new Float64Array(TEX).fill(NaN), pc: new Uint8Array(TEX), pr: new Uint8Array(TEX),
       uniforms: null, mesh: null,
     });
   });
@@ -367,7 +367,13 @@ export function createTerrain(game, foot) {
     L.data[k + 3] = Math.round(tmpMask.rock * 63) * 64 + Math.round(tmpMask.packed * 63);
   }
 
-  function recenter(L, cx, cz) {
+  // Пересборка кольца при сдвиге камеры. Раньше каждая новая колонка/строка (164 текселя × 4 вычисления поля ≈ 6 мс) считалась
+  // синхронно в кадре сдвига — отсюда периодические всплески кадра на ходу/беге (и «дрожание» всего на экране). Теперь отображение
+  // колонок/строк обновляется сразу, а сами тексели доливаются очередью с бюджетом по времени (запас кольца TEX−CELLS = 4 текселя
+  // покрывает задержку). При телепорте/большом сдвиге — полная синхронная заливка, как раньше.
+  const queue = [];
+  const TIME_BUDGET = 2.0; // мс на кадр
+  function recenter(L, cx, cz, sync) {
     const loI = cx - HALF_TEX, loJ = cz - HALF_TEX;
     const staleC = [], staleR = [];
     for (let a = 0; a < TEX; a++) {
@@ -378,12 +384,29 @@ export function createTerrain(game, foot) {
       const jw = loJ + (((b - loJ) % TEX) + TEX) % TEX;
       if (L.rowJ[b] !== jw) { L.rowJ[b] = jw; staleR.push(b); }
     }
-    const isStale = new Uint8Array(TEX);
-    for (const a of staleC) { isStale[a] = 1; for (let b = 0; b < TEX; b++) fillTexel(L, a, b, L.colI[a], L.rowJ[b]); }
-    for (const b of staleR) for (let a = 0; a < TEX; a++) if (!isStale[a]) fillTexel(L, a, b, L.colI[a], L.rowJ[b]);
     L.cx = cx; L.cz = cz;
-    L.tex.needsUpdate = true;
     if (L.uniforms) L.uniforms.uCenter.value.set(cx, cz);
+    if (sync || staleC.length > 3 || staleR.length > 3) {
+      const isStale = new Uint8Array(TEX);
+      for (const a of staleC) { isStale[a] = 1; for (let b = 0; b < TEX; b++) fillTexel(L, a, b, L.colI[a], L.rowJ[b]); }
+      for (const b of staleR) for (let a = 0; a < TEX; a++) if (!isStale[a]) fillTexel(L, a, b, L.colI[a], L.rowJ[b]);
+      L.tex.needsUpdate = true;
+      return;
+    }
+    for (const a of staleC) if (!L.pc[a]) { L.pc[a] = 1; queue.push(L, 0, a); }
+    for (const b of staleR) if (!L.pr[b]) { L.pr[b] = 1; queue.push(L, 1, b); }
+  }
+  function pump(budget) {
+    if (!queue.length) return;
+    const t0 = performance.now();
+    while (queue.length) {
+      const L = queue[0], kind = queue[1], k = queue[2];
+      queue.splice(0, 3);
+      if (kind === 0) { L.pc[k] = 0; for (let b = 0; b < TEX; b++) fillTexel(L, k, b, L.colI[k], L.rowJ[b]); }
+      else { L.pr[k] = 0; for (let a = 0; a < TEX; a++) fillTexel(L, a, k, L.colI[a], L.rowJ[k]); }
+      L.tex.needsUpdate = true;
+      if (performance.now() - t0 > budget) break;
+    }
   }
 
   // --- материалы ---
@@ -431,12 +454,13 @@ export function createTerrain(game, foot) {
   });
 
   // начальная заливка вокруг (0,0)->камеры
-  function update(cam) {
+  function update(cam, sync = false) {
     ENV.uniforms.uCamXZ.value.set(cam.x, cam.z);
     for (const L of levels) {
       const cx = Math.round(cam.x / L.s), cz = Math.round(cam.z / L.s);
-      if (cx !== L.cx || cz !== L.cz) recenter(L, cx, cz);
+      if (cx !== L.cx || cz !== L.cz) recenter(L, cx, cz, sync || L.cx > 1e8 || Math.abs(cx - L.cx) > 2 || Math.abs(cz - L.cz) > 2);
     }
+    pump(TIME_BUDGET);
     for (const L of levels) {
       L.uniforms.uCenter.value.set(L.cx, L.cz);
     }
@@ -446,8 +470,8 @@ export function createTerrain(game, foot) {
     levels, update, sandU,
     setVisible(b) { for (const L of levels) L.mesh.visible = b; },
     /** Сбросить кэш высот (после изменения field.groundPatches) — кольца перезаливаются при следующем update. */
-    invalidate() { for (const L of levels) { L.cx = 1e9; L.cz = 1e9; L.colI.fill(NaN); L.rowJ.fill(NaN); } },
+    invalidate() { queue.length = 0; for (const L of levels) { L.cx = 1e9; L.cz = 1e9; L.colI.fill(NaN); L.rowJ.fill(NaN); L.pc.fill(0); L.pr.fill(0); } },
     /** принудительная первичная заливка */
-    prime(x, z) { update({ x, z }); },
+    prime(x, z) { update({ x, z }, true); },
   };
 }

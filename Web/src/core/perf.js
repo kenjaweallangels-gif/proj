@@ -33,17 +33,26 @@ export function createPerf(game, enabled0) {
     if (pend.length > 6) gl2.deleteQuery(pend.shift());
   }
 
+  const heavy = [];
   /** Обход сцены: сколько объектов видимо, сколько отбрасывают тени, сколько источников света. Дорого — звать редко. */
   function countScene() {
     const s = st.scene; s.objects = s.visible = s.shadowCasters = s.lights = s.shadowLights = 0;
+    heavy.length = 0;
     const walk = (o) => {
       if (!o.visible) return;
       s.objects++;
-      if (o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || o.isPoints || o.isLine) { s.visible++; if (o.castShadow) s.shadowCasters++; }
+      if (o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || o.isPoints || o.isLine) {
+        s.visible++; if (o.castShadow) s.shadowCasters++;
+        const g = o.geometry; const n = g ? (g.index ? g.index.count : g.attributes?.position?.count || 0) / 3 : 0;
+        const tris = n * (o.isInstancedMesh ? o.count : 1);
+        if (tris > 20000) { let anc = o, path = o.name || o.type; for (let k = 0; k < 3 && anc.parent && anc.parent !== game.scene; k++) { anc = anc.parent; path = (anc.name || anc.type) + '/' + path; } heavy.push({ name: path, tris: Math.round(tris), inst: o.isInstancedMesh ? o.count : 1, shadow: !!o.castShadow, culled: o.frustumCulled }); }
+      }
       if (o.isLight) { s.lights++; if (o.castShadow) s.shadowLights++; }
       for (const c of o.children) walk(c);
     };
     walk(game.scene);
+    heavy.sort((a, b) => b.tris - a.tris);
+    s.heavy = heavy.slice(0, 8);
     return s;
   }
 

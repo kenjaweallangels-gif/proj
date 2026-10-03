@@ -15,10 +15,13 @@ import * as story from './story/director.js';
 import * as audio from './audio/index.js';
 import * as ui from './ui/index.js';
 import DATA from './data/data.js';
+import { detectQuality } from './core/quality.js';
+import { reconcile } from './core/reconcile.js';
 
 const params = new URLSearchParams(location.search);
 const settings = {
-  quality: params.get('q') || (/Mobi|Android/i.test(navigator.userAgent) ? 'low' : 'med'),
+  // ?q=low|med|high; без параметра — автоподбор по GPU/устройству (см. core/quality.js), дальше работает динамическое разрешение
+  quality: ['low', 'med', 'high'].includes(params.get('q')) ? params.get('q') : detectQuality(),
   lang: params.get('lang') || undefined,
   skipTitle: params.get('skip') === '1' || params.get('autotest') === '1',
   at: params.get('at') || null,
@@ -46,11 +49,36 @@ const steps = [
 ];
 
 const loading = document.getElementById('loading');
+
+/**
+ * Прогрев шейдеров: пока висит экран загрузки, рисуем сцену в двух состояниях — как есть и «всё видимо»
+ * (иначе программы для сиетча/сада/червя/пост-проходов компилируются посреди игры и дают подвисания по 100–500 мс).
+ * Число источников света входит в ключ программы, поэтому прогреваем оба набора.
+ */
+function warmup() {
+  const { scene } = game;
+  const before = game.renderer.info.programs?.length ?? 0;
+  const t0 = performance.now();
+  game.render(0.016);
+  const hidden = [];
+  scene.traverse((o) => { if (!o.visible && o !== scene) hidden.push(o); });
+  for (const o of hidden) o.visible = true;
+  try { game.render(0.016); } finally { for (const o of hidden) o.visible = false; }
+  game.render(0.016);
+  game.renderer.info.reset();
+  console.info(`[warmup] ${(performance.now() - t0).toFixed(0)} ms, programs ${before} → ${game.renderer.info.programs?.length ?? 0}`);
+}
 async function boot() {
   for (const [name, fn] of steps) {
     if (loading) loading.textContent = `${game.t('Загрузка', 'Loading')}… ${name}`;
     await new Promise((r) => setTimeout(r, 0)); // дать браузеру отрисовать прогресс
     try { fn(); } catch (e) { console.error(`[boot:${name}]`, e); }
+  }
+  try { reconcile(game); } catch (e) { console.warn('[reconcile]', e); }
+  if (params.get('warm') === '1' || (params.get('warm') !== '0' && !settings.autotest)) {
+    if (loading) loading.textContent = `${game.t('Загрузка', 'Loading')}… ${game.t('шейдеры', 'shaders')}`;
+    await new Promise((r) => setTimeout(r, 0));
+    try { warmup(); } catch (e) { console.warn('[warmup]', e); }
   }
   loading?.remove();
   game.bus.emit('boot', settings);
