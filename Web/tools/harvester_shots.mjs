@@ -121,6 +121,44 @@ if (want('night')) {
   await cam(H4.x + 40, 3, H4.z + 55, H4.x + 20, 14, H4.z, 60, 1500); await shot('night_close');
 }
 
+
+if (want('interact')) {
+  // реальный путь игрока: подойти к пульту, увидеть подсказку, нажать E, дождаться running, нажать E ещё раз, дождаться off; плюс коллизия
+  await page.evaluate(() => { const g = window.__rakis; g.cinematic.active = false; g.harvester.debugSet('off'); window.__log = []; g.bus.on('harvester', (e) => window.__log.push(`${g.time.toFixed(1)} ${e.state}`)); g.bus.on('interact', (e) => window.__log.push(`interact ${e.tag}`)); });
+  const ip = await page.evaluate(() => { const i = window.__rakis.harvester.interactable; return [i.position.x, i.position.y, i.position.z]; });
+  await page.evaluate(([x, y, z]) => { window.__rakis.player.teleport?.(x + 1, y, z + 1.5, Math.atan2(-1.5, -1)); }, ip);
+  await page.waitForTimeout(2500);
+  const f1 = await page.evaluate(() => { const f = window.__rakis.player.focus; return f ? { label: f.label, tag: f.tag } : null; });
+  console.log('focus (off):', JSON.stringify(f1), JSON.stringify(await page.evaluate(() => { const g = window.__rakis; return { cin: g.cinematic, uiBlock: !!g.ui?.blocking, locked: g.player.inputLocked, pos: g.player.position.toArray().map((v) => +v.toFixed(1)), it: g.harvester.interactable.position.toArray().map((v) => +v.toFixed(1)), en: g.harvester.interactable.enabled, n: g.interactables.length }; })));
+  await page.keyboard.press('KeyE');
+  await page.waitForTimeout(1500);
+  console.log('state after E:', await page.evaluate(() => window.__rakis.harvester.state));
+  await page.evaluate(() => { window.__rakis.timeScale = 4; });
+  await page.waitForFunction(() => window.__rakis.harvester.state === 'running', null, { timeout: 600000, polling: 200 });
+  await page.evaluate(() => { window.__rakis.timeScale = 1; });
+  const ip2 = await page.evaluate(() => { const i = window.__rakis.harvester.interactable; return [i.position.x, i.position.y, i.position.z]; });
+  await page.evaluate(([x, y, z]) => { window.__rakis.player.teleport?.(x + 1, y, z + 1.5, Math.atan2(-1.5, -1)); }, ip2);
+  await page.waitForTimeout(2500);
+  const f2 = await page.evaluate(() => { const f = window.__rakis.player.focus; return f ? { label: f.label, tag: f.tag } : null; });
+  console.log('focus (running):', JSON.stringify(f2));
+  // коллизия: точка внутри корпуса выталкивается, точка снаружи — нет
+  console.log('collide', JSON.stringify(await page.evaluate(() => {
+    const g = window.__rakis, T = g.THREE, h = g.harvester, p = h.position;
+    const c = Math.cos(h.heading), s = Math.sin(h.heading);
+    const mk = (lx, lz) => new T.Vector3(p.x + lx * c - lz * s, 0, p.z + lx * s + lz * c);
+    const a = mk(0, 5), b = mk(0, 40), d = mk(60, 0), e = mk(48, 0);
+    const ra = g.collide(a, 0.4), rb = g.collide(b, 0.4), rd = g.collide(d, 0.4), re = g.collide(e, 0.4);
+    const loc = (v) => { const dx = v.x - p.x, dz = v.z - p.z; return [(dx * c + dz * s).toFixed(1), (-dx * s + dz * c).toFixed(1)]; };
+    return { inside: [ra, loc(a)], outside: [rb, loc(b)], faraway: [rd, loc(d)], scoop: [re, loc(e)] };
+  })));
+  await page.keyboard.press('KeyE');
+  await page.waitForTimeout(800);
+  await page.evaluate(() => { window.__rakis.timeScale = 4; });
+  await page.waitForFunction(() => window.__rakis.harvester.state === 'off', null, { timeout: 600000, polling: 200 });
+  await page.evaluate(() => { window.__rakis.timeScale = 1; });
+  console.log((await page.evaluate(() => window.__log)).join('\n'));
+}
+
 const fps = await page.evaluate(() => window.__rakis.stats.fps);
 console.log('fps (swiftshader)', fps);
 await browser.close();

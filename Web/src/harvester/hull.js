@@ -492,14 +492,39 @@ export function buildHarvester(quality) {
       S.box((hxA + hxB) / 2 + 0.4, (hyA + hyB) / 2 + 0.75, z, hL - 0.6, 0.5, 0.45, HULL2, 0, { rz: hA });
     }
     S.box(56.2, 9.6, 0, 0.7, 0.5, 40.4, YEL, 4, { rz: hA });
+    const onHood = (u, z, hh) => [hxA + (hxB - hxA) * u, hyA + (hyB - hyA) * u + hh, z];
+    for (let i = 0; i < 6; i++) for (const u of [0.35, 0.7]) {
+      const [x, y, z] = onHood(u, -16.5 + i * 6.6 + (u > 0.5 ? 3.3 : 0), 0.9);
+      S.box(x, y, z, 2.8, 1.2, 2.6, i % 2 ? HULL2 : '#8a5a36', 3, { rz: hA });
+      for (let k = 0; k < 4; k++) S.box(x + 0.1, y + 0.7 + k * 0.0, z - 1 + k * 0.66, 0.1, 0.12, 0.3, '#2b2926', 2, { rz: hA });
+    }
+    for (let i = 0; i < 9; i++) { const [x, y, z] = onHood(0.12, -17 + i * 4.3, 1.1); S.box(x, y, z, 1.0, 1.0, 0.9, STEEL, 1, { rz: hA }); }
+    for (const z of [-12, 12]) { const [x, y] = onHood(0.5, z, 2.0); S.cyl(x, y, z, 0.35, 0.35, 3, '#3a3d40', 2, { seg: 8 }); S.box(x, y + 1.6, z, 1.6, 0.25, 1.6, STEEL, 1); }
+    // клыки-пластины зубьев ряд 2 (крупные скребки над кромкой)
+    for (let i = 0; i < 20; i++) S.box(55.2, 3.2, -19 + i * 2, 0.4, 2.6, 0.5, '#4c4842', 3, { rz: -0.1 });
     // боковые стенки (крупные трапеции-призмы)
     for (const s of [-1, 1]) {
       S.prism([[56.5, -0.8], [56.5, 9.8], [37, 15.6], [37, 6], [40.5, 5.8]], s * 19.8, 0.7, HULL, 0);
       S.prism([[56.5, -0.8], [56.5, 9.8], [55, 9.4], [55, -0.8]], s * 19.4, 0.5, STEEL, 1);
-      // рёбра жёсткости на стенках, пескоструй
-      for (let k = 0; k < 4; k++) S.box(40 + k * 4.4, 7.4 + (3 - k) * 0.15, s * 20.25, 0.5, 6.4 - k * 0.5, 0.4, HULL2, 0, { rz: -0.1 });
+      // рамная обвязка стенки: кромки по контуру, раскосы, ступица шарнира, болтовые пояса
+      S.box(56.2, 4.5, s * 20.3, 0.9, 10.6, 0.7, HULL2, 0);
+      S.box(39.0, 10.2, s * 20.3, 0.9, 9.6, 0.7, HULL2, 0);
+      S.box(47.0, 12.9, s * 20.35, 20.4, 0.7, 0.8, STEEL, 1, { rz: 0.30 });
+      S.box(47.7, 0.4, s * 20.35, 17.4, 0.9, 0.8, '#3b3a38', 3, { rz: 0.12 });
+      S.box(46, 3.6, s * 20.35, 16, 0.5, 0.5, '#6d6860', 1, { rz: 0.42 });
+      S.box(46, 3.6, s * 20.35, 16, 0.5, 0.5, '#6d6860', 1, { rz: -0.42 });
+      S.cyl(33, 13.5, s * 20.9, 2.7, 2.7, 1.0, '#6d6860', 1, { axis: 'z', seg: 20 });
+      S.cyl(33, 13.5, s * 21.5, 1.2, 1.2, 0.6, '#2b2926', 2, { axis: 'z', seg: 12 });
+      for (let k = 0; k < 10; k++) { const a = k / 10 * Math.PI * 2; S.cyl(33 + Math.cos(a) * 2.1, 13.5 + Math.sin(a) * 2.1, s * 21.5, 0.2, 0.2, 0.3, '#9a8f80', 1, { axis: 'z', seg: 6 }); }
+      for (let k = 0; k < 16; k++) S.cyl(56.2, -0.2 + k * 0.62, s * 20.7, 0.14, 0.14, 0.2, '#9a8f80', 1, { axis: 'z', seg: 6 });
+      // наружные гидроцилиндры подъёма (двойные)
+      for (const dz of [0.0, 1.2]) {
+        S.cyl(38.5, 14.4, s * (21.4 + dz), 0.5, 0.5, 6.4, '#3a3d40', 2, { rz: 1.18, seg: 10 });
+        S.cyl(42.7, 12.9, s * (21.4 + dz), 0.3, 0.3, 4.6, '#c8c4bb', 1, { rz: 1.18, seg: 8 });
+      }
       // боковые отвалы-скребки
-      S.box(52, 1.2, s * 20.4, 6.4, 1.8, 0.4, '#3b3a38', 3, { rz: 0.1 });
+      S.box(52, 1.2, s * 20.5, 6.4, 1.8, 0.4, '#3b3a38', 3, { rz: 0.1 });
+      S.box(52.2, 1.55, s * 20.8, 5.6, 0.2, 0.3, YEL, 4, { rz: 0.1 });
     }
     // внутренние отражатели (воронка к горловине)
     for (const s of [-1, 1]) {
@@ -511,6 +536,13 @@ export function buildHarvester(quality) {
     for (let i = 0; i < 12; i++) S.box(50 + (R() - 0.5) * 5, 11.0 + (R() - 0.5) * 1.4, (R() - 0.5) * 36, 1.4 + R(), 0.12, 1.2 + R() * 1.4, OLIVE, 3, { rz: hA });
     // фары ковша
     for (const z of [-17, -9, 9, 17]) { S.box(56.4, 8.6, z, 0.6, 0.7, 1.1, DARKS, 2); }
+  }
+  const scoopDecals = [];
+  for (const s of [-1, 1]) {
+    const n = s > 0 ? '+z' : '-z', zz = s * 20.52;
+    scoopDecals.push({ k: 'sigil', c: [46, 6.3, zz], n, w: 5.2, h: 5.2 });
+    scoopDecals.push({ k: 'chev', c: [48, 2.4, zz + s * 0.0], n, w: 14, h: 1.8, rot: 0 });
+    scoopDecals.push({ k: 'num', c: [48.5, 10.4, zz], n, w: 5.6, h: 2.1, rot: -0.3 });
   }
   const scoop = S.merge(-SCOOP_PIVOT.x, -SCOOP_PIVOT.y, -SCOOP_PIVOT.z);
 
@@ -580,5 +612,5 @@ export function buildHarvester(quality) {
   }
   const far = FAR.merge();
 
-  return { main, glow, scoop, auger, drum, fan, radar, far, posts, bolts, fins, decals, clamps };
+  return { scoopDecals, main, glow, scoop, auger, drum, fan, radar, far, posts, bolts, fins, decals, clamps };
 }

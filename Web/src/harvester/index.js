@@ -62,6 +62,8 @@ export function create(game) {
   near.add(scoopGroup);
   const scoopMesh = mk(G.scoop, hullMat, scoopGroup);
   const augerMesh = mk(G.auger, hullMat, scoopGroup);
+  const scoopDecalMesh = new THREE.Mesh(buildDecals(G.scoopDecals.map((d) => ({ ...d, c: [d.c[0] - SCOOP_PIVOT.x, d.c[1] - SCOOP_PIVOT.y, d.c[2] - SCOOP_PIVOT.z] }))), decalMat);
+  scoopDecalMesh.frustumCulled = false; scoopDecalMesh.renderOrder = 2; scoopGroup.add(scoopDecalMesh);
   augerMesh.position.copy(AUGER_POS).sub(SCOOP_PIVOT);
 
   // барабаны центрифуг, вентиляторы, радар
@@ -222,7 +224,7 @@ export function create(game) {
       acc.spice -= 1;
       toWorld(SPILL.x - rnd() * 1.5, SPILL.y + rnd() * 2, (rnd() - 0.5) * 12, pw);
       dirWorld(-(9 + rnd() * 6), 3.5 + rnd() * 5, (rnd() - 0.5) * 5, vw);
-      particles.emit(P_SPICE, pw.x, pw.y, pw.z, vw.x, vw.y, vw.z, 6 + rnd() * 5, 5 + rnd() * 5, 0.42, 3.8, { wind: 1.25, buoy: 0.7, drag: 0.32 });
+      particles.emit(P_SPICE, pw.x, pw.y, pw.z, vw.x, vw.y, vw.z, 6 + rnd() * 5, 4 + rnd() * 4, 0.24, 3.8, { wind: 1.25, buoy: 0.7, drag: 0.32 });
     }
     // 2) песок из-под гусениц и из ковша
     if (moving && S.drive > 0.05) {

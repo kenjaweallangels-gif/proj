@@ -57,8 +57,8 @@ export function createParticles(game, N) {
         vec3 lit = uSunColor * 0.3 + uAmbient * 0.95;
         vec3 col;
         if (vType < 0.5) {           // пряная пыль: оранжевый → бежевый
-          col = mix(vec3(1.0, 0.46, 0.12), vec3(0.88, 0.62, 0.34), smoothstep(0.0, 0.8, vK));
-          col = col * lit * 1.15 + vec3(1.0, 0.4, 0.1) * 0.035 * (1.0 - vK);
+          col = mix(vec3(1.0, 0.38, 0.07), vec3(0.85, 0.5, 0.26), smoothstep(0.0, 0.8, vK));
+          col = col * lit * 0.85 + vec3(1.0, 0.35, 0.08) * 0.03 * (1.0 - vK);
         } else if (vType < 1.5) {    // песок
           col = vec3(0.78, 0.6, 0.38) * lit;
         } else if (vType < 2.5) {    // дизельный дым
