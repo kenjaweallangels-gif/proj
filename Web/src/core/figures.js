@@ -82,6 +82,8 @@ export const PRESETS = {
     robe: true, robeStyle: 'jubba', layers: [{ style: 'shawl', scale: 0.9, hemTrim: true, folds: 8, fold: 0.07 }], hood: false, mask: false, sleeve: 'short', pouches: 0, hair: 'bun', hairColor: '#1a1410', cowl: false, noTubes: true,
     eyesIbad: true, wear: 0.05, dust: 0.1, style: { composed: 1, sway: 0.5, stride: 0.9, armSwing: 0.4 }, seed: 71,
   },
+  // Дистикомб без одежды сверху (для проверки/референса и сцен без плаща)
+  Stillsuit: { name: 'Stillsuit', height: 1.76, build: 'm', skin: '#7a563a', suit: '#4a4038', accent: '#2c3e57', leather: '#4a3524', robe: false, layers: [], hood: false, mask: true, pouches: 3, kris: true, hair: 'short', seed: 90, wear: 0.5 },
   Guard: { name: 'Guard', height: 1.82, build: 'm', bulk: 1.12, skin: '#6e4c34', suit: '#2e2a26', cloth: '#3a332c', cloth2: '#4a3d33', accent: '#6e2b20', robe: false, layers: [{ style: 'cape', fold: 0.04 }], hood: true, mask: true, armPads: true, kris: true, pouches: 4, eyesIbad: false, wear: 0.5, seed: 81 },
 };
 
@@ -126,7 +128,6 @@ function resolveOptions(opts) {
   let br = null;
   const consider = (style, sc = 1) => { const rows = robeProfile(style).rows; let rx = 0.19, rz = 0.14; for (let i = 1; i < rows.length; i++) if (rows[i][0] >= 1.0) { const a = rows[i - 1], b = rows[i], t = (1.0 - a[0]) / (b[0] - a[0]); rx = a[1] + (b[1] - a[1]) * t; rz = a[2] + (b[2] - a[2]) * t; break; } rx *= sc; rz *= sc; if (!br) br = [rx, rz]; else br = [Math.max(br[0], rx), Math.max(br[1], rz)]; };
   if (o.robe !== false) consider(o.robeStyle || 'jubba');
-  for (const l of layers) consider(l.style, l.scale ?? 1);
   o.beltR = br ? [br[0] + 0.012, br[1] + 0.012] : null;
   return o;
 }

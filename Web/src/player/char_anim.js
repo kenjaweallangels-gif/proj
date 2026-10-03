@@ -130,9 +130,9 @@ export function createAnimator(parts, cfg = {}) {
   // ------------------------------------------------------------------ обычная ходьба/бег ----
   function normalPose(o, ph, ve, slope) {
     const wRun = S.wRun;
-    const stepLen = (0.26 + 0.15 * ve) * style.stride * (1 + wRun * 0.12);
+    const stepLen = (0.3 + 0.17 * ve) * style.stride * (1 + wRun * 0.12);
     const ds = lerp(0.6, 0.4, wRun);
-    const half = stepLen * ds;
+    const half = Math.min(stepLen * ds, lerp(0.37, 0.43, wRun) * style.stride);
     const lift = lerp(0.075, 0.2, wRun) * style.bounce;
     for (let i = 0; i < 2; i++) {
       const pl = frac(ph + i * 0.5);
@@ -241,7 +241,7 @@ export function createAnimator(parts, cfg = {}) {
     const slope = clamp(ctx.slope || 0, -0.6, 0.6);
 
     // фаза обычной походки (по пройденному пути: стопы не скользят)
-    const stepLen = (0.26 + 0.15 * ve) * style.stride * (1 + S.wRun * 0.12);
+    const stepLen = (0.3 + 0.17 * ve) * style.stride * (1 + S.wRun * 0.12);
     if (S.hitch > 0) S.hitch -= dt;
     if (ve > 0.1 && S.hitch <= 0) S.ph = frac(S.ph + (ve * dt * style.tempo) / (2 * stepLen));
     for (let i = 0; i < 2; i++) {

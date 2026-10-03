@@ -41,7 +41,7 @@ export function create(game) {
   const figure = makeFigure({ preset: 'Kair', height: CFG.height });
   game.scene.add(figure.group);
   setFigureQuality(game.settings?.quality);
-  game.figures = { makeFigure, PRESETS, PALETTES, setFigureWind, setFigureView };
+  game.figures = { makeFigure, PRESETS, PALETTES, setFigureWind, setFigureView, THREE };
 
   const p = {
     position, velocity, figure,

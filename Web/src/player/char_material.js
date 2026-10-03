@@ -77,7 +77,7 @@ if (rg == 0) {
   float tri = abs(fract(ph) - 0.5) * 2.0;
   float hump = 1.0 - tri * tri;
   rh = hump * vAux.y * fade;
-  float rs = mix(0.62, 1.08, hump);
+  float rs = mix(0.74, 1.05, hump);
   base = uSuit * mix(1.0, rs, vAux.y * fade);
   base *= 1.0 + (nz * 0.22 + nz2 * 0.1) * (0.4 + uWear);
   float crack = smoothstep(0.55, 0.8, nz + nz2 * 0.4) * uWear;
@@ -124,7 +124,7 @@ roughnessFactor = rough; metalnessFactor = metal;
 const FRAG_NORMAL = /* glsl */`
 #include <normal_fragment_maps>
 if (bumpAmt > 0.0) {
-  vec2 dH = vec2(dFdx(rh), dFdy(rh)) * bumpAmt * 1.6;
+  vec2 dH = vec2(dFdx(rh), dFdy(rh)) * bumpAmt * 0.0035;
   vec3 q0 = dFdx(-vViewPosition.xyz), q1 = dFdy(-vViewPosition.xyz);
   vec3 R1 = cross(q1, normal), R2 = cross(normal, q0);
   float fDet = dot(q0, R1);

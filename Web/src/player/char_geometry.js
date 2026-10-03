@@ -144,7 +144,8 @@ function ellipsoid(b, c, r, reg, sk, o = {}) {
 
 /** Трубка по ломаной с радиусом r(t). Параллельный перенос кадра. */
 function tube(b, pts, rad, reg, skFn, o = {}) {
-  const N = o.seg ?? 6, P = pts.map((p) => new THREE.Vector3(...p)), n = P.length;
+  const N = o.seg ?? 6, P0 = pts.map((p) => new THREE.Vector3(...p)), P = P0.filter((p, i) => i === 0 || p.distanceTo(P0[i - 1]) > 2e-3), n = P.length;
+  if (n < 2) return;
   const rings = [], tan = [];
   for (let i = 0; i < n; i++) tan.push(P[Math.min(n - 1, i + 1)].clone().sub(P[Math.max(0, i - 1)]).normalize());
   let up = Math.abs(tan[0].y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
@@ -157,7 +158,7 @@ function tube(b, pts, rad, reg, skFn, o = {}) {
     rings.push(ring);
   }
   const aux = o.aux || [0, 0, 0.2, 0];
-  b.loft(rings, (j, i, p) => ({ reg, aux: [aux[0] || p[1], aux[1], aux[2], aux[3]], sk: skFn(p[1], p) }), { capStart: true, capEnd: true });
+  b.loft(rings, (j, i, p) => ({ reg, aux: [aux[0], aux[1], aux[2], aux[3]], sk: skFn(p[1], p) }), { capStart: true, capEnd: true });
 }
 
 // ---------------------------------------------------------------------------------------------- тело ----
@@ -203,7 +204,7 @@ export function buildBody(o, lod) {
     ys.push(torso[torso.length - 1][0]);
     const rings = ys.map((y) => {
       const rx = interp(torso, y, 1), rz = interp(torso, y, 2), cz = interp(torso, y, 3);
-      const rib = hiRibs && !bare ? (a) => 1 + 0.012 * Math.sin(y * 150) : null;
+      const rib = hiRibs && !bare ? (a) => 1 + 0.006 * Math.sin(y * 150) : null;
       return ringY(y, 0, cz, rx, rz, N, rib);
     });
     b.loft(rings, (j, i, p) => ({ reg: p[1] > 1.5 ? REG.SKIN : bodyReg, aux: [ribs(p[1])[0], p[1] > 1.5 ? 0 : ribAmt, 0.15 * (1 - Math.abs(Math.cos((i / N) * 6.2832))), (i / N)], sk: skY(p[1], TORSO_SK) }), { capStart: true });
@@ -241,7 +242,7 @@ export function buildBody(o, lod) {
     const rings = useRows.map((y) => {
       const rx = interp(legRows, y, 1) * B.limb, rz = interp(legRows, y, 2) * B.limb, cz = interp(legRows, y, 3);
       const knee = Math.exp(-(((y - 0.49) / 0.03) ** 2)) * 0.006;
-      return ringY(y, cx, cz + knee * 0.5, rx, rz, N, hiRibs && !bare ? () => 1 + 0.011 * Math.sin(y * 160) : null);
+      return ringY(y, cx, cz + knee * 0.5, rx, rz, N, hiRibs && !bare ? () => 1 + 0.006 * Math.sin(y * 160) : null);
     });
     b.loft(rings, (j, i, p) => ({ reg: bodyReg, aux: [p[1], ribAmt, 0.15 + 0.5 * Math.exp(-(((p[1] - 0.49) / 0.05) ** 2)), i / N], sk: skY(p[1], stops) }), { capEnd: false });
     // наколенник-заплата
@@ -291,7 +292,7 @@ export function buildBody(o, lod) {
     const side = s < 0 ? 'L' : 'R', cx = 0.19 * s * B.sh;
     const stops = [[1.46, BI['sh' + side]], [1.2, BI['sh' + side]], [1.1, BI['el' + side]], [0.92, BI['el' + side]], [0.86, BI['hand' + side]]];
     const useRows = lod === 2 ? [0, 3, 5, 8].map((i) => armRows[i]) : lod === 1 ? armRows.filter((_, i) => i % 2 === 0) : armRows;
-    const rings = useRows.map(([y]) => { const rx = interp(armRows, y, 1) * B.limb, rz = interp(armRows, y, 2) * B.limb, cz = interp(armRows, y, 3); return ringY(y, cx, cz, rx, rz, [12, 8, 5][lod], hiRibs && !bare ? () => 1 + 0.01 * Math.sin(y * 150) : null); });
+    const rings = useRows.map(([y]) => { const rx = interp(armRows, y, 1) * B.limb, rz = interp(armRows, y, 2) * B.limb, cz = interp(armRows, y, 3); return ringY(y, cx, cz, rx, rz, [12, 8, 5][lod], hiRibs && !bare ? () => 1 + 0.006 * Math.sin(y * 150) : null); });
     b.loft(rings, (j, i, p) => ({ reg: bodyReg, aux: [p[1], ribAmt, 0.12 + 0.5 * Math.exp(-(((p[1] - 1.13) / 0.05) ** 2)), i / N], sk: skY(p[1], stops) }), { capEnd: false });
     // налокотник / накладка на предплечье (ездовая кожа)
     if (o.armPads && lod < 2) b.loft([1.12, 1.06, 0.98, 0.92].map((y, k) => ringY(y, cx, 0.0, [0.046, 0.047, 0.042, 0.036][k], [0.048, 0.049, 0.044, 0.038][k], N)), (j, i, p) => ({ reg: REG.LEATHER, aux: [0, 0, 0.5, 0], sk: skY(p[1], stops) }));
@@ -360,9 +361,9 @@ function buildHead(b, o, lod, B) {
   // глаза: склера (у ибад — синяя), радужка/зрачок
   const eyeY = 0.016;
   for (const s of [-1, 1]) {
-    const ex = 0.034 * s * hs;
-    ellipsoid(b, [ex, Y(eyeY), Z(0.081)], [0.0135 * hs, 0.0105 * hs, 0.011 * hs], REG.SCLERA, HSK, { u: 10, v: 6, aux: [0, 0, 0, 0] });
-    ellipsoid(b, [ex * 0.985, Y(eyeY), Z(0.0905)], [0.0075 * hs, 0.0075 * hs, 0.003 * hs], REG.IRIS, HSK, { u: 8, v: 4, aux: [0, 0, 0, 0] });
+    const ex = 0.033 * s * hs;
+    ellipsoid(b, [ex, Y(eyeY), Z(0.081)], [0.0165 * hs, 0.0125 * hs, 0.012 * hs], REG.SCLERA, HSK, { u: 10, v: 6, aux: [0, 0, 0, 0] });
+    ellipsoid(b, [ex * 0.985, Y(eyeY), Z(0.0905)], [0.0098 * hs, 0.0098 * hs, 0.0035 * hs], REG.IRIS, HSK, { u: 8, v: 4, aux: [0, 0, 0, 0] });
     // веки
     ellipsoid(b, [ex, Y(eyeY + 0.011), Z(0.081)], [0.0165 * hs, 0.0042 * hs, 0.0125 * hs], REG.SKIN, HSK, { u: 8, v: 4, rot: [-0.25, 0, 0], aux: [0, 0, 0, 0] });
     ellipsoid(b, [ex, Y(eyeY - 0.0105), Z(0.081)], [0.0155 * hs, 0.0036 * hs, 0.0115 * hs], REG.SKIN, HSK, { u: 8, v: 4, rot: [0.2, 0, 0], aux: [0, 0, 0, 0] });
@@ -391,15 +392,15 @@ function buildHead(b, o, lod, B) {
 
 /** Головной чехол дистикомба: капюшон-«затвор» вокруг лица + маска с трубками. Возвращает ничего (в тело). */
 export function buildCowl(b, o, lod, B) {
-  const hs = B.head, N = [20, 12, 8][lod], maskUp = o.mask !== false;
+  const hs = B.head, N = [20, 12, 8][lod], maskUp = o.maskState ? o.maskState === 'up' : o.mask !== false;
   const rowsY = lod === 0 ? [-0.2, -0.165, -0.13, -0.11, -0.09, -0.06, -0.035, -0.01, 0.02, 0.05, 0.08, 0.105, 0.128, 0.145] : [-0.2, -0.13, -0.09, -0.035, 0.02, 0.08, 0.128, 0.145];
   // угол раскрытия лица θ(y): 0 — закрыто.
   const theta = (y) => {
     if (y < -0.125) return 0;
     if (y < -0.035) return maskUp ? 0 : (y < -0.1 ? 0 : 1.15);
     if (y < 0.0) return 0.95 + (0.0 - y) * 4;
-    if (y < 0.09) return 0.82 - (y * 1.2);
-    return Math.max(0, 0.65 - (y - 0.09) * 10);
+    if (y < 0.06) return 0.95 - y * 2.2;
+    return Math.max(0, 0.82 - (y - 0.06) * 12);
   };
   const rings = rowsY.map((y) => {
     const yy = Math.max(y, -0.12), [rx, rz, cz] = headRow(yy);
@@ -497,8 +498,8 @@ const ROBE_ROWS = {
   jubba: [[0.16, 0.34, 0.31, 0.0], [0.4, 0.3, 0.27, 0.0], [0.7, 0.265, 0.235, 0.0], [0.92, 0.225, 0.19, 0], [1.05, 0.2, 0.15, 0.004], [1.2, 0.205, 0.15, 0.008], [1.32, 0.225, 0.147, 0.004], [1.41, 0.215, 0.12, -0.003], [1.45, 0.14, 0.09, -0.004], [1.485, 0.085, 0.07, -0.004]],
   kaftan: [[0.42, 0.285, 0.255, 0.0], [0.7, 0.262, 0.232, 0.0], [0.92, 0.225, 0.19, 0], [1.05, 0.2, 0.15, 0.004], [1.2, 0.205, 0.15, 0.008], [1.32, 0.225, 0.147, 0.004], [1.41, 0.215, 0.12, -0.003], [1.45, 0.14, 0.09, -0.004], [1.485, 0.085, 0.07, -0.004]],
   tunic: [[0.74, 0.232, 0.2, 0.0], [0.92, 0.218, 0.178, 0], [1.05, 0.195, 0.15, 0.004], [1.2, 0.2, 0.15, 0.008], [1.32, 0.222, 0.147, 0.004], [1.41, 0.212, 0.12, -0.003], [1.45, 0.14, 0.09, -0.004], [1.485, 0.085, 0.07, -0.004]],
-  cape: [[0.7, 0.285, 0.235, -0.01], [0.92, 0.245, 0.2, -0.008], [1.05, 0.21, 0.165, 0.0], [1.2, 0.218, 0.16, 0.006], [1.32, 0.235, 0.155, 0.002], [1.41, 0.222, 0.128, -0.004], [1.45, 0.15, 0.1, -0.004], [1.485, 0.092, 0.078, -0.004]],
-  shawl: [[0.62, 0.3, 0.26, -0.02], [0.92, 0.27, 0.225, -0.012], [1.1, 0.262, 0.2, -0.004], [1.25, 0.268, 0.19, 0.002], [1.36, 0.262, 0.16, 0], [1.43, 0.24, 0.13, -0.004], [1.46, 0.16, 0.1, -0.004], [1.49, 0.092, 0.08, -0.004]],
+  cape: [[0.7, 0.32, 0.27, -0.02], [0.92, 0.29, 0.24, -0.015], [1.05, 0.265, 0.21, -0.01], [1.2, 0.265, 0.19, -0.005], [1.32, 0.265, 0.175, -0.005], [1.4, 0.245, 0.15, -0.005], [1.44, 0.19, 0.12, -0.004], [1.47, 0.12, 0.09, -0.004], [1.495, 0.085, 0.078, -0.004]],
+  shawl: [[0.62, 0.34, 0.3, -0.03], [0.92, 0.31, 0.26, -0.02], [1.1, 0.29, 0.23, -0.01], [1.25, 0.28, 0.2, -0.005], [1.36, 0.27, 0.17, -0.005], [1.43, 0.25, 0.14, -0.004], [1.46, 0.17, 0.11, -0.004], [1.49, 0.092, 0.08, -0.004]],
   heavy: [[0.1, 0.46, 0.4, 0], [0.5, 0.39, 0.34, 0], [0.92, 0.31, 0.26, -0.01], [1.15, 0.285, 0.22, -0.005], [1.3, 0.29, 0.2, 0], [1.4, 0.29, 0.16, -0.004], [1.45, 0.2, 0.12, -0.004], [1.49, 0.1, 0.09, -0.004]],
 };
 export function robeProfile(style) { const r = ROBE_ROWS[style] || ROBE_ROWS.jubba; return { rows: r, hemY: r[0][0] }; }
@@ -513,22 +514,23 @@ function clothLayer(b, layer, lod, B, N) {
   const cs = [[1.05, BI.spine], [0.95, BI.pelvis]];
   const sk = (y) => skY(y, [[1.52, BI.neck], [1.43, BI.chest], [1.18, BI.chest], [1.05, BI.spine], [0.93, BI.pelvis]]);
   const hemSkew = layer.asym ?? 0, tear = layer.tear ?? 0;
+  const th0 = layer.open ?? (style === 'cape' ? 0.55 : style === 'shawl' ? 0.5 : style === 'heavy' ? 0.42 : 0);
   const rings = ys.map((y) => {
     const rx = interp(rows, y, 1) * (layer.scale ?? 1), rz = interp(rows, y, 2) * (layer.scale ?? 1), cz = interp(rows, y, 3);
-    const below = clamp((1.12 - y) / 0.9, 0, 1), amp = fold * below * below + 0.004;
-    const pts = ringY(y, 0, cz, rx * (y < 1.45 ? B.sh * 0.5 + 0.5 : 1), rz, N, (a) => 1 + amp * (Math.sin(a * nf + 0.7) * 0.6 + Math.sin(a * nf * 2.3 + 1.9) * 0.28 + Math.sin(a * 3.1) * 0.3));
+    const below = clamp((1.12 - y) / 0.9, 0, 1), amp = fold * 2.6 * (0.25 + 0.75 * below * below) + 0.004;
+    const pts = ringY(y, 0, cz, rx * (y < 1.45 ? B.sh * 0.5 + 0.5 : 1), rz, N, (a) => 1 + amp * (Math.sin(a * nf + 0.7) * 0.6 + Math.sin(a * nf * 2.3 + 1.9) * 0.28 + Math.sin(a * 3.1) * 0.3), th0, Math.PI * 2 - th0, th0 > 0);
     // неровный/асимметричный подол: нижние кольца вертикально смещаем
-    if (y - hemY < 0.0001) pts.forEach((p, i) => { const a = (i / N) * Math.PI * 2; p[1] += 0.03 * Math.sin(a * 3 + 0.5) + 0.018 * Math.sin(a * 7) + hemSkew * 0.1 * Math.max(0, Math.sin(a)) + tear * 0.06 * Math.max(0, Math.sin(a * 5 + 2)); });
+    if (y - hemY < 0.0001) pts.forEach((p, i) => { const a = th0 + ((Math.PI * 2 - 2 * th0) * i) / N; p[1] += 0.03 * Math.sin(a * 3 + 0.5) + 0.018 * Math.sin(a * 7) + hemSkew * 0.1 * Math.max(0, Math.sin(a)) + tear * 0.06 * Math.max(0, Math.sin(a * 5 + 2)); });
     return pts;
   });
   b.loft(rings, (j, i, p) => {
     const y = p[1], hemBand = y < hemY + 0.045;
     const flex = clamp((1.08 - y) / (1.08 - hemY), 0, 1);
-    const a = (i / N) * Math.PI * 2;
-    const front = Math.abs(Math.sin(a * 0.5)) ; // 0 спереди
-    const trim = (hemBand && layer.hemTrim) || (layer.frontTrim && (a < 0.08 || a > Math.PI * 2 - 0.08) && y > 1.0);
+    const a = th0 + ((Math.PI * 2 - 2 * th0) * i) / N;
+    const edge = th0 > 0 ? (i <= 1 || i >= N - 1) : (a < 0.08 || a > Math.PI * 2 - 0.08);
+    const trim = (hemBand && layer.hemTrim) || (layer.frontTrim && edge && y > 1.0);
     return { reg: trim ? REG.ACCENT : (layer.reg ?? REG.CLOTH), aux: [flex * flex, layer.lining ? 1 : 0, y * 2.0, a], sk: sk(y) };
-  }, { capStart: false });
+  }, { capStart: false, closed: th0 === 0 });
   // воротник-шаль у горла
   if (layer.collar && lod < 2) {
     b.loft([1.5, 1.47, 1.43].map((y, k) => ringY(y, 0, 0, [0.095, 0.115, 0.15][k], [0.085, 0.1, 0.12][k], N, (a) => 1 + 0.07 * Math.sin(a * 7))), (j, i, p) => ({ reg: REG.CLOTH, aux: [0, 0, p[1], 0], sk: skY(p[1], [[1.52, BI.neck], [1.43, BI.chest]]) }), {});
@@ -609,7 +611,7 @@ export function buildCloth(o, lod) {
 export function buildBodyFull(o, lod) {
   const b = buildBody(o, lod);
   const B = BUILDS[o.build] || BUILDS.m;
-  if (o.cowl !== false && (o.mask !== false || o.hood !== false) && !o.bare && lod < 3) buildCowl(b, o, lod, B);
+  if (o.cowl !== false && ((o.maskOn ?? (o.mask !== false)) || o.hood !== false) && !o.bare && lod < 3) buildCowl(b, o, lod, B);
   if (o.bare && o.maskless !== true) { /* без чехла */ }
   return b;
 }
