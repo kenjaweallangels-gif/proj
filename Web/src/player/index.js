@@ -105,7 +105,11 @@ export function create(game) {
 
   function groundGradient(x, z, out) {
     const e = CFG.slope.probe;
-    out.set((game.heightAt(x + e, z) - game.heightAt(x - e, z)) / (2 * e), 0, (game.heightAt(x, z + e) - game.heightAt(x, z - e)) / (2 * e));
+    // Уклон — по поверхности под ногами (с учётом высоты ступней): на уступах у скалы и на двух уровнях сиетча
+    // без y брался бы верх скалы/балкона, и склон считался бы отвесным.
+    const y = position.y + 0.3;
+    const h = (px, pz) => game.heightAt(px, pz, y);
+    out.set((h(x + e, z) - h(x - e, z)) / (2 * e), 0, (h(x, z + e) - h(x, z - e)) / (2 * e));
     return out;
   }
   const grad = new V3();

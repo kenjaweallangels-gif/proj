@@ -229,6 +229,10 @@ export function create(game) {
     },
     surfaceAt(x, z) { _tw.set(x, O.y, z); toLocal(_tw, _tw); return plan.surfaceAtLocal(_tw.x, _tw.z); },
     collide(pos, r) {
+      // Открытый конец выходного туннеля: последние метры до устья сада стены сиетча не держат —
+      // дальше коллизию ведёт котловина (game.garden), иначе туннель — тупик.
+      const pm = mouths[1].w;
+      if (pos.x > pm.x - 1.5 && Math.abs(pos.z - pm.z) < 2.6 && Math.abs(pos.y - (pm.y - 1.0)) < 2.5) return false;
       toLocal(pos, _tw);
       const p = { x: _tw.x, z: _tw.z };
       const moved = plan.collideLocal(p, r, _tw.y);
