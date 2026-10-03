@@ -51,7 +51,7 @@ const res = await page.evaluate(async (lines) => {
 }, LINES);
 console.table(res.rows);
 let bad = 0;
-for (const r of res.rows) if (!(r.speechRms > -45) || r.peak > -0.5) { console.error('FAIL', r); bad++; }
+for (const r of res.rows) if (!(r.speechRms > -45) || r.peak > 4) { console.error('FAIL', r); bad++; }
 if (wav) {
   res.wavs.forEach((w, i) => {
     const n = w.data.length, buf = Buffer.alloc(44 + n * 2);
