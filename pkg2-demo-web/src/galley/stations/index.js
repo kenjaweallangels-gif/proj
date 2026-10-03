@@ -25,7 +25,7 @@ export function buildStations(scene) {
     st.root.add(lamp, lamp.target);
   }
   const [em, sl, me] = list;
-  block(em, -1.3, 1.3, -0.75, 0.2); block(em, -2.85, -1.2, -0.45, 0.65); block(em, 1.35, 2.95, -0.2, 0.7); block(em, -2.5, -1.8, 0.75, 1.25);
+  block(em, -1.3, 1.3, -0.9, 0.4); block(em, -2.85, -1.2, -0.45, 0.65); block(em, 1.35, 2.95, -0.2, 0.7); block(em, -2.5, -1.8, 0.75, 1.25);
   block(sl, -1.05, 1.05, -0.4, 0.5); block(sl, -2.35, -1.75, -0.35, 0.3); block(sl, -3.55, -3.15, -0.25, 0.25); block(sl, 1.4, 1.9, -0.25, 0.25); block(sl, 2.6, 4.5, -0.6, 0.75);
   block(me, -1.0, 1.0, -0.55, 0.55); block(me, -2.3, -1.5, 0.9, 1.5); block(me, 1.9, 2.6, 1.1, 1.7); block(me, 1.9, 2.5, -1.9, -1.3);
   return list;

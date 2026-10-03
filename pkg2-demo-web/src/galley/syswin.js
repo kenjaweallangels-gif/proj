@@ -81,13 +81,19 @@ export function systemWindow(mgr, app) {
     if (s.text?.[0]) ui.wrap(s.text[0], 40, y + 66, W - 80, { size: 66, lh: 1.16, maxLines: Math.max(1, Math.floor((H - 260 - y) / 78)) });
     const tm = si ? null : L?.timer;
     const need = si ? (s.check && !(s.id in si.st.values) ? 'value' : null) : app.run.needs();
-    const msg = need === 'timer' ? 'Идёт выдержка' : need === 'value' ? `Замер: ${s.check.name}` : need === 'photo' ? 'Нужно фото' : 'Можно дальше ▸';
-    ui.text(msg, 40, H - 150, { size: 66, color: need ? C.warn : C.ok, max: tm ? W - 460 : W - 80 });
+    const sim = app.simInfo?.();
+    const msg = sim ? `${sim.paused ? '⏸' : '▶'} ${ai || 'Имитация'}` : need === 'timer' ? 'Идёт выдержка' : need === 'value' ? `Замер: ${s.check.name}` : need === 'photo' ? 'Нужно фото' : 'Можно дальше ▸';
+    ui.text(msg, 40, H - 150, { size: sim ? 54 : 66, color: sim ? C.warn : need ? C.warn : C.ok, max: tm ? W - 460 : W - 80 });
     if (tm) ui.text(`⏱ ${fmtMin(app.run.remaining(tm))}`, W - 40, H - 150, { size: 72, color: C.warn, align: 'right', mono: true });
     // кнопки: управлять можно указателем смартфона, мышью, голосом
     const bw = (W - 80 - 3 * 24) / 4, by = H - 110;
-    ui.button(40, by, bw, 84, '◂ Назад', () => go('prev'), { size: 44 });
-    ui.button(40 + (bw + 24), by, bw, 84, 'Выполнено ▸', () => go('next'), { size: 44, active: true });
+    if (sim) {                                                       // идёт имитация: пауза/продолжить и стоп
+      ui.button(40, by, bw, 84, sim.paused ? '▶ Продолжить' : '⏸ Пауза', () => go(sim.paused ? 'auto_start' : 'auto_pause'), { size: 44, active: sim.paused });
+      ui.button(40 + (bw + 24), by, bw, 84, '⏹ Стоп имитации', () => go('auto_stop'), { size: 40, color: C.bad });
+    } else {
+      ui.button(40, by, bw, 84, '◂ Назад', () => go('prev'), { size: 44 });
+      ui.button(40 + (bw + 24), by, bw, 84, 'Выполнено ▸', () => go('next'), { size: 44, active: true });
+    }
     ui.button(40 + (bw + 24) * 2, by, bw, 84, '⛶ Окно', () => setView('full'), { size: 44 });
     ui.button(40 + (bw + 24) * 3, by, bw, 84, '✕ Скрыть', () => app.act?.('sys', 'hide'), { size: 44, color: C.bad });
   }
@@ -97,7 +103,12 @@ export function systemWindow(mgr, app) {
     const a = selected();
     ui.rect(3, 3, W - 6, H - 6, { fill: 'rgba(12,60,80,0.10)', stroke: 'rgba(88,230,255,0.6)', r: 16, lw: 3 });
     ui.text('Система', 20, 40, { size: 26, color: C.acc });
-    ui.text(a ? a.title : '', 160, 40, { size: 20, color: '#ffffff', max: W - 160 - 300 });
+    ui.text(a ? a.title : '', 160, 40, { size: 20, color: '#ffffff', max: W - 160 - (app.simInfo?.() ? 550 : 300) });
+    const sim = app.simInfo?.();
+    if (sim) {
+      ui.button(W - 540, 12, 70, 40, sim.paused ? '▶' : '⏸', () => go(sim.paused ? 'auto_start' : 'auto_pause'), { size: 20, active: sim.paused });
+      ui.button(W - 462, 12, 164, 40, '⏹ Стоп имитации', () => go('auto_stop'), { size: 17, color: C.bad });
+    }
     ui.button(W - 290, 12, 150, 40, '◱ Компактно', () => setView('compact'), { size: 18 });
     ui.button(W - 132, 12, 112, 40, '✕ Скрыть', () => app.act?.('sys', 'hide'), { size: 18, color: C.bad });
     const tw = (W - 40 - 4 * 8) / 5;

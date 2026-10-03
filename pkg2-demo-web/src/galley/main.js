@@ -171,9 +171,12 @@ async function main() {
   };
   // каталог алгоритмов (стапель и участки) для окна «Система»
   app.catalog = buildCatalog(stations);
-  app.activeAlgId = () => (activeSt ? activeSt.id : 'km2');
+  app.activeAlgId = () => (activeSt ? activeSt.id : app.simInfo?.()?.st?.id || 'km2');
   app.stationOf = (id) => stations.find((s) => s.id === id) || null;
-  app.stationInfo = () => (activeSt && !activeSt.done ? { st: activeSt, step: activeSt.step, index: activeSt.index, total: activeSt.steps.length } : null);
+  app.stationInfo = () => {
+    const st = activeSt || app.simInfo?.()?.st;                       // у участка рядом или где идёт имитация
+    return st && !st.done ? { st, step: st.step, index: st.index, total: st.steps.length } : null;
+  };
   const holoOn = (st) => st === activeSt && !!sim.glasses && !!sim.display && !asm?.open && app.aligned;
 
   let asm = null;                                                     // плеер виртуальной сборки (создаётся ниже)
@@ -553,8 +556,8 @@ async function main() {
   function act(cmd, arg = null, src = 'клавиатура') {
     const voice = src === 'голос';
     switch (cmd) {
-      case 'next': if (activeSt && !asm.open) { app.stationAct(activeSt, 'next'); break; } auto.pause(); app.next(); break;
-      case 'prev': if (activeSt && !asm.open) { app.stationAct(activeSt, 'prev'); break; } auto.pause(); app.prev(); break;
+      case 'next': if (activeSt && !asm.open) { if (auto.st === activeSt) auto.pause(); app.stationAct(activeSt, 'next'); break; } auto.pause(); app.next(); break;
+      case 'prev': if (activeSt && !asm.open) { if (auto.st === activeSt) auto.pause(); app.stationAct(activeSt, 'prev'); break; } auto.pause(); app.prev(); break;
       case 'repeat': { const s = run.step; showStep(); say2(`${s.id}. ${s.title}. ${s.text[0] || ''}`, voice); break; }
       case 'photo': if (activeSt) { vision.u.flash.value = 1; app.notify(`Фото ${activeSt.step?.id || ''} (${activeSt.short}) — в журнал`); break; } app.photo(); break;
       case 'goto_place': {
@@ -995,12 +998,14 @@ async function main() {
     const want = place === 'jig' ? galleyAsm : stations.find((s) => s.id === place)?.asm;
     if (!want) return;
     if (asm.open) asm.close();
+    auto.pause();
     if (nearestAsmTarget() !== want) act('goto_place', place);
     asm.openFor(want, 0); asm.play(1);
   };
   function togglePlayer(on = !asm.open) {
     if (!on) { asm.close(); return; }
     const t = nearestAsmTarget() || galleyAsm;
+    auto.pause();
     asm.openFor(t, 0);
     asm.play(1);
   }
@@ -1013,7 +1018,16 @@ async function main() {
   const auto = {
     on: false, paused: false, phase: 'show', t: 0, fly: null, ff: false, rate: 1,
     // guide — камера ведёт к месту работы; free — сборщик ходит и смотрит сам, сборка идёт своим ходом
-    cam: q.get('autocam') === 'free' ? 'free' : 'guide',
+    // по умолчанию имитация персонажем не управляет: сборка идёт сама, сборщик ходит где хочет
+    cam: q.get('autocam') === 'guide' ? 'guide' : 'free',
+    st: null,                                   // участок, на котором идёт имитация (null — стапель СТ-3)
+    /** Где запускать: ближайшее место к сборщику — стапель или участок. */
+    pickStation() {
+      if (scen.state !== 'free') return null;
+      const p = player.pos; let best = null, bd = Math.hypot(p.x, p.z);
+      for (const st of stations) { const d = Math.hypot(p.x - st.center.x, p.z - st.center.z); if (d < bd) { bd = d; best = st; } }
+      return best;
+    },
     setCam(c) {
       this.cam = c;
       if (c === 'free') {
@@ -1024,34 +1038,45 @@ async function main() {
       updateBar(); pushState(true);
     },
     phaseLabel() {
+      if (this.st) { const s = this.st.step; return s ? `${this.st.short.split(' · ')[0]}: ${s.id} — ${{ show: 'голограмма', act: 'выполнение', done: 'контроль' }[this.phase] || ''}` : 'готово'; }
       if (this.cam === 'free' && this.phase === 'show') return `переход ${run.step.id} — голограмма (свободно)`; return { show: `переход ${run.step.id} — голограмма`, move: 'подход к месту', act: `переход ${run.step.id} — выполнение`, fly: `установка ${this.fly?.ids?.join(', ') || ''}`, wait: 'выдержка (ускорено)' }[this.phase] || ''; },
     start() {
       if (scen.state === 'choose') { startScenario('auto'); return; }
-      if (!this.on) { this.phase = 'show'; this.t = 0; }
+      if (!this.on) { this.phase = 'show'; this.t = 0; this.st = this.pickStation(); this.begun = false; }
       this.on = true; this.paused = false;
       if (scen.state === 'free') this.begin();
       else app.notify('Имитация сборки начнётся после вступления (Enter — пропустить)', 4);
       updateBar(); pushState(true);
     },
     begin() {
+      this.begun = true;
+      if (!panels.algo.visible) cornerAlgo(true, true);            // закреплённое окно: ход имитации и кнопка «Стоп»
+      if (this.st) {
+        const st = this.st;
+        if (st.done) { st.index = 0; st.values = {}; }
+        st.apply(st.index, 0); st.panel.dirty = true;
+        app.notify(`Имитация сборки: ${st.short} — ${st.product}, с перехода ${st.step.id}. Можно ходить где угодно; стоп — кнопкой в окне «Система» (или Shift+I)`, 6);
+        return;
+      }
       if (player.mode === 'inspect' && this.cam === 'guide') { player.exitInspect(); mgr.toggle(panels.local, false); }
       mgr.toggle(panels.step, true);
       if (this.cam === 'free' && !panels.algo.visible) cornerAlgo(true, true);
       app.preview = null; showStep();
-      app.notify(`Имитация сборки: с перехода ${run.step.id}. I — пауза, N/B — вручную`, 4);
-      this.begun = true;
+      app.notify(`Имитация сборки на стапеле СТ-3: с перехода ${run.step.id}. Ходите где угодно; I — пауза, стоп — кнопкой в окне «Система»`, 5);
     },
     pause(byUser = false) {
       if (!this.on || this.paused) return;
       this.paused = true;
       if (this.fly) this.finishFly();
+      if (this.st) { this.st.apply(this.st.index, 0); this.phase = 'show'; this.t = 0; }
       if (byUser) app.notify('Имитация на паузе — I продолжить');
       updateBar(); pushState(true);
     },
     stop() {
       if (!this.on) return;
       if (this.fly) this.finishFly();
-      this.on = false; this.paused = false; this.begun = false;
+      if (this.st) { this.st.apply(this.st.index, 0); this.st.panel.dirty = true; }
+      this.on = false; this.paused = false; this.begun = false; this.st = null;
       app.notify('Имитация остановлена'); updateBar(); pushState(true);
     },
     /** Точка внимания перехода (мир): центр деталей / соединений / крепежа. */
@@ -1096,6 +1121,7 @@ async function main() {
     update(dt) {
       if (!this.on || this.paused || scen.state !== 'free') return;
       if (!this.begun) this.begin();
+      if (this.st) { this.updateStation(dt); return; }
       const s = run.step;
       if (!s) return;
       this.t += dt * this.rate;
@@ -1151,6 +1177,32 @@ async function main() {
       this.next();
     },
   };
+  /** Имитация на участке: голограмма перехода → выполнение реальными деталями (детали подлетают, станки
+   *  работают, провода растут) → контроль (замер в допуске, фото) → следующий переход. */
+  auto.updateStation = function (dt) {
+    const st = this.st;
+    if (st.done) { app.notify(`Имитация: ${st.short} — все переходы выполнены, ${st.product} готово`, 6); this.on = false; this.begun = false; this.st = null; updateBar(); pushState(true); return; }
+    this.t += dt * this.rate;
+    const s = st.step;
+    if (this.phase === 'show') { if (this.t > 2.6) { this.phase = 'act'; this.t = 0; } return; }
+    if (this.phase === 'act') {
+      const f = Math.min(1, this.t / 3.6);
+      st.apply(st.index, f);
+      if (f >= 1) { this.phase = 'done'; this.t = 0; }
+      return;
+    }
+    if (this.t < 0.8) return;
+    if (s.check && !(s.id in st.values)) {
+      const c = s.check, v = Math.round((c.nominal + (Math.random() - 0.5) * 0.8 * c.tol) * 100) / 100;
+      st.values[s.id] = v;
+      app.notify(`${st.short.split(' · ')[0]}: ${c.name} ${String(v).replace('.', ',')} ${c.unit} — в допуске`, 3);
+    }
+    if (s.photo) { vision.u.flash.value = 1; app.notify(`Фото ${s.id} (${st.short.split(' · ')[0]}) — в журнал`, 2); }
+    st.next(); st.panel.dirty = true;
+    this.phase = 'show'; this.t = 0;
+    pushState(true);
+  };
+  app.simInfo = () => (auto.on ? { paused: auto.paused, place: auto.st ? auto.st.short : 'Стапель СТ-3', st: auto.st } : null);
   run.on((e) => { if (e.event === 'step') auto.flown = false; });
   app.autoInfo = () => (auto.on ? (auto.paused ? 'ИМИТАЦИЯ: пауза' : `▶ ИМИТАЦИЯ · ${auto.phaseLabel()}`) : null);
 
@@ -1289,6 +1341,7 @@ async function main() {
   });
   setDevice(sim.device.id, { quiet: true });
   updateBar();
+  if (q.get('place')) act('goto_place', q.get('place'));
   if (q.get('auto') === '1') { $('start').hidden = true; if (scen.state === 'choose') finishIntro(); if (auto.cam === 'free') auto.setCam('free'); auto.start(); }
   // режим из адреса (#autonomous / #manual, ?mode=); в проверках браузера — вступление как раньше
   if (scen.state === 'choose') {
@@ -1297,7 +1350,6 @@ async function main() {
   }
   if (q.get('corner') === '1') cornerAlgo(true, true);
   if (q.get('sys')) act('sys', q.get('sys'));                       // ?sys=full|cat|kd|tree|ctl — окно «Система»
-  if (q.get('place')) act('goto_place', q.get('place'));
   if (q.get('asm') === '1') togglePlayer(true);
   if (tp.on) setTP(true);
   window.__demo = {
