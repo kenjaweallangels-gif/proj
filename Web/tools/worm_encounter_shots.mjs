@@ -75,7 +75,7 @@ const errors = [];
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${m.type()}: ${m.text()}`); });
 page.on('pageerror', (e) => errors.push(String(e)));
 await page.goto(`file://${join(root, 'dist', arg('file', 'worm.html'))}?autotest=1&q=${arg('q', 'med')}&lang=RU`);
-await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.5, null, { timeout: 120000 });
+await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.5, null, { timeout: 900000 });
 console.log('GL:', glMode, '|', await page.evaluate(() => { const gl = window.__rakis.renderer.getContext(); const e = gl.getExtension('WEBGL_debug_renderer_info'); return e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : 'n/a'; }));
 
 await page.evaluate(() => {
@@ -109,6 +109,7 @@ await page.evaluate(() => {
   };
 });
 
+const spectator = arg('spectator', '1') === '1';
 const dt = Number(arg('dt', 1 / 30)), every = Number(arg('every', 3)), minLum = Number(arg('minlum', 22));
 const results = [];
 let idx = 0;
@@ -121,6 +122,24 @@ async function capture(label) {
   const buf = await page.screenshot({ path: join(outDir, file), timeout: 240000 });
   const st = lumStats(decodePng(buf));
   const info = await page.evaluate(() => { const g = window.__rakis, w = g.worm; return { phase: w.encounterPhase(), t: +(g.time - window.__t0).toFixed(1), head: w.headPos.toArray().map((v) => +v.toFixed(0)), calls: g.renderer.info.render.calls, tris: g.renderer.info.render.triangles, exp: +g.renderer.toneMappingExposure.toFixed(2), oss: w.director.oss.phase, q: w.body.quality, cin: g.cinematic.active }; });
+  // дополнительные «зрительские» ракурсы вне кинокамеры: вблизи на Оссану и с воздуха на всю дугу
+  if (spectator && !info.cin) {
+    for (const mode of ['close', 'aerial']) {
+      await page.evaluate((mode) => {
+        const g = window.__rakis, T = g.THREE, w = g.worm, d = w.director, cam = g.camera;
+        const e = w.riders.items[1].root.matrix.elements; const o = new T.Vector3(e[12], e[13], e[14]);
+        if (mode === 'close') {
+          const dir = new T.Vector3(d.G.x - o.x, 0, d.G.z - o.z).normalize();
+          cam.position.set(o.x + dir.x * 26 + dir.z * 8, o.y + 3, o.z + dir.z * 26 - dir.x * 8); cam.fov = 40; cam.updateProjectionMatrix(); cam.lookAt(o.x, o.y + 1, o.z);
+        } else {
+          const P = w.spine.P; const k = 45;
+          cam.position.set(d.G.x - d.path.f.x * 40, d.G.y + 150, d.G.z - d.path.f.z * 40); cam.fov = 62; cam.updateProjectionMatrix(); cam.lookAt(d.G.x, d.G.y, d.G.z);
+        }
+      }, mode);
+      await page.waitForTimeout(1500);
+      await page.screenshot({ path: join(outDir, `${String(idx - 1).padStart(2, '0')}_${label}_${mode}.png`), timeout: 240000 });
+    }
+  }
   const bad = st.mean < minLum || st.dark > 0.97 || nan.nan + nan.inf > 0;
   results.push({ file, ...info, lum: +st.mean.toFixed(1), dark: +st.dark.toFixed(2), nan: nan.nan, inf: nan.inf, bad });
   console.log(file.padEnd(28), `phase=${info.phase} t=${info.t} lum=${st.mean.toFixed(1)} dark=${st.dark.toFixed(2)} nan=${nan.nan}/${nan.inf} calls=${info.calls} tris=${info.tris} exp=${info.exp}${bad ? '  <-- BAD' : ''}`);

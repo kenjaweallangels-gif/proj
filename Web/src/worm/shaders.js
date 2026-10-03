@@ -14,7 +14,7 @@ export function createUniforms(spineTex) {
     uSpine: { value: spineTex },
     uLen: { value: LENGTH },
     uR: { value: RADIUS },
-    uBump: { value: 1.25 },       // сила микрорельефа пластин
+    uBump: { value: 0.65 },       // сила микрорельефа пластин
     uSandAmt: { value: 0.35 },    // 0..1 налёт песка/пыли (сверху гуще)
     uDust: { value: 1.0 },        // множитель пылевого покрытия верха
     uRim: { value: 1.0 },         // сила контровой подсветки
@@ -110,8 +110,8 @@ void wormSkin(float s, float a, vec3 wN, float pm, out vec3 alb, out float rgh, 
   vec3 ochre = wsrgb(vec3(0.55,0.45,0.32));
   vec3 base = mix(mix(rust,grey,wss(0.30,0.68,macro)), ochre, 0.15+0.4*meso*pid);
   alb = base*(0.78+0.4*micro)*(0.88+0.12*growth);
-  alb = mix(alb, alb*1.30+0.012, shelf*0.55);                    // кромки светлее
-  alb *= (0.82+0.3*bx)*(1.0-0.5*groove)*(1.0-0.62*seam)*(1.0-0.55*under)*(1.0-0.65*cr)*(1.0-0.05*ridges);
+  alb = mix(alb, alb*1.12+0.01, shelf*0.35);                    // кромки светлее
+  alb *= (0.88+0.2*bx)*(1.0-0.32*groove)*(1.0-0.5*seam)*(1.0-0.55*under)*(1.0-0.65*cr)*(1.0-0.05*ridges);
   // шрамы — светлая зарубцевавшаяся ткань
   alb = mix(alb, wsrgb(vec3(0.62,0.55,0.46)), scar*0.65);
   // наросты у головы: известковая корка, тёмная кайма у основания
@@ -129,12 +129,12 @@ void wormSkin(float s, float a, vec3 wN, float pm, out vec3 alb, out float rgh, 
               + uDust*up*up*(0.55 + 0.45*micro)*(0.6 + 0.6*pat)
               + uDust*up*0.28
               + side*streak*0.38*pat*uSandAmt*2.0
-              + uSandAmt*0.20*up;
+              + uSandAmt*0.20*up + 0.03 + 0.12*pat*(0.5 + 0.5*streak);
   sandM = clamp(sandM*(1.0 - 0.8*crustH), 0.0, 1.0);
   vec3 sandCol = wsrgb(vec3(0.76,0.62,0.44))*(0.88+0.25*micro);
   alb = mix(alb, sandCol, sandM*0.82);
-  alb = mix(alb, sandCol*0.8, 0.07);
-  rgh = mix(0.62+0.24*micro, 0.97, sandM);
+  alb = mix(alb, sandCol*0.8, 0.12);
+  rgh = mix(0.78+0.2*micro, 0.98, sandM);
   rgh = mix(rgh, 0.9, crustH);
   hgt = 0.34*(1.0-groove) - 0.55*seam + 0.22*shelf - 0.35*under + 0.08*micro + 0.03*growth - 0.22*cr + 0.45*sandM
       + 0.10*ridges + 0.9*crustH - 0.12*scar;
@@ -178,15 +178,16 @@ vec3 wormSurf(float s, float a, out vec3 C){
   vec3 wc = wormCell(s, a); float fr = wc.z;
   // пластины: плавный подъём, нависающая кромка (шельф) и резкий обрыв в глубокую борозду
   float dseam = min(fr, 1.0 - fr);
-  float stp = -1.0 + 1.9*smoothstep(0.0,0.7,fr) + 0.75*smoothstep(0.58,0.84,fr) - 2.65*smoothstep(0.88,1.0,fr)
-            - 0.9*exp(-(dseam*dseam)/(0.03*0.03));
+  float stp = -0.6 + 1.1*smoothstep(0.0,0.7,fr) + 0.45*smoothstep(0.58,0.84,fr) - 1.55*smoothstep(0.88,1.0,fr)
+            - 0.55*exp(-(dseam*dseam)/(0.035*0.035));
   float g = fract(wc.x);
-  float dome = 1.0 - pow(abs(2.0*g-1.0), 3.0);
-  float ridge = pow(dome, 7.0);
+  float ge = min(g, 1.0 - g);
+  float dome = smoothstep(0.0, 0.32, ge);                      // гладкие переходы между пластинами (без V-складок)
+  float ridge = exp(-((g - 0.5)*(g - 0.5))/(0.012));
   float macro = (wfbm(vec2(s*0.04, a*1.3)) - 0.5)*1.6;
   float dent = smoothstep(0.80, 0.92, wvn(vec2(s*0.09 + 13.0, a*2.4)));          // рубцы-вмятины
   float belly = smoothstep(2.2,3.14,abs(mod(a+3.14159,6.28318)-3.14159));
-  float r = (uR + stp + 0.75*dome + 0.32*ridge + macro*(1.0-0.4*belly) - 1.1*dent) * max(P.w, 0.02);
+  float r = (uR + stp + 0.55*dome + 0.18*ridge + macro*(1.0-0.4*belly) - 1.1*dent) * max(P.w, 0.02);
   vec3 dir = cos(a)*N + sin(a)*B;
   C = P.xyz;
   return P.xyz + dir*r;
@@ -252,7 +253,7 @@ const FRAG_EMISSIVE_BODY = /* glsl */`
     float wFres = wpow(1.0 - wNV, 3.0);
     float wSun = clamp(dot(normal, uSunV)*0.5 + 0.5, 0.0, 1.0);
     vec3 rimCol = mix(vec3(0.55,0.62,0.78), vec3(1.0,0.74,0.46), wSun);
-    totalEmissiveRadiance += wAlb * rimCol * wFres * (0.10 + 0.55*wSun) * uRim * vShade;
+    totalEmissiveRadiance += wAlb * rimCol * wFres * (0.04 + 0.22*wSun) * uRim * vShade;
     totalEmissiveRadiance += vec3(0.50,0.17,0.08) * wCav * (0.045 + 0.05*wSun) * uSubs * vShade;
     #if WORM_MODE == 1
       float seamGlow = smoothstep(0.90, 1.0, abs(vPet.y)) * (0.7 + 0.3*sin(uTime*0.9));

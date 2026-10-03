@@ -168,13 +168,13 @@ export class Spine {
   radiusAt(s, a) {
     const ring = s / SEG_LEN, f = ring - Math.floor(ring);
     const ds = Math.min(f, 1 - f);
-    const stp = -1 + 1.9 * sm(0, 0.7, f) + 0.75 * sm(0.58, 0.84, f) - 2.65 * sm(0.88, 1, f) - 0.9 * Math.exp(-(ds * ds) / (0.03 * 0.03));
+    const stp = -0.6 + 1.1 * sm(0, 0.7, f) + 0.45 * sm(0.58, 0.84, f) - 1.55 * sm(0.88, 1, f) - 0.55 * Math.exp(-(ds * ds) / (0.035 * 0.035));
     const cell = a * 36 / (Math.PI * 2) + 0.5 * Math.floor(ring);
     const g = cell - Math.floor(cell);
-    const dome = 1 - Math.pow(Math.abs(2 * g - 1), 3);
+    const ge = Math.min(g, 1 - g), dd = Math.min(1, ge / 0.32), dome = dd * dd * (3 - 2 * dd);
     const i = Math.max(0, Math.min(N_PTS - 2, Math.floor(s / SEG_LEN)));
     const rs = this.RS[i] + (this.RS[i + 1] - this.RS[i]) * (s / SEG_LEN - i);
-    return (RADIUS + stp + 0.75 * dome + 0.32 * Math.pow(dome, 7)) * rs;
+    return (RADIUS + stp + 0.55 * dome + 0.18 * Math.exp(-((g - 0.5) * (g - 0.5)) / 0.012)) * rs;
   }
 
   /** Точка на поверхности: s вдоль тела, a — угол вокруг (0 — «верх», вектор N). Возвращает позицию и наружную нормаль. */

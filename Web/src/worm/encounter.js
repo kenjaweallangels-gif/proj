@@ -91,9 +91,10 @@ export class EncounterDirector {
     game.ui?.letterbox?.(true);
     this.shot = 0;
   }
-  endCinematic() {
+  /** force=true — восстановить режим безусловно (любой путь выхода: пропуск, отмена, ошибка): cinematic.active=false, letterbox(false), событие. */
+  endCinematic(force = false) {
     const { game, bus } = this.api;
-    if (!this.cinematic) return;
+    if (!this.cinematic && !force) return;
     this.cinematic = false;
     game.cinematic.active = false; game.cinematic.owner = null;
     game.ui?.letterbox?.(false);
@@ -114,7 +115,7 @@ export class EncounterDirector {
     if (!this._active) return;
     const { game, bus, K } = this.api;
     this._active = false;
-    this.endCinematic();
+    this.endCinematic(true);
     this.removeCollider();
     this.offSub?.(); this.offSub = null;
     const rd = this.worm.riders;

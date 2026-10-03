@@ -234,6 +234,15 @@ export function create(game) {
   Object.defineProperty(worm, 'ossanaLanding', { get: () => director.oss.land.clone() });
   worm.DIALOGUE_ID = DIALOGUE_ID;
 
+  /** Позиция говорящего для позиционного звука: 'Ossana' | 'Rider1' | 'Rider2' (= третья фигура) | 'Rider3'. null — вне сцены. */
+  worm.speakerPos = (id) => {
+    if (!director.active || !riders.group.visible) return null;
+    const it = id === 'Ossana' ? riders.items[1] : id === 'Rider1' ? riders.items[0] : (id === 'Rider2' || id === 'Rider3') ? riders.items[2] : null;
+    if (!it || !it.root.visible) return null;
+    const e = it.root.matrix.elements;
+    return new THREE.Vector3(e[12], e[13], e[14]).addScaledVector(new THREE.Vector3(e[4], e[5], e[6]), 1.6);
+  };
+
   /** Сколько метров до игрока. */
   worm.distanceToPlayer = () => { const p = game.player?.position; return p ? Math.hypot(p.x - K.pos.x, p.z - K.pos.z) : Infinity; };
 
