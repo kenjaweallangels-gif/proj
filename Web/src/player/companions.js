@@ -8,26 +8,10 @@ import { clamp, damp, dampAngle } from '../core/util.js';
 const V3 = THREE.Vector3;
 
 const SPECS = {
-  Ilva: { figure: { name: 'Ilva', height: 1.68, cloth: '#b8ae9c', suit: '#3e3630', accent: '#4f5496', skin: '#b08a68', eyesIbad: false, bulk: 0.9 }, glance: [2.5, 4.5], nervous: 0 },
-  Rayn: { figure: { name: 'Rayn', height: 1.6, cloth: '#a9803f', suit: '#3e3630', accent: '#7a2e24', skin: '#a9805e', pack: true, bulk: 0.95 }, glance: [0.8, 1.8], nervous: 1 },
-  Ossana: { figure: { name: 'Ossana', height: 1.72, cloth: '#4a3b2c', suit: '#3b302a', accent: '#2c3e57', skin: '#5a3e28', bulk: 1.05 }, glance: [3, 5], nervous: 0, hooks: true },
+  Ilva: { figure: { preset: 'Ilva' }, glance: [2.5, 4.5], nervous: 0 },
+  Rayn: { figure: { preset: 'Rayn' }, glance: [0.8, 1.8], nervous: 1 },
+  Ossana: { figure: { preset: 'Ossana' }, glance: [3, 5], nervous: 0, hooks: true },
 };
-
-function addHooks(fig) {
-  const metal = new THREE.MeshStandardMaterial({ color: '#2a2724', roughness: 0.55, metalness: 0.7 });
-  const ribbon = new THREE.MeshStandardMaterial({ color: '#2c3e57', roughness: 0.9 });
-  const shaft = new THREE.CylinderGeometry(0.018, 0.022, 2.4, 6);
-  const tip = new THREE.TorusGeometry(0.12, 0.016, 6, 10, Math.PI * 1.1);
-  const wrap = new THREE.CylinderGeometry(0.026, 0.026, 0.12, 6);
-  for (const s of [-1, 1]) {
-    const h = new THREE.Group();
-    h.add(new THREE.Mesh(shaft, metal));
-    const t = new THREE.Mesh(tip, metal); t.position.set(0.1, 1.2, 0); t.rotation.z = Math.PI * 0.6; h.add(t);
-    const r = new THREE.Mesh(wrap, ribbon); r.position.y = 0.4; h.add(r);
-    h.position.set(0, 0.25, -0.22); h.rotation.z = s * 0.62; h.rotation.x = 0.08;
-    fig.parts.spine.add(h);
-  }
-}
 
 export function create(game) {
   const C = CFG.companions;
@@ -52,7 +36,7 @@ export function create(game) {
       if (list.some((q) => q.id === id) || !SPECS[id]) return list.find((q) => q.id === id) || null;
       const spec = SPECS[id];
       const figure = makeFigure(spec.figure);
-      if (spec.hooks) addHooks(figure);
+      figure.onStep = (e) => onStep(c, e);
       game.scene.add(figure.group);
       const c = { id, figure, spec, position: new V3(), yaw: 0, speed: 0, nextStep: 0, idleT: 0, glanceT: 1, glanceDir: 0, weight: 0, vel: new V3() };
       list.push(c);
@@ -132,20 +116,20 @@ export function create(game) {
   const tgt = { x: 0, z: 0 };
   const tmp = new V3();
 
-  function step(c, now, pl) {
-    if (c.speed < 0.5) return;
-    if (now < c.nextStep) return;
-    c.nextStep = now + stepInterval(c.speed) * (1 + (Math.random() - 0.5) * 0.1);
+  // Касание стопой (из анимации): след, звук, шум (компаньоны шумят слабо; в походке по песку — почти нет).
+  function onStep(c, e) {
+    if (game.cinematic.active || c.speed < 0.4) return;
     const surface = game.surfaceAt(c.position.x, c.position.z);
     game.bus.emit('footstep', { x: c.position.x, z: c.position.z, yaw: c.yaw, surface, actor: c.id });
     const mult = CFG.noise.surface[surface] ?? 0;
     if (mult > 0) {
-      const loud = CFG.noise.walk * mult * (1 + CFG.noise.rhythmPenalty * 0.9) * CFG.noise.companionScale;
+      const base = e.mode === 'desert' ? CFG.noise.sandWalk : e.mode === 'run' ? CFG.noise.run : CFG.noise.walk;
+      const loud = base * mult * (1 + CFG.noise.rhythmPenalty * 0.9) * CFG.noise.companionScale;
       game.bus.emit('noise', { x: c.position.x, z: c.position.z, loudness: loud, source: 'Footstep', actor: c.id });
       if (game.space === 'desert') game.world?.addFootprint?.(c.position.x, c.position.z, c.yaw, { type: 'foot' });
     }
   }
-
+  
   companions.update = (dt, t) => {
     const pl = player(); if (!pl) return;
     const now = game.time;
@@ -214,22 +198,19 @@ export function create(game) {
       c.figure.group.updateMatrixWorld();
       c.figure.lookAt(tmp, c.weight);
 
-      if (!cin) step(c, now, pl);
       sync(c);
-      c.figure.animate(c.speed, dt, pl.sandWalking ? 0.6 : 0);
-      if (c.spec.nervous && idle) c.figure.parts.spine.rotation.x = 0.03 + Math.sin(now * 17 + 1) * 0.012; // дрожь Райна
+      // Режим шага: повторяют игрока; в открытом эрге на малой скорости — тоже походка по песку.
+      const desert = pl.moveMode === 'desert' || (game.space === 'desert' && c.speed > 0.2 && c.speed < 2.7);
+      c.figure.animate(c.speed, dt, desert ? 1 : 0, { desert, allowPause: false, wind: undefined, slope: 0 });
     }
   };
 
-  // Оссана присоединяется после раскрытия червя.
-  game.bus.on('cinematic', (e) => { if (e && !e.active && e.id === 'WormReveal') companions.join('Ossana'); });
+  // Оссана больше не присоединяется автоматически: в кат-сцене WormReveal её ставит и уводит модуль червя.
+  // companions.join('Ossana') остаётся как API (отладка/сюжет).
 
   game.add('companions', companions);
   companions.join('Ilva');
   companions.join('Rayn');
-  // Старт «после раскрытия» (отладка): Оссана уже в цепочке.
-  const at = String(game.settings?.at || '').toLowerCase();
-  if (['a3', 'p5', 'p6', 'p7', 'p7b', 'mouth', 'false_rock'].includes(at)) companions.join('Ossana');
   companions.teleportBehind();
   return companions;
 }
