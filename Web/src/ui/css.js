@@ -56,6 +56,7 @@ export const CSS = `
 #ui .lore::before { margin-bottom:${U(18)}; } #ui .lore::after { margin-top:${U(18)}; }
 #ui .cut { left:0; right:0; top:50%; transform:translateY(-50%); text-align:center; font:300 ${U(30)}/1.3 ${SERIF}; letter-spacing:.3em; padding-left:.3em; color:var(--warm); opacity:0; z-index:22; }
 #ui .hint { z-index:6; left:50%; top:var(--hint-top, ${U(96)}); transform:translateX(-50%); width:min(80%, ${U(1100)}); text-align:center; font:400 ${U(17)}/1.4 ${SANS}; color:rgba(239,230,216,.85); opacity:0; }
+#ui:has(.wx.vis) .hint, #ui:has(.wx.vis) .tcard { visibility:hidden; }
 
 /* ---- Экранные эффекты ---- */
 #ui .bar { left:0; right:0; background:#000; height:0; transition:transform .8s cubic-bezier(.45,0,.55,1); z-index:4; }
