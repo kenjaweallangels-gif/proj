@@ -118,6 +118,8 @@ export function create(game) {
       }
     }
     for (const o of obstacles) {
+      // валун на земле не выталкивает того, кто стоит выше него на уступе/в проходе
+      if (skipClaw) break;
       const dx = pos.x - o.x, dz = pos.z - o.z;
       const rr = o.r + r;
       const d2 = dx * dx + dz * dz;

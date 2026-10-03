@@ -32,6 +32,15 @@ export function create(game) {
   const prevCollide = world.collide.bind(world);
   const prevSurface = world.surfaceAt?.bind(world);
   const ground = (x, z) => prevHeight(x, z);
+  // Проход устья (стык с выходным туннелем сиетча): ровный пол на уровне MOUTH.y, иначе рельеф грани Когтя
+  // поднимает его на ~1 м и персонаж не может выйти из туннеля (шаг > 0.5 м).
+  {
+    const prevH = world.heightAt.bind(world);
+    world.heightAt = (x, z, y) => {
+      if (x > MOUTH.x - 14 && x < MOUTH.x + 1.5 && Math.abs(z - MOUTH.z) < 2.8) return MOUTH.y;
+      return prevH(x, z, y);
+    };
+  }
 
   // ---------- карта «земли» и стена Когтя ----------
   const Zr = { x0: 764, x1: 916, z0: 322, z1: 470 };

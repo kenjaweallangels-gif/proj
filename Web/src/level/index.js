@@ -224,6 +224,12 @@ export function create(game) {
   passagePts.push({ x: wallX(nz, 31), y: ENTRY.cleft.y, z: nz }, { x: ENTRY.cleft.x + 4, y: ENTRY.cleft.y, z: nz });
   if (nativePassage) {
     try { world.addPassage({ points: passagePts, r: 2.6 }); } catch (e) { console.warn('[approach] addPassage', e); }
+    // Вся тропа по грани Когтя: контур скалы не должен выталкивать с уступов (стены тропы держит собственная сетка vol).
+    try {
+      const along = [];
+      for (let i = 0; i < trail.length; i += 3) along.push({ x: trail[i].x, y: trail[i].y ?? 0, z: trail[i].z });
+      if (along.length > 1) world.addPassage({ points: along, r: 3.0 });
+    } catch (e) { console.warn('[approach] addPassage(trail)', e); }
   }
   world.heightAt = makeHeightAt(vol, prevHeight);
   // нормаль мира у нас — по карте высот, как у пустыни
