@@ -35,10 +35,11 @@ function rockQuery(x, z) {
     const a = rockStations[i], b = rockStations[i + 1];
     const abx = b.x - a.x, abz = b.z - a.z;
     const apx = x - a.x, apz = z - a.z;
-    const s = clamp((apx * abx + apz * abz) / (abx * abx + abz * abz), 0, 1);
+    let s = (apx * abx + apz * abz) / (abx * abx + abz * abz);
+    s = s < 0 ? 0 : s > 1 ? 1 : s;
     const dx = apx - abx * s, dz = apz - abz * s;
-    const d = Math.hypot(dx, dz) - lerp(a.w, b.w, s);
-    if (d < best) { best = d; bt = lerp(a.t, b.t, s); }
+    const d = Math.sqrt(dx * dx + dz * dz) - (a.w + (b.w - a.w) * s);
+    if (d < best) { best = d; bt = a.t + (b.t - a.t) * s; }
   }
   RQ.d = best; RQ.t = bt;
   return best;
@@ -66,11 +67,13 @@ function pathDist(x, z) {
   for (let i = 0; i < PATH.length - 1; i++) {
     const [ax, az] = PATH[i], [bx, bz] = PATH[i + 1];
     const abx = bx - ax, abz = bz - az;
-    const s = clamp(((x - ax) * abx + (z - az) * abz) / (abx * abx + abz * abz), 0, 1);
-    const d = Math.hypot(x - ax - abx * s, z - az - abz * s);
+    let s = ((x - ax) * abx + (z - az) * abz) / (abx * abx + abz * abz);
+    s = s < 0 ? 0 : s > 1 ? 1 : s;
+    const ex = x - ax - abx * s, ez = z - az - abz * s;
+    const d = ex * ex + ez * ez;
     if (d < best) best = d;
   }
-  return best;
+  return Math.sqrt(best);
 }
 
 // ---------- Гряда A1 ----------
@@ -121,11 +124,34 @@ export const FLAT_ZONE = { x: 330, z: -60, radius: 70, blend: 80, level: 5.4 };
 // Локальные переопределения рельефа (котловина сада, уступы тропы): {x,z,radius,height:(x,z,baseH)=>y|null}
 export const groundPatches = [];
 export function heightAt(x, z, spacing = 0) {
-  let h = heightBase(x, z, spacing);
+  return applyPatches(x, z, heightBase(x, z, spacing));
+}
+
+// Кэш высоты основы (без заплаток) для игровой логики: узлы сетки 0.25 м, прямое отображение в хэш-таблицу,
+// билинейная интерполяция. Аналитическое поле стоит 30–150 мкс на вызов, а игроки/ИИ/камера дёргают его десятки раз за кадр.
+// Меш ландшафта (клипмап) этим не пользуется — он зовёт heightAt(x, z, spacing) напрямую.
+const CS = 0.25, CINV = 1 / CS, CCAP = 1 << 17;
+const cKx = new Int32Array(CCAP).fill(0x7fffffff), cKz = new Int32Array(CCAP), cV = new Float32Array(CCAP);
+function cornerH(ix, iz) {
+  const h = (Math.imul(ix, 73856093) ^ Math.imul(iz, 19349663)) & (CCAP - 1);
+  if (cKx[h] === ix && cKz[h] === iz) return cV[h];
+  const v = heightBase(ix * CS, iz * CS, 0);
+  cKx[h] = ix; cKz[h] = iz; cV[h] = v;
+  return v;
+}
+export function heightAtCached(x, z) {
+  const fx = x * CINV, fz = z * CINV;
+  const ix = Math.floor(fx), iz = Math.floor(fz);
+  const u = fx - ix, v = fz - iz;
+  const h = (cornerH(ix, iz) * (1 - u) + cornerH(ix + 1, iz) * u) * (1 - v) + (cornerH(ix, iz + 1) * (1 - u) + cornerH(ix + 1, iz + 1) * u) * v;
+  return applyPatches(x, z, h);
+}
+function applyPatches(x, z, h) {
   for (let i = 0; i < groundPatches.length; i++) {
     const p = groundPatches[i];
-    const d = Math.hypot(x - p.x, z - p.z);
-    if (d >= p.radius) continue;
+    const px = x - p.x, pz = z - p.z;
+    if (px * px + pz * pz >= p.radius * p.radius) continue;
+    const d = Math.sqrt(px * px + pz * pz);
     const y = p.height(x, z, h);
     if (y == null) continue;
     const k = p.blend ? 1 - smoothstep(p.radius - p.blend, p.radius, d) : 1;

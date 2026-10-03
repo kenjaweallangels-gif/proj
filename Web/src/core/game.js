@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { bus } from './bus.js';
 import { createInput } from './input.js';
 import { colliders } from './colliders.js';
+import { createPerf } from './perf.js';
 
 const _gp = { x: 0, y: 0, z: 0 };
 
@@ -17,6 +18,8 @@ export function createGame(canvas, settings) {
   renderer.toneMappingExposure = 1.0;
   renderer.shadowMap.enabled = settings.quality !== 'low';
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  renderer.info.autoReset = false; // сбрасываем сами раз в кадр: композер рендерит в несколько проходов
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 12000);
@@ -44,6 +47,7 @@ export function createGame(canvas, settings) {
     /** Строка на текущем языке: t('ру', 'en') или t({RU, EN}). */
     t(ru, en) { if (typeof ru === 'object') return ru[game.lang] ?? ru.EN ?? ru.RU; return game.lang === 'RU' ? ru : (en ?? ru); },
     stats: { fps: 0 },
+    perf: null,
     /** Интерактивные точки: {position: Vector3, radius, label: {RU, EN}, tag, enabled, onInteract()} */
     interactables: [],
     /** Тряска камеры 0..1 (червь/тампер выставляют max, игрок применяет и гасит). */
@@ -80,6 +84,8 @@ export function createGame(canvas, settings) {
     },
   };
 
+  game.perf = createPerf(game, new URLSearchParams(location.search).get('perf') === '1');
+
   addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
@@ -97,20 +103,30 @@ export function createGame(canvas, settings) {
     fpsAcc += rawDt; fpsN++;
     if (fpsAcc > 0.5) { game.stats.fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; }
     game.input.poll(rawDt);
+    const perf = game.perf;
+    const P = perf.on;
+    if (P) perf.beginFrame(rawDt * 1000);
     const dt = game.paused ? 0 : rawDt * game.timeScale;
     game.dt = dt;
     game.time += dt;
     for (const { name, mod } of modules) {
       if (!mod.update) continue;
       if (dt === 0 && !mod.alwaysUpdate) continue;
+      if (P) perf.modStart();
       try { mod.update(mod.alwaysUpdate ? rawDt : dt, game.time); } catch (e) { reportError(name, e); }
+      if (P) perf.modEnd(name, false);
     }
     for (const { name, mod } of modules) {
       if (!mod.lateUpdate) continue;
       if (dt === 0 && !mod.alwaysUpdate) continue;
+      if (P) perf.modStart();
       try { mod.lateUpdate(mod.alwaysUpdate ? rawDt : dt, game.time); } catch (e) { reportError(name, e); }
+      if (P) perf.modEnd(name, true);
     }
+    renderer.info.reset();
+    if (P) perf.renderStart();
     try { game.render(rawDt); } catch (e) { reportError('render', e); }
+    if (P) perf.renderEnd();
     game.input.endFrame();
   }
   const reported = new Set();

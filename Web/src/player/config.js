@@ -7,6 +7,9 @@ export const CFG = {
   eye: 1.62,
   speed: { walk: 3.0, run: 6.0, sandWalk: 1.8, sandWalkBase: 2.45 }, // sandWalkBase × огибающая ритма (ср. ≈0.7) ≈ 1.8 м/с
   accelLambda: 7, decelLambda: 9, turnLambda: 10, groundLambda: 18,
+  // Физика: фиксированный шаг + интерполяция отрисовки. Прыжок/падение: свободное движение, урона нет.
+  phys: { step: 1 / 60, maxSteps: 5 },
+  jump: { speed: 5.6, gravity: 19, maxFall: 45, coyote: 0.12, buffer: 0.12, airLambda: 1.6, snapDown: 0.42, stepRate: 2.6 },
   slope: { probe: 0.6, slowDeg: 25, slowFactor: 0.7, slideDeg: 42, slideMax: 5, slideLambda: 3 },
   // Шаги: таблица [скорость м/с, интервал с] — ходьба 0.5 с, бег 0.32 с (таймер-фоллбек из mechanics §1.5).
   step: { table: [[0.4, 0.9], [2, 0.7], [3, 0.5], [6, 0.32]], jitter: 0.07, firstDelay: 0.2, minSpeed: 0.4, idleReset: 1.2 },
@@ -15,7 +18,7 @@ export const CFG = {
     surface: { sand: 1.0, packed: 1.4, rock: 0.0 },
     decay: 0.15, rockDecay: 1.0, window: 6, goodCV: 0.35,
     stutterCooldown: 0.35, stutterLow: [0.4, 0.65], stutterHigh: [1.45, 1.8], stutterAnim: 0.7,
-    companionScale: 0.3,
+    companionScale: 0.3, land: 0.55,
   },
   hydration: {
     start: 0.85, min: 0.15, sunDrain: 0.06, runMul: 2.0, maskFactor: 0.35,

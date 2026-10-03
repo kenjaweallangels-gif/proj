@@ -1,7 +1,7 @@
 // Пустыня Ракиса: ландшафт, песок, скала «Коготь Шайтана», небо, погода, атмосфера, пост-обработка.
 // Регистрирует game.world, game.weather, game.post.
 import * as THREE from 'three';
-import { heightAt, normalAt, surfaceAt, solidSdf, masks, FLAT_ZONE, groundPatches } from './field.js';
+import { heightAt, heightAtCached, normalAt, surfaceAt, solidSdf, masks, FLAT_ZONE, groundPatches } from './field.js';
 import { ENV } from './env.js';
 import { createFootprints } from './footprints.js';
 import { createTerrain } from './terrain.js';
@@ -28,7 +28,7 @@ export function create(game) {
     visible: true,
     exposureTrim: 1,
     sunDir: new THREE.Vector3(0.5, 0.5, 0.2).normalize(),
-    heightAt: (x, z) => heightAt(x, z),
+    heightAt: (x, z) => heightAtCached(x, z),
     normalAt(x, z, out) {
       const a = normalAt(x, z, [0, 1, 0]);
       if (out && out.set) return out.set(a[0], a[1], a[2]);
