@@ -162,7 +162,7 @@ export function benchStation() {
         lines: ['Разметка, сверление, гибка, запрессовка, обработка поверхностей.', 'Изделия: кронштейны, планки, втулки модулей КМ-2.', 'Ответственный: мастер Козлов А. В.', 'Смена: 1 · 07:30–16:00'],
         ppeList: [['glasses', 'Очки'], ['ear', 'Наушники'], ['gloves', 'Перчатки\n(не у станка)'], ['shoes', 'Обувь']] }), -4.0, 0, 1.0, 0.4));
       // ---- кронштейн (переходит от станка к станку), готовые кронштейны в лотке, штангенциркуль, кисть ----
-      const br = bracket(); br.rotation.y = Math.PI / 2; R.add(br); st.bracket = br;     // линия гиба — вдоль матрицы пресса
+      const br = bracket(); br.rotation.y = Math.PI / 2; R.add(br); st.bracket = br; st.workpieces = [br];     // линия гиба — вдоль матрицы пресса
       const doneTray = new THREE.Group(); doneTray.position.set(-0.35, 0.94, 0.2); R.add(doneTray);
       for (let k = 0; k < 3; k++) { const b = bracket(); b.userData.B.rotation.z = Math.PI / 2; b.userData.marks.visible = false; b.position.set(-0.08 + k * 0.08, 0, -0.03); b.userData.bushings.forEach((x) => (x.visible = true)); b.traverse((m) => { if (m.material === b.userData.al) m.material = new THREE.MeshPhysicalMaterial({ color: '#cdb46a', metalness: 0.8, roughness: 0.4 }); }); doneTray.add(b); }
       st.add('SL-CAL', (() => { const c = new THREE.Group(); c.position.set(0.0, 0.915, 0.32); c.add(box(0.2, 0.004, 0.018, M.steel(), 0, 0, 0, 0.001), box(0.012, 0.004, 0.05, M.steel(), -0.09, 0, -0.02, 0.001), box(0.012, 0.004, 0.05, M.steel(), -0.05, 0, -0.02, 0.001)); R.add(c); return c; })(), { from: [0, 0.2, 0.2] });

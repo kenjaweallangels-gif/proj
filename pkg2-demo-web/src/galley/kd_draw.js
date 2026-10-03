@@ -393,6 +393,41 @@ function sheetPart(p, doc) {
   if (doc.variants) p.text(`Исполнения: ${[pnl.designation, ...doc.variants].filter((v, i, a) => a.indexOf(v) === i).join(', ')}`, 30, 394, 3.2, { color: ACC });
 }
 
+/** Кронштейн КМ2.310.050 (лист 1 — развёртка и вид сбоку, лист 2 — втулка и ТТ). Масштаб 2:1 / 4:1. */
+function sheetBracket(p, doc, sheet) {
+  const sh = doc.sheets.find((x) => x.n === sheet) || doc.sheets[0];
+  frame(p, sh.format, doc.code, sh.n, doc.sheets.length, sh.n === 1 ? `${doc.title}` : 'Втулка КМ2.310.051', sh.scale);
+  if (sh.n === 1) {
+    const k = 2, X0 = 60, Y0 = 50;                                   // вид в плане (развёртка 120 × 60) — 2:1
+    p.rect(X0, Y0, 120 * k, 60 * k, INK, 0.7);
+    p.line(X0 + 60 * k, Y0 - 6, X0 + 60 * k, Y0 + 60 * k + 6, ACC, 0.35, [6, 2, 1, 2]);   // линия гиба
+    for (const [x, y] of [[15, 15], [15, 45], [105, 15], [105, 45]]) { p.circle(X0 + x * k, Y0 + y * k, 3.2 * k, INK, 0.5); p.line(X0 + x * k - 9, Y0 + y * k, X0 + x * k + 9, Y0 + y * k, THIN, 0.18, [4, 1, 1, 1]); p.line(X0 + x * k, Y0 + y * k - 9, X0 + x * k, Y0 + y * k + 9, THIN, 0.18, [4, 1, 1, 1]); }
+    p.dim(X0, Y0 + 60 * k, X0 + 120 * k, Y0 + 60 * k, '120', 14);
+    p.dim(X0 + 120 * k, Y0, X0 + 120 * k, Y0 + 60 * k, '60', -14);
+    p.dim(X0, Y0, X0 + 15 * k, Y0, '15', -8);
+    p.dim(X0 + 15 * k, Y0, X0 + 105 * k, Y0, '90 ± 0,2', -8);
+    p.text('4 отв. Ø6,4 H12', X0 + 15 * k + 8, Y0 + 15 * k - 8, 3.5, { color: ACC });
+    p.text('Линия гиба', X0 + 60 * k + 3, Y0 - 8, 3, { color: ACC });
+    const SX = 330, SY = 70;                                           // вид сбоку после гиба — уголок 90°
+    p.poly([[SX, SY], [SX, SY + 60 * k], [SX + 60 * k, SY + 60 * k], [SX + 60 * k, SY + 60 * k - 4], [SX + 4, SY + 60 * k - 4], [SX + 4, SY]], INK, 0.6, true, null, FILL);
+    p.text('90° ± 0,5°', SX + 14, SY + 60 * k - 14, 3.5, { color: DIM });
+    p.text('R2 (внутр.)', SX + 8, SY + 60 * k - 26, 3, { color: THIN });
+    p.text('δ = 2', SX + 8, SY + 12, 3, { color: THIN });
+    p.text('Материал: лист Д16АТ 2,0 ГОСТ 21631. Покрытие: Ан.Окс.хром (Алодин 1132).', 30, 225, 3.4);
+    p.text('1. Острые кромки притупить R0,3. 2. Заусенцы не допускаются. 3. Втулки — по листу 2, 2 шт.', 30, 232, 3.2, { color: THIN });
+    p.text('4. Маркировать «КМ2.310.050», № партии — краской, шрифт 3.', 30, 239, 3.2, { color: THIN });
+  } else {
+    const k = 4, X0 = 40, Y0 = 50;                                     // втулка Ø6,4/Ø4,2 × 6 с буртиком — 4:1
+    p.poly([[X0, Y0], [X0 + 2 * k, Y0], [X0 + 2 * k, Y0 + 1.1 * k], [X0 + 8 * k, Y0 + 1.1 * k], [X0 + 8 * k, Y0 + 5.3 * k], [X0 + 2 * k, Y0 + 5.3 * k], [X0 + 2 * k, Y0 + 6.4 * k], [X0, Y0 + 6.4 * k]], INK, 0.6, true, null, FILL);
+    p.line(X0 - 4, Y0 + 3.2 * k, X0 + 8 * k + 4, Y0 + 3.2 * k, THIN, 0.18, [4, 1, 1, 1]);
+    p.dim(X0, Y0 + 6.4 * k, X0 + 8 * k, Y0 + 6.4 * k, '8', 10);
+    p.dim(X0 + 8 * k, Y0 + 1.1 * k, X0 + 8 * k, Y0 + 5.3 * k, 'Ø4,2', -12);
+    p.text('Ø6,4 s6 (натяг в отв. Ø6,4 H12)', X0, Y0 - 6, 3.4, { color: ACC });
+    p.text('Материал: 12Х18Н10Т. Запрессовка оправкой до упора буртика.', 20, 150, 3.4);
+    p.text('Втулка не должна проворачиваться от момента 0,5 Н·м.', 20, 157, 3.2, { color: THIN });
+  }
+}
+
 function sheetSmall(p, doc) {
   frame(p, doc.sheets[0].format, doc.code, 1, 1, doc.title, doc.sheets[0].scale);
   const [W, H] = FORMATS[doc.sheets[0].format];
@@ -430,6 +465,7 @@ export function drawDoc(ctx, code, sheet, view, { zone = null } = {}) {
   else if (doc.kind === 'СП') sheetSpec(p);
   else if (doc.kind === 'Э4') sheetWiring(p);
   else if (doc.kind === 'ТП') sheetTP(p);
+  else if (doc.bracket) sheetBracket(p, doc, sheet);
   else if (doc.panels) sheetPart(p, doc);
   else sheetSmall(p, doc);
   if (zone && doc) {

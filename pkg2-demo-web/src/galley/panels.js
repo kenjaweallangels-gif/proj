@@ -7,6 +7,7 @@ import { drawDoc, docFormat, FORMATS, fitView } from './kd_draw.js';
 import { MATERIALS, OPERATIONS, STEPS, TOOLS, TP, normByOperation, stepById } from './process.js';
 import * as S from './spec.js';
 import { C, Panel } from './ui3d.js';
+import { systemWindow } from './syswin.js';
 
 const fmtMin = (m) => `${Math.floor(m / 60)}:${String(Math.floor(m % 60)).padStart(2, '0')}`;
 const toolName = (id) => Object.values(TOOLS).find((t) => t.id === id)?.name || id;
@@ -221,37 +222,8 @@ export function buildPanels(mgr, app) {
   step.onEnter = (id, text) => { if (id === 'value') app.value(text); };
   step.animated = true;
 
-  // ---------- Алгоритм в углу поля зрения: привязан к голове сборщика (как HUD), крупный текст ----------
-  // Окно стоит в плоскости дисплея (на расстоянии виртуального экрана) — без конфликта вергенции и аккомодации,
-  // поэтому текст резкий при любом взгляде; фон почти прозрачный, мир за ним виден.
-  const algo = mgr.add(new Panel(mgr, {
-    id: 'algo', title: 'Алгоритм', w: 0.6, h: 0.42, ppm: 1600, chrome: false,
-    draw(ui, p) {
-      const W = p.px, H = p.py, run = app.run;
-      const si = app.stationInfo?.();                    // у участка — его переход
-      const s = si ? si.step : run.step;
-      const idx = si ? si.index + 1 : STEPS.indexOf(s) + 1;
-      const total = si ? si.total : STEPS.length;
-      ui.rect(3, 3, W - 6, H - 6, { fill: 'rgba(30,110,140,0.035)', stroke: 'rgba(88,230,255,0.55)', r: 22, lw: 3 });
-      const ai = app.autoInfo?.();
-      ui.text(`${s.id} · ${KIND_RU[s.kind] || s.kind}`, 28, 62, { size: 48, color: s.critical ? C.warn : C.acc, weight: 600, max: W - 260 });
-      ui.text(`${idx}/${total}${ai ? (ai.includes('пауза') ? ' ⏸' : ' ▶') : ''}`, W - 28, 62, { size: 42, color: ai ? C.warn : C.dim, align: 'right' });
-      let y = 88;
-      y += ui.wrap(s.title, 28, y + 56, W - 56, { size: 58, weight: 600, color: '#ffffff', lh: 1.12, maxLines: 2 }) + 10;
-      if (s.text[0]) ui.wrap(s.text[0], 28, y + 44, W - 56, { size: 44, lh: 1.18, maxLines: Math.max(1, Math.floor((H - 110 - y) / 52)) });
-      // нижняя строка: что нужно для перехода дальше, таймер
-      const tm = si ? null : run.blockingTimer() || run.activeTimers()[0];
-      const need = si ? (s.check && !(s.id in si.st.values) ? 'value' : null) : run.needs();
-      const msg = need === 'timer' ? 'Идёт выдержка' : need === 'value' ? `Замер: ${s.check.name}` : need === 'photo' ? 'Нужно фото' : 'Можно дальше ▸';
-      ui.text(msg, 28, H - 32, { size: 46, weight: 600, color: need ? C.warn : C.ok, max: tm ? W - 290 : W - 56 });
-      if (tm) ui.text(`⏱ ${fmtMin(run.remaining(tm))}`, W - 28, H - 32, { size: 50, color: C.warn, align: 'right', mono: true });
-    },
-  }));
-  algo.animated = true;
-  algo.mode = 'corner';
-  algo.visible = false;
-  algo.mat.depthTest = false;
-  algo.mesh.renderOrder = 40;
+  // ---------- Окно «Система»: закреплено на экране (в плоскости дисплея), компактно в углу или полностью ----------
+  const algo = systemWindow(mgr, app);
 
   // ---------- В этой точке (локальный алгоритм) ----------
   const local = mgr.add(new Panel(mgr, {
@@ -336,15 +308,16 @@ function toParent(g) {
  * Окно, привязанное к голове, в углу окна дисплея. corner: 'tr' | 'tl'. Расстояние — плоскость виртуального
  * экрана очков (distM), размер — доля окна дисплея (у Aura 70° окно крупнее по углу, у Air 2 Pro 46° — меньше).
  */
-export function placeCorner(panel, camera, win, centerDeg = -2, distM = 4, corner = 'tr') {
+export function placeCorner(panel, camera, win, centerDeg = -2, distM = 4, corner = 'tr', frac = 0.5) {
   const g = panel.group, D2R = Math.PI / 180;
   const aspect = panel.w / panel.h;
-  let wDeg = win.h * 0.5, hDeg = wDeg / aspect;
-  if (hDeg > win.v * 0.58) { hDeg = win.v * 0.58; wDeg = hDeg * aspect; }
+  const c = corner === 'c';                        // по центру дисплея — полное окно
+  let wDeg = win.h * frac, hDeg = wDeg / aspect;
+  if (hDeg > win.v * (c ? 0.94 : 0.58)) { hDeg = win.v * (c ? 0.94 : 0.58); wDeg = hDeg * aspect; }
   const k = (2 * distM * Math.tan((wDeg / 2) * D2R)) / panel.w;
   const m = 1.2;                                   // поле от края окна, °
-  const ax = (win.h / 2 - m - wDeg / 2) * (corner === 'tl' ? -1 : 1);
-  const ay = centerDeg + win.v / 2 - m - hDeg / 2;
+  const ax = c ? 0 : (win.h / 2 - m - wDeg / 2) * (corner === 'tl' ? -1 : 1);
+  const ay = c ? centerDeg : centerDeg + win.v / 2 - m - hDeg / 2;
   g.position.copy(camera.position);
   g.quaternion.copy(camera.quaternion);
   g.translateX(Math.tan(ax * D2R) * distM);

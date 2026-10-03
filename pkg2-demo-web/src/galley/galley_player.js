@@ -1,30 +1,49 @@
-// Виртуальная сборка модуля КМ-2 на стапеле: без реальных деталей и заготовок — модель собирается на месте
-// настоящих деталей от пустого стапеля до готового модуля по всем 82 переходам ТП. Детали текущего перехода
-// подлетают на место (снаружи и сверху), клей, крепёж, окраска, плёнка и питание включаются по ходу.
-// Вид: «модель» — реалистичные материалы; «голограмма» — модель в слое дисплея очков (видна только в окне
-// дисплея, полупрозрачная, текущие детали — янтарные), как это выглядело бы в настоящих AR-очках.
+// Виртуальная сборка модуля КМ-2 на стапеле: реальных деталей и заготовок нет — изделие собирается из
+// голограмм на месте настоящих деталей, от пустого стапеля до готового модуля по всем 82 переходам ТП.
+// Детали текущего перехода подлетают на место (снаружи и сверху) янтарной голограммой.
+// Вид: «голограмма» — видна всем (как модель в симуляторе); «в очках» — только в окне дисплея очков.
+// Быстро: голограмма слита в сетки по «расписанию видимости» (детали, появляющиеся на одном шаге, — одна
+// сетка), на шаге меняется видимость десятков сеток, а не состояние сотен деталей; подлетают отдельные копии.
 import * as THREE from 'three';
-import { HOLO, LAYER_HOLO } from '../engine/holo.js';
 import { ease } from './assembly_player.js';
 import { STEPS, stateFrom } from './process.js';
 import * as S from './spec.js';
+import { holoGeometry, holoObject, setHoloLayer } from './virtual.js';
+
+/** Видна ли деталь в состоянии st (как в galley_build.setState). */
+export function visibleIn(st, id) {
+  const f = S.featureById.get(id);
+  if (!f) return false;
+  if (f.kind === 'screw') return st.installed.has(f.bracket);
+  if (f.kind === 'clamp') return st.installed.has(f.on);
+  if (f.kind === 'film') return st.film.has(id);
+  return st.installed.has(id);
+}
+
+/** Расписание видимости деталей по шагам 0..N: группы деталей с одинаковым расписанием. */
+export function visibilityGroups(ids, stAt, N) {
+  const groups = new Map();
+  for (const id of ids) {
+    let v = '';
+    for (let i = 0; i <= N; i++) v += visibleIn(stAt(i), id) ? '1' : '0';
+    if (!v.includes('1')) continue;
+    if (!groups.has(v)) groups.set(v, []);
+    groups.get(v).push(id);
+  }
+  return groups;
+}
 
 export function galleyTarget(world, viz, { onBegin, onEnd } = {}) {
   const g = world.galley;
   const N = STEPS.length;
-  const p0 = new Map();
-  const moved = new Set();
   const states = [];
   const stAt = (i) => (states[i] ??= stateFrom(i, new Set()));
-  const poweredAt = STEPS.findIndex((s) => s.id === '170.03') + 1;
   const center = new THREE.Vector3(0, 1000, S.G.D / 2);
-  const mat = (color, opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
-  const holoMat = mat(HOLO.part, 0.05), flyMat = mat(HOLO.fastener, 0.22);
-  const edgeMat = new THREE.LineBasicMaterial({ color: HOLO.part, transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
-  const edges = new Map();                 // сетка → контур рёбер (создаётся один раз)
-  const saved = new Map();                 // объект → {material, layers}
-  let style = 'model';
+  let style = 'holo';
+  let H = null;                                  // голограмма: { root, groups: [{ vec, obj }], perItem: Map, ids }
+  let lastI = -1;
   const kitWas = new Map();
+  const flying = new Map();                       // id → копия, которая сейчас подлетает
 
   /** Откуда подлетает деталь: от центра модуля наружу и сверху, мм. */
   function offsetFor(id) {
@@ -35,69 +54,105 @@ export function galleyTarget(world, viz, { onBegin, onEnd } = {}) {
     return d.normalize().multiplyScalar(420).add(new THREE.Vector3(0, 380, 0));
   }
 
-  function each(fn) {
-    g.root.traverse((o) => { if (o === viz.root || isUnder(o, viz.root) || o === viz.overlay) return; fn(o); });
+  /** Меши каждой детали (без пазов с клеем, вставок, дисплеев — у голограммы их нет). */
+  function meshesByItem() {
+    const owner = new Map([...g.items].map(([id, o]) => [o, id]));
+    const skip = new Set([...g.grooves.map((x) => x.mesh), ...g.inserts.map((x) => x.mesh), ...g.displays]);
+    const by = new Map();
+    g.root.traverse((m) => {
+      if (!m.isMesh || skip.has(m)) return;
+      let o = m; while (o && !owner.has(o)) o = o.parent;
+      if (!o) return;
+      const id = owner.get(o);
+      if (!by.has(id)) by.set(id, []);
+      by.get(id).push(m);
+    });
+    return by;
   }
-  function isUnder(o, root) { while (o) { if (o === root) return true; o = o.parent; } return false; }
+
+  function build() {
+    const t0 = performance.now();
+    const by = meshesByItem();
+    const root = new THREE.Group();
+    root.name = 'virtual-galley';
+    g.root.updateMatrixWorld(true);
+    root.matrixAutoUpdate = false;
+    root.matrix.copy(g.root.matrixWorld);
+    root.matrixWorldNeedsUpdate = true;
+    const groups = [];
+    for (const [vec, ids] of visibilityGroups([...by.keys()], stAt, N)) {
+      const obj = holoObject(holoGeometry(ids.flatMap((id) => by.get(id)), g.root));
+      root.add(obj);
+      groups.push({ vec, ids, obj });
+    }
+    g.root.parent.add(root);
+    root.visible = false;
+    H = { root, groups, by, perItem: new Map(), ms: Math.round(performance.now() - t0) };
+  }
+
+  /** Отдельная копия детали для подлёта (создаётся при первом подлёте). */
+  function itemHolo(id) {
+    if (!H.perItem.has(id)) {
+      const ms = H.by.get(id);
+      const o = ms ? holoObject(holoGeometry(ms, g.root), true) : null;
+      if (o) { setHoloLayer(o, style); o.visible = false; H.root.add(o); }
+      H.perItem.set(id, o);
+    }
+    return H.perItem.get(id);
+  }
 
   function setStyle(s) {
-    if (s === style) return;
-    if (s === 'holo') {
-      const meshes = [];
-      each((o) => { saved.set(o, { mask: o.layers.mask, material: o.material }); o.layers.set(LAYER_HOLO); if (o.isMesh) { o.material = holoMat; meshes.push(o); } });
-      // контур рёбер: голограмма читается по граням, а не по заливке (как у голограмм перехода)
-      for (const m of meshes) {
-        if (!edges.has(m)) {
-          const tri = m.geometry.index ? m.geometry.index.count / 3 : m.geometry.attributes.position.count / 3;
-          const e = tri < 6000 ? new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 30), edgeMat) : null;
-          if (e) { e.layers.set(LAYER_HOLO); e.raycast = () => {}; }
-          edges.set(m, e);
-        }
-        const e = edges.get(m);
-        if (e) m.add(e);
-      }
-    } else {
-      for (const [m, e] of edges) if (e) m.remove(e);
-      for (const [o, v] of saved) { o.layers.mask = v.mask; if (o.isMesh) o.material = v.material; }
-      saved.clear();
-    }
-    style = s;
+    style = s === 'glasses' ? 'glasses' : 'holo';
+    if (H) setHoloLayer(H.root, style);
   }
 
   return {
     name: 'Стапель СТ-3 · модуль кухонный КМ-2',
     steps: STEPS.map((s) => ({ id: s.id, title: s.title, op: s.op })),
     get style() { return style; },
+    get buildMs() { return H?.ms ?? null; },
     setStyle,
     begin() {
-      for (const o of g.items.values()) p0.set(o, o.position.clone());
-      for (const [id, k] of world.kit) { kitWas.set(id, k.visible); k.visible = false; }   // заготовок нет
+      if (!H) build();
+      setHoloLayer(H.root, style);
+      H.root.visible = true;
+      g.root.visible = false;                                   // реальных деталей нет
+      for (const [id, k] of world.kit) { kitWas.set(id, k.visible); k.visible = false; }
       viz.root.visible = false; viz.labels.visible = false;
+      lastI = -1;
       onBegin?.();
     },
     apply(i, f) {
-      for (const o of moved) { o.position.copy(p0.get(o)); if (style === 'holo') o.traverse((m) => { if (m.isMesh) m.material = holoMat; }); }
-      moved.clear();
-      const A = stAt(i), fly = f > 0 && i < N, B = fly ? stAt(i + 1) : A;
-      const st = fly && f >= 0.5 ? B : A;
-      g.setState(st, { powered: (st === B && fly ? i + 1 : i) >= poweredAt });
-      if (style === 'holo') { for (const m of g.panelMeshes) m.material = holoMat; for (const gr of g.grooves) gr.mesh.material = holoMat; }
+      const fly = f > 0 && i < N;
+      // видимость сеток меняется только при смене шага (и на середине шага — у снимаемых деталей)
+      const half = fly && f >= 0.5;
+      const key = i * 2 + (half ? 1 : 0);
+      if (key !== lastI) {
+        for (const gr of H.groups) {
+          const now = gr.vec[i] === '1', next = gr.vec[Math.min(N, i + 1)] === '1';
+          gr.obj.visible = now && !(half && !next);
+        }
+        lastI = key;
+      }
+      // подлёт деталей перехода
+      const want = new Set();
+      if (fly) for (const gr of H.groups) if (gr.vec[i] === '0' && gr.vec[i + 1] === '1') gr.ids.forEach((id) => want.add(id));
+      for (const [id, o] of flying) if (!want.has(id)) { o.visible = false; flying.delete(id); }
       if (!fly) return;
       const e = ease(f / 0.8);
-      for (const id of B.installed) {
-        if (A.installed.has(id)) continue;
-        const o = g.items.get(id);
+      for (const id of want) {
+        const o = itemHolo(id);
         if (!o) continue;
         o.visible = true;
-        o.position.copy(p0.get(o)).addScaledVector(offsetFor(id), 1 - e);
-        if (style === 'holo') o.traverse((m) => { if (m.isMesh) m.material = flyMat; });
-        moved.add(o);
+        o.position.copy(offsetFor(id)).multiplyScalar(1 - e);
+        flying.set(id, o);
       }
     },
     end() {
-      for (const o of moved) o.position.copy(p0.get(o));
-      moved.clear();
-      setStyle('model');
+      for (const o of flying.values()) o.visible = false;
+      flying.clear();
+      if (H) H.root.visible = false;
+      g.root.visible = true;
       for (const [id, k] of world.kit) k.visible = kitWas.get(id) ?? k.visible;
       onEnd?.();
     },

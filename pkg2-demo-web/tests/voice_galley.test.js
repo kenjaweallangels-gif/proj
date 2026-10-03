@@ -109,3 +109,16 @@ describe('голос: режим просмотра', () => {
     expect(parseGalley('сборка по центру')).toEqual({ cmd: 'recenter', arg: null });
   });
 });
+
+describe('голос: окно «Система»', () => {
+  it('каталог, дерево, загрузка алгоритма, вид окна', async () => {
+    const { parseGalley } = await import('../src/galley/voice_cmd.js');
+    expect(parseGalley('сборка каталог')).toEqual({ cmd: 'sys_catalog', arg: null });
+    expect(parseGalley('сборка дерево сборки')).toEqual({ cmd: 'sys_tree', arg: null });
+    expect(parseGalley('сборка открой алгоритм кронштейн')).toEqual({ cmd: 'sys_load', arg: 'кронштейн' });
+    expect(parseGalley('сборка сверни окно')).toEqual({ cmd: 'sys_compact', arg: null });
+    expect(parseGalley('сборка скрой окно')).toEqual({ cmd: 'sys_hide', arg: null });
+    expect(parseGalley('сборка алгоритм в угол')).toEqual({ cmd: 'corner', arg: null });
+    expect(parseGalley('сборка лист два')).toEqual({ cmd: 'kd_sheet', arg: 2 });
+  });
+});

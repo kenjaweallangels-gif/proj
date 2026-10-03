@@ -114,3 +114,30 @@ export const CORTICAL_C = 25;
 export function corticalFit(widthPx, maxDeg = 100, c = CORTICAL_C) { return widthPx / 2 / (c * Math.log(1 + maxDeg / c)); }
 export function corticalR(theta, s0, c = CORTICAL_C) { return s0 * c * Math.log(1 + theta / c); }
 export function corticalTheta(r, s0, c = CORTICAL_C) { return c * (Math.exp(r / (s0 * c)) - 1); }
+
+/**
+ * Естественная проекция полного поля (Панини, d = 2,5 по горизонтали + стереографическая по вертикали).
+ * Вертикали остаются вертикальными, лучи из центра — прямыми, предметы в центре — в натуральных пропорциях,
+ * без «рыбьего глаза»: к краю ±100° масштаб плавно падает примерно до 0,37. Так на плоском экране выглядят
+ * широкие панорамы, наиболее похожие на то, как видит человек.
+ * X = (d+1)·sin φ / (d + cos φ), Y = S·2·tan(e/2), S = (d+1)/(d + cos φ); X, Y — в радианах центра.
+ */
+export const PANINI_D = 2.5;
+const RAD = Math.PI / 180;
+export function paniniX(phiDeg, d = PANINI_D) { const p = phiDeg * RAD; return ((d + 1) * Math.sin(p)) / (d + Math.cos(p)); }
+/** Обратное: X → φ, градусы. */
+export function paniniPhi(X, d = PANINI_D) {
+  const a = d + 1, R = Math.hypot(a, X);
+  return (Math.atan2(X, a) + Math.asin(Math.max(-1, Math.min(1, (X * d) / R)))) / RAD;
+}
+/** Пикселей на градус в центре, чтобы ±maxDeg по горизонтали ровно заняли ширину экрана. */
+export function paniniFit(widthPx, maxDeg = 100, d = PANINI_D) { return (widthPx / 2 / paniniX(maxDeg, d)) * RAD; }
+/** Пиксель экрана (от центра) → азимут и возвышение, градусы; ppd — пикселей на градус в центре. */
+export function paniniToAngles(px, py, ppd, d = PANINI_D) {
+  const k = ppd / RAD, X = px / k, Y = py / k;
+  const phi = paniniPhi(X, d);
+  const S = (d + 1) / (d + Math.cos(phi * RAD));
+  return { az: phi, el: (2 * Math.atan(Y / (2 * S))) / RAD };
+}
+/** Местный масштаб по горизонтали (1 в центре). */
+export function paniniScale(phiDeg, d = PANINI_D) { const c = Math.cos(phiDeg * RAD); return ((d + 1) * (d * c + 1)) / ((d + c) ** 2); }

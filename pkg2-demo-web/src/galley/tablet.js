@@ -25,7 +25,7 @@ header.t .clk { font:600 18px var(--mono); color:var(--warn); margin-left:auto; 
 .dot.on { background:var(--ok); box-shadow:0 0 6px var(--ok); }
 .links { display:flex; gap:10px; align-items:center; font-size:13px; color:var(--mute); }
 main.t { overflow:auto; padding:12px 14px 20px; }
-nav.t { display:grid; grid-template-columns:repeat(5,1fr); border-top:1px solid var(--line); }
+nav.t { display:grid; grid-template-columns:repeat(6,1fr); border-top:1px solid var(--line); }
 nav.t button { background:none; border:0; color:var(--mute); padding:12px 4px 14px; font:600 14px var(--sans); }
 nav.t button[aria-pressed=true] { color:var(--acc); box-shadow:inset 0 3px 0 var(--acc); }
 .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:12px; }
@@ -55,6 +55,8 @@ input.t { width:100%; min-height:52px; border-radius:10px; border:1px solid var(
 .sl { display:grid; grid-template-columns:1fr auto; gap:4px 10px; align-items:center; margin:10px 0; } .sl input { grid-column:1/-1; width:100%; }
 .heard { font-size:14px; color:var(--mute); margin-top:6px; min-height:20px; }
 .off { color:var(--bad); font-size:14px; }
+.pad { height:46vh; min-height:240px; border-radius:16px; border:1px dashed var(--acc); background:radial-gradient(circle at 50% 50%, #17303a, #0b1216); touch-action:none; display:flex; align-items:center; justify-content:center; color:var(--mute); font-size:15px; text-align:center; padding:12px; user-select:none; }
+.pad.on { border-style:solid; box-shadow:inset 0 0 0 2px #4fd8f533; }
 @media (min-width:900px) { main.t { display:grid; grid-template-columns:1fr 1fr; gap:12px; align-content:start; } .card { margin:0; } }
 `;
 
@@ -66,7 +68,7 @@ export function mountTablet() {
     <header class="t"><b>Пульт сборщика · СТ-3</b><span class="links"><span class="dot" id="dBc"></span>вкладка <span class="dot" id="dWs"></span>сервер <span class="dot" id="dRm"></span>комната
       · очки: <span id="gst" class="off">нет связи</span></span><span class="clk" id="clk">--:--</span></header>
     <main class="t" id="m"></main>
-    <nav class="t">${['Переход', 'ТП', 'КД', 'Чат', 'Очки'].map((t, i) => `<button data-tab="${i}">${t}</button>`).join('')}</nav>`;
+    <nav class="t">${['Переход', 'ТП', 'КД', 'Чат', 'Очки', 'Указатель'].map((t, i) => `<button data-tab="${i}">${t}</button>`).join('')}</nav>`;
   const $ = (id) => document.getElementById(id);
   const link = createLink({ role: 'tablet', room: q.get('room') || 'ST3', ws: q.get('ws') });
   link.onStatus((s) => { $('dBc').classList.toggle('on', s.bc); $('dWs').classList.toggle('on', s.ws); $('dRm').classList.toggle('on', s.room); });
@@ -108,7 +110,7 @@ export function mountTablet() {
     const autoRow = `<div class="card"><div class="row">${au.on && !au.paused ? '<button class="btn warn" data-c="auto_pause">⏸ Пауза имитации</button>'
       : `<button class="btn ok" data-c="auto_start">▶ ${au.on ? 'Продолжить имитацию' : 'Имитация сборки'}</button>`}${au.on ? '<button class="btn bad" data-c="auto_stop">⏹ Стоп</button>' : ''}
       <button class="btn" aria-pressed="${au.cam === 'free'}" data-c="auto_cam">${au.cam === 'free' ? '🚶 Хожу сам' : '🎥 Камера ведёт'}</button>
-      <button class="btn" aria-pressed="${!!S.panels?.algo}" data-c="corner">Алгоритм в углу</button></div></div>`;
+      <button class="btn" aria-pressed="${!!S.panels?.algo}" data-c="corner">Окно «Система»</button></div></div>`;
     const A = S.asm;
     const asmRow = A ? `<div class="card"><div class="id">Виртуальная сборка · ${esc(A.name)}</div><h2 style="font-size:18px">${esc(A.step)}</h2>
       <div class="timer"><div class="bar"><i style="width:${Math.round((A.t / A.n) * 100)}%"></i></div></div>
@@ -172,7 +174,7 @@ export function mountTablet() {
       <p style="font-size:14px;color:var(--mute)">${esc(deviceSummary(dev))}. ${esc(dev.note)}</p>
       ${dev.tracking === '3dof' ? '<div class="row"><button class="btn acc" data-c="recenter">Окна по центру взгляда</button></div>' : ''}</div>
       <div class="card"><div class="id">Окна в очках</div><div class="row" style="margin-top:8px">
-      ${[['kd', 'КД'], ['step', 'Переход'], ['system', 'Система'], ['task', 'Задание и чат'], ['algo', 'Алгоритм в углу']].map(([k, t]) => `<button class="btn" aria-pressed="${!!p[k]}" data-c="toggle" data-a="${k}">${t}</button>`).join('')}
+      ${[['kd', 'КД'], ['step', 'Переход'], ['system', 'Поиск ТП/КД'], ['task', 'Задание и чат'], ['algo', 'Окно «Система»']].map(([k, t]) => `<button class="btn" aria-pressed="${!!p[k]}" data-c="toggle" data-a="${k}">${t}</button>`).join('')}
       <button class="btn" data-c="pull" data-a="step">Переход ближе</button><button class="btn" data-c="glasses">${S?.glasses ? 'Снять очки' : 'Надеть очки'}</button></div></div>
       <div class="card"><div class="id">Затемнение линз и яркость дисплея</div>
       ${dev.dimLevels ? `<div class="row" style="margin-top:8px"><button class="btn" aria-pressed="${d.mode === 'auto'}" data-c="dim_auto">Авто по свету</button>
@@ -186,13 +188,52 @@ export function mountTablet() {
       <div class="card"><div class="id">Время участка</div><div class="row" style="margin-top:8px">${[1, 60, 600].map((v) => `<button class="btn" aria-pressed="${S?.speed === v}" data-c="speed" data-a="${v}">×${v}</button>`).join('')}</div></div>`;
   }
 
+  /** Указатель: смартфон как сенсорная панель — ведение пальцем двигает курсор в окне «Система» очков,
+   *  касание — нажатие; справа прокрутка; кнопки вкладок окна. Жесты рук — только на очках с камерой. */
+  function pointerView() {
+    return `<div class="card"><div class="id">Указатель для окна «Система» в очках</div>
+      <div class="pad" id="pad">Ведите пальцем — курсор в окне очков<br>касание — нажать · двумя пальцами вверх/вниз — прокрутка</div>
+      <div class="row" style="margin-top:8px"><button class="btn ok" data-c="ptr_tap">👆 Нажать</button><button class="btn" data-c="ptr_scroll" data-a="up">▲</button><button class="btn" data-c="ptr_scroll" data-a="down">▼</button></div></div>
+      <div class="card"><div class="id">Окно</div><div class="row" style="margin-top:8px">
+      ${[['algo', 'Алгоритм'], ['cat', 'Каталог'], ['kd', 'КД'], ['tree', 'Дерево'], ['ctl', 'Управление']].map(([a, t]) => `<button class="btn acc" data-c="sys" data-a="${a}">${t}</button>`).join('')}
+      <button class="btn" data-c="sys" data-a="view">Полностью / компактно</button><button class="btn" data-c="corner">Показать / скрыть</button></div>
+      <p style="font-size:14px;color:var(--mute)">Жест «нажатие» пальцами перед очками работает на очках с камерой рук; в демо — только смартфон, мышь и голос.</p></div>`;
+  }
+  function bindPad() {
+    const pad = $('pad'); if (!pad) return;
+    const pts = new Map();
+    let acc = { dx: 0, dy: 0 }, moved = 0, t0 = 0, timer = null, lastY = null;
+    const flush = () => { timer = null; if (acc.dx || acc.dy) { cmd('ptr', { dx: acc.dx, dy: acc.dy }); acc = { dx: 0, dy: 0 }; } };
+    pad.onpointerdown = (e) => { pad.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); pad.classList.add('on'); if (pts.size === 1) { moved = 0; t0 = performance.now(); } lastY = null; };
+    pad.onpointermove = (e) => {
+      const p = pts.get(e.pointerId); if (!p) return;
+      const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+      moved += Math.abs(dx) + Math.abs(dy);
+      if (pts.size >= 2) {                                           // два пальца — прокрутка
+        const y = [...pts.values()].reduce((a, q) => a + q.y, 0) / pts.size;
+        if (lastY != null && Math.abs(y - lastY) > 28) { cmd('ptr_scroll', { dy: y < lastY ? -1 : 1 }); lastY = y; } else if (lastY == null) lastY = y;
+        return;
+      }
+      const k = 1.3 / pad.clientWidth;                                // вся ширина панели ≈ 1,3 ширины окна
+      acc.dx += dx * k; acc.dy += dy * k;
+      timer ??= setTimeout(flush, 33);
+    };
+    const up = (e) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.delete(e.pointerId);
+      if (!pts.size) { pad.classList.remove('on'); if (moved < 8 && performance.now() - t0 < 300) cmd('ptr_tap', {}); }
+    };
+    pad.onpointerup = up; pad.onpointercancel = up;
+  }
+
   function render(full) {
     $('clk').textContent = S ? `${S.clock}${S.speed !== 1 ? ` ×${S.speed}` : ''}` : '--:--';
     document.querySelectorAll('nav.t button').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.tab) === tab)));
     const ae = document.activeElement;
     if (!full && ae && (ae.id === 'q' || ae.id === 'chat' || ae.type === 'range')) return;   // не мешать вводу
-    $('m').innerHTML = [stepCard, tpView, kdView, chatView, glassesView][tab]();
-    bind();
+    if (!full && tab === 5 && $('pad')) return;                                                 // панель указателя не перерисовывать
+    $('m').innerHTML = [stepCard, tpView, kdView, chatView, glassesView, pointerView][tab]();
+    bind(); bindPad();
   }
 
   function bind() {
@@ -201,6 +242,8 @@ export function mountTablet() {
       const c = b.dataset.c, a = b.dataset.a ?? null;
       if (c === 'search_q') { query = $('q').value; cmd('search', query, `поиск ${query}`); render(true); return; }
       if (c === 'send') { const t = $('chat').value.trim(); if (t) cmd('message', t, 'сообщение'); chatDraft = ''; return; }
+      if (c === 'ptr_scroll') { cmd(c, { dy: a === 'up' ? -1 : 1 }); return; }
+      if (c === 'ptr_tap') { cmd(c, {}); return; }
       cmd(c, a === null ? null : /^\d+(\.\d+)?$/.test(a) ? Number(a) : a, b.textContent.trim());
     });
     m.querySelectorAll('[data-k]').forEach((b) => b.onclick = () => {

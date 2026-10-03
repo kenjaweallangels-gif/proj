@@ -64,3 +64,19 @@ describe('проекция «как воспринимает человек»', 
     expect(corticalTheta(corticalR(37, s0), s0)).toBeCloseTo(37, 6);
   });
 });
+
+describe('естественная проекция полного поля (Панини)', async () => {
+  const { paniniFit, paniniPhi, paniniScale, paniniToAngles, paniniX } = await import('../src/galley/binocular.js');
+  it('±100° по ширине, центр без искажения, обратное преобразование точно', () => {
+    const ppd = paniniFit(1600);
+    expect(paniniToAngles(800, 0, ppd).az).toBeCloseTo(100, 6);
+    expect(paniniScale(0)).toBeCloseTo(1, 9);
+    expect(paniniScale(100)).toBeGreaterThan(0.3);                    // край сжат умеренно, не как у «рыбьего глаза»
+    for (const a of [-95, -40, 0, 12, 70]) expect(paniniPhi(paniniX(a))).toBeCloseTo(a, 6);
+    // вертикаль на экране — постоянный азимут (вертикали прямые)
+    expect(paniniToAngles(300, 200, ppd).az).toBeCloseTo(paniniToAngles(300, -150, ppd).az, 9);
+    // центр: пропорции натуральные — 1° по горизонтали и вертикали одинаков
+    const h = paniniToAngles(ppd, 0, ppd).az, v = paniniToAngles(0, ppd, ppd).el;
+    expect(h).toBeCloseTo(1, 2); expect(v).toBeCloseTo(1, 2);
+  });
+});

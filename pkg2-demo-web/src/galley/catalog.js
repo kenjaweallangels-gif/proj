@@ -33,6 +33,10 @@ export const DOCUMENTS = [
   ...[...new Set(FITTINGS.map((f) => f.designation))].map((code) =>
     doc(code, FITTINGS.find((f) => f.designation === code).name, 'деталь', [{ n: 1, title: 'Узел', scale: '1:1', format: 'A3' }])),
   doc('КМ2.500.100', EQUIPMENT.find((e) => e.id === 'CB-1').name, 'деталь', [{ n: 1, title: 'Щиток', scale: '1:2', format: 'A3' }]),
+  doc('КМ2.310.050', 'Кронштейн', 'деталь', [
+    { n: 1, title: 'Кронштейн: виды, отверстия, гиб', scale: '2:1', format: 'A3' },
+    { n: 2, title: 'Втулка КМ2.310.051, технические требования', scale: '4:1', format: 'A4' },
+  ], { bracket: true }),
   doc(TP.designation, `${TP.name}. Технологический процесс`, 'ТП', [{ n: 1, title: 'Маршрут операций', scale: '—', format: 'A4' }],
     { operations: OPERATIONS.map((o) => o.id) }),
 ];

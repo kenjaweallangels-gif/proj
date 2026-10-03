@@ -24,7 +24,7 @@
 import * as THREE from 'three';
 import { LAYER_HOLO, LAYER_LABEL, LAYER_REAL } from '../engine/holo.js';
 import { fbm, normalize } from '../scene/textures.js';
-import { CORTICAL_C, CUBE_FACES, FIELD, IPD_MM, corticalFit, eyeAperture } from './binocular.js';
+import { CORTICAL_C, CUBE_FACES, FIELD, IPD_MM, PANINI_D, eyeAperture, paniniFit, paniniScale, paniniToAngles } from './binocular.js';
 import { DESIGN } from './glasses_model.js';
 
 export const PRESETS = {
@@ -143,7 +143,7 @@ const FINAL_FS = /* glsl */`
 precision highp float;
 uniform sampler2D tReal; uniform sampler2D tDepth; uniform sampler2D tHolo; uniform sampler2D tLum; uniform sampler2D tDirt;
 uniform sampler2D tAtlas; uniform sampler2D tAtlasDepth; uniform sampler2D tFront; uniform sampler2D tFrontDepth;
-uniform float frontTan; uniform float frontN; uniform float cortS0; uniform float cortC;
+uniform float frontTan; uniform float frontN; uniform float cortS0; uniform float cortC; uniform float panD;
 uniform vec2 res; uniform float tanV; uniform float aspect; uniform float cNear; uniform float cFar; uniform float time;
 uniform float fieldMode; uniform vec2 fieldSpan; uniform float atlasFace; uniform float aNear; uniform float aFar;
 uniform float focusD; uniform float pupilMM; uniform float dispD; uniform float glassesOn; uniform float dispOn;
@@ -169,11 +169,13 @@ vec2 angOf(vec3 d){ return degrees(vec2(atan(d.x, d.z), atan(d.y, length(d.xz)))
 vec2 uvPersp(vec2 a){ float tx = tan(a.x * D2R); return vec2(tx / (tanV * aspect), tan(a.y * D2R) * sqrt(1.0 + tx * tx) / tanV) * 0.5 + 0.5; }
 vec2 angOfScreen(vec2 uv){
   if (fieldMode < 0.5) { vec2 tn = (uv * 2.0 - 1.0) * vec2(tanV * aspect, tanV); return degrees(vec2(atan(tn.x), atan(tn.y / sqrt(1.0 + tn.x * tn.x)))); }
-  // «как воспринимает человек»: центр крупно, к периферии масштаб падает (по образцу коркового увеличения)
-  vec2 t = (uv - 0.5) * res; float r = length(t);
-  if (r < 1e-3) return vec2(0.0);
-  float th = cortC * (exp(r / (cortS0 * cortC)) - 1.0) * D2R;
-  return angOf(vec3(t / r * sin(th), cos(th)));
+  // естественная проекция (Панини d по горизонтали + стереографическая по вертикали): вертикали прямые,
+  // центр в натуральных пропорциях, к краю ±100° масштаб плавно падает — без «рыбьего глаза»
+  vec2 t = (uv - 0.5) * res / (cortS0 * 57.2958);
+  float a = panD + 1.0;
+  float phi = atan(t.x, a) + asin(clamp(t.x * panD / length(vec2(a, t.x)), -1.0, 1.0));
+  float S = a / (panD + cos(phi));
+  return degrees(vec2(phi, 2.0 * atan(t.y / (2.0 * S))));
 }
 // развёртка 5 граней куба (3×2): вперёд, вправо, влево, вверх, вниз
 vec2 atlasUV(vec3 d, float lod, out float cosF){
@@ -187,7 +189,10 @@ vec2 atlasUV(vec3 d, float lod, out float cosF){
   float col = mod(i, 3.0), row = floor(i / 3.0);
   return vec2((col + uv.x) / 3.0, (row + uv.y) / 2.0);
 }
-float outPPDat(float ecc){ return fieldMode < 0.5 ? res.y / degrees(2.0 * atan(tanV)) : cortS0 / (1.0 + ecc / cortC); }
+float outPPDat(float ecc){
+  if (fieldMode < 0.5) return res.y / degrees(2.0 * atan(tanV));
+  float c = cos(min(ecc, 100.0) * D2R); return cortS0 * (panD + 1.0) * (panD * c + 1.0) / ((panD + c) * (panD + c));
+}
 float gEccG;
 float outPPD(){ return outPPDat(gEccG); }
 // источник «мира»: перспектива (центр 72°) / в полном поле — чёткая центральная камера ±35° и развёртка куба вокруг
@@ -355,7 +360,13 @@ void main(){
   // подавление: размытое близкое препятствие у одного глаза (рамка, нос) проигрывает чёткой сцене другого —
   // переносица и нос видны лишь «призраком»
   vec3 c; float vis;
-  if (noPeriph > 0.5) { c = eyeView(1.0).rgb; vis = 1.0; }              // режим «без периферии»: один глаз, резко везде
+  if (noPeriph > 0.5) {
+    // режим «без периферии»: только прямое зрение — зона ≈ ±30° × ±22° видна полностью, дальше периферия
+    // плавно уходит в темноту (к ≈ 50° почти чёрная), без размытия и искажений; считается один глаз
+    c = eyeView(1.0).rgb; vis = 1.0;
+    float q = length(vec2(gA.x / 30.0, gA.y / 22.0));
+    c *= 1.0 - 0.9 * smoothstep(0.8, 1.75, q);
+  }
   else {
     gOcc = 0.0; vec4 cl = eyeOn.x > 0.0 ? eyeView(-1.0) : vec4(0.0); float ol = gOcc;
     gOcc = 0.0; vec4 cr = eyeOn.y > 0.0 ? eyeView(1.0) : vec4(0.0); float orr = gOcc;
@@ -418,7 +429,7 @@ export class VisionRenderer {
         time: 0, focusD: 0.5, pupilMM: 4, dispD: 0.25, glassesOn: 0, dispOn: 0, transmit: 0.9, dispBright: 1, blink: 0, flash: 0,
         angVel: new THREE.Vector2(), fatigueBlur: 0, age: 30, dirt: 0.1, ipdErr: 0, disp: new THREE.Vector4(0, -2, 22, 12), maxLod: 7,
         exposureBias: 1, bootFade: 1, dbg: 0, dispNits: DISPLAY.nits, sharpen: 0.45, cdPerUnit: CD_PER_UNIT, ghostK: 0.05, edgeSoft: 0.45, noPeriph: 0,
-        tAtlas: null, tAtlasDepth: null, tFront: null, tFrontDepth: null, frontTan: Math.tan(Math.PI * 35 / 180), frontN: 1024, cortS0: 20, cortC: CORTICAL_C,
+        tAtlas: null, tAtlasDepth: null, tFront: null, tFrontDepth: null, frontTan: Math.tan(Math.PI * 35 / 180), frontN: 1024, cortS0: 8, cortC: CORTICAL_C, panD: PANINI_D,
         fieldMode: 0, fieldSpan: new THREE.Vector2(220, 140), atlasFace: 512, aNear: 0.03, aFar: 80,
         vergD: 0.5, ipdM: IPD_MM / 1000, domR: 0.55, eyeOn: new THREE.Vector2(1, 1), diplo: 0, overlay: 0,
         lensA: new THREE.Vector4(48, 58, 20, 55), frameA: new THREE.Vector4(12, 64, -6, 10), fieldA: new THREE.Vector4(FIELD.temporal, FIELD.nasal, FIELD.up, FIELD.down),
@@ -481,7 +492,7 @@ export class VisionRenderer {
       this.frontN = N; this.u.frontN.value = N;
     }
     // грани куба — для периферии: там масштаб экрана ≤ s0 / (1 + 35/25)
-    const face = Math.min(1024, Math.max(320, Math.round(((s0 / (1 + 35 / CORTICAL_C)) * 90 * 1.15) / 16) * 16));
+    const face = Math.min(1024, Math.max(320, Math.round((s0 * paniniScale(45) * 90 * 1.1) / 16) * 16));
     if (this.atlas && this.atlasFace === face) return;
     this.atlas?.dispose();
     this.atlas = new THREE.WebGLRenderTarget(face * 3, face * 2, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
@@ -531,11 +542,9 @@ export class VisionRenderer {
   screenToCamNdc(ndc) {
     if (!this.fieldMode) return ndc;
     const { W, H } = this.size;
-    const px = ndc.x * 0.5 * W, py = ndc.y * 0.5 * H, r = Math.hypot(px, py);
-    if (r < 1e-6) return new THREE.Vector2(0, 0);
-    const s0 = this.u.cortS0.value, c = this.u.cortC.value;
-    const th = c * (Math.exp(r / (s0 * c)) - 1) * (Math.PI / 180);
-    const v = new THREE.Vector3((px / r) * Math.sin(th), (py / r) * Math.sin(th), -Math.cos(th));   // СК камеры three: вперёд — −Z
+    const { az, el } = paniniToAngles(ndc.x * 0.5 * W, ndc.y * 0.5 * H, this.u.cortS0.value, PANINI_D);
+    const A = az * (Math.PI / 180), E = el * (Math.PI / 180);
+    const v = new THREE.Vector3(Math.cos(E) * Math.sin(A), Math.sin(E), -Math.cos(E) * Math.cos(A));   // СК камеры three: вперёд — −Z
     if (v.z >= -0.05) return null;
     v.applyMatrix4(this.camera.projectionMatrix);
     return new THREE.Vector2(v.x, v.y);
@@ -564,7 +573,7 @@ export class VisionRenderer {
     const W = Math.floor(w * pr), H = Math.floor(h * pr);
     this.size = { W, H };
     // полное поле: ±100° по горизонтали точно в ширину экрана, центр — крупно (≈ W/80 пикс/°)
-    this.u.cortS0.value = corticalFit(W, 100);
+    this.u.cortS0.value = paniniFit(W, 100, PANINI_D);
     if (this.fieldMode) this.ensureAtlas();
     this.rtReal.setSize(W, H);
     this.rtHolo.setSize(Math.min(4096, W * 2), Math.min(4096, H * 2));      // голограммы — с суперсэмплингом ×2: чётче текст окон

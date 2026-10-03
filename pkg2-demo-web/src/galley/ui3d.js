@@ -15,16 +15,18 @@ const MONO = '"IBM Plex Mono", ui-monospace, monospace';
 /** Обёртка 2D-контекста с регистрацией областей нажатия. */
 class UI {
   /** dry — «сухой» прогон: ничего не рисует, только собирает подпись содержимого (перерисовка лишь при изменении). */
-  constructor(panel, dry = false) { this.p = panel; this.c = panel.ctx; this.dry = dry; this.sig = []; }
-  font(size, weight = 400, mono = false) { this.c.font = `${weight} ${size}px ${mono ? MONO : FONT}`; }
+  constructor(panel, dry = false) { this.p = panel; this.c = panel.ctx; this.dry = dry; this.sig = []; this.k = 1; }
+  /** k — масштаб: координаты и размеры в логических единицах, на холсте — ×k (крупнее при той же разметке). */
+  font(size, weight = 400, mono = false) { this.c.font = `${weight} ${size * this.k}px ${mono ? MONO : FONT}`; }
   text(str, x, y, { size = 22, color = C.text, weight = 600, align = 'left', max = 0, mono = false, base = 'alphabetic' } = {}) {
     const c = this.c; this.font(size, weight, mono);
     c.fillStyle = color; c.textAlign = align; c.textBaseline = base;
     let s = String(str ?? '');
-    if (max) while (s.length > 1 && c.measureText(s).width > max) s = `${s.slice(0, -2)}…`;
+    const k = this.k;
+    if (max) while (s.length > 1 && c.measureText(s).width > max * k) s = `${s.slice(0, -2)}…`;
     this.sig.push(`${s}|${x | 0}|${y | 0}|${color}|${size}|${weight}|${align}`);
-    if (!this.dry) c.fillText(s, x, y);
-    return c.measureText(s).width;
+    if (!this.dry) c.fillText(s, x * k, y * k);
+    return c.measureText(s).width / k;
   }
   /** Перенос строк по ширине; возвращает высоту. */
   wrap(str, x, y, w, { size = 20, color = C.text, lh = 1.3, weight = 600, maxLines = 99 } = {}) {
@@ -33,7 +35,7 @@ class UI {
     let line = '', n = 0;
     for (const wd of words) {
       const t = line ? `${line} ${wd}` : wd;
-      if (c.measureText(t).width > w && line) {
+      if (c.measureText(t).width > w * this.k && line) {
         if (n < maxLines) this.text(line, x, y + n * size * lh, { size, color, weight });
         n++; line = wd;
       } else line = t;
@@ -44,11 +46,16 @@ class UI {
   rect(x, y, w, h, { fill = null, stroke = null, r = 8, lw = 2 } = {}) {
     this.sig.push(`r${x | 0},${y | 0},${w | 0},${h | 0},${fill},${stroke},${lw}`);
     if (this.dry) return;
-    const c = this.c; c.beginPath(); c.roundRect(x, y, w, h, r);
+    const k = this.k;
+    const c = this.c; c.beginPath(); c.roundRect(x * k, y * k, w * k, h * k, r * k);
     if (fill) { c.fillStyle = fill; c.fill(); }
-    if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw; c.stroke(); }
+    if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw * k; c.stroke(); }
   }
-  hit(x, y, w, h, action, extra = {}) { this.p.hits.push({ x, y, w, h, action, ...extra }); return this.p.hover && inside(this.p.hover, x, y, w, h); }
+  hit(x, y, w, h, action, extra = {}) {
+    const k = this.k;
+    this.p.hits.push({ x: x * k, y: y * k, w: w * k, h: h * k, action, ...extra });
+    return this.p.hover && inside(this.p.hover, x * k, y * k, w * k, h * k);
+  }
   button(x, y, w, h, label, action, { active = false, color = C.acc, size = 20, disabled = false } = {}) {
     const hov = !disabled && this.hit(x, y, w, h, disabled ? null : action);
     this.rect(x, y, w, h, { fill: active ? C.active : hov ? C.hover : C.fill, stroke: disabled ? 'rgba(120,160,170,0.3)' : color, r: 8, lw: hov ? 3 : 2 });

@@ -25,6 +25,8 @@ import { searchDocs } from './catalog.js';
 import { buildGlassesModel } from './glasses_model.js';
 import { AssemblyPlayer, SPEEDS } from './assembly_player.js';
 import { galleyTarget } from './galley_player.js';
+import { buildCatalog, findAlgorithm } from './algorithms.js';
+import { tickHolo } from './virtual.js';
 import { buildWorker } from './humanoid.js';
 import { textTexture } from './tex.js';
 import { DEFAULT_DEVICE, DEVICES, deviceById, deviceSummary, dimLevelOfStep, dimStepOf, fitDistance, matchDevice, transmitAt, weightFatigue, windowDeg } from './glasses.js';
@@ -167,6 +169,10 @@ async function main() {
     if (cmd === 'player') { asm.openFor(st.asm, 0); asm.play(1); }
     st.panel.dirty = true; st.showHolo(holoOn(st)); pushState(true);
   };
+  // каталог алгоритмов (стапель и участки) для окна «Система»
+  app.catalog = buildCatalog(stations);
+  app.activeAlgId = () => (activeSt ? activeSt.id : 'km2');
+  app.stationOf = (id) => stations.find((s) => s.id === id) || null;
   app.stationInfo = () => (activeSt && !activeSt.done ? { st: activeSt, step: activeSt.step, index: activeSt.index, total: activeSt.steps.length } : null);
   const holoOn = (st) => st === activeSt && !!sim.glasses && !!sim.display && !asm?.open && app.aligned;
 
@@ -212,7 +218,11 @@ async function main() {
   vision.beforeHolo = (hc) => {
     placeHud(panels.hud, hc, vision.win, vision.u.disp.value.y);
     // окна «в углу» — привязаны к голове, в плоскости виртуального экрана очков
-    for (const p of mgr.panels) if (p.mode === 'corner' && p.group.visible) placeCorner(p, hc, vision.win, vision.u.disp.value.y, sim.device.distM, p.corner || 'tr');
+    for (const p of mgr.panels) {
+      if (p.mode !== 'corner' || !p.group.visible) continue;
+      const full = p.state?.view === 'full';                         // окно «Система» полностью — по центру дисплея
+      placeCorner(p, hc, vision.win, vision.u.disp.value.y, sim.device.distM, full ? 'c' : p.corner || 'tr', full ? 0.94 : 0.5);
+    }
   };
   /** Выбрать очки: окно дисплея, яркость, линзы, оптика, трекинг, задержка, расстояние экрана, коррекция. */
   function setDevice(id, { quiet = false } = {}) {
@@ -480,7 +490,7 @@ async function main() {
     if (k === 'KeyI') act(e.shiftKey ? 'auto_stop' : 'auto_toggle');
     if (k === 'KeyK') act('device', e.shiftKey ? -1 : 1);
     if (k === 'KeyR') act('recenter');
-    if (k === 'KeyX') act(e.shiftKey ? 'corner_side' : 'corner');
+    if (k === 'KeyX') act(e.shiftKey ? 'sys' : 'corner', e.shiftKey ? 'view' : undefined);
     if (k === 'KeyU') act('auto_cam');
     if (k === 'Digit6') act('player');
     if (k === 'Digit5') act('tp');
@@ -529,13 +539,13 @@ async function main() {
     const a = panels.algo;
     if (a.mode !== 'corner') { a.mode = 'corner'; }
     mgr.toggle(a, on);
-    if (!quiet) app.notify(on ? `Алгоритм — в ${a.corner === 'tl' ? 'левом' : 'правом'} верхнем углу поля зрения (X — убрать, Shift+X — другой угол)` : 'Алгоритм из угла убран');
+    if (!quiet) app.notify(on ? `Окно «Система» закреплено на экране${a.state.view === 'full' ? ' — полностью' : ` в ${a.corner === 'tl' ? 'левом' : 'правом'} верхнем углу`} (X — скрыть, Shift+X — компактно/полностью)` : 'Окно «Система» скрыто (X — показать)');
     updateBar();
   }
   const VIEW_NOTE = {
-    field: 'Поле зрения: полное, ≈ 200° (два глаза, периферия, оправа целиком). Tab — центр 72°',
+    field: 'Поле зрения: полное, ≈ 200° (два глаза, естественная проекция: вертикали прямые, центр в натуральную величину). Tab — центр 72°',
     center: 'Поле зрения: центр 72° (как на мониторе, с периферией глаза). Tab — без периферии',
-    clean: 'Без периферийного зрения: резко по всему кадру, без оправы и носа, цвет до краёв (самый быстрый). Tab — полное поле',
+    clean: 'Без периферии: видна только зона прямого зрения, периферия плавно затемнена (самый быстрый). Tab — полное поле',
   };
   const VIEW_LABEL = { field: 'Поле 200°', center: 'Центр 72°', clean: 'Без периферии' };
   const say2 = (text, voice) => { app.notify(text, 4); if (voice && sim.tts) speak(text); };
@@ -620,6 +630,36 @@ async function main() {
       case 'auto_guide': auto.setCam('guide'); if (!auto.on) auto.start(); break;
       case 'auto_cam': auto.setCam(auto.cam === 'free' ? 'guide' : 'free'); break;
       case 'corner': cornerAlgo(arg === 'on' ? true : arg === 'off' ? false : undefined); break;
+      case 'sys': {
+        // окно «Система»: показать/скрыть, полностью/компактно, вкладка
+        const a = panels.algo;
+        if (arg === 'hide') { cornerAlgo(false); break; }
+        if (arg === 'show') { cornerAlgo(true, true); break; }
+        if (arg === 'view') { a.setView(a.state.view === 'full' ? 'compact' : 'full'); cornerAlgo(true, true); app.notify(a.state.view === 'full' ? 'Окно «Система» — полностью: Алгоритм · Каталог · КД · Дерево · Управление' : 'Окно «Система» — компактно в углу'); break; }
+        if (arg === 'full' || arg === 'compact') { a.setView(arg); cornerAlgo(true, true); break; }
+        if (['algo', 'cat', 'kd', 'tree', 'ctl'].includes(arg)) { a.state.tab = arg; a.setView('full'); cornerAlgo(true, true); a.dirty = true; break; }
+        break;
+      }
+      case 'sys_catalog': act('sys', 'cat'); break;
+      case 'sys_tree': act('sys', 'tree'); break;
+      case 'sys_control': act('sys', 'ctl'); break;
+      case 'sys_full': act('sys', 'full'); break;
+      case 'sys_compact': act('sys', 'compact'); break;
+      case 'sys_hide': act('sys', 'hide'); break;
+      case 'sys_load': {
+        const a = findAlgorithm(app.catalog, arg);
+        if (!a) { act('sys', 'cat'); say2('Какой алгоритм? Открыл каталог', voice); break; }
+        Object.assign(panels.algo.state, { sel: a.id, pick: null, tab: 'algo' }); panels.algo.state.scroll.algo = null;
+        act('sys', 'algo'); say2(`Загружен алгоритм: ${a.title}`, voice); break;
+      }
+      case 'places': toggleCard('places'); break;
+      case 'ptr': case 'ptr_tap': case 'ptr_scroll': {
+        // указатель со смартфона: окно «Система» показывается, курсор ведётся пальцем, касание — нажатие
+        const a = panels.algo;
+        if (!a.visible) cornerAlgo(true, true);
+        a.phonePointer(cmd === 'ptr' ? 'move' : cmd === 'ptr_tap' ? 'tap' : 'scroll', arg || {});
+        return true;                                                   // без рассылки состояния на каждое движение
+      }
       case 'corner_side': panels.algo.corner = panels.algo.corner === 'tl' ? 'tr' : 'tl'; cornerAlgo(true); break;
       case 'auto_pause': if (asm.open) asm.pause(); else auto.pause(true); break;
       case 'tp': setTP(arg == null ? undefined : !!arg); break;
@@ -631,7 +671,7 @@ async function main() {
       case 'player_start': if (asm.open) asm.toStart(); break;
       case 'player_end': if (asm.open) asm.toEnd(); break;
       case 'player_speed': if (asm.open) { if (typeof arg === 'number') asm.setSpeed(arg); else asm.faster(arg === 'down' ? -1 : 1); } break;
-      case 'player_style': if (asm.open && asm.target.setStyle) { asm.target.setStyle(asm.target.style === 'holo' ? 'model' : 'holo'); asm.apply(true); playerUi(); } break;
+      case 'player_style': if (asm.open && asm.target.setStyle) { asm.target.setStyle(asm.target.style === 'glasses' ? 'holo' : 'glasses'); asm.apply(true); playerUi(); app.notify(asm.target.style === 'glasses' ? 'Голограмма — только в окне дисплея очков, как в настоящих AR-очках' : 'Голограмма видна целиком (вид симулятора)', 4); } break;
       case 'auto_stop': auto.stop(); break;
       case 'auto_toggle': if (auto.on && !auto.paused) auto.pause(true); else auto.start(); break;
       case 'inspect_glasses': {
@@ -685,6 +725,7 @@ async function main() {
     pushState(true);
     return true;
   }
+  app.act = act;
 
   // ---------- голос: распознавание браузера или голосовая строка ----------
   const voiceUi = {
@@ -720,7 +761,7 @@ async function main() {
 
   // ---------- планшет: связь и состояние ----------
   const link = createLink({ role: 'glasses', room: q.get('room') || 'ST3', ws: q.get('ws') });
-  link.on('cmd', (m) => { act(m.cmd, m.arg, m.src === 'голос' ? 'голос' : 'планшет'); if (m.cmd !== 'value') app.notify(`Планшет: ${m.label || m.cmd}`, 2); });
+  link.on('cmd', (m) => { act(m.cmd, m.arg, m.src === 'голос' ? 'голос' : 'планшет'); if (m.cmd !== 'value' && !m.cmd.startsWith('ptr')) app.notify(`Планшет: ${m.label || m.cmd}`, 2); });
   link.on('voice', (m) => voiceUi.handle(m.alts || [m.text], 'голос'));
   link.on('hello', () => pushState(true));
   let lastState = '', lastPush = 0, lastBeat = 0;
@@ -865,7 +906,7 @@ async function main() {
       [a ? '⏸ Пауза имитации (I)' : auto.on ? '▶ Продолжить имитацию (I)' : '▶ Имитация сборки (I)', 'auto', a ? 'on' : 'primary'],
       ...(auto.on ? [['⏹', 'stop', '']] : []),
       [auto.cam === 'free' ? '🚶 Хожу сам (U)' : '🎥 Камера ведёт (U)', 'cam', auto.cam === 'free' ? 'on' : ''],
-      [panels.algo.visible ? '▣ Алгоритм в углу (X)' : '□ Алгоритм в угол (X)', 'corner', panels.algo.visible ? 'on' : ''],
+      [panels.algo.visible ? '▣ Система (X)' : '□ Система (X)', 'corner', panels.algo.visible ? 'on' : ''],
       [asm.open ? '⏹ Закрыть виртуальную сборку (6)' : '🧩 Виртуальная сборка (6)', 'asm', asm.open ? 'on' : ''],
       [tp.on ? '👁 От первого лица (5)' : '🧍 Вид от третьего лица (5)', 'tp', tp.on ? 'on' : ''],
       [activeSt ? `📍 ${activeSt.short.split(' · ')[0]}` : '📍 Участки', 'places', activeSt ? 'on' : ''],
@@ -925,7 +966,7 @@ async function main() {
   // ---------- плеер виртуальной сборки (без реальных деталей): стапель и участки ----------
   asm = new AssemblyPlayer();
   const galleyAsm = galleyTarget(world, viz, {
-    onBegin: () => { auto.pause(); app.notify('Виртуальная сборка: реальных деталей нет — модель собирается на месте. Пробел — пуск/пауза, , . — по шагу, [ ] — скорость, − — назад во времени, 6 — закрыть', 7); },
+    onBegin: () => { auto.pause(); app.notify('Виртуальная сборка: реальных деталей нет — изделие собирается из голограмм на месте настоящих. Пробел — пуск/пауза, , . — по шагу, [ ] — скорость, − — назад во времени, 6 — закрыть', 7); },
     onEnd: () => { applyState(); showStep(); viz.setAnchored(sim.device.tracking === '6dof'); },
   });
   const asmTargets = () => [{ t: galleyAsm, at: V(0, 0, 0) }, ...(world.stations || []).map((st) => ({ t: st.asm, at: st.center }))];
@@ -945,10 +986,18 @@ async function main() {
     $('pl_rev').setAttribute('aria-pressed', String(asm.dir < 0));
     $('pl_t').max = asm.n; $('pl_t').value = asm.t;
     $('pl_speed').value = String(asm.speed);
-    $('pl_style').textContent = asm.target.style === 'holo' ? 'Вид: голограмма в очках' : 'Вид: модель';
+    $('pl_style').textContent = asm.target.style === 'glasses' ? 'Вид: только в очках' : 'Вид: голограмма';
     $('pl_step').textContent = i >= asm.n ? `Готово: ${asm.n}/${asm.n} — изделие собрано` : `${step.id} · ${step.title} — ${Math.round(f * 100)} % · ${i + 1}/${asm.n}`;
   }
   asm.on(() => { playerUi(); pushState(true); });
+  /** Виртуальная сборка на месте алгоритма (стапель или участок): переход туда и плеер. */
+  app.virtualAt = (place) => {
+    const want = place === 'jig' ? galleyAsm : stations.find((s) => s.id === place)?.asm;
+    if (!want) return;
+    if (asm.open) asm.close();
+    if (nearestAsmTarget() !== want) act('goto_place', place);
+    asm.openFor(want, 0); asm.play(1);
+  };
   function togglePlayer(on = !asm.open) {
     if (!on) { asm.close(); return; }
     const t = nearestAsmTarget() || galleyAsm;
@@ -1160,6 +1209,7 @@ async function main() {
       }
     }
     const t = now / 1000;
+    tickHolo(t);
     if (frame % perf.shadowEvery === 0) renderer.shadowMap.needsUpdate = true;
     if (debug) orbit.update(); else player.update(dt);
     updateScenario(dt);
@@ -1174,7 +1224,9 @@ async function main() {
     lights.forEach((l, i) => { l.intensity = baseI[i] * params.light; });
     // электрохромное затемнение «авто»: по освещённости, отклик ≈ 0,1 с (как у плёнки очков)
     if (sim.dimMode === 'auto' && sim.device.dimLevels) {
-      const want = THREE.MathUtils.clamp((lumCd - 60) / 260, 0, 0.7);
+      // при открытом полностью окне «Система» линзы темнеют сильнее — окно читается на светлом фоне
+      const focus = panels.algo.visible && panels.algo.state.view === 'full' ? 0.55 : 0;
+      const want = Math.max(focus, THREE.MathUtils.clamp((lumCd - 60) / 260, 0, 0.7));
       sim.dimLevel += (want - sim.dimLevel) * (1 - Math.exp(-dt / 0.1));
     }
     // вес на переносице и сухость глаз: усталость копится за время в очках (минуты участка), снятые — отдых
@@ -1244,6 +1296,7 @@ async function main() {
     else if (navigator.webdriver || q.has('shot')) startScenario('intro');
   }
   if (q.get('corner') === '1') cornerAlgo(true, true);
+  if (q.get('sys')) act('sys', q.get('sys'));                       // ?sys=full|cat|kd|tree|ctl — окно «Система»
   if (q.get('place')) act('goto_place', q.get('place'));
   if (q.get('asm') === '1') togglePlayer(true);
   if (tp.on) setTP(true);

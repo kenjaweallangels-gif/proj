@@ -7,6 +7,7 @@ import { HOLO, LAYER_HOLO } from '../../engine/holo.js';
 import { painted } from '../../scene/materials.js';
 import { ease } from '../assembly_player.js';
 import { galleyMat as GM, textTexture } from '../tex.js';
+import { HoloMirror } from '../virtual.js';
 
 export { GM, painted, textTexture, ease };
 
@@ -174,16 +175,35 @@ export class Station {
     }
   }
 
-  /** Цель для плеера виртуальной сборки: заготовок нет — всё появляется по ходу переходов. */
+  /** Что на участке виртуально в плеере: детали, заготовки (st.workpieces) и то, что монтируется по шагам. */
+  virtualSources() {
+    const set = new Set([...this.items.values(), ...(this.workpieces || [])]);
+    for (const s of this.steps) for (const id of s.parts || []) { const o = this.machines?.get(id); if (o) set.add(o); }
+    return [...set];
+  }
+
+  /** Цель для плеера виртуальной сборки: реальных деталей и заготовок нет — изделие собирается из голограмм. */
   playerTarget() {
     const st = this;
+    let mirror = null, style = 'holo';
+    const flyIds = (i, f) => new Set(f > 0 && i < st.steps.length ? (st.steps[i].parts || []).map((id) => st.items.get(id) || st.machines?.get(id)).filter(Boolean) : []);
     return {
       name: `${st.short} · ${st.product}`,
       steps: st.steps.map((s) => ({ id: s.id, title: s.title })),
-      style: 'model',
-      begin() { st.showHolo(false); st.playing = true; },
-      apply(i, f) { st.apply(i, f); },
-      end() { st.playing = false; st.apply(st.index, 0); },
+      get style() { return style; },
+      setStyle(s) { style = s === 'glasses' ? 'glasses' : 'holo'; mirror?.setStyle(style); },
+      begin() {
+        st.showHolo(false); st.playing = true;
+        mirror ??= new HoloMirror(st.virtualSources());
+        mirror.setStyle(style);
+      },
+      apply(i, f) {
+        st.apply(i, f);
+        const fly = flyIds(i, f);
+        if (st.workpieces && i < st.steps.length && f > 0) st.workpieces.forEach((w) => fly.add(w));   // заготовка в работе
+        mirror.sync(fly);
+      },
+      end() { st.playing = false; mirror?.hide(); st.apply(st.index, 0); },
     };
   }
 }
