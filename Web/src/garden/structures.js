@@ -64,11 +64,12 @@ export function createStructures(game, { ground, rim, root, quality }) {
   const soilTex = soilTexture();
   const soilMat = fogPatch(new THREE.MeshStandardMaterial({ map: soilTex, roughness: 1, color: 0xd0c0b0, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }), 'gd-soil');
   const wnorm = waterNormalTexture(); wnorm.repeat.set(1, 1);
-  const waterMat = fogPatch(new THREE.MeshStandardMaterial({ color: 0x2f6c6a, roughness: 0.05, metalness: 0.0, transparent: true, opacity: 0.86, normalMap: wnorm, normalScale: new THREE.Vector2(0.5, 0.5), envMapIntensity: 1.4 }), 'gd-water');
+  const waterMat = fogPatch(new THREE.MeshStandardMaterial({ color: 0x2f6c6a, roughness: 0.03, metalness: 0.0, transparent: true, opacity: 0.88, normalMap: wnorm, normalScale: new THREE.Vector2(0.5, 0.5), envMapIntensity: 2.2 }), 'gd-water');
   const rockMat = createLevelRockMaterial({ band: 5.5, sand: 0.3 });
   const louverTex = louverTexture(); louverTex.wrapS = THREE.RepeatWrapping; louverTex.repeat.set(4, 1);
   const towerMat = fogPatch(new THREE.MeshStandardMaterial({ map: louverTex, roughness: 0.95, color: 0xffffff }), 'gd-tower');
   out.waterNormal = wnorm;
+  const snorm = wnorm.clone(); snorm.needsUpdate = true;          // отдельное смещение для падающей струи
 
   // ---------------- желоба ----------------
   function channelMeshes(ch, { wall = WALL.channelT, wh = WALL.channel, waterY = 0.17 } = {}) {
@@ -279,13 +280,13 @@ export function createStructures(game, { ground, rim, root, quality }) {
     const wg = new THREE.PlaneGeometry(2.5, 2.0); wg.rotateX(-Math.PI / 2); wg.translate(sx + 1.0, poolY + 0.3, SPOUT.z);
     const wm = new THREE.Mesh(wg, waterMat); wm.renderOrder = 2; add(wm); out.water.push(wm);
     // сама струя — две перекрёстные ленты с бегущей нормалью
-    const sMat = new THREE.MeshStandardMaterial({ color: 0xcfe8ee, roughness: 0.1, transparent: true, opacity: 0.55, normalMap: wnorm, normalScale: new THREE.Vector2(0.6, 0.6), side: THREE.DoubleSide, depthWrite: false });
+    const sMat = new THREE.MeshStandardMaterial({ color: 0xcfe8ee, roughness: 0.1, transparent: true, opacity: 0.55, normalMap: snorm, normalScale: new THREE.Vector2(0.6, 0.6), side: THREE.DoubleSide, depthWrite: false });
     fogPatch(sMat, 'gd-stream');
     const hFall = sy - poolY - 0.2;
     const stream = new THREE.Group();
     for (const a of [0, Math.PI / 2]) { const pg = new THREE.PlaneGeometry(0.22, hFall, 1, 6); const mm = new THREE.Mesh(pg, sMat); mm.rotation.y = a; stream.add(mm); }
     stream.position.set(sx, poolY + 0.2 + hFall / 2, SPOUT.z); stream.renderOrder = 3; root.add(stream);
-    out.stream = { mat: sMat, tex: wnorm };
+    out.stream = { mat: sMat, tex: snorm };
     out.drips.push({ x: sx, y: sy - 0.1, z: SPOUT.z + 0.35, h: sy - poolY - 0.3 });
     col({ type: 'box', c: new V3(sx + 1.0, poolY + 0.3, SPOUT.z), half: new V3(1.5, 0.3, 1.2), yaw: 0, tags: new Set(['basin']) });
   }
@@ -349,11 +350,50 @@ export function createStructures(game, { ground, rim, root, quality }) {
     out.dropState = out.drips.map((d, i) => ({ ...d, t: R() * 3, period: 0.9 + R() * 1.6, fall: 0, ring: -1, gy: 0 }));
     out.dropsMesh = drops; out.ringsMesh = rings;
   }
+  // ---------------- фонари: ночью светятся (эмиссия + ореол; без реальных источников — не пересобирают шейдеры сцены) ----------------
+  {
+    const spots = [[806.3, 391.2], [806.3, 401.4], [821.5, 392.2], [836.4, 404.6], [856.0, 401.3], [876.4, 395.4], [877.0, 404.2], [846.6, 394.6]];
+    const post = [], glass = [];
+    for (const [x, z] of spots) {
+      const y = ground(x, z);
+      post.push(boxGeo(x, y + 0.9, z, 0.12, 1.8, 0.12, 0, [0.35, 0.27, 0.2]));
+      post.push(boxGeo(x, y + 1.82, z, 0.3, 0.05, 0.3, 0, [0.3, 0.23, 0.17]));
+      glass.push([x, y + 1.62, z]);
+    }
+    add(finalize(post, stoneMat, 'LampPosts'));
+    const lg = new THREE.BoxGeometry(0.2, 0.3, 0.2);
+    const lampMat = new THREE.MeshStandardMaterial({ color: 0xffe0a0, emissive: 0xffa040, emissiveIntensity: 0, roughness: 0.4 }); fogPatch(lampMat, 'gd-lamp');
+    const lamps = new THREE.InstancedMesh(lg, lampMat, glass.length);
+    const m4 = new THREE.Matrix4();
+    glass.forEach((q, i) => { m4.makeTranslation(q[0], q[1], q[2]); lamps.setMatrixAt(i, m4); });
+    lamps.frustumCulled = false; root.add(lamps); out.meshes.push(lamps);
+    const hg = new THREE.PlaneGeometry(1.6, 1.6);
+    const haloMat = new THREE.MeshBasicMaterial({ color: 0xffb060, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, map: (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,200,120,1)'); gr.addColorStop(0.35, 'rgba(255,160,70,0.35)'); gr.addColorStop(1, 'rgba(255,120,40,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })() });
+    haloMat.fog = false;
+    const halos = new THREE.InstancedMesh(hg, haloMat, glass.length);
+    glass.forEach((q, i) => { m4.makeTranslation(q[0], q[1], q[2]); halos.setMatrixAt(i, m4); });
+    halos.frustumCulled = false; halos.renderOrder = 5; root.add(halos); out.meshes.push(halos);
+    out.lamps = { mat: lampMat, halo: haloMat, mesh: halos, pos: glass, k: 0 };
+  }
   out.update = (dt, t, camPos) => {
     // течение: смещаем текстуру нормали (общая на всех водах)
-    wnorm.offset.x = (wnorm.offset.x + dt * 0.12) % 1; wnorm.offset.y = (wnorm.offset.y + dt * 0.03) % 1;
+    // вода течёт по ходу желоба (u растёт вдоль течения): узор сдвигается к большим u, значит смещение уменьшаем
+    wnorm.offset.x = (wnorm.offset.x - dt * 0.16 + 1) % 1; wnorm.offset.y = (wnorm.offset.y + dt * 0.02) % 1;
     if (out.stream) out.stream.tex.offset.y = (out.stream.tex.offset.y - dt * 1.4) % 1;
     for (const tw of out.towers) { tw.vane[0].rotation.y += dt * 0.35; tw.vane[1].rotation.y += dt * 0.35; }
+    if (out.lamps) {
+      const se = game.weather?.sunElev;
+      const k = se === undefined ? 0 : 1 - smoothstep(-3, 7, se);
+      if (Math.abs(k - out.lamps.k) > 0.004) {
+        out.lamps.k = k; out.lamps.mat.emissiveIntensity = 3.2 * k; out.lamps.halo.opacity = 0.75 * k; out.lamps.mesh.visible = k > 0.01;
+      }
+      if (out.lamps.mesh.visible) {
+        // ореолы смотрят в камеру
+        const mm = new THREE.Matrix4(), qq = new THREE.Quaternion().copy(game.camera.quaternion), pp = new V3(), sc = new V3(1, 1, 1);
+        out.lamps.pos.forEach((q, i) => { mm.compose(pp.set(q[0], q[1], q[2]), qq, sc); out.lamps.mesh.setMatrixAt(i, mm); });
+        out.lamps.mesh.instanceMatrix.needsUpdate = true;
+      }
+    }
     // капли
     const m4 = new THREE.Matrix4(), p = new V3(), q = new THREE.Quaternion(), sc = new V3(1, 1, 1), scR = new V3(1, 1, 1);
     let nd = 0, nr = 0;

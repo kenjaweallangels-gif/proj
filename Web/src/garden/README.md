@@ -38,7 +38,7 @@
 
 ## API `game.garden`
 - `zoneAt(pos)` → `'C1_Garden'` | `null`, `shelterAt(pos)` 0..1, `sheltered`, `walkable(x,z)`, `groundAt(x,z)` (земля без стенок), `faceAt(z)`, `surfaceKind(x,z)`.
-- `field`, `grid`, `ground` (меш пола), `mouth`, `flora`, `fauna` (`mice[]`, `hawks[]`, `owl`, `lizards[]`, `beetles`, `fox`), `people`, `structures`, `rim`, `volume`, `perf {ms, avg, max}` (CPU мс `update()`), `stats`.
+- `field`, `grid`, `ground(x,z)` (= `groundAt`), `groundMesh` (меш пола), `mouth`, `flora`, `fauna` (`mice[]`, `hawks[]`, `owl`, `lizards[]`, `beetles`, `fox`), `people`, `structures`, `rim`, `volume`, `perf {ms, avg, max}` (CPU мс `update()`), `stats`.
 - Шина: `garden:enter {x,z}` / `garden:leave {x,z}`; `garden:animal {kind, event, x, y, z}`.
 - Мир: `world.heightAt`, `world.surfaceAt`, `world.collide` (контур Когтя + SDF гребней; **без** страховочного круга — выйти из котловины можно по оврагу или по гребню), `world.addGroundPatch` (дно −0.3 м), `world.addRockHole`, `world.addPassage`.
 

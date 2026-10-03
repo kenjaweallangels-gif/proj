@@ -84,7 +84,7 @@ if (only.includes('mismatch')) {
       const hp = g.world.heightAt(x, z, 1e3);          // «верх» колонки — только для точек в котловине без скал над головой
       const gy = G.groundAt(x, z);
       rc.set(new T.Vector3(x, gy + 3, z), dir); rc.far = 10;
-      const hit = rc.intersectObject(G.ground, false)[0];
+      const hit = rc.intersectObject(G.groundMesh, false)[0];
       n++;
       if (!hit) { miss++; continue; }
       const dy = Math.abs(hit.point.y - g.world.heightAt(x, z, gy + 0.3));

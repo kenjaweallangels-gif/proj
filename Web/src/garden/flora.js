@@ -44,8 +44,8 @@ export function createFlora(game, { ground, faceAt, root, quality, towerSites = 
 
   const grass = grassG.map((g) => mkGroup([{ geo: g, mat: grassMat }], 62, false, 14, 'grass'));
   const dune = duneG.map((g) => mkGroup([{ geo: g, mat: duneMat }], 80, false, 16, 'dunegrass'));
-  const creo = creoG.map((g) => mkGroup([{ geo: g.leaf, mat: creoMat }, { geo: g.wood, mat: woodMat }], 95, true, 20, 'creosote'));
-  const salt = saltG.map((g) => mkGroup([{ geo: g.leaf, mat: saltMat }, { geo: g.wood, mat: woodMat }], 95, true, 20, 'saltbush'));
+  const creo = creoG.map((g) => mkGroup([{ geo: g.leaf, mat: creoMat }, { geo: g.wood, mat: woodMat }], 95, false, 20, 'creosote'));
+  const salt = saltG.map((g) => mkGroup([{ geo: g.leaf, mat: saltMat }, { geo: g.wood, mat: woodMat }], 95, false, 20, 'saltbush'));
   const tama = tamaG.map((g) => mkGroup([{ geo: g.leaf, mat: tamaMat }, { geo: g.wood, mat: woodMat }], 170, true, 28, 'tamarisk'));
   const aca = acaG.map((g) => mkGroup([{ geo: g.leaf, mat: acaMat }, { geo: g.wood, mat: woodMat }], 170, true, 28, 'acacia'));
   const palms = palmG.map((g) => mkGroup([{ geo: g.trunk, mat: barkMat }, { geo: g.fronds, mat: palmMat }], 260, true, 40, 'palm'));

@@ -14,6 +14,7 @@ import { createMouth } from './mouth.js';
 import { createFlora } from './flora.js';
 import { createFauna } from './fauna.js';
 import { createPeople } from './people.js';
+import { createLife } from './life.js';
 import { GWIND } from './plants.js';
 import { buildWallTable } from '../level/wall.js';
 import { createLevelRockMaterial, geometryFromMesh } from '../level/rockmat.js';
@@ -109,6 +110,7 @@ export function create(game) {
   const flora = createFlora(game, { ground: groundBase, faceAt, root, quality });
   const fauna = createFauna(game, { ground: groundTop, flora, walkable, root, quality });
   const people = createPeople(game, { ground: groundTop, root, quality, walkable, fauna });
+  const life = createLife(game, { root, flora, structures, quality });
 
   // ---------- проходы и отверстия в скале ----------
   const nativePassage = typeof world.addPassage === 'function';
@@ -138,7 +140,7 @@ export function create(game) {
   let flT = 0, firstRefresh = true;
   const perf = { ms: 0, avg: 0, n: 0, max: 0, first: 0 };
   const api = {
-    root, rim: rimMesh, ground: gm.mesh, structures, mouth, flora, fauna, people, volume: vol, FLOOR_Y, center: C, field, grid, perf,
+    root, rim: rimMesh, life, ground: groundBase, groundMesh: gm.mesh, structures, mouth, flora, fauna, people, volume: vol, FLOOR_Y, center: C, field, grid, perf,
     hasGroundPatch: true,
     zoneAt,
     /** 0..1: насколько точка защищена от ветра и песка (в котловине ≈ 0.85, у устья/на краю меньше; в овраге — меньше). */
@@ -174,6 +176,7 @@ export function create(game) {
       structures.update(dt, t, cam);
       fauna.update(dt, t);
       people.update(dt, t, p || { x: 0, y: 0, z: 0 });
+      life.update(dt, t, cam, p, groundTop);
       const ms = performance.now() - tp;
       if (!perf.first) perf.first = ms;
       perf.ms = ms; perf.n++; perf.avg += (ms - perf.avg) / Math.min(perf.n, 120); if (ms > perf.max) perf.max = ms;
