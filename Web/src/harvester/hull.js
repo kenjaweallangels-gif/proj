@@ -137,7 +137,7 @@ export function buildHarvester(quality) {
   // ======================================================== НИЖНИЙ КОРПУС (оболочка с дверью)
   const zA = HA.z;
   P.box((HA.x0 + HA.x1) / 2, (HA.y0 + FA) / 2, 0, HA.x1 - HA.x0, FA - HA.y0, 2 * zA, LOW2, 0);                       // днище
-  slabHole(P, HA.x0, HA.x1, -zA, zA, CA, FB, { x0: -6.8, x1: 8.8, z0: 0.2, z1: 3.8 }, LOW, 0);                    // перекрытие + лестничный проём
+  slabHole(P, HA.x0, HA.x1, -zA, zA, CA, FB, { x0: -6.8, x1: 7.9, z0: 0.2, z1: 3.8 }, LOW, 0);                    // перекрытие + лестничный проём
   wallX(P, -zA + T / 2, HA.x0, HA.x1, HA.y0, FB, T, LOW, 0);
   wallX(P, zA - T / 2, HA.x0, HA.x1, HA.y0, FB, T, LOW, 0, [{ a0: DOOR.x0, a1: DOOR.x1, b0: DOOR.y0, b1: DOOR.y1 }]);
   wallZ(P, HA.x0 + T / 2, -zA + T, zA - T, HA.y0, FB, T, LOW, 0);
@@ -564,7 +564,6 @@ export function buildHarvester(quality) {
     { k: 'sigil', c: [-15, TB + 0.06, 0], n: '+y', w: 9, h: 9, rot: 0.0 },
     { k: 'num', c: [-15, TB + 0.06, 12], n: '+y', w: 8, h: 3 },
     { k: 'num', c: [-34, 29.65, 0], n: '+y', w: 12, h: 4.5, rot: Math.PI / 2 },
-    { k: 'warn', c: [26.5, FB + 0.02, 12], n: '+y', w: 2.2, h: 2.2 },
     { k: 'glyphs', c: [-9, 12.0, 20.6], n: '+z', w: 5, h: 2.4 },
   );
 
@@ -723,21 +722,24 @@ export function buildHarvester(quality) {
   const FAR = new Parts(909);
   {
     for (const u of UNITS) FAR.box(u.x, 4.7, u.z, 32, 9.4, TRK.width, '#2b2926', 2);
-    FAR.box(-7.5, 13.65, 0, 87, 7.7, 40, HULL, 0);
+    FAR.box(-7.5, 13.85, 0, 87, 8.1, 40.4, LOW, 0);
     FAR.box(-7, 8.6, 0, 92, 2.5, 30, SLATE, 1);
-    FAR.box(-15, 20.75, 0, 58, 6.5, 33, HULL2, 0);
-    FAR.box(-34, 26.7, 0, 20, 5.2, 25, HULL, 0);
-    FAR.box(29, 20.0, 12.75, 16, 5.0, 12.5, HULL2, 0);
-    FAR.box(30, 25.2, 13, 13, 5, 11.2, CREAM, 0);
-    FAR.box(29, 21.5, -13, 18, 8.0, 12, HULL, 0);
+    FAR.box(-15, 21, 0, 58, 6.2, 33, HULL, 0);
+    for (const s of [-1, 1]) FAR.prismX([[s * 16.5, FB], [s * 20.15, FB], [s * 20.15, FB + 0.6], [s * 16.5, FB + 4.2]], -43.5, 1.5, LOW, 0);
+    FAR.box(-34, 26.7, 0, 20, 5.2, 25, '#5d7d76', 0);
+    FAR.box(29, 20.4, 12.75, 16, 5, 12.5, HULL2, 0);
+    FAR.box(31, 25.3, 13, 13.4, 4.7, 10.6, CREAM, 0);
+    FAR.box(29, 21.9, -13, 18, 8.0, 12, HULL, 0);
     for (const [tx, tz] of TOWERS) FAR.cyl(tx, 29, tz, 5.8, 6.6, 9, HULL3, 0, { seg: 14 });
     for (const [sx, ty, sz] of STACKS) FAR.cyl(sx, (ty + 18) / 2, sz, 1.5, 1.7, ty - 18, '#4b4640', 3, { seg: 8 });
-    FAR.box(23, 23.5, -2, 28, 0.9, 7, HULL2, 0, { rz: 0.45 });
-    FAR.prism([[36, 17.5], [36, 9.8], [41.6, 9.8]], 0, 40, HULL2, 0);
+    FAR.box(23, 24.2, 0, 28, 0.9, 7, HULL2, 0, { rz: 0.45 });
+    FAR.box(26, 29, 0, 1.4, 31, 1.4, HULL2, 0); FAR.box(26, 34.1, 0, 2.2, 1.4, 14, HULL, 0);
+    FAR.prism([[36, FB], [36, 9.8], [41.6, 9.8]], 0, 40, LOW2, 0);
     FAR.box(48.5, 7.4, 0, 17.5, 0.7, 40, HULL2, 3, { rz: -0.37 });
     FAR.box(46.5, 10.5, 0, 19.5, 0.6, 40, HULL, 0, { rz: 0.3 });
     for (const s of [-1, 1]) FAR.prism([[56.5, -0.8], [56.5, 9.8], [37, 15.6], [37, 6], [40.5, 5.8]], s * 19.8, 0.7, HULL, 0);
     FAR.box(-54.5, 14.4, 0, 3, 7.4, 38, SLATE, 1);
+    FAR.box(25.5, 7.4, 25.6, 22, 0.5, 2.8, STEEL, 1, { rz: -0.29 });
   }
   const far = FAR.merge();
 

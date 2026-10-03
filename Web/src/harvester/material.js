@@ -88,7 +88,7 @@ const FRAG_COLOR = /* glsl */`
   float n1 = 0.55, n2 = 0.5, n3 = 0.5, dirt = 0.35, chip = 0.0, oil = 0.0, scour = 0.0;
   float low = smoothstep(16.0, 5.0, vLP.y);
   vec3 sand = vec3(0.62, 0.46, 0.28);
-  if (dist < 320.0) {
+  if (dist < 170.0) {
   // --- грязь, масляные потёки, ржавчина
   n1 = rkFbm(uv * 0.45 + ax * 9.0 + vLP.x * 0.05);
   n2 = rkFbm(uv * 2.3 + 3.0 + ax * 5.0);
@@ -114,8 +114,11 @@ const FRAG_COLOR = /* glsl */`
   if (tag != 2) base = mix(base, vec3(0.38, 0.34, 0.30), scour * 0.5 * uWear);
   base = mix(base, sand * (0.8 + 0.4 * n2), low * (0.2 + 0.3 * n1) * uWear);
   } else {
-    base = mix(base, base * vec3(0.62, 0.54, 0.46), 0.2);
-    base = mix(base, sand * 0.8, low * 0.25);
+    float nf = rkNoise(uv * 0.25 + ax * 5.0);
+    n1 = nf; n2 = nf; dirt = 0.4;
+    base = mix(base, base * vec3(0.62, 0.54, 0.46), 0.2 + 0.25 * nf);
+    base = mix(base, sand * 0.8, low * (0.14 + 0.25 * nf));
+    scour = low * 0.5;
   }
   // --- сигнальные полосы
   if (tag == 4) {
@@ -138,7 +141,7 @@ const FRAG_COLOR = /* glsl */`
   }
   base *= 1.0 - 0.25 * (1.0 - lod2) * 0.0;
 #ifdef HV_TEX
-  float tpK = (1.0 - smoothstep(60.0, 320.0, dist)) * uHTexK.x * (tag == 4 ? 0.3 : (tag == 6 ? 0.0 : 1.0));
+  float tpK = (1.0 - smoothstep(40.0, 190.0, dist)) * uHTexK.x * (tag == 4 ? 0.3 : (tag == 6 ? 0.0 : 1.0));
   if (tpK > 0.002) {
     tpHEval(vLP, N);
     base *= mix(vec3(1.0), clamp(tpHMul, 0.8, 1.22), tpK * uHTexK.y * (tag == 2 ? 0.5 : 1.0));

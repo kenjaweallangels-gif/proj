@@ -35,9 +35,12 @@ export class Parts {
     const col = new Float32Array(n * 3), tg = new Float32Array(n);
     const bake = this.bake, pa = g.getAttribute('position'), na = g.getAttribute('normal');
     for (let i = 0; i < n; i++) {
-      let m = k;
-      if (bake) m *= bake(pa.getX(i), pa.getY(i), pa.getZ(i), na.getX(i), na.getY(i), na.getZ(i));
-      col[i * 3] = _c.r * m; col[i * 3 + 1] = _c.g * m; col[i * 3 + 2] = _c.b * m; tg[i] = tag;
+      let mr = k, mg = k, mb = k;
+      if (bake) {
+        const bk = bake(pa.getX(i), pa.getY(i), pa.getZ(i), na.getX(i), na.getY(i), na.getZ(i));
+        if (typeof bk === 'number') { mr *= bk; mg *= bk; mb *= bk; } else { mr *= bk[0]; mg *= bk[1]; mb *= bk[2]; }
+      }
+      col[i * 3] = _c.r * mr; col[i * 3 + 1] = _c.g * mg; col[i * 3 + 2] = _c.b * mb; tg[i] = tag;
     }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     g.setAttribute('aTag', new THREE.BufferAttribute(tg, 1));
