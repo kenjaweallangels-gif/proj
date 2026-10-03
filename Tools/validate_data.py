@@ -45,11 +45,13 @@ WEATHER = {"Dawn_Ridge", "Morning_Erg", "Worm_Tension", "Worm_Reveal", "Noon_App
            "Crevice_Shade", "Sietch_Interior", "Hall_Ritual"}
 CINEMATICS = {"/Game/Rakis/Cinematics/LS_WormReveal", "/Game/Rakis/Cinematics/LS_HallFinale"}
 ACTIONS = {"PlayDialogue", "PlayCinematic", "SetWeather", "SetMusic", "TitleCard", "ForceWorm", "CrowdRitual",
-           "Hint", "FadeOut", "EndDemo", "Ellipsis"}
+           "Hint", "FadeOut", "EndDemo"}  # Ellipsis (склейки времени) убран: всё в реальном времени
 LORE_IDS = ["LORE_Carving_Fremen", "LORE_Quizarate_Sigil", "LORE_Revivalist_Mural", "LORE_Cistern_Grate",
             "LORE_Thumper_Rack", "LORE_Shiana_Shrine", "LORE_Water_Rings", "LORE_Maker_Hooks"]
 # Словарь Condition диалогов: триггеры StoryBeats + реактивные условия компаньонов (docs/design/mechanics.md §6)
 COND_PREFIX = {"WormState", "ZoneEnter", "Beat", "Interact", "NoiseAbove", "SandWalk", "Surface", "MoistureBelow"}
+# Зоны браузерной версии, которых пока нет в ERakisZone (тропа по скале, щель-вход, сад).
+WEB_ZONES = {"A5_Trail", "A6_Cleft", "C1_Garden"}
 SANDWALK = {"Regular", "Irregular"}
 
 CSV_TO_STRUCT = {
@@ -375,7 +377,7 @@ def main(argv=None) -> int:
     rep = Report()
     structs = parse_structs(H_DATA)
     enums = parse_enums(H_TYPES)
-    ctx = {"enums": enums, "zones": [z for z in enums["ERakisZone"] if z != "None"]}
+    ctx = {"enums": enums, "zones": [z for z in enums["ERakisZone"] if z != "None"] + sorted(WEB_ZONES)}
     files = sorted(f for f in os.listdir(DATA) if f.lower().endswith(".csv")) if os.path.isdir(DATA) else []
     if not files:
         rep.err("Data", f"нет CSV в {DATA}")

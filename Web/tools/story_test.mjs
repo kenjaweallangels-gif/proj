@@ -1,6 +1,6 @@
 // Проверка сюжетного директора и диалогов в headless Chromium (на заглушках остальных модулей):
 //  1) Start → титр → цепочка DLG_A1_001..004 → Hint → бит-цепочка по Beat:*;
-//  2) Эллипсис A2: игрок «идёт» к цели → затемнение → телепорт → Beat:SB_A1_06 → отложенные ZoneEnter;
+//  2) Реалтайм: нет склеек, PlayCinematic без game.cinematic, виртуальные зоны тропа/щель/сад;
 //  3) очередь без наложений, условия, лай, лор.
 // node tools/story_test.mjs [--file=ui.html]
 import { chromium } from 'playwright';
@@ -21,6 +21,7 @@ const page = await browser.newPage({ viewport: { width: 640, height: 360 } });
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
+page.on('crash', () => console.error('PAGE CRASH'));
 await page.goto(`file://${join(root, 'dist', arg('file', 'ui.html'))}?autotest=1&q=low&lang=RU`);
 await page.waitForFunction(() => window.__rakis?.story, null, { timeout: 120000 });
 
@@ -50,30 +51,55 @@ ok(r.title.length > 0 && /Ракис/.test(r.title[0]), `TitleCard RU выбра
 ok(r.log.some((l) => /subtitle/.test(l)), 'субтитр пошёл');
 await page.waitForFunction(() => window.__rakis.story.isCompleted('SB_A1_04_Hint'), null, { timeout: 120000 });
 r = await page.evaluate(() => ({ hint: window.__rakis.__hint, completed: window.__rakis.story.beats.filter((b) => b.completed).map((b) => b.id), log: window.__log.filter((l) => l[1] === 'line:end').map((l) => l.join(' ')) }));
-ok(r.hint.length === 1 && /Alt/.test(r.hint[0]), 'Hint показан после цепочки DLG_A1_001');
+ok(r.hint.length === 1 && /C \/ LB|Alt/.test(r.hint[0]), 'Hint показан после цепочки DLG_A1_001');
 ok(r.log.length >= 4, `реплики цепочки завершились по порядку: ${r.log.join(' | ')}`);
 
-// 2. Эллипсис A2
-await page.waitForFunction(() => window.__rakis.story.ellipsisPhase !== 'none', null, { timeout: 120000 }).catch(() => {});
-const ph = await page.evaluate(() => window.__rakis.story.ellipsisPhase);
-ok(ph !== 'none', `эллипсис предложен/идёт (phase=${ph})`);
-await page.waitForFunction(() => window.__rakis.story.isCompleted('SB_A1_06_EllipsisA2'), null, { timeout: 120000 });
-r = await page.evaluate(() => ({ tp: window.__rakis.__tp, pos: window.__rakis.player.position.toArray(), cards: window.__rakis.__title, locked: window.__rakis.__locked, wx: window.__rakis.__weather }));
-ok(r.tp && Math.abs(r.tp[0] - 240) < 0.1, `игрок перенесён к A2: ${JSON.stringify(r.tp)}`);
-await page.waitForFunction(() => window.__rakis.story.ellipsisPhase === 'none', null, { timeout: 60000 });
-r = await page.evaluate(() => ({ locked: window.__rakis.__locked, log: window.__log.filter((l) => l[1] === 'zone').map((l) => l.join(' ')), fired: window.__rakis.story.beats.filter((b) => b.fired).map((b) => b.id) }));
-ok(r.locked === false, 'ввод разблокирован после склейки');
-ok(r.fired.includes('SB_A2_00_Title') && r.fired.includes('SB_A2_10_Tension'), 'биты зоны прибытия ZoneEnter:A2_Erg исполнены после склейки');
-console.log('zone events:', r.log.join(' | '));
+// 2. Реалтайм: никаких склеек/карточек времени, виртуальные зоны тропы/щели, PlayCinematic не трогает game.cinematic
+r = await page.evaluate(async () => {
+  const g = window.__rakis, st = g.story;
+  g.__walk = false;
+  const hasEll = st.beats.some((b) => b.action === 'Ellipsis');
+  const cards = g.__title.slice();
+  g.ui.cutCard = () => { g.__cut = true; };
+  // PlayCinematic: реалтайм-последовательность через Promise модуля; game.cinematic остаётся false
+  let cinSeen = false; g.bus.on('cinematic', () => { cinSeen = true; });
+  let resolveReveal; g.worm.playReveal = () => new Promise((r) => { resolveReveal = r; });
+  st.playCinematic('LS_WormReveal');
+  await new Promise((r) => setTimeout(r, 200));
+  const during = { cin: g.cinematic.active, seen: cinSeen };
+  resolveReveal();
+  await new Promise((r) => setTimeout(r, 100));
+  // тропа: подножие → подъём → щель
+  const fired = (id) => st.isFired(id);
+  const P = g.player.position, T = (x, y, z) => { P.set(x, y, z); };
+  g.timeScale = 1;
+  // headless-рендер медленный: ждём по условию (до 40 с), а не фиксированное время
+  const until = async (f, ms = 40000) => { const t0 = performance.now(); while (!f() && performance.now() - t0 < ms) await new Promise((r) => setTimeout(r, 100)); return f(); };
+  const hold = (x, y, z) => { g.__hold = [x, y, z]; };
+  const pu = g.player.update?.bind(g.player); g.player.update = (...a) => { pu?.(...a); if (g.__hold) P.set(...g.__hold); };   // удерживаем позицию после физики игрока
+  hold(606, g.heightAt(606, 300), 300); await new Promise((r) => setTimeout(r, 2500));
+  const beforeTrail = fired('SB_A5_02_Climb');
+  hold(630, g.heightAt(630, 275) + 8, 275); const onTrail = await until(() => fired('SB_A5_02_Climb'));
+  hold(645, 30, 251); const cleft = await until(() => fired('SB_A6_00_Cleft'));
+  hold(840, 4, 395); const garden = await until(() => fired('SB_C1_03_Plants'));
+  return { hasEll, cards, during, beforeTrail, onTrail, cleft, garden, cut: !!g.__cut, cin: g.cinematic.active };
+});
+ok(!r.hasEll, 'в StoryBeats нет действий Ellipsis');
+ok(!r.cards.some((t) => /спустя|later/i.test(t)) && !r.cut, `нет карточек «N часов спустя»: ${JSON.stringify(r.cards)}`);
+ok(!r.during.cin && !r.during.seen && !r.cin, 'PlayCinematic не включает game.cinematic');
+ok(!r.beforeTrail && r.onTrail, `ZoneEnter:A5_Trail по положению на тропе (до: ${r.beforeTrail}, на тропе: ${r.onTrail})`);
+ok(r.cleft, 'A6_Cleft: обнаружение щели у входа');
+ok(r.garden, 'C1_Garden: сюжет сада по положению (без game.garden — геометрия)');
 
 // 3. Диалоги: очередь, условия, лай, лор
 r = await page.evaluate(async () => {
   const g = window.__rakis, d = g.dialogue; d.stopAll(); g.timeScale = 20;
+  g.__hold = null; g.player.position.set(240, 0, 83); g.zone = 'A2_Erg';
+  const cond = { zone: d.isConditionMet('ZoneEnter:A2_Erg'), noise: d.isConditionMet('NoiseAbove:5'), worm: d.isConditionMet('WormState:Dormant'), moist: d.isConditionMet('MoistureBelow:2') };
   const order = [];
   g.bus.on('subtitle', (s) => s.kind === 'line' && order.push(s.id));
   const p1 = d.play('DLG_A2_001'), p2 = d.play('DLG_A3_003'); // две цепочки подряд
   await Promise.all([p1, p2]);
-  const cond = { zone: d.isConditionMet('ZoneEnter:A2_Erg'), noise: d.isConditionMet('NoiseAbove:5'), worm: d.isConditionMet('WormState:Dormant'), moist: d.isConditionMet('MoistureBelow:2') };
   // условие в середине цепочки: DLG_WRM_P01 → P02 (без условий) и первая реплика с условием играет всегда
   const first = []; g.bus.on('subtitle', (s) => first.push(s.id));
   await d.play('DLG_WRM_L01');

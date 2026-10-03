@@ -1,6 +1,6 @@
 // Реакции спутников и бантер (в UE это делают компаньоны через IsConditionMet + PlayLine).
 // Здесь — лёгкий планировщик: обучающие реплики (походка/поверхность), бантер по зонам, реплики на состояния червя.
-// Играет только в «тишине»: нет кат-сцены, склейки, сюжетной реплики; каждая цепочка — один раз.
+// Играет только в «тишине»: нет сюжетной реплики; каждая цепочка — один раз.
 export function createReactions(game, story) {
   const { bus } = game;
   const played = new Set();
@@ -33,7 +33,7 @@ export function createReactions(game, story) {
     { id: 'DLG_A2_B14', gap: 20, hold: 2, test: () => inZone('A2_Erg', 20) && calm() && p()?.moisture < 0.35 },
     { id: 'DLG_A2_B15', gap: 24, hold: 0, test: () => inZone('A2_Erg', 70) && calm() && played.has('DLG_A2_B07') },
     // Коготь
-    { id: 'DLG_A3_030', gap: 25, hold: 0, test: () => inZone('A3_Approach', 22) && (story.isCompleted('SB_A3_02_Ossana') || story.isCompleted('SB_A3_G1_Ossana')) },
+    { id: 'DLG_A3_030', gap: 25, hold: 0, test: () => inZone('A3_Approach', 22) && story.isCompleted('SB_A3_02_Ossana') },
     { id: 'DLG_A3_040', gap: 25, hold: 0, test: () => inZone('A3_Approach', 50) && played.has('DLG_A3_030') },
     // сиетч
     { id: 'DLG_B2_B01', gap: 18, hold: 0, test: () => inZone('B2_Gallery', 12) },
@@ -58,8 +58,7 @@ export function createReactions(game, story) {
       if (acc < 0.5) return;
       const step = acc; acc = 0;
       const d = game.dialogue;
-      const phase = story.ellipsisPhase;
-      if (!story.started || !d || d.isBusy || game.cinematic?.active || game.ui?.blocking || (phase !== 'none' && phase !== 'offer') || story.ended) {
+      if (!story.started || !d || d.isBusy || game.cinematic?.active || game.ui?.blocking || story.ended) {
         for (const k in sustain) sustain[k] = 0;
         return;
       }

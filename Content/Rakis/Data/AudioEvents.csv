@@ -57,3 +57,7 @@ UI.TitleCard,UI:TitleCard,/Game/Rakis/Audio/UI/SW_UI_TitleCard,UI,,10,0.35,True
 UI.Interact,UI:Interact,/Game/Rakis/Audio/UI/SW_UI_Interact,UI,,10,0.2,True
 UI.Pause,UI:Pause,/Game/Rakis/Audio/UI/SW_UI_Pause,UI,,10,0.3,True
 UI.PhotoShutter,UI:Photo,/Game/Rakis/Audio/UI/SW_UI_PhotoShutter,UI,,10,0.3,True
+Amb.A5_Trail,ZoneEnter:A5_Trail,/Game/Rakis/Audio/MetaSounds/MS_Amb_Desert,Ambience,,90,0.7,True
+Amb.A6_Cleft,ZoneEnter:A6_Cleft,/Game/Rakis/Audio/MetaSounds/MS_Amb_Sietch,Ambience,,90,0.5,True
+Amb.C1_Garden,ZoneEnter:C1_Garden,/Game/Rakis/Audio/MetaSounds/MS_Amb_Garden,Ambience,,90,0.8,True
+Harvester.Devour,Event:worm:devour,/Game/Rakis/Audio/SFX/Worm/SC_Harvester_Devour,SFX,/Game/Rakis/Audio/Attenuation/ATT_Worm_Huge,110,1.0,False

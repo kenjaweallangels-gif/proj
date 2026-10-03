@@ -80,13 +80,32 @@ export function createMenus(game, root, ctx) {
   const capEl = el('div', 'cap', menu);
   const list = el('div', 'list', menu);
   const legend = el('div', 'legend', menu);
-  let items = [], sel = 0;
+  let items = [], sel = 0, view = 'main';   // view: 'main' | 'scenarios'
 
   const volBar = (name) => ({ bar: () => S.volume[name], step: (d) => setVol(name, S.volume[name] + d * 0.1), set: (v) => setVol(name, v) });
+  // Сценарии: запуск отдельных сцен и быстрые переходы для тестирования. Меню закрывается, затем действие выполняется.
+  const SCENARIOS = [
+    { id: 'devour', ru: 'Червь пожирает харвестер', en: 'The worm takes the harvester', run: () => game.debug?.devour?.() },
+  ];
+  const TRAVEL = [
+    ['start', 'Старт · гребень', 'Start · the ridge'], ['erg', 'Эрг', 'The erg'], ['trail', 'Тропа по уступам', 'Ledge trail'],
+    ['cleft', 'Скрытая щель', 'Hidden cleft'], ['market', 'Рынок сиетча', 'Sietch market'], ['hall', 'Зал собраний', 'Assembly hall'],
+    ['garden', 'Тайный сад', 'Hidden garden'],
+  ];
+  function runAndClose(fn) { view = 'main'; ctx.actions.resume(); setTimeout(() => { try { fn(); } catch (e) { console.error('[menu] сценарий:', e); } }, 60); }
+  function buildScenarioItems() {
+    items = [
+      { id: 'back', label: tr('← Назад', '← Back'), act: () => { view = 'main'; sel = 0; renderPause(); } },
+      ...SCENARIOS.map((sc) => ({ id: `sc_${sc.id}`, label: tr(sc.ru, sc.en), act: () => runAndClose(sc.run) })),
+      ...TRAVEL.map(([id, ru, en]) => ({ id: `go_${id}`, label: tr('Перейти: ', 'Go to: ') + tr(ru, en), act: () => runAndClose(() => game.debug?.goto?.(id)) })),
+    ];
+  }
   function buildItems() {
+    if (view === 'scenarios') { buildScenarioItems(); return; }
     items = [
       { id: 'resume', label: tr('Продолжить', 'Resume'), act: () => ctx.actions.resume() },
       { id: 'photo', label: tr('Фоторежим', 'Photo mode'), act: () => ctx.actions.photo() },
+      { id: 'scenarios', label: tr('Сценарии / Scenarios', 'Scenarios / Сценарии'), act: () => { view = 'scenarios'; sel = 1; renderPause(); } },
       { id: 'lang', label: tr('Язык', 'Language'), val: () => (game.lang === 'RU' ? 'Русский' : 'English'), step: () => setLang(game, game.lang === 'RU' ? 'EN' : 'RU') },
       { id: 'subs', label: tr('Субтитры', 'Subtitles'), val: () => S.subSize + (S.subBg ? tr(' · подложка', ' · backing') : ''), step: (d) => cycleSubs(d) },
       { id: 'wx', label: tr('Погода и время', 'Weather & time'), act: () => ctx.actions.weather?.() },
@@ -101,7 +120,7 @@ export function createMenus(game, root, ctx) {
   }
   function renderPause() {
     buildItems();
-    capEl.textContent = tr('Пауза', 'Paused');
+    capEl.textContent = view === 'scenarios' ? tr('Сценарии', 'Scenarios') : tr('Пауза', 'Paused');
     list.innerHTML = '';
     items.forEach((it, i) => {
       const row = el('div', `item${i === sel ? ' sel' : ''}`, list);
@@ -125,7 +144,7 @@ export function createMenus(game, root, ctx) {
     else if (it.step) { it.step(dir); renderPause(); }
   }
   function openPause() {
-    sel = 0; pause.classList.remove('wxonly'); renderPause();
+    sel = 0; view = 'main'; pause.classList.remove('wxonly'); renderPause();
     pause.classList.remove('closing'); pause.classList.add('on');
     void pause.offsetWidth; pause.classList.add('vis');
   }
@@ -203,7 +222,7 @@ export function createMenus(game, root, ctx) {
       const edge = now[k] && !padPrev[k];
       const rep = now[k] && padRepeat <= 0 && (k === 'up' || k === 'down');
       if (edge || rep) {
-        if (k === 'back') { if (ctx.wxOpen) ctx.actions.weatherToggle?.(); else if (ctx.pauseOpen) ctx.actions.resume(); }
+        if (k === 'back') { if (ctx.wxOpen) ctx.actions.weatherToggle?.(); else if (ctx.pauseOpen && !back()) ctx.actions.resume(); }
         else nav(k);
         padRepeat = edge ? 0.35 : 0.12;
       }
@@ -215,5 +234,7 @@ export function createMenus(game, root, ctx) {
   if (!ctx.titleVisible) title.style.display = 'none';
   game.bus.on('lang', () => { renderTitle(); if (ctx.pauseOpen) renderPause(); });
   function setWxMode(on) { pause.classList.toggle('wxonly', !!on); }
-  return { setWxMode, openPause, closePause, hideTitle, showEnd, renderTitle, renderPause, pollPad, nav, el: { title, pause, endEl } };
+  /** Esc / B в подменю — назад к паузе. true, если подменю было открыто. */
+  function back() { if (view === 'main') return false; view = 'main'; sel = 0; renderPause(); return true; }
+  return { back, setWxMode, openPause, closePause, hideTitle, showEnd, renderTitle, renderPause, pollPad, nav, el: { title, pause, endEl } };
 }
