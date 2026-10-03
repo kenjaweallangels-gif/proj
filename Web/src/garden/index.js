@@ -19,6 +19,7 @@ import { GWIND } from './plants.js';
 import { buildWallTable } from '../level/wall.js';
 import { createLevelRockMaterial, geometryFromMesh } from '../level/rockmat.js';
 import { buildClawGeometry } from '../desert/rock.js';
+import { solidSdf } from '../desert/field.js';
 import { smoothstep, lerp, clamp } from '../core/util.js';
 
 const V3 = THREE.Vector3;
@@ -97,6 +98,33 @@ export function create(game) {
   const inBasin = (x, z, m = 1.2) => radius(x, z) < ringIn(ang(x, z)) - m && x > faceAt(z) + 1.0;
   const walkable = (x, z) => inBasin(x, z, 1.8) && !nearChannel(x, z, 0.5) && !inBed(x, z, 0.3) && (Math.hypot(x - PLAZA.x, z - PLAZA.z) > 0.01);
 
+  // ---------- пустынная «обстановка» внутри котловины ----------
+  // Валуны/галька пустыни (desert/dressing.js) расставлены по ИСХОДНОМУ рельефу: у восточной грани Когтя они теперь висят над дном котловины,
+  // а их круглые препятствия (world.addObstacle) стали бы невидимыми стенами. Прячем инстансы и снимаем сферы-коллайдеры внутри сада.
+  const inGarden = (x, z) => grid.coverAt(x, z) > 0.01 || (radius(x, z) < ringIn(ang(x, z)) + 9 && x > faceAt(z) - 3);
+  let hidden = 0, removed = 0;
+  {
+    const m4 = new THREE.Matrix4(), zero = new THREE.Matrix4().makeScale(0, 0, 0);
+    scene.traverse((o) => {
+      if (!o.isInstancedMesh || o.parent === root || o.parent?.name === 'Garden' || o.parent?.name === 'Approach') return;
+      const key = o.material?.customProgramCacheKey?.();
+      if (typeof key !== 'string' || !key.startsWith('rk-')) return;
+      let any = false;
+      for (let i = 0; i < o.count; i++) {
+        o.getMatrixAt(i, m4);
+        const x = m4.elements[12], z = m4.elements[14];
+        if (x < 770 || x > 960 || z < 330 || z > 470) continue;
+        if (inGarden(x, z)) { o.setMatrixAt(i, zero); any = true; hidden++; }
+      }
+      if (any) o.instanceMatrix.needsUpdate = true;
+    });
+    if (game.colliders?.all) {
+      const kill = [];
+      for (const e of game.colliders.all()) if (e.owner === 'desert' && e.type === 'sphere' && e.c && e.c.x > 770 && e.c.x < 960 && inGarden(e.c.x, e.c.z)) kill.push(e.id);
+      for (const id of kill) { game.colliders.remove(id); removed++; }
+    }
+  }
+
   // ---------- физика мира ----------
   const heightAt = makeGardenHeight({ grid, field, vol, prevHeight });
   world.heightAt = heightAt;
@@ -121,9 +149,26 @@ export function create(game) {
     // сфера чуть больше проёма арки (w × h); кромку закрывает рамка
     try { world.addRockHole({ x: faceAt(MOUTH.z) + 0.3, y: MOUTH.y + MOUTH.h * 0.5, z: MOUTH.z, r: Math.hypot(MOUTH.w / 2, MOUTH.h / 2) + 0.35 }); } catch (e) { console.warn('[garden] addRockHole', e); }
   }
+  // Контур Когтя (2D SDF) — как в desert/index.js; внутри котловины круглые препятствия пустыни не применяются (см. выше).
+  const clawPush = (pos, r) => {
+    let hit = false;
+    for (let it = 0; it < 3; it++) {
+      const d = solidSdf(pos.x, pos.z); if (d >= r) break;
+      const e = 0.25;
+      let gx = solidSdf(pos.x + e, pos.z) - solidSdf(pos.x - e, pos.z), gz = solidSdf(pos.x, pos.z + e) - solidSdf(pos.x, pos.z - e);
+      const gl = Math.hypot(gx, gz) || 1; gx /= gl; gz /= gl;
+      pos.x += gx * (r - d + 0.01); pos.z += gz * (r - d + 0.01); hit = true;
+    }
+    return hit;
+  };
+  const inMouthCorridor = (x, z) => x > MOUTH.x - MOUTH.lining - 3 && x < MOUTH.x + 3 && Math.abs(z - MOUTH.z) < 2.8;
   world.collide = (pos, r = 0.4) => {
     if (pos.x < Zr.x0 || pos.x > Zr.x1 || pos.z < Zr.z0 || pos.z > Zr.z1) return prevCollide(pos, r);
-    let hit = prevCollide(pos, r);
+    let hit = false;
+    if (inGarden(pos.x, pos.z)) {
+      // свои правила: контур Когтя (кроме штольни устья и высоких уступов) + SDF гребней; препятствия пустыни здесь сняты
+      if (!inMouthCorridor(pos.x, pos.z) && !(pos.y !== undefined && pos.y - prevHeight0(pos.x, pos.z) > 2.5)) hit = clawPush(pos, r);
+    } else hit = prevCollide(pos, r);
     if (pos.x > faceAt(pos.z) - 0.2) hit = vol.collide(pos, r) || hit;
     return hit;
   };
@@ -190,6 +235,7 @@ export function create(game) {
     const pr = game.renderer?.compileAsync ? game.renderer.compileAsync(scene, game.camera) : Promise.resolve(game.renderer?.compile?.(scene, game.camera));
     Promise.resolve(pr).catch(() => {}).finally(() => { root.visible = was; });
   } catch (e) { /* не критично */ }
+  console.log(`[garden] cleared dressing: ${hidden} instances, ${removed} colliders`);
   console.log(`[garden] rim ${api.stats.tris | 0} tris, ground ${gm.tris | 0} tris, ${flora.total} instances, ${api.stats.buildMs.toFixed(0)} ms, native=${nativePassage}`);
   return api;
 }

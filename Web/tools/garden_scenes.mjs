@@ -13,6 +13,13 @@ export async function run({ hours, shot, want, page }) {
   if (want('mouth') || want('all')) {
     await camG(814.5, 1.7, 397, 800, 1.4, 395.8, 62, 1500); await shot('m0_mouth_from_plaza');
     await camG(806, 1.7, 395.8, 830, 0.5, 397, 66); await shot('m1_from_portal');
+    // что за «парящая плита» в кадре: луч через пиксель (445,100) из 960×540
+    const hit = await page.evaluate(() => {
+      const g = window.__rakis, T = g.THREE; const rc = new T.Raycaster(); rc.setFromCamera(new T.Vector2(-0.07, 0.63), g.camera);
+      const hs = rc.intersectObjects(g.scene.children, true).slice(0, 3);
+      return hs.map((h) => ({ name: h.object.name || h.object.type, parent: h.object.parent?.name, d: +h.distance.toFixed(1), p: h.point.toArray().map((v) => +v.toFixed(1)) }));
+    });
+    console.log('pick', JSON.stringify(hit));
     await camG(796.5, 1.7, 395.8, 812, 0.4, 396.5, 66); await shot('m2_from_inside');
     await camG(803, 1.7, 400, 800, 1.2, 395.8, 70); await shot('m3_mouth_closeup');
   }

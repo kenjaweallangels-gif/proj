@@ -44,7 +44,7 @@ async function cam(x, y, z, lx, ly, lz, fov = 62, wait = 1400, rel = false) {
   await page.waitForTimeout(wait);
 }
 const shot = async (name) => {
-  await page.screenshot({ path: join(outDir, `${name}.png`), timeout: 240000 });
+  await page.screenshot({ path: join(outDir, `${name}.png`), timeout: Number(arg('shotTimeout', 900000)) });
   const i = await page.evaluate(() => { const g = window.__rakis, r = g.renderer.info.render; return { calls: r.calls, tris: r.triangles, fps: g.stats.fps }; });
   console.log(`shot ${name}: calls=${i.calls} tris=${i.tris} fps=${i.fps}`);
 };
