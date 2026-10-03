@@ -6,6 +6,8 @@ import { bus } from './bus.js';
 import { createInput } from './input.js';
 import { colliders } from './colliders.js';
 
+const _gp = { x: 0, y: 0, z: 0 };
+
 export function createGame(canvas, settings) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: settings.quality !== 'low', powerPreference: 'high-performance', stencil: false });
   renderer.setPixelRatio(Math.min(devicePixelRatio, settings.quality === 'high' ? 2 : 1.25) * (settings.quality === 'low' ? 0.6 : 1));
@@ -49,8 +51,20 @@ export function createGame(canvas, settings) {
     /** Земля текущего пространства: пустыня (game.world) или сиетч (game.sietch). */
     ground() { return game.space === 'sietch' ? game.sietch : game.world; },
     /** y — текущая высота ступней (для многоуровневых полов сиетча); можно не передавать. */
-    heightAt(x, z, y) { return game.ground()?.heightAt?.(x, z, y) ?? 0; },
-    surfaceAt(x, z) { return game.ground()?.surfaceAt?.(x, z) ?? 'sand'; },
+    /**
+     * Земля для конкретной точки: пещеры сиетча (если точка внутри них) или пустыня. Нужна на границах (устья, расщелина):
+     * выборка рядом с игроком может лежать уже в другом пространстве, чем он сам.
+     */
+    groundAt(x, z, y) {
+      const s = game.sietch;
+      if (s?.contains) {
+        _gp.x = x; _gp.z = z; _gp.y = y ?? game.player?.position?.y ?? 0;
+        return s.contains(_gp) ? s : game.world;
+      }
+      return game.ground();
+    },
+    heightAt(x, z, y) { return game.groundAt(x, z, y)?.heightAt?.(x, z, y) ?? 0; },
+    surfaceAt(x, z) { return game.groundAt(x, z)?.surfaceAt?.(x, z) ?? 'sand'; },
     /** Реестр твёрдых тел (core/colliders.js): червь, харвестер, люди, валуны, пропсы. */
     colliders,
     /**
