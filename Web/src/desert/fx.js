@@ -150,8 +150,8 @@ void main(){
   vec3 base = vec3(0.88, 0.66, 0.42);
   vec3 toS = normalize(wp - cameraPosition);
   float mu = max(dot(toS, uKeyDir), 0.0);
-  vCol = base * (uKeyColor * (0.22 + 0.5 * smoothstep(0.0, 0.3, uKeyDir.y)) * lit * 0.35 + uAmbient * 0.30);
-  vCol += uKeyColor * lit * base * (0.7 * pow(mu, 4.0) + 1.3 * pow(mu, 16.0)) * 0.22;   // контровой свет: струи горят против солнца
+  vCol = base * (uKeyColor * (0.22 + 0.5 * smoothstep(0.0, 0.3, uKeyDir.y)) * lit * 0.5 + uAmbient * 0.34);
+  vCol += uKeyColor * lit * base * (0.7 * pow(mu, 4.0) + 1.6 * pow(mu, 16.0)) * 0.5;   // контровой свет: струи горят против солнца
   vUv = vec2(u, position.y); vWP = wp; vSeed = aQ.y;
   gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
 }`;
@@ -164,7 +164,7 @@ void main(){
   prof *= prof;
   float t = uTime * (1.4 + uWindSpeed * 0.12);
   float n = rkNoise(vec2(vUv.x * 6.0 - t, v * 2.2 + vSeed * 31.0)) * 0.6 + rkNoise(vec2(vUv.x * 17.0 - t * 1.7, v * 6.0 + vSeed * 7.0)) * 0.4;
-  float a = prof * smoothstep(0.25, 0.8, n + (1.0 - vUv.x) * 0.25) * vA;
+  float a = min(prof * smoothstep(0.2, 0.7, n + (1.0 - vUv.x) * 0.3) * vA * 1.7, 0.85);
   if (a < 0.004) discard;
   gl_FragColor = vec4(rkApplyFog(vCol, vWP), a);
 }`;
@@ -585,7 +585,7 @@ export function createFx(game, world, terrain, weather) {
   }
 
   const fx = {
-    group, puff, plumeMesh, drift, motes, devils, stormMeshes,
+    group, puff, plumeMesh, plumes, drift, motes, devils, stormMeshes,
     setVisible(b) { group.visible = b; },
     update(dt, t) {
       const cp = camera.position;

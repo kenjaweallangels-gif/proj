@@ -155,14 +155,11 @@ g *= calmR;
 // лавинные полосы на подветренных склонах: потоки зерна вдоль линии падения (вытянуты по склону), веер у подошвы
 float avl = 0.0;
 if (lee > 0.01) {
-  vec2 dn = normalize(Ng.xz + vec2(1e-4));            // направление вниз по склону
-  vec2 dp = vec2(-dn.y, dn.x);
-  float across = dot(xz, dp), alongS = dot(xz, dn);
-  float s1 = rkNoise(vec2(across * 2.2, alongS * 0.07 + 3.0));
-  float s2 = rkNoise(vec2(across * 9.0, alongS * 0.35 + 8.0));
+  // направление потока зерна ≈ по ветру (склон скольжения смотрит по ветру); координаты стабильны — без изломов линий
+  float s1 = rkNoise(vec2(vv * 1.9, uu * 0.06 + 3.0));
+  float s2 = rkNoise(vec2(vv * 7.5, uu * 0.3 + 8.0));
   avl = (s1 * 0.65 + s2 * 0.35) - 0.5;
-  g += dp * ((s1 - 0.5) * 0.06 + (s2 - 0.5) * 0.045) * lee * (1.0 - disturb);
-  g += acr * (rkNoise(vec2(vv * 1.6, uu * 0.05)) - 0.5) * 0.09 * lee;
+  g += acr * ((s1 - 0.5) * 0.05 + (s2 - 0.5) * 0.035) * lee * (1.0 - disturb);
 }
 // зерно
 float fg = 1.0 - smoothstep(1.5, 9.0, dist);
@@ -221,7 +218,7 @@ float dmin = smoothstep(0.6, 0.82, rkNoise(vec2(uu / 6.5, vv / 80.0) + 11.0)) * 
 col = mix(col, col * vec3(0.60, 0.50, 0.43), dmin * 0.55);
 // подветренные лавинные склоны: плотнее и темнее, краснее
 col = mix(col, col * vec3(0.80, 0.68, 0.58), lee * 0.6);
-col *= 1.0 + avl * 0.34 * lee;
+col *= 1.0 + avl * 0.22 * lee;
 // разнообразие дюн: крупные тёплые/светлые пятна и полосы вдоль ветра
 float hv = rkFbm(xz / 900.0 + 17.0) - 0.5;
 float hv2 = rkNoise(vec2(uu / 240.0, vv / 650.0) + 3.0) - 0.5;

@@ -22,6 +22,8 @@ const SHOTS = [
   ['dusk_horizon', 18.4, 'Dusk_Gold', clear, { x: 160, z: 52, h: 2.0, yaw: 2.2, pitch: 0.04 }],
   ['night_horizon', 23, 'Night_Clear', clear, { x: 160, z: 52, h: 2.0, yaw: -2.0, pitch: 0.12 }],
   ['sky_noon', 11, 'Clear_Noon', { storm: 0, dust: 0.05, clouds: 0.5 }, { x: 160, z: 52, h: 2.0, yaw: 2.4, pitch: 0.5 }],
+  ['plumes', 17.6, 'Dusk_Gold', { storm: 0, dust: 0.1, clouds: 0.3, wind: 12 }, { x: 100, z: 40, h: 2.2, yaw: 0.2, pitch: 0.06 }],
+  ['slipface', 16.5, 'Morning_Erg', clear, { find: true, h: 1.7 }],
   ['storm', 14, 'Storm_Horizon', { storm: 0.8, dust: 0.8, wind: 15 }, { x: 160, z: 52, h: 2.0, yaw: -2.4, pitch: 0.05 }],
 ];
 const todo = SHOTS.filter(([n]) => !only.length || only.some((o) => n.includes(o)));
@@ -41,6 +43,17 @@ for (const [name, hours, preset, ov, cm] of todo) {
     if (ov) w.setOverride(ov, 0);
     w.snap();
     const cam = g.camera;
+    if (cm.find) {
+      // крутой подветренный склон скольжения в радиусе 300 м от (100, 40): ставим камеру у подошвы, взгляд вверх по склону
+      let best = null; const n = [0, 1, 0];
+      for (let x = -200; x <= 400; x += 5) for (let z = -260; z <= 340; z += 5) {
+        const nn = g.world.normalAt(x, z); const sl = 1 - nn.y;
+        const hl = Math.hypot(nn.x, nn.z) + 1e-4; const lee = (nn.x * w.windDir.x + nn.z * w.windDir.z) / hl;
+        if (lee > 0.8 && (!best || sl > best.sl)) best = { x, z, sl, dx: nn.x / hl, dz: nn.z / hl };
+      }
+      cm.x = best.x + best.dx * 26; cm.z = best.z + best.dz * 26; cm.yaw = Math.atan2(-best.dz, -best.dx); cm.pitch = 0.1; cm.h = 2.2;
+      window.__slip = best;
+    }
     cam.position.set(cm.x, g.world.heightAt(cm.x, cm.z) + cm.h, cm.z);
     cam.fov = 62; cam.updateProjectionMatrix();
     const c = Math.cos(cm.pitch);
