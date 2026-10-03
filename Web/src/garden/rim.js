@@ -116,7 +116,9 @@ export function createRim({ base, faceX, h = RIM_ZONE.h }) {
     const fr = sy - Math.floor(sy);
     const strata = smooth(0.78, 0.97, fr) - 0.55 * smooth(0, 0.25, fr);
     // у самой земли шум гасим: пол должен быть ровным (его рисует и держит отдельная сетка), скала «вырастает» из него
-    const gk = smooth(0.1, 2.8, y - base(x, z));
+    // вдоль стенок оврага шум тоже гасим: иначе у кромки выреза остаются тонкие «плиты» без опоры
+    const rk = x > 850 ? smooth(0, 1.6, ravineCut(x, y, z)) : 1;
+    const gk = smooth(0.1, 2.8, y - base(x, z)) * rk;
     return d + (n * (0.8 + 0.9 * wallK) + strata * 0.4 * wallK) * gk;
   }
 

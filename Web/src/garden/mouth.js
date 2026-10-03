@@ -74,7 +74,7 @@ export function createMouth(game, { root, faceAt, ground, quality }) {
       if (nn.dot(toAxis) < 0) { const tmp = idx[t + 1]; idx[t + 1] = idx[t + 2]; idx[t + 2] = tmp; }
     }
   }
-  const liningMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, color: 0xb59c80, emissive: 0x1a0f07, side: THREE.FrontSide });
+  const liningMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, color: 0xb59c80, emissive: 0x1a0f07, side: THREE.DoubleSide });
   patchMaterial(liningMat, 'gd-lining', {
     vertexPars: 'varying vec3 vWP;\n',
     vertexMain: 'vec3 transformed = vec3(position);\nvWP = (modelMatrix * vec4(position, 1.0)).xyz;',
@@ -119,10 +119,10 @@ export function createMouth(game, { root, faceAt, ground, quality }) {
   const add = (shape) => { const id = game.colliders?.add({ owner: 'garden', tags: new Set(['mouth']), ...shape }); if (id) out.colliders.push(id); };
   for (const z of [z0 - hw, z0 + hw]) add({ type: 'box', c: new V3(fx(z) + 0.8, y0 + 2.5, z), half: new V3(0.5, 2.6, 0.75), yaw: 0 });
   for (const s of [-1, 1]) add({ type: 'box', c: new V3((xIn + xOut) / 2 - 0.4, y0 + 1.5, z0 + s * (MOUTH.w / 2 + 0.3)), half: new V3((xOut - xIn) / 2 + 0.2, 1.6, 0.3), yaw: 0 });
-  // торец (против случайного выхода в пустоту)
-  add({ type: 'box', c: new V3(xIn - 0.5, y0 + 1.5, z0), half: new V3(0.3, 1.6, MOUTH.w / 2 + 0.2), yaw: 0 });
-  const capId = out.colliders[out.colliders.length - 1];
-  out.setCap = (b) => { out.cap.visible = !!b; game.colliders?.update(capId, { solid: !!b }); };
+  // Торец штольни по умолчанию выключен (туннель сиетча продолжает облицовку; проход свободен в обе стороны).
+  // setCap(true) — запасной вариант: мягкая «тьма» вместо провала, если туннель сиетча к устью не доведён (коллайдера у торца нет).
+  out.cap.visible = false;
+  out.setCap = (b) => { out.cap.visible = !!b; };
   out.info = { xIn, xOut, xFace, z: z0, y: y0 };
   return out;
 }

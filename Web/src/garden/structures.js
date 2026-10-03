@@ -57,12 +57,12 @@ export function createStructures(game, { ground, rim, root, quality }) {
 
   // ---------------- материалы ----------------
   const stoneTex = adobeTexture(); stoneTex.repeat.set(1, 1);
-  const stoneMat = fogPatch(new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.93, color: 0xf0e0c6, vertexColors: true }), 'gd-stone');
-  const stonePlain = fogPatch(new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.93, color: 0xf0e0c6 }), 'gd-stone-plain');
+  const stoneMat = fogPatch(new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.95, envMapIntensity: 0.45, color: 0xf0e0c6, vertexColors: true }), 'gd-stone');
+  const stonePlain = fogPatch(new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.95, envMapIntensity: 0.45, color: 0xf0e0c6 }), 'gd-stone-plain');
   const flagTex = flagstoneTexture();
-  const flagMat = fogPatch(new THREE.MeshStandardMaterial({ map: flagTex, roughness: 0.9, color: 0xffffff, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), 'gd-flag');
+  const flagMat = fogPatch(new THREE.MeshStandardMaterial({ map: flagTex, roughness: 0.95, envMapIntensity: 0.4, color: 0xffffff, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), 'gd-flag');
   const soilTex = soilTexture();
-  const soilMat = fogPatch(new THREE.MeshStandardMaterial({ map: soilTex, roughness: 1, color: 0xd0c0b0, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }), 'gd-soil');
+  const soilMat = fogPatch(new THREE.MeshStandardMaterial({ map: soilTex, roughness: 1, envMapIntensity: 0.3, color: 0xd0c0b0, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }), 'gd-soil');
   const wnorm = waterNormalTexture(); wnorm.repeat.set(1, 1);
   const waterMat = fogPatch(new THREE.MeshStandardMaterial({ color: 0x2f6c6a, roughness: 0.03, metalness: 0.0, transparent: true, opacity: 0.88, normalMap: wnorm, normalScale: new THREE.Vector2(0.5, 0.5), envMapIntensity: 2.2 }), 'gd-water');
   const rockMat = createLevelRockMaterial({ band: 5.5, sand: 0.3 });
