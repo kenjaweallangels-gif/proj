@@ -1,7 +1,7 @@
 // Адаптивная музыка (ERakisMusicState), полностью синтезируемая. Оригинальный материал.
 // Лад «Ракиса» (собственный): D E F G# A Bb C — полутоны от тоники 0,2,3,6,7,8,10. Тема — 5 нот вниз, последняя «не разрешена».
 // Состояния: Silence, DesertCalm (дудук+дрон), DesertDrone (горловой дрон), WormThreat (инфразвук+ломаный барабан),
-// WormReveal (вдох → хоровой удар → тишина → дудук), SietchLife (уд, канун, барабан; 84 bpm), SietchNarrow, HallChorale.
+// WormReveal (величественное прибытие: хор на открытых квинтах, низкая тема, барабан), Encounter (низкий хор + рамочный барабан на время разговора), SietchLife (уд, канун, барабан; 84 bpm), SietchNarrow, HallChorale.
 import { clamp } from '../core/util.js';
 
 const MODE = [0, 2, 3, 6, 7, 8, 10];
@@ -22,14 +22,14 @@ const VOW = { ah: [800, 1150, 2900], oh: [450, 800, 2830], oo: [325, 700, 2530],
 
 // Длительность вхождения / выхода по таблице soundmap §2.1.
 const FADES = {
-  Silence: [1.5, 1.5], DesertCalm: [4, 6], DesertDrone: [6, 6], WormThreat: [1, 3], WormReveal: [0.2, 2.5],
+  Silence: [1.5, 1.5], DesertCalm: [4, 6], DesertDrone: [6, 6], WormThreat: [1, 3], WormReveal: [2.5, 3.5], Encounter: [3, 4],
   SietchLife: [4, 4], SietchNarrow: [3, 3], HallChorale: [2, 6],
 };
 
 export function createMusic(game, eng) {
   const { ctx } = eng;
   // Калибровка уровней состояний (замер tools/audio_levels.mjs) × громкость из AudioEvents.csv.
-  const CAL = { DesertCalm: 2, DesertDrone: 2, WormThreat: 0.8, WormReveal: 1, SietchLife: 3.2, SietchNarrow: 2.6, HallChorale: 2.6 };
+  const CAL = { DesertCalm: 2, DesertDrone: 2, WormThreat: 0.8, WormReveal: 2.2, Encounter: 2.4, SietchLife: 3.2, SietchNarrow: 2.6, HallChorale: 2.6 };
   const volOf = (state) => (game.data?.AudioEvents?.find((e) => e.id === `Music.${state}`)?.volume ?? 0.8) * (CAL[state] ?? 1);
 
   // Музыкальная реверберация (небольшая отправка) и фильтры инструментов.
@@ -257,40 +257,72 @@ export function createMusic(game, eng) {
       };
     },
 
+    // Прибытие приручённого червя: величественная, благоговейная тема (медленное нарастание хора на открытых квинтах,
+    // низкая медь-подобная тема, редкий рамочный барабан). Без удара и без атаки — это явление, а не нападение.
     WormReveal(out) {
-      const pad = eng.gain(1); pad.connect(out); eng.send(pad, 0.5);
-      const t0 = T();
-      let phase = 0, hitAt = t0 + 9; // хоровой удар — по 'worm:breach' или через ~9 с
-      let hit = 0, reedDone = false;
-      breathIn(pad, t0 + 0.2, 1.6, 0.16);
-      function choirHit(t) {
-        // Кластер: D3 E3 A3 G#3 C4 D4 + низ — открытая пасть
-        [-12 + 0, -10, -5, -6, -2, 0, 7].forEach((s, i) => {
-          const f = mtof(D4 + s);
-          voice(pad, t + i * 0.012, f, 2.6, i % 2 ? 'oh' : 'ah', 0.13, { attack: 0.05, release: 3.5, vibDepth: 0.003 });
-        });
-        for (const f of [36.7, 55, 73.4]) { // медь-низ
-          const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f * 1.04, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.4);
-          const lp = eng.filter('lowpass', 420, 1.1), g = eng.gain(0);
-          g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.22, t + 0.06); g.gain.setTargetAtTime(0, t + 2.2, 0.9);
-          o.connect(lp); lp.connect(g); g.connect(pad); o.start(t); o.stop(t + 6);
-        }
-        eng.blip({ freq: 70, freq1: 28, dur: 3, gain: 0.5, out: pad, attack: 0.03 });
-      }
-      const offBreach = game.bus.on('worm:breach', () => { if (phase === 0) { hitAt = T() + 0.05; } });
+      const pad = eng.gain(1); pad.connect(out); eng.send(pad, 0.7);
+      const born = T();
+      const sub = hold(pad, 'sine', mtof(26), 0.0), sub2 = hold(pad, 'sine', mtof(38), 0.0, 3);
+      const chords = [[-24, -17, -12, -5, 0], [-26, -19, -14, -7, -2], [-24, -17, -12, -5, 3], [-24, -17, -12, -5, 0]];
+      let ci = 0, nextChord = born + 0.1, nextBeat = born + 3, beat = 0, nextTheme = born + 11, nextRise = born + 5;
+      breathIn(pad, born + 0.1, 3.5, 0.1);
       return {
         tick(now) {
-          if (phase === 0 && now >= hitAt - 0.05) { choirHit(Math.max(now, hitAt)); phase = 1; hit = Math.max(now, hitAt); }
-          // обрыв в тишину и одна фраза дудука
-          if (phase === 1 && now > hit + 5.5) { pad.gain.setTargetAtTime(0.0, now, 0.25); phase = 2; }
-          if (phase === 2 && !reedDone && now > hit + 13) {
-            const g = eng.gain(1); g.connect(out); eng.send(g, 0.5);
-            let t = now + 0.1;
-            [3, 4, 3].forEach((i, k) => { const d = [1.8, 1.6, 3.6][k]; reed(g, t, THEME[i] * 0.5, d, 0.8); t += d * 0.9; });
-            reedDone = true;
+          const inten = clamp((now - born) / 16, 0, 1);
+          sub.g.gain.setTargetAtTime(0.03 + inten * 0.09, now, 1.2);
+          sub2.g.gain.setTargetAtTime(0.02 + inten * 0.05, now, 1.2);
+          if (now + 0.5 > nextChord) {
+            const c = chords[ci++ % chords.length], t = Math.max(now, nextChord);
+            c.forEach((s, i) => voice(pad, t + i * 0.35, mtof(D4 + s), 11, s >= -12 ? (i % 2 ? 'oh' : 'ah') : 'oo', (0.05 + inten * 0.05) * (s < -12 ? 1.2 : 1), { attack: 3.6, release: 4.5, vibDepth: 0.004, vib: 4.8, pan: (i - 2) * 0.22 }));
+            nextChord = t + 8.5;
+          }
+          if (now + 0.3 > nextRise && inten < 1) { breathIn(pad, Math.max(now, nextRise), 3, 0.05 + inten * 0.06); nextRise = now + 6.5; }
+          // рамочный барабан — медленный пульс, редкие «дум»
+          if (now + 0.3 > nextBeat) {
+            if (beat % 4 !== 3) drum(pad, Math.max(now, nextBeat), 0.2 + inten * 0.35, 'doum');
+            beat++; nextBeat += 1.75;
+          }
+          // тема Ракиса низкими «оо», медленно — как церемониальное приветствие
+          if (now + 0.3 > nextTheme && inten > 0.55) {
+            let t = Math.max(now, nextTheme);
+            const lp = eng.filter('lowpass', 900, 0.6); lp.connect(pad);
+            THEME.forEach((f, i) => { const d = [3, 2.6, 2.6, 3, 6][i]; voice(lp, t, f * 0.5, d, i % 2 ? 'oh' : 'oo', 0.06 + inten * 0.03, { attack: 0.9, release: 1.8, vib: 4.6, vibDepth: 0.006 }); t += d * 0.9; });
+            nextTheme = t + 14;
           }
         },
-        dispose() { offBreach(); },
+        dispose() { sub.o.stop(); sub2.o.stop(); },
+      };
+    },
+
+    // Разговор с наездниками: низкий хор «оо» на дроне + редкий рамочный барабан, дудук вдалеке. Тихо, чтобы не перекрывать речь.
+    Encounter(out) {
+      const pad = eng.gain(1); pad.connect(out); eng.send(pad, 0.75);
+      const born = T();
+      const d1 = hold(pad, 'sine', mtof(38), 0.05), d2 = hold(pad, 'sine', mtof(45), 0.02, 4), d3 = hold(pad, 'triangle', mtof(26), 0.035);
+      const lfo = ctx.createOscillator(), lg = eng.gain(0.015); lfo.frequency.value = 0.06; lfo.connect(lg); lg.connect(d1.g.gain); lfo.start();
+      const notes = [[-24, -17, -12], [-24, -17, -10], [-26, -19, -12], [-24, -17, -12]];
+      let ci = 0, nextChord = born + 0.2, nextBeat = born + 1.2, beat = 0, nextReed = born + rnd(14, 22);
+      return {
+        tick(now) {
+          if (now + 0.5 > nextChord) {
+            const c = notes[ci++ % notes.length], t = Math.max(now, nextChord);
+            c.forEach((s, i) => voice(pad, t + i * 0.4, mtof(D4 + s), 12, 'oo', 0.05, { attack: 4, release: 5, vibDepth: 0.003, vib: 4.4, pan: (i - 1) * 0.3 }));
+            nextChord = t + 9.5;
+          }
+          if (now + 0.3 > nextBeat) {
+            const k = beat++ % 8;
+            if (k === 0 || k === 3 || k === 5) drum(pad, Math.max(now, nextBeat), 0.3, 'doum');
+            else if (k === 6 && Math.random() < 0.5) drum(pad, Math.max(now, nextBeat), 0.18, 'tek');
+            nextBeat += 1.2;
+          }
+          if (now + 0.5 > nextReed) {
+            let t = Math.max(now, nextReed);
+            const g = eng.gain(0.6); g.connect(pad);
+            pickOne([[4, 3, 4], [3, 2, 3, 4]]).forEach((i, k) => { const d = [1.8, 1.6, 2.2, 3][k] || 2; reed(g, t, THEME[i % THEME.length] * 0.5, d, 0.6); t += d * 0.9; });
+            nextReed = t + rnd(18, 30);
+          }
+        },
+        dispose() { d1.o.stop(); d2.o.stop(); d3.o.stop(); lfo.stop(); },
       };
     },
 
@@ -424,7 +456,7 @@ export function createMusic(game, eng) {
       const old = cur;
       old.node.gain.cancelScheduledValues(t);
       old.node.gain.setValueAtTime(old.node.gain.value, t);
-      old.node.gain.linearRampToValueAtTime(0, t + Math.max(outT, name === 'WormReveal' ? 0.4 : 0.8));
+      old.node.gain.linearRampToValueAtTime(0, t + Math.max(outT, 0.8));
       fading.add(old);
       setTimeout(() => { try { old.impl.dispose(); } catch { /* уже остановлен */ } try { old.node.disconnect(); } catch { /* нет */ } fading.delete(old); }, (outT + 1) * 1000 + 300);
     }
@@ -457,6 +489,16 @@ export function createMusic(game, eng) {
         const tmp = eng.gain(1); tmp.connect(musicBus); eng.send(tmp, 1);
         [-12, 0, 7, 12, 15].forEach((s, i) => voice(tmp, t + i * 0.02, mtof(D4 + s), 6, 'ah', 0.12, { attack: 0.5, release: 4 }));
       }
+    },
+    /** Отход червя: прощальное нарастание хора (стингер поверх текущего состояния). */
+    swell() {
+      const t = T() + 0.05;
+      const tmp = eng.gain(0); tmp.connect(musicBus); eng.send(tmp, 1);
+      tmp.gain.setValueAtTime(0, t); tmp.gain.linearRampToValueAtTime(1, t + 4.5); tmp.gain.setValueAtTime(1, t + 5.5); tmp.gain.linearRampToValueAtTime(0, t + 11);
+      [-24, -17, -12, -5, 0, 7, 12].forEach((s, i) => voice(tmp, t + i * 0.25, mtof(D4 + s), 7, s >= 0 ? 'ah' : 'oh', 0.07, { attack: 4, release: 4, vibDepth: 0.004, vib: 4.9, pan: (i - 3) * 0.2 }));
+      eng.blip({ freq: 36.7, freq1: 30, dur: 7, gain: 0.3, out: tmp, attack: 3 });
+      breathIn(tmp, t, 4, 0.1);
+      setTimeout(() => { try { tmp.disconnect(); } catch { /* нет */ } }, 14000);
     },
     /** Тема Ракиса — для отладки/стингеров. */
     stinger(kind) {

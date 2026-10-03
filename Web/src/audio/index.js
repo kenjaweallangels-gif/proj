@@ -11,7 +11,7 @@ export function create(game) {
   const { bus } = game;
   let eng = null, amb = null, sfx = null, music = null, voice = null;
   let pendingMusic = null, failed = false, acc = 0;
-  let duckTarget = 1;
+  let duckTarget = 1, harvRunning = false;
 
   function ensure() {
     if (eng || failed) return eng;
@@ -26,6 +26,7 @@ export function create(game) {
       api.voice = voice;
       eng.resume();
       if (pendingMusic) music.set(pendingMusic);
+      if (harvRunning) sfx.play('Harvester.Run');
       applyAll();
     } catch (e) {
       console.error('[audio] не удалось построить граф:', e);
@@ -57,6 +58,7 @@ export function create(game) {
     if (s?.id === 'DLG_B5_001' && s.kind === 'line') amb?.chant(Math.min(s.duration || 4, 6));
   });
   bus.on('chain:end', () => { duckTarget = 1; });
+  bus.on('harvester', ({ state } = {}) => { harvRunning = /^(running|run)$/i.test(String(state || '')); });
   bus.on('ritual', () => { if (amb) amb.ritualOn = true; });
   bus.on('pause', () => { if (eng) eng.ramp(eng.duck.gain, game.paused ? 0.6 : duckTarget, 0.15); });
   bus.on('worm:state', ({ to } = {}) => {
@@ -83,6 +85,8 @@ export function create(game) {
       if (ensure()) music.set(state);
     },
     finalChord() { if (ensure()) music.finalChord(); },
+    /** Прощальное нарастание хора (червь уходит). */
+    swell() { if (ensure()) music.swell(); },
     setVolume(name, v) { if (eng) eng.setVolume(name, v); else if (game.settings.volume) game.settings.volume[name] = v; },
     applyVolumes: applyAll,
     /** Офлайн-рендер реплики синтезатором (проверка графа): → {rms, peak, speechRms}. */

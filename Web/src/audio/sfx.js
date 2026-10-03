@@ -154,6 +154,95 @@ export function createSfx(game, eng) {
     eng.burst({ type: 'bandpass', f0: dry ? 900 : 650, f1: dry ? 600 : 420, q: 0.8, dur: dry ? 1.1 : 0.8, attack: 0.3, gain: dry ? 0.07 : 0.05, kind: 'pink', out: bus.sfx });
   }
 
+  // ---------- Харвестер (комбайн): дизель-турбинный гул, лязг гусениц, клаксон, шипение пряной пыли ----------
+  // События: 'Harvester.Start' (клаксон, раскрутка), 'Harvester.Run' (петля, пока на шине 'harvester' state:'running'), 'Harvester.Stop' (гудок, выбег).
+  // Позиция — game.harvester?.position; громкость — по расстоянию (PannerNode + «поглощение воздухом»).
+  const harv = { built: false, on: false, level: 0, pitch: 0.6, nextClank: 0, lastPos: null };
+  function harvBuild() {
+    if (harv.built) return;
+    harv.built = true;
+    const inp = eng.gain(0);                       // сумма источников (уровень = раскрутка)
+    const air = eng.filter('lowpass', 6000, 0.5);
+    const pn = ctx.createPanner(); pn.panningModel = 'equalpower'; pn.distanceModel = 'inverse'; pn.refDistance = 28; pn.rolloffFactor = 1.15; pn.maxDistance = 4000;
+    inp.connect(air); air.connect(pn); pn.connect(sfx); eng.send(inp, 0.12);
+    const body = eng.loopNoise('brown'), bl = eng.filter('lowpass', 150, 0.7), bg = eng.gain(1.6);
+    body.connect(bl); bl.connect(bg); bg.connect(inp);
+    // дизель: расстроенные пилы через НЧ-фильтр с «чухом» (AM ≈ 10 Гц)
+    const chug = eng.gain(0.65), lfo = ctx.createOscillator(), lg = eng.gain(0.3); lfo.frequency.value = 10.4; lfo.connect(lg); lg.connect(chug.gain); lfo.start();
+    const dl = eng.filter('lowpass', 210, 0.9); dl.connect(chug); chug.connect(inp);
+    const oscs = [[27.5, 0], [41.2, 7], [55.3, -6], [82.7, 4]].map(([f, d]) => {
+      const o = ctx.createOscillator(); o.type = f > 50 ? 'square' : 'sawtooth'; o.frequency.value = f; o.detune.value = d;
+      const g = eng.gain(f > 50 ? 0.12 : 0.3); o.connect(g); g.connect(dl); o.start(); return { o, f };
+    });
+    // турбина: тонкий вой, растёт с оборотами
+    const wh = ctx.createOscillator(); wh.type = 'sawtooth'; wh.frequency.value = 410;
+    const wbp = eng.filter('bandpass', 700, 4), wg = eng.gain(0.03); wh.connect(wbp); wbp.connect(wg); wg.connect(inp); wh.start();
+    // шипение пряной пыли
+    const hs = eng.loopNoise('white'), hhp = eng.filter('highpass', 2600, 0.5), ham = eng.gain(0.5), hg = eng.gain(0.06);
+    const hl = ctx.createOscillator(), hlg = eng.gain(0.3); hl.frequency.value = 0.7; hl.connect(hlg); hlg.connect(ham.gain); hl.start();
+    hs.connect(hhp); hhp.connect(ham); ham.connect(hg); hg.connect(inp);
+    Object.assign(harv, { inp, air, pn, oscs, wh, wg, lfo });
+  }
+  function harvPos() {
+    const p = game.harvester?.position;
+    if (p) harv.lastPos = p;
+    return harv.lastPos;
+  }
+  function klaxon(long = false) {
+    harvBuild();
+    const t = eng.T() + 0.02, blasts = long ? [[0, 1.6]] : [[0, 0.55], [0.75, 0.55]];
+    for (const [off, d] of blasts) {
+      for (const f of [392, 311]) {
+        const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = f;
+        const bp = eng.filter('bandpass', 950, 0.9), g = eng.gain(0);
+        g.gain.setValueAtTime(0, t + off); g.gain.linearRampToValueAtTime(0.1, t + off + 0.03); g.gain.setValueAtTime(0.1, t + off + d - 0.06); g.gain.linearRampToValueAtTime(0, t + off + d);
+        o.connect(bp); bp.connect(g); g.connect(harv.inp); o.start(t + off); o.stop(t + off + d + 0.05);
+      }
+    }
+  }
+  function harvStart(withHorn = true) {
+    harvBuild();
+    if (withHorn && !harv.on) klaxon(false);
+    harv.on = true;
+  }
+  function harvStop(withHorn = true) {
+    if (!harv.built || !harv.on) return;
+    harv.on = false;
+    if (withHorn) klaxon(true);
+  }
+  function harvUpdate(dt) {
+    if (!harv.built) return;
+    const target = harv.on ? 1 : 0;
+    harv.level += (target - harv.level) * (1 - Math.exp(-dt / (harv.on ? 2.2 : 3.2)));   // раскрутка / выбег
+    harv.pitch = 0.55 + 0.45 * harv.level;
+    const t = eng.T();
+    const lvl = harv.level < 0.01 ? 0 : harv.level;
+    eng.ramp(harv.inp.gain, lvl, 0.25);
+    for (const o of harv.oscs) eng.ramp(o.o.frequency, o.f * harv.pitch, 0.3);
+    eng.ramp(harv.wh.frequency, 260 + 260 * harv.level, 0.3);
+    eng.ramp(harv.wg.gain, 0.01 + 0.05 * harv.level * harv.level, 0.3);
+    eng.ramp(harv.lfo.frequency, 6 + 5 * harv.level, 0.3);
+    const hp = harvPos();
+    if (hp) {
+      const p = harv.pn;
+      if (p.positionX) { p.positionX.setTargetAtTime(hp.x, t, 0.1); p.positionY.setTargetAtTime(hp.y ?? 0, t, 0.1); p.positionZ.setTargetAtTime(hp.z, t, 0.1); } else p.setPosition(hp.x, hp.y ?? 0, hp.z);
+      game.camera.getWorldPosition(camPos);
+      const d = Math.hypot(camPos.x - hp.x, camPos.z - hp.z);
+      eng.ramp(harv.air.frequency, clamp(9000 / (1 + d / 160), 450, 9000), 0.3);
+    }
+    // лязг гусениц
+    if (lvl > 0.15 && t > harv.nextClank) {
+      eng.burst({ type: 'bandpass', f0: rnd(800, 2600), q: rnd(3, 7), dur: rnd(0.03, 0.08), attack: 0.001, gain: rnd(0.15, 0.4) * lvl, kind: 'white', out: harv.inp, when: t });
+      if (Math.random() < 0.5) eng.blip({ freq: rnd(150, 260), freq1: rnd(90, 150), dur: 0.1, gain: 0.22 * lvl, type: 'triangle', out: harv.inp, when: t });
+      harv.nextClank = t + (0.2 + Math.random() * 0.14) / (0.6 + harv.pitch * 0.4);
+    }
+  }
+  game.bus.on('harvester', ({ state } = {}) => {
+    const s = String(state || '').toLowerCase();
+    if (s === 'running' || s === 'run') harvStart(false);
+    else if (s) harvStop(false);
+  });
+
   // ---------- Интерфейс ----------
   const ui = {
     hint() { eng.blip({ freq: 660, dur: 0.5, gain: 0.07, type: 'sine', out: bus.ui, attack: 0.04, send: 0.5 }); eng.blip({ freq: 990, dur: 0.6, gain: 0.04, out: bus.ui, attack: 0.05, when: eng.T() + 0.08, send: 0.5 }); },
@@ -183,6 +272,7 @@ export function createSfx(game, eng) {
     'Wind.Gust': () => {},
     'Crowd.Hush': () => {},
     'Player.Breath.Dry': () => breath(true), 'Player.Mask.Seal': () => { eng.burst({ type: 'highpass', f0: 2500, q: 0.5, dur: 0.35, attack: 0.02, gain: 0.12, out: sfx }); },
+    'Harvester.Start': () => harvStart(true), 'Harvester.Run': () => harvStart(false), 'Harvester.Stop': () => harvStop(true),
     'UI.Hint': () => ui.hint(), 'UI.TitleCard': () => ui.titleCard(), 'UI.Interact': () => ui.interact(), 'UI.Pause': () => ui.pause(), 'UI.PhotoShutter': () => ui.photo(), 'UI.Tick': () => ui.tick(),
   };
 
@@ -206,6 +296,7 @@ export function createSfx(game, eng) {
     has: (id) => !!EVENTS[id],
     play(id, pos) { const f = EVENTS[id]; if (f) f(pos); return !!f; },
     update(dt) {
+      harvUpdate(dt);
       const w = game.worm, p = game.player;
       const threat = clamp(w?.threat ?? 0, 0, 1);
       // Расстояние до головы червя.

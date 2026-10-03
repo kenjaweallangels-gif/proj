@@ -1,6 +1,6 @@
 // Меню: титульный экран, пауза, концовка. Только текст и тонкие линии. Навигация: мышь, клавиатура, геймпад.
 import { el } from './util.js';
-import { saveSettings, setLang } from './settings.js';
+import { saveSettings, setLang, setVoiceMode, VOICE_MODES } from './settings.js';
 
 const SUB_STATES = [['S', false], ['M', false], ['L', false], ['S', true], ['M', true], ['L', true]];
 const QUALITIES = ['low', 'med', 'high'];
@@ -15,7 +15,10 @@ export function createMenus(game, root, ctx) {
     [S.subSize, S.subBg] = SUB_STATES[i];
     saveSettings(game); ctx.applySubtitleSettings();
   }
-  function toggleVoice() { S.voice = !S.voice; if (!S.voice) { try { speechSynthesis.cancel(); } catch { /* нет */ } } saveSettings(game); }
+  const VOICE_LABEL = { auto: ['Авто', 'Auto'], tts: ['Арабский TTS', 'Arabic TTS'], synth: ['Синтезатор', 'Synth'], off: ['выкл', 'off'] };
+  const voiceLabel = (m) => tr(...VOICE_LABEL[m]);
+  function cycleVoice(dir) { const i = VOICE_MODES.indexOf(S.voiceMode); setVoiceMode(game, VOICE_MODES[(i + dir + VOICE_MODES.length) % VOICE_MODES.length]); }
+  function toggleNative() { S.showNative = !S.showNative; saveSettings(game); }
   function setVol(name, v) { v = Math.max(0, Math.min(1, v)); game.audio?.setVolume?.(name, v); S.volume[name] = v; saveSettings(game); }
 
   // ===================== Титульный экран =====================
@@ -50,14 +53,21 @@ export function createMenus(game, root, ctx) {
       location.href = u.toString();
     });
     chips(opts, tr('Субтитры', 'Subtitles'), ['S', 'M', 'L'].map((s) => ({ id: s, label: s })), S.subSize, (s) => { S.subSize = s; saveSettings(game); ctx.applySubtitleSettings(); });
-    chips(opts, tr('Голос', 'Voice'), [{ id: true, label: tr('вкл', 'on') }, { id: false, label: tr('выкл', 'off') }], !!S.voice, (v) => { S.voice = v; saveSettings(game); });
+    chips(opts, tr('Голос', 'Voice'), ['auto', 'synth', 'off'].map((m) => ({ id: m, label: voiceLabel(m) })), S.voiceMode === 'tts' ? 'auto' : S.voiceMode, (m) => setVoiceMode(game, m));
+    if (ctx.actions.weather) {
+      const g = el('div', 'opt', opts);
+      const c = el('span', 'ch wxlink', g, tr('Погода и время', 'Weather & time')); c.title = 'F2';
+      c.addEventListener('click', (e) => { e.stopPropagation(); ctx.actions.weather(); });
+    }
     const K = (k) => `<span class="kcap">${k}</span>`;
     keys.innerHTML = [
       `<span>${K('W')}${K('A')}${K('S')}${K('D')} ${tr('движение', 'move')}</span>`,
-      `<span>${K('Alt')} ${tr('походка по песку', 'sand-walk')}</span>`,
+      `<span>${K('C')} ${tr('режим походки: обычный / по песку', 'gait: normal / sand-walk')}</span>`,
+      `<span>${K('Alt')} ${tr('походка по песку (удерживать)', 'sand-walk (hold)')}</span>`,
       `<span>${K('Space')} ${tr('сбить ритм', 'break rhythm')}</span>`,
       `<span>${K('E')} ${tr('действие', 'interact')}</span>`,
       `<span>${K('V')} ${tr('камера', 'camera')}</span>`,
+      `<span>${K('F2')} ${tr('погода и время', 'weather & time')}</span>`,
       `<span>${K('Esc')} ${tr('пауза', 'pause')}</span>`,
     ].join('');
   }
@@ -79,7 +89,10 @@ export function createMenus(game, root, ctx) {
       { id: 'photo', label: tr('Фоторежим', 'Photo mode'), act: () => ctx.actions.photo() },
       { id: 'lang', label: tr('Язык', 'Language'), val: () => (game.lang === 'RU' ? 'Русский' : 'English'), step: () => setLang(game, game.lang === 'RU' ? 'EN' : 'RU') },
       { id: 'subs', label: tr('Субтитры', 'Subtitles'), val: () => S.subSize + (S.subBg ? tr(' · подложка', ' · backing') : ''), step: (d) => cycleSubs(d) },
-      { id: 'voice', label: tr('Голос', 'Voice'), val: () => (S.voice ? tr('вкл', 'on') : tr('выкл', 'off')), step: toggleVoice },
+      { id: 'wx', label: tr('Погода и время', 'Weather & time'), act: () => ctx.actions.weather?.() },
+      { id: 'voice', label: tr('Голос', 'Voice'), val: () => voiceLabel(S.voiceMode), step: (d) => cycleVoice(d) },
+      { id: 'native', label: tr('Родная строка в субтитрах', 'Native line in subtitles'), val: () => (S.showNative ? tr('вкл', 'on') : tr('выкл', 'off')), step: toggleNative },
+      { id: 'vo', label: tr('Громкость голосов', 'Voices volume'), ...volBar('vo') },
       { id: 'vol', label: tr('Громкость', 'Volume'), ...volBar('master') },
       { id: 'music', label: tr('Музыка', 'Music'), ...volBar('music') },
       { id: 'sfx', label: tr('Эффекты', 'Effects'), ...volBar('sfx') },
@@ -112,7 +125,7 @@ export function createMenus(game, root, ctx) {
     else if (it.step) { it.step(dir); renderPause(); }
   }
   function openPause() {
-    sel = 0; renderPause();
+    sel = 0; pause.classList.remove('wxonly'); renderPause();
     pause.classList.remove('closing'); pause.classList.add('on');
     void pause.offsetWidth; pause.classList.add('vis');
   }
@@ -122,6 +135,7 @@ export function createMenus(game, root, ctx) {
   }
   /** Навигация: dir = 'up'|'down'|'left'|'right'|'ok'. */
   function nav(dir) {
+    if (ctx.wxOpen) { ctx.wx?.nav(dir); return; }
     if (ctx.pauseOpen) {
       if (dir === 'up') sel = (sel + items.length - 1) % items.length;
       else if (dir === 'down') sel = (sel + 1) % items.length;
@@ -165,19 +179,22 @@ export function createMenus(game, root, ctx) {
 
   // ===================== Клавиатура и геймпад =====================
   addEventListener('keydown', (e) => {
-    if (e.repeat && !(ctx.pauseOpen)) return;
+    // Погода и время: F2 / Y (на титульном экране, в игре и из паузы); Esc закрывает панель.
+    if ((e.code === 'F2' || e.code === 'KeyY') && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); ctx.actions.weatherToggle?.(); return; }
+    if (e.code === 'Escape' && ctx.wxOpen && ctx.titleVisible && !e.repeat) { e.preventDefault(); ctx.actions.weatherToggle?.(); return; }
+    if (e.repeat && !(ctx.pauseOpen || ctx.wxOpen)) return;
     if (!ctx.titleVisible && !ctx.pauseOpen && !ctx.endVisible) return;
     const map = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', Enter: 'ok', Space: 'ok', NumpadEnter: 'ok' };
     const d = map[e.code];
     if (!d) return;
-    if (ctx.titleVisible && d !== 'ok') return;
+    if (ctx.titleVisible && !ctx.wxOpen && d !== 'ok') return;
     e.preventDefault();
     nav(d);
   });
   const padPrev = {}; let padRepeat = 0;
   function pollPad(dt) {
     const gp = navigator.getGamepads?.()[0];
-    if (!gp || !(ctx.pauseOpen || ctx.titleVisible || ctx.endVisible)) return;
+    if (!gp || !(ctx.pauseOpen || ctx.titleVisible || ctx.endVisible || ctx.wxOpen)) return;
     const b = (i) => !!gp.buttons[i]?.pressed;
     const ay = gp.axes[1] || 0, ax = gp.axes[0] || 0;
     const now = { up: b(12) || ay < -0.6, down: b(13) || ay > 0.6, left: b(14) || ax < -0.6, right: b(15) || ax > 0.6, ok: b(0), back: b(1) || b(9) };
@@ -186,7 +203,7 @@ export function createMenus(game, root, ctx) {
       const edge = now[k] && !padPrev[k];
       const rep = now[k] && padRepeat <= 0 && (k === 'up' || k === 'down');
       if (edge || rep) {
-        if (k === 'back') { if (ctx.pauseOpen) ctx.actions.resume(); }
+        if (k === 'back') { if (ctx.wxOpen) ctx.actions.weatherToggle?.(); else if (ctx.pauseOpen) ctx.actions.resume(); }
         else nav(k);
         padRepeat = edge ? 0.35 : 0.12;
       }
@@ -197,5 +214,6 @@ export function createMenus(game, root, ctx) {
   renderTitle();
   if (!ctx.titleVisible) title.style.display = 'none';
   game.bus.on('lang', () => { renderTitle(); if (ctx.pauseOpen) renderPause(); });
-  return { openPause, closePause, hideTitle, showEnd, renderTitle, renderPause, pollPad, nav, el: { title, pause, endEl } };
+  function setWxMode(on) { pause.classList.toggle('wxonly', !!on); }
+  return { setWxMode, openPause, closePause, hideTitle, showEnd, renderTitle, renderPause, pollPad, nav, el: { title, pause, endEl } };
 }
