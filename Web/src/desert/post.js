@@ -244,8 +244,8 @@ export function createPost(game, weather, sky) {
   const w = Math.max(2, Math.floor(innerWidth * pr)), h = Math.max(2, Math.floor(innerHeight * pr));
   const useDepth = q !== 'low';
   // тонмаппинг: AgX (?tm=aces — прежний ACES). Фильмовая кривая с мягкой десатурацией бликов вместо оранжевого пересвета ACES.
-  const tmParam = (typeof location !== 'undefined' && new URLSearchParams(location.search).get('tm')) || 'agx';
-  renderer.toneMapping = tmParam === 'aces' ? THREE.ACESFilmicToneMapping : THREE.AgXToneMapping;
+  const tmParam = (typeof location !== 'undefined' && new URLSearchParams(location.search).get('tm')) || 'aces';
+  renderer.toneMapping = tmParam === 'agx' ? THREE.AgXToneMapping : THREE.ACESFilmicToneMapping;
   // тени: PCF с настраиваемым радиусом (мягче при низком солнце); PCFSoft радиус игнорирует
   if (renderer.shadowMap.enabled) renderer.shadowMap.type = THREE.PCFShadowMap;
   const rtOpts = { type: THREE.HalfFloatType, samples: q === 'low' ? 0 : 4, depthBuffer: true };

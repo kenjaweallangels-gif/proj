@@ -135,7 +135,7 @@ const FRAG_COLOR = /* glsl */`
   float tpK = (1.0 - smoothstep(60.0, 320.0, dist)) * uHTexK.x * (tag == 4 ? 0.3 : 1.0);
   if (tpK > 0.002) {
     tpHEval(vLP, N);
-    base *= mix(vec3(1.0), tpHMul, tpK * uHTexK.y * (tag == 2 ? 0.5 : 1.0));
+    base *= mix(vec3(1.0), clamp(tpHMul, 0.62, 1.45), tpK * uHTexK.y * (tag == 2 ? 0.5 : 1.0));
     gR = mix(gR, clamp(gR * (0.35 + tpHRgh), 0.05, 1.0), tpK * uHTexK.z);
     gTpD = (tpHNW - N) * tpK * uHTexK.w;
   }
@@ -163,7 +163,7 @@ export function createHullMaterial(quality) {
   mat.userData.wear = { value: 1 };
   const kit = triplanarKit('tpH', 'metal_rusty', { scale: 1.3, sharpness: 6, quality, ao: 0, normal: 1, chroma: 0.3 });
   patchMaterial(mat, 'hv-hull' + (quality === 'low' ? 'L' : '') + (kit ? 't' : ''), {
-    uniforms: { uWear: mat.userData.wear, uHTexK: { value: new THREE.Vector4(1, 0.8, 0.7, 0.9) }, ...(kit ? kit.uniforms : {}) },
+    uniforms: { uWear: mat.userData.wear, uHTexK: { value: new THREE.Vector4(1, 0.5, 0.6, 0.45) }, ...(kit ? kit.uniforms : {}) },
     vertexPars: VERT_PARS, vertexMain: VERT_MAIN,
     fragPars: (kit ? '#define HV_TEX\nuniform vec4 uHTexK;\n' + kit.pars : '') + FRAG_PARS, fragColor: FRAG_COLOR, fragRough: FRAG_ROUGH, fragLightsEnd: FRAG_FILL,
     fragNormal: quality === 'low' ? '' : FRAG_NORMAL,
