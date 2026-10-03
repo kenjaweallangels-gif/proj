@@ -56,6 +56,8 @@ export function createCrowd(ctx) {
     const child = archId === 'Child' || a.age === 'Child';
     const base = P.height || (child ? 1.2 : a.age === 'Elder' ? 1.66 : 1.75);
     const height = o.height || base * (child ? 0.88 + R() * 0.28 : 0.94 + R() * 0.13);
+    // Именные персонажи: внешность из пресета core/figures.js (без случайной палитры толпы).
+    if (o.preset) return { preset: o.preset, height, cloth: o.cloth, accent: o.accent, hood: o.hood, mask: o.mask, eyesIbad: !!o.eyesIbad, robe: o.robe, bulk: 1, speed: (a.walkSpeed || 1.1) };
     return {
       height, bulk: (P.bulk || 1) * (child ? 0.9 : 0.88 + R() * 0.26),
       cloth: o.cloth || pal[Math.floor(R() * 4)], accent: o.accent || pal[(1 + Math.floor(R() * 3)) % 4], suit: o.suit || P.suit || '#4a4038',
@@ -66,7 +68,7 @@ export function createCrowd(ctx) {
   let seq = 0;
   function spawn(archId, kind, spot, o = {}) {
     const lk = look(archId, o.look || {});
-    const fig = makeFigure({ height: lk.height, cloth: lk.cloth, accent: lk.accent, suit: lk.suit, skin: lk.skin, hood: lk.hood, mask: lk.mask, bulk: lk.bulk, pack: lk.pack, eyesIbad: lk.eyesIbad, robe: lk.robe, name: `NPC_${archId}_${seq}` });
+    const fig = makeFigure({ preset: lk.preset, height: lk.height, cloth: lk.cloth, accent: lk.accent, suit: lk.suit, skin: lk.skin, hood: lk.hood, mask: lk.mask, bulk: lk.bulk, pack: lk.pack, eyesIbad: lk.eyesIbad, robe: lk.robe, name: `NPC_${archId}_${seq}` });
     const n = {
       id: seq++, arch: archId, kind, fig, lk, scale: lk.height / 1.75, speed: lk.speed, x: spot.x, z: spot.z, y: 0, yaw: spot.yaw ?? R() * TAU, goalYaw: spot.yaw ?? 0,
       pose: 'stand', mode: 'act', timer: R() * 5, path: null, pi: 0, spot, home: { x: spot.x, z: spot.z, yaw: spot.yaw ?? 0 }, lod: 'off', imp: -1, talk: false, group: o.group ?? -1,
@@ -114,26 +116,16 @@ export function createCrowd(ctx) {
   // ------------------------------------------------------------------ спец-персонажи зала ----
   const cx = HALL.cx, cz = HALL.cz;
   const rimY = HALL.bowlY + 0.55;
-  const priestess = spawn('Elder', 'priestess', { x: cx, z: cz - 6.35, yaw: 0 }, { special: true, look: { height: 1.86, cloth: '#d9cfae', accent: '#2c3e57', suit: '#d9cfae', hood: false, mask: false, robe: true } });
-  priestess.fig.parts.root.scale.x *= 0.82; priestess.lk.bulk = 0.8;
+  const priestess = spawn('Elder', 'priestess', { x: cx, z: cz - 6.35, yaw: 0 }, { special: true, look: { preset: 'Priestess', height: 1.86, cloth: '#d9cfae', accent: '#2c3e57', hood: false, mask: false, robe: true } });
   { // головной убор-конус
     const cone = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.55, 14, 1, true), new THREE.MeshStandardMaterial({ color: '#cbbf9a', roughness: 0.9, side: THREE.DoubleSide }));
     cone.position.set(0, 0.28, -0.02); priestess.fig.parts.headPivot.add(cone);
     const band = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.025, 6, 16), new THREE.MeshStandardMaterial({ color: '#2c4a96', roughness: 0.8 }));
     band.rotation.x = Math.PI / 2; band.position.set(0, 0.08, 0); priestess.fig.parts.headPivot.add(band);
   }
-  { const sk = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.3, 1.0, 18, 1, true), new THREE.MeshStandardMaterial({ color: '#d9cfae', roughness: 0.9, side: THREE.DoubleSide }));
-    sk.position.y = -0.46; priestess.fig.parts.pelvis.add(sk);
-    const hem = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.014, 6, 24), new THREE.MeshStandardMaterial({ color: '#2c4a96', roughness: 0.8 }));
-    hem.rotation.x = Math.PI / 2; hem.position.y = -0.95; priestess.fig.parts.pelvis.add(hem); }
   priestess.y = rimY; priestess.yaw = 0; priestess.goalYaw = 0;
-  const harmat = spawn('Elder', 'harmat', { x: cx + 14.3, z: cz + 0.2, yaw: -Math.PI / 2 }, { special: true, look: { height: 1.72, cloth: '#5a4838', accent: '#2c62b8', suit: '#2a221b', hood: false, mask: false, robe: true, eyesIbad: true } });
-  harmat.lk.bulk = 1.25; harmat.fig.parts.root.scale.x *= 1.22; harmat.fig.parts.root.scale.z *= 1.14;
+  const harmat = spawn('Elder', 'harmat', { x: cx + 14.3, z: cz + 0.2, yaw: -Math.PI / 2 }, { special: true, look: { preset: 'Harmat', height: 1.72, hood: false, mask: false, robe: true, eyesIbad: true } });
   { // седые волосы, коса бороды, посох с крюком творца
-    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.118, 12, 8, 0, TAU, 0, Math.PI * 0.55), new THREE.MeshStandardMaterial({ color: '#c9c6bd', roughness: 0.9 }));
-    hair.position.set(0, 0.02, -0.01); hair.rotation.x = -0.3; harmat.fig.parts.headPivot.add(hair);
-    const beard = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.24, 8), new THREE.MeshStandardMaterial({ color: '#d3d0c8', roughness: 0.9 }));
-    beard.position.set(0, -0.14, 0.075); beard.rotation.x = Math.PI; harmat.fig.parts.headPivot.add(beard);
     const staff = new THREE.Group();
     const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.026, 2.15, 8), new THREE.MeshStandardMaterial({ color: '#5a4430', roughness: 0.8 }));
     shaft.position.y = 1.0;
@@ -143,15 +135,8 @@ export function createCrowd(ctx) {
     harmat.fig.parts.limbs.R.sh.add(staff); staff.rotation.x = 0;
     harmat.staff = staff;
   }
-  { const dark = new THREE.MeshStandardMaterial({ color: '#3a2e24', roughness: 0.95, side: THREE.DoubleSide });
-    const blue = new THREE.MeshStandardMaterial({ color: '#2c62b8', roughness: 0.7, emissive: '#10285a', emissiveIntensity: 0.4 });
-    const sk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, 0.98, 20, 1, true), dark); sk.position.y = -0.46; harmat.fig.parts.pelvis.add(sk);
-    const hem = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.022, 6, 28), blue); hem.rotation.x = Math.PI / 2; hem.position.y = -0.95; harmat.fig.parts.pelvis.add(hem);
-    const mantle = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.36, 0.7, 20, 1, true), dark); mantle.position.y = 0.3; harmat.fig.parts.spine.add(mantle);
-    const trim = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.02, 6, 24), blue); trim.rotation.x = Math.PI / 2; trim.position.y = -0.05; harmat.fig.parts.spine.add(trim);
-    const coll = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.026, 6, 20), blue); coll.rotation.x = Math.PI / 2; coll.position.y = 0.64; harmat.fig.parts.spine.add(coll); }
   harmat.y = ground(harmat.x, harmat.z); harmat.faceCam = 0;
-  const dancer = spawn('Weaver', 'dancer', { x: cx + 0.5, z: cz + 0.4, yaw: 1 }, { special: true, look: { height: 1.4, cloth: '#2c4a96', accent: '#c9a46a', suit: '#7a5a40', hood: false, mask: false, bulk: 0.85 } });
+  const dancer = spawn('Weaver', 'dancer', { x: cx + 0.5, z: cz + 0.4, yaw: 1 }, { special: true, look: { height: 1.4, cloth: '#2c4a96', accent: '#c9a46a', suit: '#7a5a40', hood: false, mask: false, bulk: 0.85, robe: false } });
   { const sk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.34, 0.6, 16, 1, true), new THREE.MeshStandardMaterial({ color: '#2c4a96', roughness: 0.9, side: THREE.DoubleSide }));
     sk.position.y = -0.28; dancer.fig.parts.pelvis.add(sk); }
   dancer.dance = { fx: cx + 0.5, fz: cz + 0.4, tx: cx + 1.2, tz: cz - 0.8, t: 0, dur: 0.6, kick: 0 };
