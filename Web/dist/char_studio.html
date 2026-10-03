@@ -2203,19 +2203,19 @@
      * @param {number} t - The interpolation factor in the closed interval `[0, 1]`.
      * @return {Quaternion} A reference to this quaternion.
      */
-    slerp(qb, t) {
+    slerp(qb2, t) {
       if (t === 0) return this;
-      if (t === 1) return this.copy(qb);
+      if (t === 1) return this.copy(qb2);
       const x = this._x, y = this._y, z = this._z, w = this._w;
-      let cosHalfTheta = w * qb._w + x * qb._x + y * qb._y + z * qb._z;
+      let cosHalfTheta = w * qb2._w + x * qb2._x + y * qb2._y + z * qb2._z;
       if (cosHalfTheta < 0) {
-        this._w = -qb._w;
-        this._x = -qb._x;
-        this._y = -qb._y;
-        this._z = -qb._z;
+        this._w = -qb2._w;
+        this._x = -qb2._x;
+        this._y = -qb2._y;
+        this._z = -qb2._z;
         cosHalfTheta = -cosHalfTheta;
       } else {
-        this.copy(qb);
+        this.copy(qb2);
       }
       if (cosHalfTheta >= 1) {
         this._w = w;
@@ -2253,8 +2253,8 @@
      * @param {number} t - The interpolation factor in the closed interval `[0, 1]`.
      * @return {Quaternion} A reference to this quaternion.
      */
-    slerpQuaternions(qa, qb, t) {
-      return this.copy(qa).slerp(qb, t);
+    slerpQuaternions(qa2, qb2, t) {
+      return this.copy(qa2).slerp(qb2, t);
     }
     /**
      * Sets this quaternion to a uniformly random, normalized quaternion.
@@ -42112,9 +42112,9 @@ void main() {
     return { eye: eyeAbs, S };
   }
   function buildEyeball(b, c, R) {
-    const U = 20, V = 14, rings = [];
-    for (let k = 0; k <= V; k++) {
-      const ph = -Math.PI / 2 + Math.PI * k / V, cy = Math.cos(ph), sy = Math.sin(ph), pts = [];
+    const U = 20, V2 = 14, rings = [];
+    for (let k = 0; k <= V2; k++) {
+      const ph = -Math.PI / 2 + Math.PI * k / V2, cy = Math.cos(ph), sy = Math.sin(ph), pts = [];
       for (let i = 0; i < U; i++) {
         const a = i / U * Math.PI * 2;
         const dx = Math.sin(a) * cy, dy = sy, dz = Math.cos(a) * cy;
@@ -42527,14 +42527,14 @@ void main() {
   var rotE = new Euler();
   var tv = new Vector3();
   function ellipsoid(b, c, r, reg, sk, o = {}) {
-    const U = o.u ?? 8, V = o.v ?? 6, rot = o.rot, aux = o.aux || [c[1], 0, 0, 0];
+    const U = o.u ?? 8, V2 = o.v ?? 6, rot = o.rot, aux = o.aux || [c[1], 0, 0, 0];
     if (rot) {
       rotE.set(rot[0], rot[1], rot[2]);
       rotQ.setFromEuler(rotE);
     }
     const rings = [];
-    for (let k = 0; k <= V; k++) {
-      const ph = -Math.PI / 2 + Math.PI * k / V, cy = Math.cos(ph), sy = Math.sin(ph), pts = [];
+    for (let k = 0; k <= V2; k++) {
+      const ph = -Math.PI / 2 + Math.PI * k / V2, cy = Math.cos(ph), sy = Math.sin(ph), pts = [];
       for (let i = 0; i < U; i++) {
         const a = i / U * Math.PI * 2;
         tv.set(Math.sin(a) * cy * r[0], sy * r[1], Math.cos(a) * cy * r[2]);
@@ -44136,6 +44136,118 @@ if (rg == 7) totalEmissiveRadiance += uEye * uEyeGlow;
     };
   }
 
+  // src/player/char_ik.js
+  var V = Vector3;
+  var Q = Quaternion;
+  var tS = new V();
+  var tE = new V();
+  var tH = new V();
+  var tT = new V();
+  var tD = new V();
+  var tP = new V();
+  var tA = new V();
+  var tB = new V();
+  var tL = new V();
+  var qa = new Q();
+  var qb = new Q();
+  var qc = new Q();
+  var qd = new Q();
+  function worldQuat(o, out) {
+    return o.getWorldQuaternion(out);
+  }
+  function aimBone(bone, child, dirWorld, w) {
+    bone.updateWorldMatrix(true, true);
+    child.getWorldPosition(tA);
+    bone.getWorldPosition(tB);
+    tA.sub(tB).normalize();
+    qa.setFromUnitVectors(tA, dirWorld);
+    worldQuat(bone, qb);
+    qb.premultiply(qa);
+    bone.parent.getWorldQuaternion(qc).invert();
+    qc.multiply(qb);
+    bone.quaternion.slerp(qc, w);
+    bone.updateWorldMatrix(true, true);
+  }
+  function createArmIK(parts, group) {
+    const st = { w: 0, tw: 0, target: new V(), has: false, side: "R", sweep: 0.22, roll: 1, prog: 0, wSide: { L: 0, R: 0 }, tgtSide: { L: null, R: null } };
+    const reach = { L: { w: 0, tw: 0, p: new V(), has: false, opts: null }, R: { w: 0, tw: 0, p: new V(), has: false, opts: null } };
+    return {
+      /** point: THREE.Vector3 (мир) | null. weight 0..1. opts: {sweep: м, palm: bool, speed: λ}. */
+      reachTo(point, side = "R", weight = 1, opts) {
+        const r = reach[side === "L" ? "L" : "R"];
+        if (!point) {
+          r.tw = 0;
+          return;
+        }
+        r.p.copy(point);
+        r.has = true;
+        r.tw = weight;
+        r.opts = opts || null;
+      },
+      handWorld(side = "R", out = new V()) {
+        const h = parts.limbs[side === "L" ? "L" : "R"].hand;
+        h.updateWorldMatrix(true, false);
+        return out.set(0, -0.08, 0.02).applyMatrix4(h.matrixWorld);
+      },
+      active() {
+        return reach.L.w > 0.01 || reach.R.w > 0.01 || reach.L.tw > 0 || reach.R.tw > 0;
+      },
+      /** После анимации скелета. dt — шаг, для сглаживания веса. */
+      apply(dt) {
+        for (const k of ["L", "R"]) {
+          const r = reach[k];
+          r.w += (r.tw - r.w) * (1 - Math.exp(-dt * (r.opts?.speed ?? 7)));
+          if (r.w < 4e-3) {
+            if (r.tw === 0) r.has = false;
+            continue;
+          }
+          const limb = parts.limbs[k], sgn = k === "L" ? -1 : 1;
+          const sh = limb.sh, el = limb.el, hand = limb.hand;
+          group.updateWorldMatrix(true, false);
+          sh.updateWorldMatrix(true, true);
+          sh.getWorldPosition(tS);
+          el.getWorldPosition(tE);
+          hand.getWorldPosition(tH);
+          const L12 = tS.distanceTo(tE), L22 = tE.distanceTo(tH);
+          tT.copy(r.p);
+          const sweep = r.opts?.sweep ?? 0.22;
+          if (sweep) {
+            const gp = group.position;
+            const dx = r.p.x - gp.x, dz = r.p.z - gp.z, dist = Math.hypot(dx, dz);
+            const near = MathUtils.smoothstep(1.1 - dist, 0.2, 1.1);
+            group.getWorldQuaternion(qd);
+            tD.set(sgn, 0, 0).applyQuaternion(qd);
+            tT.addScaledVector(tD, sweep * near * (0.6 + 0.4 * Math.sin(r.w * 3.14)));
+            tT.y += 0.05 * near;
+          }
+          tD.subVectors(tT, tS);
+          let d = tD.length();
+          const maxR = (L12 + L22) * 0.985, minR = Math.abs(L12 - L22) + 0.02;
+          const dd = MathUtils.clamp(d, minR, maxR);
+          tD.normalize();
+          group.getWorldQuaternion(qd);
+          tP.set(sgn * 0.55, -0.7, -0.45).applyQuaternion(qd).normalize();
+          tP.addScaledVector(tD, -tP.dot(tD)).normalize();
+          const a = Math.acos(MathUtils.clamp((L12 * L12 + dd * dd - L22 * L22) / (2 * L12 * dd), -1, 1));
+          tE.copy(tS).addScaledVector(tD, Math.cos(a) * L12).addScaledVector(tP, Math.sin(a) * L12);
+          tH.copy(tS).addScaledVector(tD, dd);
+          tL.subVectors(tE, tS).normalize();
+          aimBone(sh, el, tL, r.w);
+          tL.subVectors(tH, tE);
+          el.getWorldPosition(tA);
+          tL.subVectors(tH, tA).normalize();
+          aimBone(el, hand, tL, r.w);
+          if (r.opts?.palm !== false) {
+            qa.setFromAxisAngle(new V(0, 1, 0), -sgn * 1.25 * r.w);
+            el.quaternion.multiply(qa);
+            hand.quaternion.slerp(qb.setFromEuler(new Euler(-0.5, 0, 0)), 0.5 * r.w);
+          }
+          el.updateWorldMatrix(true, true);
+        }
+      }
+    };
+  }
+
   // src/core/figures.js
   var WIND = { x: 0, z: 0, speed: 0 };
   var VIEW = new Vector3(1e6, 0, 1e6);
@@ -44652,8 +44764,9 @@ if (rg == 7) totalEmissiveRadiance += uEye * uEyeGlow;
     const parts = { root, pelvis, spine, chest, neck, headPivot, limbs, body, cloth, skeleton };
     const props = addProps(parts, o);
     const anim = createAnimator(parts, { style: o.style, seed: o.seed });
-    const V = Vector3;
-    const cl = { lag: new V(), lv: new V(), prev: new V(), have: false, vel: new V(), lastPos: new V(), lodT: Math.random() * 0.3, skip: 0, acc: 0, wasCtxWind: false };
+    const ik = createArmIK(parts, g2);
+    const V2 = Vector3;
+    const cl = { lag: new V2(), lv: new V2(), prev: new V2(), have: false, vel: new V2(), lastPos: new V2(), lodT: Math.random() * 0.3, skip: 0, acc: 0, wasCtxWind: false };
     const fig = {
       group: g2,
       height: H,
@@ -44692,7 +44805,16 @@ if (rg == 7) totalEmissiveRadiance += uEye * uEyeGlow;
         const out = anim.update(adt, speed, irregular, ctx);
         clothStep(adt, speed, ctx, out);
         if (lod === 0) faceStep(adt);
+        if (ik.active()) ik.apply(adt);
         return anim.state.ph * Math.PI * 2;
+      },
+      /** Рука тянется к мировой точке (null — отпустить). side 'L'|'R', weight 0..1, opts {sweep: смещение вбок м, palm: ладонью вперёд, speed}. */
+      reachTo(point, side = "R", weight = 1, opts2) {
+        ik.reachTo(point, side, weight, opts2);
+      },
+      /** Мировая позиция ладони (для деформации ткани/занавеса). */
+      handWorld(side = "R", out) {
+        return ik.handWorld(side, out);
       },
       setTalking(b) {
         anim.setTalking(!!b);

@@ -139,6 +139,19 @@ if (sets.includes('talk')) {
   await page.evaluate(() => { const f = window.__S.figs[0]; f.setMouth(0); f.blink(1); for (let i = 0; i < 30; i++) f.animate(0, 0.016, 0); });
   await shot('Kair_blink');
 }
+if (sets.includes('reach')) {
+  for (const [name, side] of [['R', 'R'], ['L', 'L']]) {
+    await page.evaluate((side) => {
+      const S = window.__S; S.clear(); S.light('desert');
+      const V3 = window.__rakis.figures.THREE.Vector3;
+      const f = S.add({ preset: 'Kair' }, 0, 0, 0); const H = f.height;
+      S.sim(f, 0, 0, 0.3, {}, 0);
+      for (let i = 0; i < 60; i++) { f.reachTo(new V3(S.at.x + (side === 'R' ? 0.1 : -0.1), S.at.y + 1.3, S.at.z + 0.55), side, 1, { sweep: 0.2 }); f.animate(0, 1 / 60, 0); }
+      S.cam([1.6, 1.3, 2.2], [0, 1.1, 0.2], 34);
+    }, side);
+    await shot('Kair_reach' + name);
+  }
+}
 if (sets.includes('tris')) {
   const r = await page.evaluate(() => {
     const F = window.__rakis.figures, out = {};

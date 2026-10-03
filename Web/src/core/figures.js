@@ -17,6 +17,7 @@ import { BONE_NAMES, REST, REG, BUILDS, robeProfile, geometryFor, triCount } fro
 import { faceParams, faceKey, faceUniformsSpec } from '../player/char_face.js';
 import { makeUniforms, makeBodyMaterial, makeClothMaterial } from '../player/char_material.js';
 import { createAnimator } from '../player/char_anim.js';
+import { createArmIK } from '../player/char_ik.js';
 
 // ------------------------------------------------------------------------------------------ глобальное состояние ----
 const WIND = { x: 0, z: 0, speed: 0 };
@@ -261,6 +262,7 @@ export function makeFigure(opts = {}) {
 
   // --- анимация ---
   const anim = createAnimator(parts, { style: o.style, seed: o.seed });
+  const ik = createArmIK(parts, g);
   const V = THREE.Vector3;
   const cl = { lag: new V(), lv: new V(), prev: new V(), have: false, vel: new V(), lastPos: new V(), lodT: Math.random() * 0.3, skip: 0, acc: 0, wasCtxWind: false };
   const fig = {
@@ -290,8 +292,13 @@ export function makeFigure(opts = {}) {
       const out = anim.update(adt, speed, irregular, ctx);
       clothStep(adt, speed, ctx, out);
       if (lod === 0) faceStep(adt);
+      if (ik.active()) ik.apply(adt);
       return anim.state.ph * Math.PI * 2;
     },
+    /** Рука тянется к мировой точке (null — отпустить). side 'L'|'R', weight 0..1, opts {sweep: смещение вбок м, palm: ладонью вперёд, speed}. */
+    reachTo(point, side = 'R', weight = 1, opts) { ik.reachTo(point, side, weight, opts); },
+    /** Мировая позиция ладони (для деформации ткани/занавеса). */
+    handWorld(side = 'R', out) { return ik.handWorld(side, out); },
     setTalking(b) { anim.setTalking(!!b); fa.talk = !!b; },
     /** Открытие рта 0..1 (например, амплитуда голоса). null — вернуть управление автоанимации речи. */
     setMouth(v) { fa.ext = v === null || v === undefined ? null : clamp01(v); },
