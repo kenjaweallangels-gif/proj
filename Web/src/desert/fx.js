@@ -241,7 +241,7 @@ void main(){
   vec3 bright = vec3(0.6, 0.38, 0.2);
   vec3 col = mix(dark, bright, clamp(0.08 + 0.85 * pow(clamp(y, 0.0, 1.2), 1.4) + 0.5 * (bands - 0.45) + 0.25 * (small - 0.45), 0.0, 1.0));
   col *= (uKeyColor * 0.2 + uAmbient * 0.9 + 0.1) * lit * (0.5 + 0.7 * dens);
-  col = mix(col, uFogColor, 0.04 + 0.14 * (1.0 - y));
+  col = mix(col, uFogColor, clamp(0.04 + 0.14 * (1.0 - y) + 0.9 * smoothstep(0.4, 0.95, uStorm), 0.0, 1.0));
   if (al < 0.005) discard;
   gl_FragColor = vec4(col, al);
 }`;

@@ -35,8 +35,8 @@ function dirFromElAz(el, azDeg, out) {
 
 // Две луны Ракиса: большая (быстрая смена фаз) и малая (ещё быстрее, ниже по склонению).
 const MOON_DEF = [
-  { id: 'moonA', RU: 'Большая луна', EN: 'Great moon', radius: 2.5, dec: 9, synodic: 29.5, phase0: 0.47, tint: [1.0, 0.95, 0.86], bright: 1.0 },
-  { id: 'moonB', RU: 'Малая луна', EN: 'Small moon', radius: 1.05, dec: -16, synodic: 9.3, phase0: 0.20, tint: [0.84, 0.9, 1.0], bright: 0.7 },
+  { id: 'moonA', RU: 'Большая луна', EN: 'Great moon', radius: 2.5, dec: 9, synodic: 29.5, phase0: 0.351, tint: [1.0, 0.95, 0.86], bright: 1.0 },
+  { id: 'moonB', RU: 'Малая луна', EN: 'Small moon', radius: 1.05, dec: -16, synodic: 9.3, phase0: 0.304, tint: [0.84, 0.9, 1.0], bright: 0.7 },
 ];
 
 // ------------------------------------------------------------------ ключи цвета неба по высоте солнца
@@ -388,7 +388,7 @@ export function createWeather(game, sky, world) {
     const dM = clamp(eff.dust * 0.6 + S * 0.6, 0, 0.85) * smoothstep(-10, 6, el);
     srgbToLin(eff.fogColor, tmpF);
     // цвет тумана = FogInscatterColor пресета (sRGB) × яркость неба, к сумеркам/ночи — цвет горизонта неба
-    const fogLevel = (0.35 + 0.65 * kd) * 1.9 * (0.55 + 0.45 * clamp(sinE * 2.4, 0, 1)) * (1 - 0.55 * sFull);
+    const fogLevel = (0.35 + 0.65 * kd) * 1.9 * (0.55 + 0.45 * clamp(sinE * 2.4, 0, 1)) * (1 - 0.7 * sFull);
     fogC.setRGB(tmpF.r * fogLevel, tmpF.g * fogLevel, tmpF.b * fogLevel);
     const twil = 1 - smoothstep(-1.5, 9, el);               // 1 в сумерках и ночью → туман берёт цвет горизонта неба
     tmpG.copy(hAway).lerp(hSun, 0.3).multiplyScalar(level * 1.1);
