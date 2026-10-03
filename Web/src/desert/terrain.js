@@ -6,8 +6,10 @@ import { ENV, patchMaterial } from './env.js';
 import { triplanarKit } from '../core/triplanar.js';
 
 const CELLS = 160;               // ячеек на сторону кольца
-const TEX = 164;                 // размер текстуры уровня (> CELLS+1)
-const HALF_TEX = TEX / 2;
+export const TEX = 192;          // размер текстуры уровня (> CELLS+1): запас по краям — «мягкая» зона, заливается постепенно
+const HARD = CELLS / 2 + 2;      // эти клетки вокруг центра должны быть валидны к кадру (иначе дыры/ошибки)
+const SOFT = TEX / 2 - 3;        // опережающая заливка: дальше HARD, но в пределах окна; делается порциями по бюджету
+const SOFT_BUDGET_MS = 1.2;      // бюджет опережающей заливки на кадр (все уровни), мс
 
 export const LEVEL_SPACING = [1, 2, 4, 8, 16, 32, 64];
 
@@ -141,20 +143,25 @@ if (uFootRect.w > 0.5 && fuv.x > 0.02 && fuv.y > 0.02 && fuv.x < 0.98 && fuv.y <
 // Рябь (3 масштаба) + зерно
 float calmR = (1.0 - lee) * (1.0 - rockM) * (1.0 - disturb) * (1.0 - 0.6 * packedM);
 vec2 g = vec2(0.0);
-float f1 = 1.0 - smoothstep(6.0, 28.0, dist);
+float f1 = 1.0 - smoothstep(5.0, 24.0, dist);
 float f2 = 1.0 - smoothstep(22.0, 110.0, dist);
 float f3 = 1.0 - smoothstep(90.0, 480.0, dist);
 float rOcc = 0.0;
-if (f1 > 0.001 && uQual > 0.5) { vec3 r = rkRipple(xz, 0.12, 1.6, 1.0, 0.7); g += r.yz * f1 * 0.55; }
+if (f1 > 0.001 && uQual > 0.5) { vec3 r = rkRipple(xz, 0.095, 1.7, 1.0, 0.7); g += r.yz * f1 * 0.5; }
 if (f2 > 0.001) { vec3 r = rkRipple(xz, 0.62, 1.8, 5.0, 0.72); g += r.yz * f2 * 0.17; rOcc += (1.0 - gRH) * f2 * 0.55 * (1.0 - smoothstep(20.0, 70.0, dist)); }
 if (f3 > 0.001) { vec3 r = rkRipple(xz, 2.9, 2.5, 9.0, 0.75); g += r.yz * f3 * 0.1; rOcc += (1.0 - gRH) * f3 * 0.15 * (1.0 - smoothstep(60.0, 300.0, dist)); }
 g *= calmR;
-// лавинные полосы на подветренных склонах
+// лавинные полосы на подветренных склонах: потоки зерна вдоль линии падения (вытянуты по склону), веер у подошвы
+float avl = 0.0;
 if (lee > 0.01) {
-  vec3 st = rkNoiseD(vec2(vv * 1.6, uu * 0.05));
-  g += (st.yx * vec2(-1.0, 1.0)).yx * 0.0;
-  vec2 dn = normalize(Ng.xz) * 0.0;
-  g += acr * (st.y * 0.045 * lee);
+  vec2 dn = normalize(Ng.xz + vec2(1e-4));            // направление вниз по склону
+  vec2 dp = vec2(-dn.y, dn.x);
+  float across = dot(xz, dp), alongS = dot(xz, dn);
+  float s1 = rkNoise(vec2(across * 2.2, alongS * 0.07 + 3.0));
+  float s2 = rkNoise(vec2(across * 9.0, alongS * 0.35 + 8.0));
+  avl = (s1 * 0.65 + s2 * 0.35) - 0.5;
+  g += dp * ((s1 - 0.5) * 0.06 + (s2 - 0.5) * 0.045) * lee * (1.0 - disturb);
+  g += acr * (rkNoise(vec2(vv * 1.6, uu * 0.05)) - 0.5) * 0.09 * lee;
 }
 // зерно
 float fg = 1.0 - smoothstep(1.5, 9.0, dist);
@@ -206,13 +213,14 @@ if (rockM > 0.01) {
 // Цвет песка
 float macro = rkFbm(xz / 420.0 + 3.0) - 0.5;  // 4 октавы: крупные пятна
 float streak = rkNoise(vec2(uu / 170.0, vv / 14.0)) - 0.5;
-float micro = rkNoise(xz / 5.5) - 0.5;
+float micro = rkNoise(vec2(uu / 26.0, vv / 2.2) + 5.0) - 0.5;   // вытянуто по ветру, без «пятен»
 vec3 col = mix(uSandLoose, uSandPacked, packedM);
-col *= 1.0 + 0.2 * macro + 0.09 * streak + 0.05 * micro;
+col *= 1.0 + 0.13 * macro + 0.08 * streak + 0.045 * micro;
 float dmin = smoothstep(0.6, 0.82, rkNoise(vec2(uu / 6.5, vv / 80.0) + 11.0)) * wnd;
 col = mix(col, col * vec3(0.60, 0.50, 0.43), dmin * 0.55);
 // подветренные лавинные склоны: плотнее и темнее, краснее
 col = mix(col, col * vec3(0.80, 0.68, 0.58), lee * 0.6);
+col *= 1.0 + avl * 0.34 * lee;
 // разнообразие дюн: крупные тёплые/светлые пятна и полосы вдоль ветра
 float hv = rkFbm(xz / 900.0 + 17.0) - 0.5;
 float hv2 = rkNoise(vec2(uu / 240.0, vv / 650.0) + 3.0) - 0.5;
@@ -221,6 +229,7 @@ col *= vec3(1.0 + 0.20 * hv + 0.12 * hv2, 1.0 + 0.03 * hv, 1.0 - 0.17 * hv - 0.1
 float grazing = 1.0 - smoothstep(0.04, 0.42, uKeyDir.y);
 float along = abs(dot(normalize(uKeyDir.xz + vec2(1e-4)), uWind));
 col *= 1.0 - clamp(rOcc, 0.0, 1.0) * grazing * (0.08 + 0.22 * along) * (1.0 - rockM) * (1.0 - disturb);
+col = mix(col, col * vec3(0.52, 0.40, 0.36), clamp(rOcc, 0.0, 1.0) * 0.22 * (1.0 - rockM) * (1.0 - disturb) * (0.6 + 0.8 * rkNoise(vec2(uu / 9.0, vv / 40.0) + 2.0)));
 float fgr = (1.0 - smoothstep(0.5, 6.0, dist));
 col *= 1.0 + 0.05 * fgr * (rkNoise(xz * 70.0) - 0.5) * 2.0;
 #ifdef RK_SAND_TEX
@@ -241,7 +250,7 @@ gNW = normalize(Ng - gw);
 gSpark = vec3(0.0);
 float lowSunS = 1.0 - smoothstep(0.04, 0.5, uKeyDir.y);
 float fs = 1.0 - smoothstep(4.0, 34.0 + 22.0 * lowSunS, dist);
-if (fs > 0.001 && uQual > 0.5 && rockM < 0.5) {
+if (fs > 0.001 && uQual > 0.5 && rockM < 0.5 && lowSunS > 0.06) {
   vec2 cp = xz * 46.0;
   vec2 ci = floor(cp);
   float hc = rkHash12(ci);
@@ -251,7 +260,7 @@ if (fs > 0.001 && uQual > 0.5 && rockM < 0.5) {
     vec3 Hh = normalize(uKeyDir + Vv);
     float sp = pow(max(dot(cn, Hh), 0.0), 160.0);
     float shape = smoothstep(0.5, 0.12, length(fract(cp) - 0.5));
-    gSpark = uKeyColor * sp * shape * (0.8 + 1.8 * lowSunS) * fs * (1.0 - lee * 0.6);
+    gSpark = uKeyColor * sp * shape * (0.4 + 2.0 * lowSunS) * lowSunS * fs * (1.0 - lee * 0.6);
   }
 }
 `;
@@ -260,7 +269,7 @@ const FRAG_NORMAL = /* glsl */`
 normal = normalize((viewMatrix * vec4(gNW, 0.0)).xyz);
 `;
 const FRAG_ROUGH = /* glsl */`
-roughnessFactor = mix(0.94, 0.8, packedM) ;
+roughnessFactor = mix(1.0, 0.86, packedM) ;
 roughnessFactor = mix(roughnessFactor, 0.88, rockM);
 `;
 const FRAG_LIGHTS_END = /* glsl */`
@@ -270,6 +279,12 @@ float gSunVis = clamp(dot(reflectedLight.directDiffuse, vec3(0.3333)) / (dot(uKe
 `;
 const FRAG_BEFORE_OUT = /* glsl */`
 outgoingLight += gSpark * gSunVis * step(0.0, dot(gNW, uKeyDir));
+{
+  // мягкий «подповерхностный» свет на терминаторе: тёплый ореол там, где свет скользит по песку
+  float ndlw = dot(gNW, uKeyDir);
+  float sss = smoothstep(-0.28, 0.12, ndlw) * (1.0 - smoothstep(0.12, 0.6, ndlw));
+  outgoingLight += diffuseColor.rgb * uKeyColor * vec3(1.0, 0.52, 0.30) * sss * 0.085 * (1.0 - vMask.x) * (0.4 + 0.6 * vShade);
+}
 `;
 
 const FRAG_FAR_FADE = /* glsl */`
@@ -347,42 +362,73 @@ export function createTerrain(game, foot) {
     tex.minFilter = tex.magFilter = THREE.NearestFilter;
     tex.generateMipmaps = false; tex.needsUpdate = true;
     levels.push({
-      s, li, data, tex, cx: 1e9, cz: 1e9,
+      s, li, data, tex, cx: 1e9, cz: 1e9, dirty: false, softDone: false,
       colI: new Float64Array(TEX).fill(NaN), rowJ: new Float64Array(TEX).fill(NaN),
       uniforms: null, mesh: null,
     });
   });
 
-  function fillTexel(L, a, b, i, j) {
+  const wrapT = (i) => ((i % TEX) + TEX) % TEX;
+  /** Высота + маски в одном texel (без нормали: её считаем из соседних texel — один heightAt вместо трёх). */
+  function fillH(L, a, b, i, j) {
     const x = i * L.s, z = j * L.s;
-    const sp = L.li === 0 ? 0 : L.s;
-    const h = heightAt(x, z, sp);
-    const e = Math.max(0.5, L.s * 0.5);
-    const hx = heightAt(x + e, z, sp), hz = heightAt(x, z + e, sp);
-    const nx = -(hx - h) / e, nz = -(hz - h) / e;
-    const il = 1 / Math.sqrt(nx * nx + 1 + nz * nz);
-    masks(x, z, tmpMask);
     const k = (b * TEX + a) * 4;
-    L.data[k] = h; L.data[k + 1] = nx * il; L.data[k + 2] = nz * il;
+    L.data[k] = heightAt(x, z, L.li === 0 ? 0 : L.s);
+    masks(x, z, tmpMask);
     L.data[k + 3] = Math.round(tmpMask.rock * 63) * 64 + Math.round(tmpMask.packed * 63);
+  }
+  /** Нормаль texel (a,b) разностями по соседним texel (если сосед валиден по индексу мира), иначе односторонне. */
+  function fillN(L, a, b) {
+    const A = L.colI, B = L.rowJ, D = L.data, s = L.s;
+    const ia = A[a], jb = B[b];
+    if (ia !== ia || jb !== jb) return;
+    const a1 = a + 1 === TEX ? 0 : a + 1, a0 = a === 0 ? TEX - 1 : a - 1;
+    const b1 = b + 1 === TEX ? 0 : b + 1, b0 = b === 0 ? TEX - 1 : b - 1;
+    const k = (b * TEX + a) * 4, h = D[k];
+    const okXp = A[a1] === ia + 1, okXm = A[a0] === ia - 1, okZp = B[b1] === jb + 1, okZm = B[b0] === jb - 1;
+    const hxp = okXp ? D[(b * TEX + a1) * 4] : h, hxm = okXm ? D[(b * TEX + a0) * 4] : h;
+    const hzp = okZp ? D[(b1 * TEX + a) * 4] : h, hzm = okZm ? D[(b0 * TEX + a) * 4] : h;
+    const dx = (hxp - hxm) / (((okXp ? 1 : 0) + (okXm ? 1 : 0) || 1) * s), dz = (hzp - hzm) / (((okZp ? 1 : 0) + (okZm ? 1 : 0) || 1) * s);
+    const nx = -dx, nz = -dz;
+    const il = 1 / Math.sqrt(nx * nx + 1 + nz * nz);
+    D[k + 1] = nx * il; D[k + 2] = nz * il;
+  }
+  function fillCol(L, a, iw) {
+    L.colI[a] = iw;
+    for (let b = 0; b < TEX; b++) { const j = L.rowJ[b]; if (j === j) fillH(L, a, b, iw, j); }
+    const a1 = a + 1 === TEX ? 0 : a + 1, a0 = a === 0 ? TEX - 1 : a - 1;
+    for (let b = 0; b < TEX; b++) { fillN(L, a0, b); fillN(L, a, b); fillN(L, a1, b); }
+    L.dirty = true;
+  }
+  function fillRow(L, b, jw) {
+    L.rowJ[b] = jw;
+    for (let a = 0; a < TEX; a++) { const i = L.colI[a]; if (i === i) fillH(L, a, b, i, jw); }
+    const b1 = b + 1 === TEX ? 0 : b + 1, b0 = b === 0 ? TEX - 1 : b - 1;
+    for (let a = 0; a < TEX; a++) { fillN(L, a, b0); fillN(L, a, b); fillN(L, a, b1); }
+    L.dirty = true;
+  }
+  /** Обязательная заливка: все клетки в пределах HARD валидны. */
+  function syncHard(L, cx, cz) {
+    for (let iw = cx - HARD; iw <= cx + HARD; iw++) { const a = wrapT(iw); if (L.colI[a] !== iw) fillCol(L, a, iw); }
+    for (let jw = cz - HARD; jw <= cz + HARD; jw++) { const b = wrapT(jw); if (L.rowJ[b] !== jw) fillRow(L, b, jw); }
+  }
+  /** Опережающая заливка запаса (HARD..SOFT) одной колонкой/строкой за вызов; true — что-то сделано. */
+  function syncSoft(L, cx, cz) {
+    for (let d = HARD + 1; d <= SOFT; d++) {
+      for (const sg of [1, -1]) {
+        const iw = cx + sg * d, a = wrapT(iw);
+        if (L.colI[a] !== iw) { fillCol(L, a, iw); return true; }
+        const jw = cz + sg * d, b = wrapT(jw);
+        if (L.rowJ[b] !== jw) { fillRow(L, b, jw); return true; }
+      }
+    }
+    L.softDone = true;
+    return false;
   }
 
   function recenter(L, cx, cz) {
-    const loI = cx - HALF_TEX, loJ = cz - HALF_TEX;
-    const staleC = [], staleR = [];
-    for (let a = 0; a < TEX; a++) {
-      const iw = loI + (((a - loI) % TEX) + TEX) % TEX;
-      if (L.colI[a] !== iw) { L.colI[a] = iw; staleC.push(a); }
-    }
-    for (let b = 0; b < TEX; b++) {
-      const jw = loJ + (((b - loJ) % TEX) + TEX) % TEX;
-      if (L.rowJ[b] !== jw) { L.rowJ[b] = jw; staleR.push(b); }
-    }
-    const isStale = new Uint8Array(TEX);
-    for (const a of staleC) { isStale[a] = 1; for (let b = 0; b < TEX; b++) fillTexel(L, a, b, L.colI[a], L.rowJ[b]); }
-    for (const b of staleR) for (let a = 0; a < TEX; a++) if (!isStale[a]) fillTexel(L, a, b, L.colI[a], L.rowJ[b]);
-    L.cx = cx; L.cz = cz;
-    L.tex.needsUpdate = true;
+    syncHard(L, cx, cz);
+    L.cx = cx; L.cz = cz; L.softDone = false;
     if (L.uniforms) L.uniforms.uCenter.value.set(cx, cz);
   }
 
@@ -430,14 +476,25 @@ export function createTerrain(game, foot) {
     scene.add(mesh);
   });
 
-  // начальная заливка вокруг (0,0)->камеры
+  // обновление: обязательная заливка сразу, запас вперёд — порциями в пределах бюджета времени
+  let rr = 0;
   function update(cam) {
     ENV.uniforms.uCamXZ.value.set(cam.x, cam.z);
     for (const L of levels) {
       const cx = Math.round(cam.x / L.s), cz = Math.round(cam.z / L.s);
       if (cx !== L.cx || cz !== L.cz) recenter(L, cx, cz);
     }
+    const t0 = performance.now();
+    const n = levels.length;
+    for (let k = 0; k < n; k++) {
+      const L = levels[(rr + k) % n];
+      if (L.softDone) continue;
+      syncSoft(L, L.cx, L.cz);
+      if (performance.now() - t0 > SOFT_BUDGET_MS) break;
+    }
+    rr = (rr + 1) % n;
     for (const L of levels) {
+      if (L.dirty) { L.tex.needsUpdate = true; L.dirty = false; }
       L.uniforms.uCenter.value.set(L.cx, L.cz);
     }
   }
@@ -446,7 +503,7 @@ export function createTerrain(game, foot) {
     levels, update, sandU,
     setVisible(b) { for (const L of levels) L.mesh.visible = b; },
     /** Сбросить кэш высот (после изменения field.groundPatches) — кольца перезаливаются при следующем update. */
-    invalidate() { for (const L of levels) { L.cx = 1e9; L.cz = 1e9; L.colI.fill(NaN); L.rowJ.fill(NaN); } },
+    invalidate() { for (const L of levels) { L.cx = 1e9; L.cz = 1e9; L.softDone = false; L.colI.fill(NaN); L.rowJ.fill(NaN); } },
     /** принудительная первичная заливка */
     prime(x, z) { update({ x, z }); },
   };

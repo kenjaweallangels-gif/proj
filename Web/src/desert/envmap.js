@@ -9,7 +9,7 @@ export function createEnvMap(game, sky) {
   const { renderer, scene } = game;
   const pm = new THREE.PMREMGenerator(renderer);
   const env = new THREE.Scene();
-  const dome = new THREE.Mesh(sky.dome.geometry, sky.dome.material);
+  const dome = new THREE.Mesh(sky.dome.geometry, sky.makeLite ? sky.makeLite() : sky.dome.material);   // облегчённое небо: без звёзд, облаков, хребтов
   dome.frustumCulled = false; dome.scale.setScalar(50); dome.renderOrder = -1000;
   env.add(dome);
   // нижняя полусфера: цвет песка, освещённого ключевым светом + небом (приближение отражённого света земли)

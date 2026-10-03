@@ -24,7 +24,12 @@ uniform vec3 uMoonTan[2];
 uniform vec4 uMoonP[2];   // sin(радиус), sin(ψ), cos(ψ), яркость
 uniform vec3 uMoonCol[2];
 uniform float uQ;
+uniform vec4 uHz;        // x: сила горизонтных слоёв (0..1), y: яркость заката на пиках, z: виртуальный масштаб дальности, w: время для мерцания
 ${GLSL_COMMON}
+
+// ---------------------------------------------------------------- 1D-шум по азимуту (дальние хребты, мезы, дюны)
+float rkN1(float x, float s){ float i = floor(x), f = x - i; f = f*f*(3.0 - 2.0*f); return mix(rkHash12(vec2(i, s)), rkHash12(vec2(i + 1.0, s)), f); }
+float rkF1(float x, float s){ return rkN1(x, s)*0.5 + rkN1(x*2.13, s + 3.0)*0.25 + rkN1(x*4.7, s + 7.0)*0.125 + rkN1(x*9.3, s + 11.0)*0.0625; }
 
 // ---------------------------------------------------------------- звёзды
 vec3 starLayers(vec3 s, float tw, float dens){
@@ -107,9 +112,78 @@ vec3 moonDisc(vec3 d, int i, out float haloOut){
 // ---------------------------------------------------------------- облака
 vec2 cloudUV(vec3 d, float scale){ return d.xz / (d.y + 0.05) * scale; }
 
+// Силуэтный слой: возвращает высоту (в единицах d.y) на азимуте a; kind: 0 — хребет, 1 — меза, 2 — дюнное море
+float rkSil(float a, int kind, float seed){
+  if (kind == 0) {
+    float pres = smoothstep(0.40, 0.62, rkN1(a*1.1 + 3.0, seed));
+    float r = 1.0 - abs(2.0*rkF1(a*5.0, seed + 1.0) - 1.0);
+    return 0.004 + pres*(0.012 + 0.07*pow(r, 1.6)*(0.55 + 0.9*rkN1(a*0.7, seed + 5.0)));
+  }
+  if (kind == 1) {
+    float n = rkF1(a*4.2, seed);
+    float pres = smoothstep(0.30, 0.55, rkN1(a*0.9 + 9.0, seed + 2.0));
+    float hp = 0.012 + 0.035*rkN1(a*1.7, seed + 4.0);
+    float body = 0.45*smoothstep(0.42, 0.55, n) + 0.55*smoothstep(0.55, 0.585, n);
+    float top = 1.0 - 0.1*rkN1(a*70.0, seed + 8.0);
+    return 0.003 + pres*hp*body*top;
+  }
+  float w = rkF1(a*3.0, seed)*2.0;
+  float sw = fract(a*(7.0 + 4.0*rkN1(a*0.6, seed)) + w);
+  float prof = sw < 0.82 ? sw/0.82 : (1.0 - sw)/0.18;
+  return 0.0015 + (0.004 + 0.007*rkF1(a*1.4, seed + 6.0))*pow(prof, 1.25);
+}
+
+// Горизонтные слои (без геометрии): три полосы с параллаксом и воздушной перспективой; сверху в «небесном» пространстве.
+vec3 rkHorizon(vec3 d, vec3 sky, vec3 sunLit){
+  float y = d.y;
+  vec2 dxz = normalize(d.xz + vec2(1e-5));
+  vec2 tg = vec2(-dxz.y, dxz.x);
+  float az = atan(d.z, d.x);
+  float aa = max(fwidth(y), 1e-4);
+  vec2 sxz = normalize(uSunDir.xz + vec2(1e-5));
+  float sunT = dot(tg, sxz), sunN = max(dot(-dxz, sxz), 0.0);
+  float sunEl = max(uSunDir.y, 0.0);
+  float vis = uHz.x;
+  vec3 fogHere = rkFogColorDir(d);
+  vec3 outc = sky;
+  for (int i = 0; i < 3; i++) {
+    float D = i == 0 ? 26000.0 : (i == 1 ? 11000.0 : 4200.0);            // для тумана
+    float Dp = D*3.2*uHz.z;                                                  // для параллакса (камера ходит сотни метров)
+    float seed = 7.0 + float(i)*13.7;
+    float a0 = az + dot(uCamXZ, tg)/Dp;
+    float h = rkSil(a0, i, seed);
+    float m = 1.0 - smoothstep(h - aa, h + aa, y);
+    if (m < 0.002) continue;
+    // освещение склона: наклон силуэта по азимуту + солнце
+    float e = 0.0016;
+    float dh = (rkSil(a0 + e, i, seed) - rkSil(a0 - e, i, seed)) / (2.0*e);
+    float slope = clamp(-dh*7.0, -1.0, 1.0);
+    float ndl = clamp(0.30 + 0.55*sunN*sunEl + 0.65*sunN*(1.0 - sunEl)*0.55 + slope*sunT*0.45, 0.0, 1.0);
+    // высота над основанием: нижняя часть (ближе к земле) утопает в дымке
+    float k = clamp(y / max(h, 1e-4), 0.0, 1.0);
+    vec3 alb = i == 0 ? vec3(0.34, 0.26, 0.24) : (i == 1 ? vec3(0.42, 0.29, 0.20) : vec3(0.58, 0.44, 0.29));
+    alb *= 0.82 + 0.3*rkN1(a0*180.0 + y*700.0, seed + 3.0);                  // страты/эрозия
+    alb *= 0.78 + 0.35*smoothstep(0.0, 0.9, k);                               // светлее к вершинам
+    vec3 lit = alb*(uKeyColor*0.30*ndl + uAmbient*0.95);
+    // воздушная перспектива: плотность тумана и пыли + дальность слоя
+    float T = exp(-uFogDensity*D*0.45*(1.0 + 1.6*uDust));
+    float haze = i == 0 ? 0.80 : (i == 1 ? 0.66 : 0.46);
+    haze = 1.0 - (1.0 - haze)*T;
+    haze = mix(haze, 1.0, clamp(uStorm*1.4, 0.0, 1.0));
+    haze = clamp(haze + (1.0 - k)*0.25, 0.0, 1.0);
+    vec3 col = mix(lit, fogHere, haze);
+    // рассвет/закат: пики ловят свет (контровой край), ночью — силуэт с лунной подсветкой
+    col += sunLit*uHz.y*pow(max(dot(d, uSunDir), 0.0), 3.0)*(1.0 - haze)*smoothstep(0.0, 0.7, k)*0.9;
+    outc = mix(outc, col, m*vis);
+  }
+  return outc;
+}
+
 void main(){
   vec3 d = normalize(vDir);
   float y = d.y;
+  // под горизонтом небо = цвет тумана (закрыто ландшафтом): тяжёлые слои не считаем
+  if (y < -0.085) { gl_FragColor = vec4(uFogColor, 1.0); return; }
   vec3 tint = uSunColor / max(max(uSunColor.r, uSunColor.g), max(uSunColor.b, 1e-3));
   float yy = max(y, 0.0);
   float t = pow(yy, 0.5);
@@ -127,10 +201,33 @@ void main(){
   sky = mix(sky, uFogColor * 1.05, band * (0.35 + 0.4 * uDust + 0.3 * uStorm));
   sky = mix(sky, uFogColor, smoothstep(0.02, -0.08, y));
   sky = mix(sky, uFogColor * 1.0, 0.92 * smoothstep(0.45, 1.0, uStorm));
+  #ifndef SKY_LITE
+  // рассеяние: зенит темнеет и синеет против солнца, у горизонта — молочная белизна (Рэлей + Ми)
+  {
+    float anti = 1.0 - side;
+    sky *= 1.0 - 0.10*anti*smoothstep(0.15, 0.9, yy)*(1.0 - 0.8*uStorm);
+    sky += uHorizon*0.10*exp(-yy*14.0)*(1.0 - uStorm)*(0.5 + 0.5*side);
+  }
+  // сумеречный пояс (пояс Венеры) и тень Земли напротив солнца
+  {
+    float twE = uSunDir.y;
+    float tw = smoothstep(-9.0*0.01745, -0.5*0.01745, twE)*(1.0 - smoothstep(1.0*0.01745, 7.0*0.01745, twE));
+    if (tw > 0.01) {
+      float anti2 = pow(max(-dot(dxz, sxz), 0.0), 1.5);
+      float pinkB = smoothstep(0.012, 0.05, y)*(1.0 - smoothstep(0.08, 0.28, y));
+      float shadowB = 1.0 - smoothstep(0.0, 0.05, y);
+      vec3 pink = uHorizonSun*vec3(1.1, 0.78, 0.85);
+      sky = mix(sky, sky*vec3(0.62, 0.66, 0.86), shadowB*anti2*tw*0.65*(1.0 - uStorm));
+      sky = mix(sky, pink, pinkB*anti2*tw*0.5*(1.0 - uStorm));
+    }
+  }
+  #endif
 
   float vis = smoothstep(-0.02, 0.06, y);
   // ---- ночь: звёзды, Млечный Путь, луны
   if (uSkyNight > 0.003 && y > -0.1) {
+    // слабое свечение ночного неба (airglow) и дальнего света: ночь читается, а не чёрная
+    sky += vec3(0.020, 0.034, 0.075) * uSkyNight * uInvExp * (0.35 + 0.65 * exp(-yy * 2.2));
     vec3 s = uStarMat * d;
     float hz = 1.0 - smoothstep(0.0, 0.45, y);
     float fadeH = smoothstep(0.06, 0.4, y);
@@ -159,11 +256,30 @@ void main(){
   vec3 glow = tint * (pow(mu, 4.0) * 0.14 + pow(mu, 24.0) * 0.4 + pow(mu, 220.0) * 1.1 + pow(mu, 900.0) * 3.0) * dustK;
   glow *= mix(0.8, 1.4, lowSun);
   sky += glow * sunUp * smoothstep(-0.1, 0.1, y + 0.1) * (0.35 + 0.65 * length(uSunColor) / (length(uSunColor) + 0.5));
-  // солнечный диск
-  float disc = smoothstep(0.99986, 0.99993, dot(d, uSunDir));
-  float occl = 1.0 - 0.8 * clamp(uStorm * 1.2 + uDust * 0.5, 0.0, 1.0);
-  vec3 discCol = tint * disc * mix(22.0, 90.0, smoothstep(0.1, 0.5, uSunDir.y)) * occl * smoothstep(-0.04, 0.02, uSunDir.y) * smoothstep(-0.02, 0.03, y);
+  // солнечный диск: потемнение к краю + корона в пыли
+  float cosS = dot(d, uSunDir);
+  float th = sqrt(max(2.0*(1.0 - cosS), 0.0));
+  float rr = th / 0.0135;
+  float limb = 1.0 - 0.6*(1.0 - sqrt(max(1.0 - rr*rr, 0.0)));
+  float disc = (1.0 - smoothstep(0.93, 1.02, rr))*limb;
+  float occl = 1.0 - 0.8*clamp(uStorm*1.2 + uDust*0.5, 0.0, 1.0);
+  float vSun = smoothstep(-0.04, 0.02, uSunDir.y)*smoothstep(-0.02, 0.03, y);
+  vec3 discCol = tint*disc*mix(22.0, 90.0, smoothstep(0.1, 0.5, uSunDir.y))*occl*vSun;
+  float corona = (0.5*exp(-th/0.022) + 0.17*exp(-th/0.075) + 0.05*exp(-th/0.28))*(0.35 + 1.3*uDust + 0.9*uStorm);
+  discCol += tint*corona*1.6*sunUp*vSun*occl*(0.5 + 0.5*lowSun);
   sky += discCol;
+  #ifndef SKY_LITE
+  // лучи сумеречного неба (crepuscular): радиальные полосы вокруг солнца, видны в пыли и у горизонта
+  if (cosS > 0.8 && uSunDir.y > -0.05 && uQ > 0.5) {
+    vec3 T1 = normalize(cross(uSunDir, vec3(0.0, 1.0, 0.0)) + vec3(1e-4, 0.0, 0.0));
+    vec3 B1 = cross(uSunDir, T1);
+    float phi = atan(dot(d, B1), dot(d, T1));
+    float rays = rkN1(phi*9.0 + uTime*0.01, 41.0)*0.6 + rkN1(phi*23.0 - uTime*0.017, 43.0)*0.4;
+    rays = smoothstep(0.35, 0.95, rays);
+    float fall = smoothstep(0.8, 0.985, cosS)*(1.0 - smoothstep(0.9993, 1.0, cosS));
+    sky += tint*rays*fall*fall*(0.05 + 0.25*uDust + 0.25*lowSun)*sunUp*smoothstep(-0.03, 0.08, y)*occl;
+  }
+  #endif
 
   // ---- облака
   if (y > 0.012) {
@@ -175,6 +291,8 @@ void main(){
     vec3 cAmb = uAmbient * 0.55 + uZenith * 0.25;
     vec3 dustTone = uFogColor * vec3(1.0, 0.82, 0.62);
     float dustMix = clamp(uDust * 0.75 + uStorm * 0.5, 0.0, 0.95);
+    // подсветка снизу закатным/рассветным светом (облака горят у солнца и розовеют по всему небу)
+    vec3 sunsetC = uHorizonSun * (0.25 + 1.1 * sideW) * lowSun * (1.0 - 0.7 * uStorm);
     // перистые (тонкие, вытянутые по ветру): всегда есть немного, гуще при облачности
     {
       vec2 cuv = cloudUV(d, 0.75) + w * uTime * 0.003;
@@ -183,6 +301,7 @@ void main(){
       float cov = 0.22 + 0.7 * uClouds;
       float cl = smoothstep(0.92 - cov * 0.6, 1.3 - cov * 0.25, c) * up * 0.5;
       vec3 cc = (keyL * (0.30 + 0.9 * pow(mup, 5.0)) + cAmb * 0.8) * 0.85;
+      cc += sunsetC * 0.55 * (0.5 + 0.5 * pow(mup, 2.0));
       cc = mix(cc, dustTone * (cAmb + keyL * 0.15) , dustMix * 0.6);
       sky = mix(sky, cc, cl);
     }
@@ -199,12 +318,37 @@ void main(){
       float thin = dn * (1.0 - dn) * 4.0;
       vec3 lit = keyL * 0.30 * (0.3 + 0.7 * sh) + cAmb * 0.9;
       lit *= mix(0.5, 1.0, sh);
-      lit += keyL * 0.16 * thin * (0.3 + 1.8 * pow(mup, 6.0));
+      lit += keyL * 0.30 * thin * (0.3 + 2.2 * pow(mup, 6.0)) + tint * thin * sunUp * 0.12 * pow(mup, 3.0) * (0.5 + lowSun);   // серебряная кайма
+      lit += sunsetC * 0.5 * (0.35 + 0.65 * sh);
       lit = mix(lit, dustTone * (cAmb * 0.9 + keyL * 0.22 * (0.4 + 0.6 * sh)), dustMix);
       float a = dn * dn * (3.0 - 2.0 * dn) * smoothstep(0.012, 0.22, y) * (0.8 - 0.2 * uStorm);
       sky = mix(sky, lit, a);
     }
+    // альтокумулюс («барашки»): мелкие ячеистые гряды выше кучевых, подсвеченные с солнечной стороны
+    #ifndef SKY_LITE
+    if (uQ > 0.5 && uClouds > 0.16 && uStorm < 0.9) {
+      vec2 uv = cloudUV(d, 3.3) + w * uTime * 0.008;
+      uv = vec2(dot(uv, w) * 0.8, dot(uv, wp) * 1.5);
+      float cov = smoothstep(0.16, 0.85, uClouds);
+      float n = rkNoise(uv * 0.9 + 17.0) * 0.55 + rkNoise(uv * 2.6 + 3.0) * 0.3 + rkNoise(uv * 7.0) * 0.15;
+      float band = smoothstep(0.30, 0.65, rkNoise(uv * vec2(0.22, 0.7) + 5.0));
+      float dn = smoothstep(0.66 - 0.2 * cov, 0.80 - 0.14 * cov, n + (band - 0.5) * 0.3);
+      vec2 sl = normalize(uKeyDir.xz + vec2(1e-5)) * 0.12;
+      float n2 = rkNoise((uv + sl) * 2.6 + 3.0) * 0.55 + rkNoise((uv + sl) * 0.9 + 17.0) * 0.3 + rkNoise((uv + sl) * 7.0) * 0.15;
+      float sh = clamp(0.65 + (n - n2) * 6.0, 0.0, 1.0);
+      float edge = dn * (1.0 - dn) * 4.0;
+      float a = dn * smoothstep(0.04, 0.3, y) * (1.0 - smoothstep(0.7, 0.95, y) * 0.5) * 0.7;
+      vec3 lit = keyL * 0.26 * (0.3 + 0.7 * sh) + cAmb * 0.85;
+      lit += keyL * 0.2 * edge * (0.3 + 1.6 * pow(mup, 5.0)) + sunsetC * 0.65 * (0.4 + 0.6 * sh);
+      lit = mix(lit, dustTone * (cAmb * 0.9 + keyL * 0.2), dustMix);
+      sky = mix(sky, lit, a);
+    }
+    #endif
   }
+  #ifndef SKY_LITE
+  // дальние хребты, мезы и дюнные моря — слои-импосторы у горизонта (после облаков и солнца: перекрывают их)
+  if (y < 0.16 && uHz.x > 0.002) sky = rkHorizon(d, sky, uHorizonSun);
+  #endif
   // зернистость от бандинга
   sky += (rkHash12(gl_FragCoord.xy) - 0.5) * 0.004;
   gl_FragColor = vec4(max(sky, 0.0), 1.0);
@@ -222,12 +366,20 @@ export function createSky(game) {
     uMoonP: { value: [new THREE.Vector4(0.04, 0, 1, 1), new THREE.Vector4(0.02, 0, 1, 0.7)] },
     uMoonCol: { value: [new THREE.Color(1, 0.95, 0.86), new THREE.Color(0.84, 0.9, 1)] },
     uQ: { value: q === 'low' ? 0 : q === 'med' ? 1 : 2 },
+    uHz: { value: new THREE.Vector4(1, 0.5, 1, 0) },
   };
   const mat = new THREE.ShaderMaterial({
     vertexShader: SKY_VERT, fragmentShader: SKY_FRAG,
     uniforms: Object.assign({}, ENV.uniforms, skyU),
     side: THREE.BackSide, depthWrite: false, depthTest: false,
   });
+  /** Упрощённый материал неба для PMREM (без звёзд/облаков/хребтов): те же uniform-объекты, но без тяжёлых слоёв. */
+  function makeLite() {
+    return new THREE.ShaderMaterial({
+      vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, defines: { SKY_LITE: 1 },
+      uniforms: mat.uniforms, side: THREE.BackSide, depthWrite: false, depthTest: false,
+    });
+  }
   const dome = new THREE.Mesh(new THREE.SphereGeometry(1, 40, 20), mat);
   dome.scale.setScalar(8000);
   dome.frustumCulled = false;
@@ -256,6 +408,7 @@ export function createSky(game) {
   let Rcur = R;
   function update(cam) {
     dome.position.copy(cam);
+    skyU.uHz.value.set(1, 1 - Math.min(1, Math.max(0, (ENV.uniforms.uSunDir.value.y - 0.05) / 0.3)), 1, 0);
     // при низком солнце тени длинные — расширяем окно теней (дальше видно тени дюн)
     const keyY = ENV.uniforms.uKeyDir.value.y;
     const lowK = 1 - Math.min(1, Math.max(0, (keyY - 0.1) / 0.45));
@@ -281,5 +434,5 @@ export function createSky(game) {
     sun.target.updateMatrixWorld();
   }
 
-  return { dome, sun, hemi, skyU, update, mat };
+  return { dome, sun, hemi, skyU, update, mat, makeLite };
 }

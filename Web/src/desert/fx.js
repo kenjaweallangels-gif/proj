@@ -3,21 +3,23 @@
 import * as THREE from 'three';
 import { ENV, GLSL_COMMON } from './env.js';
 import { heightAt } from './field.js';
+import { TEX as TERRAIN_TEX } from './terrain.js';
 import { rng, smoothstep, clamp } from '../core/util.js';
 
 const GROUND_GLSL = /* glsl */`
 uniform sampler2D uGT;
+uniform float uTSize;
 float rkG(vec2 p){
   vec2 t = p / 2.0; vec2 f = floor(t); vec2 fr = t - f;
-  float a = texelFetch(uGT, ivec2(mod(f, 164.0)), 0).x;
-  float b = texelFetch(uGT, ivec2(mod(f + vec2(1.0, 0.0), 164.0)), 0).x;
-  float c = texelFetch(uGT, ivec2(mod(f + vec2(0.0, 1.0), 164.0)), 0).x;
-  float d = texelFetch(uGT, ivec2(mod(f + vec2(1.0, 1.0), 164.0)), 0).x;
+  float a = texelFetch(uGT, ivec2(mod(f, uTSize)), 0).x;
+  float b = texelFetch(uGT, ivec2(mod(f + vec2(1.0, 0.0), uTSize)), 0).x;
+  float c = texelFetch(uGT, ivec2(mod(f + vec2(0.0, 1.0), uTSize)), 0).x;
+  float d = texelFetch(uGT, ivec2(mod(f + vec2(1.0, 1.0), uTSize)), 0).x;
   return mix(mix(a, b, fr.x), mix(c, d, fr.x), fr.y);
 }
 vec3 rkGN(vec2 p){
   vec2 t = p / 2.0; vec2 f = floor(t);
-  vec4 a = texelFetch(uGT, ivec2(mod(f + 0.5, 164.0)), 0);
+  vec4 a = texelFetch(uGT, ivec2(mod(f + 0.5, uTSize)), 0);
   return vec3(a.y, sqrt(max(1.0 - a.y * a.y - a.z * a.z, 0.02)), a.z);
 }
 `;
@@ -267,7 +269,7 @@ export function createFx(game, world, terrain, weather) {
   driftGeo.instanceCount = nDrift;
   const driftMat = new THREE.ShaderMaterial({
     vertexShader: DRIFT_VERT, fragmentShader: DRIFT_FRAG, transparent: true, depthWrite: false,
-    uniforms: Object.assign({}, ENV.uniforms, { uR: { value: 120 }, uIntensity: { value: 1 }, uGT: gt }),
+    uniforms: Object.assign({}, ENV.uniforms, { uR: { value: 120 }, uIntensity: { value: 1 }, uGT: gt, uTSize: { value: TERRAIN_TEX } }),
   });
   const drift = new THREE.Mesh(driftGeo, driftMat);
   drift.frustumCulled = false; drift.renderOrder = 5;
