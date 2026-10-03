@@ -305,7 +305,7 @@ export function createTerrain(game, foot) {
   const q = game.settings.quality;
   const qual = q === 'low' ? 0 : q === 'med' ? 1 : 2;
 
-  const kS = triplanarKit('tpS', 'sand', { axes: 'y', scale: 1.45, quality: q, rough: 0, ao: 0, normal: 1, chroma: 0.55, antiTile: q !== 'low' });
+  const kS = triplanarKit('tpS', 'sand', { axes: 'y', scale: 1.45, quality: q, rough: 0, ao: 0, normal: 1, chroma: 0.55, antiTile: q === 'high' });
   const kM = q === 'low' ? null : triplanarKit('tpM', 'sand_ripples', { axes: 'y', scale: 2.6, quality: q, rough: 0, ao: 0, normal: 1, chroma: 0, antiTile: q === 'high' });
   const sandU = {
     uTexK: { value: new THREE.Vector4(1, 0.4, 0.5, 0.9) },     // x: включено, y: сила нормали, z: сила цвета, w: сила среднего слоя

@@ -147,7 +147,7 @@ const ROCK_NORMAL = `normal = normalize((viewMatrix * vec4(gNW, 0.0)).xyz);`;
 
 export function createRockMaterial(opts = {}) {
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.93, metalness: 0 });
-  const kit = triplanarKit('tpR', opts.tex ?? 'rock_cliff', { scale: opts.texScale, quality: opts.quality, sharpness: 5, normal: opts.texNormal ?? 1, ao: 0.6, rough: 1, chroma: 0.5 });
+  const kit = triplanarKit('tpR', opts.tex ?? 'rock_cliff', { scale: opts.texScale, quality: opts.quality, sharpness: 5, normal: opts.texNormal ?? 1, ao: opts.quality === 'high' ? 0.6 : 0, rough: opts.quality === 'high' ? 1 : 0, chroma: 0.5, antiTile: opts.quality !== 'low' });
   patchMaterial(mat, 'rk-rock' + (kit ? 't' + (opts.tex ?? '') : ''), {
     uniforms: {
       uRTexK: { value: new THREE.Vector4(1, 0.85, 0.8, 0) },
