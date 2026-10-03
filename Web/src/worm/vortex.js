@@ -20,7 +20,7 @@ export class Vortex {
     const idx = [];
     for (let r = 0; r < NR; r++) for (let a = 0; a < NA; a++) {
       const a0 = r * NA + a, a1 = r * NA + (a + 1) % NA, b0 = (r + 1) * NA + a, b1 = (r + 1) * NA + (a + 1) % NA;
-      idx.push(a0, b0, a1, a1, b0, b1);
+      idx.push(a0, a1, b0, a1, b1, b0);
     }
     this.geo = new THREE.BufferGeometry();
     this.geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
@@ -29,7 +29,7 @@ export class Vortex {
     this.geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e5);
     this.mat = new THREE.MeshStandardMaterial({
       color: new THREE.Color(color), roughness: 1, metalness: 0, vertexColors: true, transparent: true,
-      depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3,
+      depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3, side: THREE.DoubleSide,
     });
     this.mesh = new THREE.Mesh(this.geo, this.mat);
     this.mesh.frustumCulled = false; this.mesh.visible = false; this.mesh.renderOrder = 3; this.mesh.receiveShadow = true;
@@ -63,7 +63,7 @@ export class Vortex {
         const ridge = Math.sin(spiral) * (1 - crater * 0.8);
         const h = rim + band * k * (0.9 * ridge + 0.35 * Math.sin(spiral * 2.3 + 1)) * (1 - 0.4 * crater);
         const o = r * NA + a;
-        pos[o * 3] = x; pos[o * 3 + 1] = g(x, z) + 0.14 + Math.max(h, -0.1) + (rw < hole ? 0.1 : 0); pos[o * 3 + 2] = z;
+        pos[o * 3] = x; pos[o * 3 + 1] = g(x, z) + 0.45 + Math.max(h, -0.1) + (rw < hole ? 0.1 : 0); pos[o * 3 + 2] = z;
         // цвет: к центру темнее, по гребням светлее; край растворяется
         const toHole = 1 - smoothstep(hole * 0.9, rimR * 0.95, rw);
         const dark = 1 - (0.78 - 0.35 * crater) * Math.pow(toHole, 0.8) * k;

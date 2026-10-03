@@ -97,7 +97,7 @@ export function createCarryall(game, hullMat, glowMat, lampMat, quality) {
 
   // Подъёмные тросы: 4 стальных каната от лап-захватов переносчика к крышевым захватам харвестера
   const CAB_N = 4, CAB_SEG = 10;
-  const cabMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.3, 0.3, 1, 6, 1, true), new THREE.MeshStandardMaterial({ color: '#34322e', roughness: 0.5, metalness: 0.8 }), CAB_N * CAB_SEG);
+  const cabMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.5, 0.5, 1, 6, 1, true), new THREE.MeshStandardMaterial({ color: '#34322e', roughness: 0.5, metalness: 0.8 }), CAB_N * CAB_SEG);
   cabMesh.frustumCulled = false; cabMesh.count = 0; cabMesh.castShadow = false;
   const LUG_LOCAL = [[4, -7.8, 3.4], [4, -7.8, -3.4], [-9, -7.8, 3.0], [-9, -7.8, -3.0]];
   const lugWorld = LUG_LOCAL.map(() => new THREE.Vector3());

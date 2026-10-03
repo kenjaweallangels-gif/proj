@@ -212,9 +212,25 @@ export class EncounterDirector {
     return !!colliders.segmentBlocked(a, b, RADIUS + 1.5, { ignore: 'worm' });
   }
 
+  /** Игрок (или спутник) на пути головы: червь притормаживает и «ждёт», пока тот отойдёт (через 4 с ползёт 2 м/с — коллайдеры мягко отодвинут). */
+  personAhead() {
+    const { game, K } = this.api;
+    if (!this.surfaced) return false;
+    const cy = Math.cos(K.yaw), sy = Math.sin(K.yaw), reach = 34 + this.v * 3;
+    const list = [game.player?.position, ...(game.companions?.list || []).map((c) => c.position)];
+    for (const p of list) {
+      if (!p) continue;
+      const dx = p.x - K.pos.x, dz = p.z - K.pos.z;
+      const along = dx * cy + dz * sy, lat = Math.abs(-dx * sy + dz * cy);
+      if (along > 8 && along < reach && lat < RADIUS + 5) return true;
+    }
+    return false;
+  }
+
   moveHead(dt, vTarget, acc) {
     const { K } = this.api;
     if (this.blockedAhead()) { vTarget = 0; acc = Math.max(acc, 6); this.blockT += dt; } else this.blockT = 0;
+    if (this.personAhead()) { this.stallT = (this.stallT || 0) + dt; vTarget = this.stallT > 4 ? Math.min(vTarget, 2) : 0; acc = Math.max(acc, 5); } else this.stallT = 0;
     this.v += clamp(vTarget - this.v, -acc * dt, acc * dt);
     if (this.v < 0) this.v = 0;
     this.u = Math.min(this.u + this.v * dt, this.path.len - 1);
@@ -254,6 +270,12 @@ export class EncounterDirector {
           this.surfaced = true;
           this.api.onBreach(0.55);
           bus.emit('worm:reveal', { phase: 'erupt' });
+        }
+        this.pryT = (this.pryT || 0) - dt;                       // передний наездник рычагом вскрывает шов кольца: из шва сыплется песок
+        if (this.pryT <= 0 && this.surfaced) {
+          this.pryT = 1.6 + this.rand() * 1.8;
+          const e = rd.items[0].hookPole.matrix.elements;
+          if (rd.items[0].hookPole.visible) this.api.fx.puff(e[12], e[13], e[14], 0.22);
         }
         if (!this._passFx && this.u > path.o.approach - 60) { this._passFx = true; game.audio?.event?.('Worm.Pass', K.pos.clone()); }
         sp.headLift = lerp(sp.headLift, this.headLiftFor(this.v) * (0.55 + 0.45 * tired), 1 - Math.exp(-1.5 * dt));

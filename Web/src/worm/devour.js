@@ -26,9 +26,9 @@ export const DEVOUR_TUNING = {
   vortexLead: 9, vortexRamp: 10, holeR: 30, rimH: 3.2, vortexR: 112,
   tiltDur: 6.5, tiltMax: 1.32,  // рад (≈76° носом вниз), подвес на тросах за корму
   eruptDelay: 1.6, riseTime: 2.6, baseHeight: 30, flare: 2.0, flareLen: 90, openTime: 2.2,
-  hangTime: 6.5, slideTime: 6.5, slideAccel: 11, closeDelay: 3.4, closeTime: 2.6,
+  hangTime: 6.5, slideTime: 6.0, slideAccel: 8.5, closeDelay: 4.3, closeTime: 2.4,
   retractTime: 7.5, retractDepth: 46,
-  aftermathTime: 12, safeRadius: 165, knockSpeed: 24,
+  aftermathTime: 18, safeRadius: 165, knockSpeed: 24,
   debrisPerSec: 9, spiceRate: 140, sandRate: 150, rainRate: 90,
 };
 
@@ -107,13 +107,19 @@ export class DevourDirector {
     }
     const pp = game.player?.position || this.C0;
     const los = new THREE.Vector3(this.C0.x - pp.x, 0, this.C0.z - pp.z);
-    if (los.length() < 160) los.copy(this.f).multiplyScalar(-1).addScaledVector(new THREE.Vector3(-this.f.z, 0, this.f.x), 0.8);
+    const far = los.length() >= 160;
+    if (!far) los.copy(this.f).multiplyScalar(-1).addScaledVector(new THREE.Vector3(-this.f.z, 0, this.f.x), 0.8);
     los.normalize();
-    this.w.set(-los.z, 0, los.x);                       // червь идёт поперёк линии взгляда
-    if (this.w.dot(this.f) > 0.6) this.w.negate();
-    // отсечь стартовую точку от скалы/сиетча
-    const S = new THREE.Vector3().copy(this.A).addScaledVector(this.w, -(T.startDist + T.arcR));
-    if (S.x > 520 || S.x < -700) this.w.negate();
+    // волна приходит из-за харвестера под ~40° к линии взгляда игрока (видна на горизонте и идёт через кадр к машине); сторону выбираем так, чтобы старт был в эрге
+    const perp = new THREE.Vector3(-los.z, 0, los.x);
+    let best = null;
+    for (const sgn of [1, -1]) {
+      const back = los.clone().multiplyScalar(Math.cos(0.7)).addScaledVector(perp, Math.sin(0.7) * sgn);   // от харвестера к старту червя
+      const S = new THREE.Vector3().copy(this.A).addScaledVector(back, T.startDist + T.arcR);
+      const ok = S.x < 520 && S.x > -700 && Math.hypot(S.x - 700, S.z - 270) > 260;
+      if (!best || (ok && !best.ok)) best = { back, ok };
+    }
+    this.w.copy(best.back).negate();                      // курс червя: от старта к харвестеру
     this.buildPath();
 
     // состояния модулей
@@ -477,7 +483,7 @@ export class DevourDirector {
     void cam;
 
     // песчаный фонтан и пряная пыль вокруг колонны
-    if (active && t < this.tRetract1) {
+    if (active && t < this.tRetract0 + 2) {
       const rad = RADIUS * (1 + (T.flare - 1) * 0.6);
       this.sandAcc += dt * T.sandRate * qf * (t < this.tRise1 + 2 ? 1.6 : 0.8);
       while (this.sandAcc >= 1) {
@@ -490,10 +496,10 @@ export class DevourDirector {
       while (this.spiceAcc >= 1) {
         this.spiceAcc -= 1;
         const a = rand() * 6.2832, r = rad * (0.4 + rand() * 1.1), h = gE + 4 + rand() * 40;
-        hv.particles.emit(0, A.x + Math.cos(a) * r, h, A.z + Math.sin(a) * r, Math.cos(a) * (2 + rand() * 6), 3 + rand() * 6, Math.sin(a) * (2 + rand() * 6), 7 + rand() * 6, 10 + rand() * 12, 0.22, 3.6, { wind: 1.2, buoy: 1.6, drag: 0.3 });
+        hv.particles.emit(0, A.x + Math.cos(a) * r, h, A.z + Math.sin(a) * r, Math.cos(a) * (2 + rand() * 6), 3 + rand() * 6, Math.sin(a) * (2 + rand() * 6), 4 + rand() * 4, 8 + rand() * 9, 0.2, 3.2, { wind: 1.2, buoy: 1.3, drag: 0.35 });
       }
       // пыль из пасти (широкие облака)
-      if (rand() < dt * 3.5 * qf) fx.puff(A.x + (rand() - 0.5) * 60, gE + 2 + rand() * 12, A.z + (rand() - 0.5) * 60, 0.9, 'wide');
+      if (t < this.tClose0 + 1 && rand() < dt * 3 * qf) fx.puff(A.x + (rand() - 0.5) * 60, gE + 2 + rand() * 12, A.z + (rand() - 0.5) * 60, 0.6, 'wide');
     }
     // песчаный дождь и стена пыли в радиусе 170 м от оси
     if (active && t < this.tRetract1 + 2) {

@@ -26,7 +26,7 @@ for (const st of stages) {
         let yaw = Math.atan2(w.headPos.z - p.z, w.headPos.x - p.x);
         const o = d.tasks?.[1];
         if (o && ['walkTo', 'talk', 'home'].includes(o.ph)) yaw = Math.atan2(o.pos.z - p.z, o.pos.x - p.x);
-        g.player.teleport(p.x, p.y, p.z, yaw, false); cam.fov = 62; cam.updateProjectionMatrix();
+        g.player.teleport(p.x, p.y, p.z, yaw, false); cam.fov = 62; cam.updateProjectionMatrix(); window.__step(0.034, 1 / 30);
       } else if (v === 'riders') {
         sp.surfacePoint(48, 0, P, N, 0);
         const side = new T.Vector3().crossVectors(sp._b, N).normalize();

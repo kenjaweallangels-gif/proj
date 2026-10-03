@@ -99,7 +99,7 @@ export function createStain(game) {
   const idx = [];
   for (let r = 0; r < NR; r++) for (let a = 0; a < NA; a++) {
     const a0 = r * NA + a, a1 = r * NA + (a + 1) % NA, b0 = (r + 1) * NA + a, b1 = (r + 1) * NA + (a + 1) % NA;
-    idx.push(a0, b0, a1, a1, b0, b1);
+    idx.push(a0, a1, b0, a1, b1, b0);
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
@@ -111,12 +111,12 @@ export function createStain(game) {
   const R = rng(99);
   ctx.clearRect(0, 0, 256, 256);
   const blob = (x, y, r, col, a) => { const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, col.replace('A', a)); g.addColorStop(1, col.replace('A', 0)); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill(); };
-  blob(128, 128, 126, 'rgba(70,34,16,A)', 0.55);
-  for (let i = 0; i < 90; i++) { const a = R() * 6.28, d = Math.sqrt(R()) * 95; blob(128 + Math.cos(a) * d, 128 + Math.sin(a) * d, 12 + R() * 32, 'rgba(190,84,24,A)', 0.2 + R() * 0.35); }
+  blob(128, 128, 126, 'rgba(70,34,16,A)', 0.8);
+  for (let i = 0; i < 90; i++) { const a = R() * 6.28, d = Math.sqrt(R()) * 95; blob(128 + Math.cos(a) * d, 128 + Math.sin(a) * d, 12 + R() * 32, 'rgba(205,92,22,A)', 0.35 + R() * 0.45); }
   for (let i = 0; i < 60; i++) { const a = R() * 6.28, d = Math.sqrt(R()) * 110; blob(128 + Math.cos(a) * d, 128 + Math.sin(a) * d, 6 + R() * 18, 'rgba(20,14,10,A)', 0.2 + R() * 0.3); }
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
-  const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, depthWrite: false, roughness: 1, metalness: 0, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3, opacity: 0 });
+  const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, depthWrite: false, roughness: 1, metalness: 0, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3, opacity: 0, side: THREE.DoubleSide });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.frustumCulled = false; mesh.visible = false; mesh.renderOrder = 2; mesh.receiveShadow = true;
   const groundFn = (x, z) => game.world?.heightAt?.(x, z) ?? 0;
@@ -126,7 +126,7 @@ export function createStain(game) {
       const th = (a / NA) * Math.PI * 2, rr = (r / NR) * rad * (1 + 0.12 * Math.sin(th * 3 + 1.2) + 0.08 * Math.sin(th * 7));
       const x = cx + Math.cos(th) * rr, z = cz + Math.sin(th) * rr;
       const k = r * NA + a;
-      pos[k * 3] = x; pos[k * 3 + 1] = groundFn(x, z) + 0.1; pos[k * 3 + 2] = z;
+      pos[k * 3] = x; pos[k * 3 + 1] = groundFn(x, z) + 0.5; pos[k * 3 + 2] = z;
       uv[k * 2] = 0.5 + 0.5 * (r / NR) * Math.cos(th); uv[k * 2 + 1] = 0.5 - 0.5 * (r / NR) * Math.sin(th);
     }
     geo.attributes.position.needsUpdate = true; geo.attributes.uv.needsUpdate = true;

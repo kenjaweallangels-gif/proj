@@ -612,6 +612,8 @@ export function create(game) {
     hookPoints,
     /** Мировая точка в локальной системе модели. */
     toWorld(lx, ly, lz, out = new THREE.Vector3()) { root.updateMatrixWorld(true); return out.set(lx, ly, lz).applyMatrix4(root.matrixWorld); },
+    /** Сценарий «Червь и харвестер» из панели харвестера: то же, что game.worm.playDevour(opts) → Promise. */
+    provokeWorm(opts) { return game.worm?.playDevour?.(opts) ?? Promise.resolve({ skipped: true, devoured: false }); },
     /** Тормоз по сценарию (останавливает ход, не трогая двигатели). */
     hold(b) { H.holdScript = !!b; },
     wreck, stain, particles, H, S,

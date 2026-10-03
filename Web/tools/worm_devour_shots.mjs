@@ -10,7 +10,7 @@ const outDir = join(root, 'dist', 'shots', tag);
 const dt = Number(arg('dt', 1 / 30)), minLum = Number(arg('minlum', 20));
 const views = arg('views', 'player,side,aerial').split(',');
 const only = arg('only', '') ? arg('only', '').split(',') : null;
-const { browser, page, errors } = await openGame({ file: arg('file', 'worm.html'), q: arg('q', 'med'), w: Number(arg('w', 1280)), h: Number(arg('h', 720)), gl: arg('gl', 'swiftshader'), at: [270, 180], yaw: -1.9 });
+const { browser, page, errors } = await openGame({ file: arg('file', 'worm.html'), q: arg('q', 'med'), w: Number(arg('w', 1280)), h: Number(arg('h', 720)), gl: arg('gl', 'swiftshader'), at: [270, 180], yaw: -1.9, hideSubs: arg('subs', '0') === '0' });
 
 await page.evaluate(() => {
   const g = window.__rakis;
@@ -53,8 +53,10 @@ async function shot(label) {
       cameraFn = () => {
         const g = window.__rakis, p = g.player.position, d = g.worm.devourDirector;
         const yaw = Math.atan2(d.A.z - p.z, d.A.x - p.x);
+        g.player.setFirstPerson?.(true);
         g.player.teleport(p.x, p.y, p.z, yaw, false);
         g.camera.fov = 62; g.camera.updateProjectionMatrix();
+        window.__step(0.5, 1 / 30);          // камера игрока обновляется модулем игрока (переход к виду от первого лица)
       };
     } else if (view === 'side') {
       cameraFn = () => {
@@ -83,7 +85,7 @@ const times = await page.evaluate(() => { const d = window.__rakis.worm.devourDi
 console.log('timeline:', JSON.stringify(Object.fromEntries(Object.entries(times).map(([k, v]) => [k, +v.toFixed(1)]))));
 // ключевые кадры (в секундах от начала)
 const marks = [
-  ['wormsign', 4], ['alarm', 9], ['carryall', times.hook - 3], ['hooked', times.hook + 2.5], ['lift', times.lift1], ['tilt', (times.tilt0 + times.tilt1) / 2],
+  ['wormsign', 4], ['alarm', 9], ['approach', 14], ['carryall', times.hook - 3], ['hooked', times.hook + 2.5], ['lift', times.lift1], ['tilt', (times.tilt0 + times.tilt1) / 2],
   ['vortex', times.tilt1 - 2], ['erupt1', times.erupt + 0.8], ['erupt2', times.erupt + 2.2], ['maw', times.rise1 + 2], ['snap', times.snap + 0.8],
   ['swallow1', times.snap + 2.8], ['swallow2', times.snap + 5], ['close', times.close0 + 2.5], ['retreat', times.retract0 + 3], ['aftermath', times.after + 5], ['crater', times.end + 1],
 ].filter(([n]) => !only || only.includes(n));
