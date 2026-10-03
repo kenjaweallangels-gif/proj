@@ -30,11 +30,14 @@ enum class ERakisZone : uint8
 	A2_Erg		UMETA(DisplayName = "A2 Open Erg"),
 	A3_Approach	UMETA(DisplayName = "A3 Rocky Approach"),
 	A4_Crevice	UMETA(DisplayName = "A4 Hidden Crevice"),
+	A5_Trail	UMETA(DisplayName = "A5 Cliff Trail"),
+	A6_Cleft	UMETA(DisplayName = "A6 Hidden Cleft"),
 	B1_Airlock	UMETA(DisplayName = "B1 Airlock"),
 	B2_Gallery	UMETA(DisplayName = "B2 Lower Gallery"),
 	B3_Passages	UMETA(DisplayName = "B3 Passages"),
 	B4_Cistern	UMETA(DisplayName = "B4 Cistern"),
-	B5_Hall		UMETA(DisplayName = "B5 Religious Hall")
+	B5_Hall		UMETA(DisplayName = "B5 Religious Hall"),
+	C1_Garden	UMETA(DisplayName = "C1 Sheltered Garden")
 };
 
 /** Состояния червя (GDD §5). */
