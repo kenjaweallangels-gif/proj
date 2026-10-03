@@ -7,7 +7,7 @@
 // В hash (встроенный просмотр): #nointro-aura-auto, #onepro, #s090010 …
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { HOLO, LAYER_HOLO, LAYER_REAL, markerFrame } from '../engine/holo.js';
+import { HOLO, LAYER_HOLO, LAYER_LABEL, LAYER_REAL, markerFrame } from '../engine/holo.js';
 import { AUTO_REPLIES, CHAT_SCRIPT, docByCode } from './catalog.js';
 import { docFormat, FORMATS } from './kd_draw.js';
 import { buildPanels, placeCorner, placeHud } from './panels.js';
@@ -25,6 +25,7 @@ import { searchDocs } from './catalog.js';
 import { buildGlassesModel } from './glasses_model.js';
 import { AssemblyPlayer, SPEEDS } from './assembly_player.js';
 import { galleyTarget } from './galley_player.js';
+import { buildWorker } from './humanoid.js';
 import { DEFAULT_DEVICE, DEVICES, deviceById, deviceSummary, dimLevelOfStep, dimStepOf, fitDistance, matchDevice, transmitAt, weightFatigue, windowDeg } from './glasses.js';
 import '../style.css';
 import './galley.css';
@@ -39,6 +40,7 @@ for (const t of location.hash.slice(1).split(/[-_.~]/).filter(Boolean)) {      /
   else if (t === 'free') { q.set('auto', '1'); q.set('autocam', 'free'); }
   else if (t === 'corner') q.set('corner', '1');
   else if (t === 'virtual') { q.set('asm', '1'); q.set('intro', '0'); }
+  else if (t === 'tp') q.set('tp', '1');
   else if (t === 'narrow') q.set('field', '0');
   else if (t === 'autonomous') q.set('mode', 'auto');
   else if (t === 'manual') q.set('mode', 'manual');
@@ -405,7 +407,14 @@ async function main() {
     if (!h && !player.locked && q.get('debug') !== 'orbit') lockPointer();
   });
   addEventListener('mouseup', () => mgr.endDrag());
-  canvas.addEventListener('wheel', (e) => { if (mgr.wheel(pointerNdc(), e.deltaY)) e.preventDefault(); }, { passive: false });
+  canvas.addEventListener('wheel', (e) => {
+    if (tp.on) {                                                       // колесо — ближе/дальше, Shift+колесо — облёт
+      if (e.shiftKey) tp.yawOff += Math.sign(e.deltaY || e.deltaX) * 0.18;
+      else tp.dist = THREE.MathUtils.clamp(tp.dist * (e.deltaY > 0 ? 1.12 : 0.89), 0.9, 9);
+      e.preventDefault(); return;
+    }
+    if (mgr.wheel(pointerNdc(), e.deltaY)) e.preventDefault();
+  }, { passive: false });
   addEventListener('keydown', (e) => {
     if (mgr.key(e)) { e.preventDefault(); player.keys.clear(); player.enabled = !mgr.focus; return; }
     player.enabled = true;
@@ -442,6 +451,7 @@ async function main() {
     if (k === 'KeyX') act(e.shiftKey ? 'corner_side' : 'corner');
     if (k === 'KeyU') act('auto_cam');
     if (k === 'Digit6') act('player');
+    if (k === 'Digit5') act('tp');
     if (asm.open) {
       if (k === 'Space') { e.preventDefault(); act('player_play'); }
       if (k === 'Comma') act('player_back');
@@ -547,11 +557,14 @@ async function main() {
       case 'dim_set': sim.dimMode = 'manual'; sim.dimLevel = sim.device.dimLevels ? THREE.MathUtils.clamp(Number(arg) || 0, 0, 1) : 0; break;
       case 'auto_start': auto.start(); break;
       case 'auto_free': auto.setCam('free'); if (!auto.on) auto.start(); break;
+      case 'tp_on': setTP(true); break;
+      case 'tp_off': setTP(false); break;
       case 'auto_guide': auto.setCam('guide'); if (!auto.on) auto.start(); break;
       case 'auto_cam': auto.setCam(auto.cam === 'free' ? 'guide' : 'free'); break;
       case 'corner': cornerAlgo(arg === 'on' ? true : arg === 'off' ? false : undefined); break;
       case 'corner_side': panels.algo.corner = panels.algo.corner === 'tl' ? 'tr' : 'tl'; cornerAlgo(true); break;
       case 'auto_pause': if (asm.open) asm.pause(); else auto.pause(true); break;
+      case 'tp': setTP(arg == null ? undefined : !!arg); break;
       case 'player': case 'player_close': togglePlayer(cmd === 'player_close' ? false : arg == null ? undefined : !!arg); break;
       case 'player_play': if (!asm.open) togglePlayer(true); else asm.toggle(); break;
       case 'player_rev': if (asm.open) asm.reverse(); break;
@@ -712,7 +725,7 @@ async function main() {
         ['N / B', 'переход вперёд / назад'], ['P', 'фото в журнал'], ['G', 'закрепить окно перед глазами'], ['1–4', 'окна КД / переход / система / задание'],
         ['Tab', 'поле зрения: полное ≈ 200° (два глаза) / центр 72°'], ['\\', 'схема зон поля зрения'],
         ['I', 'имитация сборки: запуск / пауза; Shift+I — стоп'],
-        ['6', 'виртуальная сборка без деталей (плеер): пробел, , . [ ] − Home End'], ['U', 'имитация: камера ведёт / хожу сам'], ['X', 'алгоритм в углу поля зрения; Shift+X — другой угол'], ['K', 'другие очки (Shift+K — назад)'], ['R', '3DoF: окна по центру взгляда'],
+        ['6', 'виртуальная сборка без деталей (плеер): пробел, , . [ ] − Home End'], ['5', 'вид от третьего лица (колесо — ближе/дальше)'], ['U', 'имитация: камера ведёт / хожу сам'], ['X', 'алгоритм в углу поля зрения; Shift+X — другой угол'], ['K', 'другие очки (Shift+K — назад)'], ['R', '3DoF: окна по центру взгляда'],
         ['T', 'ускорение времени участка ×1 / ×60 / ×600'], ['L', 'затемнение линз по ступеням очков → авто'], ['V', 'снять / надеть очки'], ['O', 'модель зрения'], ['Enter', 'пропустить вступление'],
       ].map(([a, b]) => `<tr><td><kbd>${a}</kbd></td><td>${b}</td></tr>`).join('')}</table>`;
       return;
@@ -780,6 +793,7 @@ async function main() {
       [auto.cam === 'free' ? '🚶 Хожу сам (U)' : '🎥 Камера ведёт (U)', 'cam', auto.cam === 'free' ? 'on' : ''],
       [panels.algo.visible ? '▣ Алгоритм в углу (X)' : '□ Алгоритм в угол (X)', 'corner', panels.algo.visible ? 'on' : ''],
       [asm.open ? '⏹ Закрыть виртуальную сборку (6)' : '🧩 Виртуальная сборка (6)', 'asm', asm.open ? 'on' : ''],
+      [tp.on ? '👁 От первого лица (5)' : '🧍 Вид от третьего лица (5)', 'tp', tp.on ? 'on' : ''],
       [`👓 ${sim.device.brand} ${sim.device.name} (K)`, 'dev', ''],
       [vision.fieldMode ? '👁 Поле 200° (Tab)' : '👁 Центр 72° (Tab)', 'field', vision.fieldMode ? 'on' : ''], ['Клавиши (H)', 'help', ''], ['Зрение (O)', 'vision', ''], ['Окна 1–4', 'win', ''],
       [`Время ×${app.speed} (T)`, 'time', ''], ['Очки (V)', 'glasses', ''], ['Планшет (J)', 'tablet', ''], ['Голос', 'voice', ''],
@@ -788,7 +802,7 @@ async function main() {
       e.stopPropagation();
       const k = b.dataset.b;
       if (k === 'auto') act('auto_toggle'); if (k === 'stop') act('auto_stop');
-      if (k === 'cam') act('auto_cam'); if (k === 'corner') act('corner'); if (k === 'field') act('field'); if (k === 'asm') act('player');
+      if (k === 'cam') act('auto_cam'); if (k === 'corner') act('corner'); if (k === 'field') act('field'); if (k === 'asm') act('player'); if (k === 'tp') act('tp');
       if (k === 'dev') toggleCard('vision');
       if (k === 'help') toggleCard('help'); if (k === 'vision') toggleCard('vision');
       if (k === 'win') for (const p of [panels.kd, panels.step, panels.sys, panels.task]) mgr.toggle(p, true);
@@ -797,6 +811,40 @@ async function main() {
       if (k === 'tablet') toggleTablet();
       if (k === 'voice') toggleCard('voice');
     });
+  }
+
+  // ---------- вид от третьего лица: модель сборщика с очками, кабелем и блоком ----------
+  const worker = buildWorker(sim.device.id);
+  worker.root.visible = false;
+  scene.add(worker.root);
+  const tpCam = new THREE.PerspectiveCamera(55, 1, 0.05, 120);
+  const tp = { on: q.get('tp') === '1', dist: 2.6, yawOff: 0.35, cam: new THREE.Vector3(), look: new THREE.Vector3(), holo: false };
+  function setTP(on = !tp.on) {
+    tp.on = on;
+    worker.root.visible = on; if (!on && worker.cable) worker.cable.visible = false;
+    app.notify(on ? 'Вид от третьего лица: сборщик в очках, кабель к блоку. Колесо — ближе/дальше, Shift+колесо — облёт, 5 — от первого лица' : 'Вид от первого лица (глаза сборщика)', 5);
+    updateBar();
+  }
+  function renderTP(dt) {
+    worker.setDevice(sim.device.id);
+    worker.setPose({ pos: player.pos, yaw: player.mode === 'inspect' ? player.yaw : player.yaw, pitch: player.pitch, phase: player.phase, speed: player.speed || 0,
+      crouch: Math.max(0, Math.min(1, (player.eyeStand - player.eye) / 0.56)), lean: player.mode === 'inspect' ? 0.8 : 0, worn: !!sim.glasses, t: performance.now() / 1000 });
+    if (worker.cable) worker.cable.visible = true;
+    // камера: за правым плечом, плавно; при осмотре — сбоку от узла
+    const yaw = player.yaw + tp.yawOff;
+    const want = V(player.pos.x + Math.sin(yaw) * tp.dist, 1.75 + tp.dist * 0.18, player.pos.z + Math.cos(yaw) * tp.dist);
+    // смотреть на голову и грудь сборщика; если камера сзади — чуть вперёд, туда, куда смотрит он
+    const look = V(player.pos.x, 1.42 + player.pitch * 0.25, player.pos.z).addScaledVector(V(-Math.sin(player.yaw), 0, -Math.cos(player.yaw)), 0.7 * Math.max(0, Math.cos(tp.yawOff)));
+    const k = 1 - Math.exp(-dt * 5);
+    if (tp.cam.lengthSq() === 0) { tp.cam.copy(want); tp.look.copy(look); }
+    tp.cam.lerp(want, k); tp.look.lerp(look, k);
+    tpCam.position.copy(tp.cam); tpCam.lookAt(tp.look);
+    tpCam.aspect = innerWidth / innerHeight; tpCam.updateProjectionMatrix();
+    tpCam.layers.set(LAYER_REAL); tpCam.layers.enable(LAYER_LABEL); if (tp.holo) tpCam.layers.enable(LAYER_HOLO);
+    renderer.setRenderTarget(null);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.62;
+    renderer.render(scene, tpCam);
+    renderer.toneMapping = THREE.NoToneMapping;
   }
 
   // ---------- плеер виртуальной сборки (без реальных деталей): стапель и участки ----------
@@ -1066,7 +1114,8 @@ async function main() {
     viz.update(dt, run);
     eye.update(dt, { gazeDist: gaze.dist, gazeHolo: gaze.holo, lumCd });
     vision.occlusion = sim.occlusion;
-    vision.render(dt, t, {
+    if (tp.on) renderTP(dt);
+    else vision.render(dt, t, {
       focusD: eye.focusD, pupilMM: eye.pupil, dispD: eye.displayD,
       glassesOn: sim.glasses, dispOn: sim.display, bootFade: sim.boot,
       transmit: transmitAt(sim.device, sim.dimLevel), dispBright: sim.bright,
@@ -1099,8 +1148,9 @@ async function main() {
   }
   if (q.get('corner') === '1') cornerAlgo(true, true);
   if (q.get('asm') === '1') togglePlayer(true);
+  if (tp.on) setTP(true);
   window.__demo = {
-    ready: true, scene, world, run, cam, player, eye, vision, app, mgr, panels, viz, finishIntro, inspectAtGaze, sim, params, auto, setDevice, act, asm,
+    ready: true, scene, world, run, cam, player, eye, vision, app, mgr, panels, viz, finishIntro, inspectAtGaze, sim, params, auto, setDevice, act, asm, tp, worker,
     // для проверок: перескочить к этапу сценария
     jump(state) {
       if (scen.state === 'choose') { scen.state = 'intro'; scen.mode = 'auto'; }
