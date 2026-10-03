@@ -55,7 +55,9 @@ export function create(game) {
   const bodyId = game.colliders?.add({ type: 'capsule', a: bodyA, b: bodyB, r: CFG.radius, owner: 'player' });
   const syncBody = () => { bodyA.set(position.x, position.y + CFG.radius, position.z); bodyB.set(position.x, position.y + CFG.height - CFG.radius, position.z); };
   syncBody();
-  const OWN = { ignore: 'player' };
+  // Игрок не упирается в своих спутников (на узких уступах серпантина они оказываются впереди):
+  // спутники сами уступают — их коллизия учитывает капсулу игрока и выталкивает их в сторону.
+  const OWN = { ignore: new Set(['player', 'companion:Ilva', 'companion:Rayn', 'companion:Ossana']) };
   const reachAuto = new THREE.Vector3();
   function pickReach() {
     if (p.reachTarget) return p.reachTarget;

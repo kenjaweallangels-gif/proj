@@ -4,7 +4,7 @@ import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 const out = new URL('../dist/shots/route/', import.meta.url).pathname; mkdirSync(out, { recursive: true });
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage'] });
-const p = await b.newPage({ viewport: { width: 960, height: 540 } });
+const p = await b.newPage({ viewport: { width: 400, height: 225 } });
 const errs = []; p.on('pageerror', (e) => errs.push(String(e))); p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
 await p.goto(`file://${new URL('../dist/rakis_demo.html', import.meta.url).pathname}?autotest=1&q=low&lang=RU`);
 await p.waitForFunction(() => window.__rakis?.realTime > 1.5, null, { timeout: 420000, polling: 1000 });
@@ -23,7 +23,7 @@ async function walkTo(x, z, label, maxSec = 90, shot = true) {
   await p.keyboard.up('KeyW');
   if (shot) { console.log(label, JSON.stringify(await info())); await p.screenshot({ path: out + label + '.png' }); }
 }
-await p.evaluate(() => window.__rakis.debug.goto('trail'));
+await p.evaluate(() => { window.__rakis.debug.goto('trail'); window.__rakis.timeScale = 2.5; });
 await p.waitForTimeout(3000);
 const pts = await p.evaluate(() => { const g = window.__rakis; const tr = g.approach?.trail || []; return tr.map((q) => [q.x, q.z]); });
 console.log('trail points', pts.length);
