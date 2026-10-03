@@ -1,0 +1,618 @@
+{
+ "schema_version": "1.0",
+ "operation": {
+  "id": "040",
+  "title": "Сборка полки багажной: кронштейны, петля, замок",
+  "product": "АИ.7045.200 СБ",
+  "revision": "Б",
+  "workplace": "Участок 2, РМ-12",
+  "units": "mm"
+ },
+ "models": [
+  {
+   "id": "m_shelf",
+   "uri": "models/op040_shelf.glb",
+   "note": "Экспорт NX → STEP AP242 → GLB, имена узлов = parts[].node"
+  }
+ ],
+ "anchors": {
+  "reference_frame": "fixture_top_center",
+  "markers": [
+   {
+    "id": 7,
+    "dictionary": "DICT_6X6_250",
+    "size_mm": 80,
+    "pose": {
+     "position": [
+      -600,
+      1,
+      -260
+     ],
+     "rotation": [
+      0,
+      0,
+      0,
+      1
+     ]
+    },
+    "note": "ложемент, левый задний"
+   },
+   {
+    "id": 12,
+    "dictionary": "DICT_6X6_250",
+    "size_mm": 80,
+    "pose": {
+     "position": [
+      600,
+      1,
+      -260
+     ],
+     "rotation": [
+      0,
+      0,
+      0,
+      1
+     ]
+    },
+    "note": "правый задний"
+   },
+   {
+    "id": 23,
+    "dictionary": "DICT_6X6_250",
+    "size_mm": 80,
+    "pose": {
+     "position": [
+      600,
+      1,
+      260
+     ],
+     "rotation": [
+      0,
+      0,
+      0,
+      1
+     ]
+    },
+    "note": "правый передний"
+   },
+   {
+    "id": 31,
+    "dictionary": "DICT_6X6_250",
+    "size_mm": 80,
+    "pose": {
+     "position": [
+      -600,
+      1,
+      260
+     ],
+     "rotation": [
+      0,
+      0,
+      0,
+      1
+     ]
+    },
+    "note": "левый передний"
+   }
+  ],
+  "check_distance": {
+   "from": [
+    -600,
+    1,
+    -260
+   ],
+   "to": [
+    600,
+    1,
+    -260
+   ],
+   "nominal_mm": 1200,
+   "tol_mm": 1.5
+  }
+ },
+ "parts": [
+  {
+   "id": "K204",
+   "designation": "К-204",
+   "name": "Кронштейн левый",
+   "model": "m_shelf",
+   "node": "K204",
+   "fallback": {
+    "type": "box",
+    "size_mm": [
+     100,
+     70,
+     60
+    ],
+    "color": "#a8a45a"
+   },
+   "target": {
+    "position": [
+     -400,
+     30,
+     -120
+    ],
+    "rotation": [
+     0,
+     0,
+     0,
+     1
+    ]
+   },
+   "source": {
+    "kind": "bin",
+    "cell": "B3",
+    "position": [
+     830,
+     20,
+     -20
+    ]
+   },
+   "kd": {
+    "sheet": "kd3",
+    "position": "1"
+   },
+   "mass_kg": 0.12
+  },
+  {
+   "id": "K205",
+   "designation": "К-205",
+   "name": "Кронштейн правый",
+   "model": "m_shelf",
+   "node": "K205",
+   "fallback": {
+    "type": "box",
+    "size_mm": [
+     100,
+     70,
+     60
+    ],
+    "color": "#a8a45a"
+   },
+   "target": {
+    "position": [
+     400,
+     30,
+     -120
+    ],
+    "rotation": [
+     0,
+     0,
+     0,
+     1
+    ]
+   },
+   "source": {
+    "kind": "bin",
+    "cell": "B4",
+    "position": [
+     970,
+     20,
+     -20
+    ]
+   },
+   "kd": {
+    "sheet": "kd3",
+    "position": "2"
+   },
+   "mass_kg": 0.12
+  },
+  {
+   "id": "P110",
+   "designation": "П-110",
+   "name": "Петля крышки",
+   "model": "m_shelf",
+   "node": "P110",
+   "fallback": {
+    "type": "box",
+    "size_mm": [
+     900,
+     10,
+     30
+    ],
+    "color": "#b9bec4"
+   },
+   "target": {
+    "position": [
+     0,
+     30,
+     -200
+    ],
+    "rotation": [
+     0,
+     0,
+     0,
+     1
+    ]
+   },
+   "source": {
+    "kind": "bench",
+    "position": [
+     80,
+     -20,
+     -400
+    ]
+   },
+   "kd": {
+    "sheet": "kd3",
+    "position": "3"
+   },
+   "mass_kg": 0.4
+  },
+  {
+   "id": "Z31",
+   "designation": "З-31",
+   "name": "Замок крышки",
+   "model": "m_shelf",
+   "node": "Z31",
+   "fallback": {
+    "type": "box",
+    "size_mm": [
+     120,
+     30,
+     50
+    ],
+    "color": "#2d3136"
+   },
+   "target": {
+    "position": [
+     0,
+     30,
+     170
+    ],
+    "rotation": [
+     0,
+     0,
+     0,
+     1
+    ]
+   },
+   "source": {
+    "kind": "bin",
+    "cell": "C2",
+    "position": [
+     900,
+     20,
+     280
+    ]
+   },
+   "kd": {
+    "sheet": "kd3",
+    "position": "4"
+   },
+   "mass_kg": 0.18
+  }
+ ],
+ "fasteners": [
+  {
+   "id": "F1",
+   "type": "bolt",
+   "designation": "Болт M4×12",
+   "part": "K204",
+   "position": [
+    -430,
+    33,
+    -130
+   ],
+   "axis": [
+    0,
+    1,
+    0
+   ],
+   "torque_nm": 1.2,
+   "lock": "none"
+  },
+  {
+   "id": "F2",
+   "type": "bolt",
+   "designation": "Болт M4×12",
+   "part": "K204",
+   "position": [
+    -370,
+    33,
+    -130
+   ],
+   "axis": [
+    0,
+    1,
+    0
+   ],
+   "torque_nm": 1.2,
+   "lock": "none"
+  },
+  {
+   "id": "F3",
+   "type": "bolt",
+   "designation": "Болт M4×12",
+   "part": "K205",
+   "position": [
+    370,
+    33,
+    -130
+   ],
+   "axis": [
+    0,
+    1,
+    0
+   ],
+   "torque_nm": 1.2,
+   "lock": "none"
+  },
+  {
+   "id": "F4",
+   "type": "bolt",
+   "designation": "Болт M4×12",
+   "part": "K205",
+   "position": [
+    430,
+    33,
+    -130
+   ],
+   "axis": [
+    0,
+    1,
+    0
+   ],
+   "torque_nm": 1.2,
+   "lock": "none"
+  },
+  {
+   "id": "F5",
+   "type": "screw",
+   "designation": "Винт M3×8",
+   "part": "P110",
+   "position": [
+    -330,
+    31.5,
+    -217
+   ],
+   "axis": [
+    0,
+    1,
+    0
+   ],
+   "torque_nm": 0.6,
+   "lock": "none"
+  },
+  {
+   "id": "F6",
+   "type": "screw",
+   "designation": "Винт M3×8",
+   "part": "P110",
+   "position": [
+    -110,
+    31.5,
+    -217
+   ],
+   "axis": [
+    0,
+    1,
+    0
+   ],
+   "torque_nm": 0.6,
+   "lock": "none"
+  },
+  {
+   "id": "F7",
+   "type": "screw",
+   "designation": "Винт M3×8",
+   "part": "P110",
+   "position": [
+    110,
+    31.5,
+    -217
+   ],
+   "axis": [
+    0,
+    1,
+    0
+   ],
+   "torque_nm": 0.6,
+   "lock": "none"
+  },
+  {
+   "id": "F8",
+   "type": "screw",
+   "designation": "Винт M3×8",
+   "part": "P110",
+   "position": [
+    330,
+    31.5,
+    -217
+   ],
+   "axis": [
+    0,
+    1,
+    0
+   ],
+   "torque_nm": 0.6,
+   "lock": "none"
+  },
+  {
+   "id": "F9",
+   "type": "bolt",
+   "designation": "Болт M4×10",
+   "part": "Z31",
+   "position": [
+    -75,
+    32,
+    170
+   ],
+   "axis": [
+    0,
+    1,
+    0
+   ],
+   "torque_nm": 1.0,
+   "lock": "none"
+  },
+  {
+   "id": "F10",
+   "type": "bolt",
+   "designation": "Болт M4×10",
+   "part": "Z31",
+   "position": [
+    75,
+    32,
+    170
+   ],
+   "axis": [
+    0,
+    1,
+    0
+   ],
+   "torque_nm": 1.0,
+   "lock": "none"
+  }
+ ],
+ "kd_sheets": [
+  {
+   "id": "kd3",
+   "uri": "kd/AI.7045.200_SB_list3.png",
+   "title": "АИ.7045.200 СБ, лист 3",
+   "positions": {
+    "1": [
+     150,
+     170,
+     60,
+     40
+    ],
+    "2": [
+     640,
+     170,
+     60,
+     40
+    ],
+    "3": [
+     120,
+     150,
+     640,
+     20
+    ],
+    "4": [
+     400,
+     370,
+     80,
+     40
+    ]
+   }
+  }
+ ],
+ "steps": [
+  {
+   "id": "S1",
+   "n": 1,
+   "title": "Привязка к ложементу",
+   "kind": "align",
+   "confirm": "voice",
+   "norm_s": 30,
+   "notes": "Метки 4 шт., отклонение ≤ 2 мм"
+  },
+  {
+   "id": "S2",
+   "n": 2,
+   "title": "Кронштейн К-204 (левый)",
+   "kind": "install",
+   "parts": [
+    "K204"
+   ],
+   "fasteners": [
+    "F1",
+    "F2"
+   ],
+   "tool": "Отвёртка моментная",
+   "params": {
+    "torque_nm": 1.2
+   },
+   "confirm": "voice",
+   "norm_s": 90,
+   "kd": [
+    "kd3"
+   ]
+  },
+  {
+   "id": "S3",
+   "n": 3,
+   "title": "Кронштейн К-205 (правый)",
+   "kind": "install",
+   "parts": [
+    "K205"
+   ],
+   "fasteners": [
+    "F3",
+    "F4"
+   ],
+   "tool": "Отвёртка моментная",
+   "params": {
+    "torque_nm": 1.2
+   },
+   "confirm": "voice",
+   "norm_s": 90,
+   "kd": [
+    "kd3"
+   ]
+  },
+  {
+   "id": "S4",
+   "n": 4,
+   "title": "Петля крышки П-110",
+   "kind": "install",
+   "parts": [
+    "P110"
+   ],
+   "fasteners": [
+    "F5",
+    "F6",
+    "F7",
+    "F8"
+   ],
+   "tool": "Отвёртка моментная",
+   "params": {
+    "torque_nm": 0.6
+   },
+   "confirm": "voice",
+   "norm_s": 150,
+   "kd": [
+    "kd3"
+   ]
+  },
+  {
+   "id": "S5",
+   "n": 5,
+   "title": "Замок З-31",
+   "kind": "install",
+   "parts": [
+    "Z31"
+   ],
+   "fasteners": [
+    "F9",
+    "F10"
+   ],
+   "tool": "Отвёртка моментная",
+   "params": {
+    "torque_nm": 1.0
+   },
+   "confirm": "voice",
+   "norm_s": 90,
+   "kd": [
+    "kd3"
+   ],
+   "notes": "Замок ставить после петли"
+  },
+  {
+   "id": "S6",
+   "n": 6,
+   "title": "Контроль и фото",
+   "kind": "check",
+   "check": {
+    "type": "gap",
+    "nominal_mm": 0.3,
+    "tol_mm": 0.2,
+    "text": "Зазор замка ≤ 0,5 мм"
+   },
+   "critical": true,
+   "confirm": "photo",
+   "norm_s": 60
+  }
+ ]
+}

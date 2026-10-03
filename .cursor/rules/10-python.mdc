@@ -1,0 +1,11 @@
+---
+description: Python-ядро, сервер и инструменты (pkg1-sim-vm)
+globs: pkg1-sim-vm/**/*.py
+alwaysApply: false
+---
+- Python 3.12, типизация везде (from __future__ import annotations), dataclasses или pydantic v2.
+- Форматирование ruff/black стилем, строки до 110 символов.
+- Модули ядра (core/arcore) не импортируют сервер и Godot. Сервер не импортирует rigs.
+- Трекинг: только OpenCV (cv2.aruco.ArucoDetector, solvePnP с SOLVEPNP_IPPE_SQUARE для одной метки, solvePnP для платы).
+- Тесты pytest в pkg1-sim-vm/tests, ускоряй их: синтетические кадры 1280×720, не больше 50 кадров на тест.
+- Ошибки трекинга выражай в мм и градусах, пороги бери из docs/06_testing.md.

@@ -1,0 +1,1274 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Система AR-сборки</title>
+<!-- Эталон вида для демо и Godot-клиента. Самодостаточная страница: three.js с CDN (jsdelivr/cdnjs), шрифты Google.
+     Открыть: двойной щелчок или `npx vite reference` / любой статический сервер. Нужен интернет для CDN. -->
+</head>
+<body>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+:root{
+  --ground:#EEF1F4; --surface:#FFFFFF; --surface-2:#F6F8FA; --ink:#15202B; --muted:#586674; --line:#D3DAE1;
+  --accent:#1E58B8; --accent-ink:#FFFFFF; --hud:#0FA97F; --warn:#B87400; --bad:#B3261E;
+  --code-bg:#F2F5F8; --chip:#E4EAF1;
+  --display:"IBM Plex Sans Condensed","Arial Narrow","Roboto Condensed",Arial,sans-serif;
+  --body:"IBM Plex Sans",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1318; --surface:#151C23; --surface-2:#1A232C; --ink:#E4EAF0; --muted:#94A3B1; --line:#27323D;
+    --accent:#76A6FF; --accent-ink:#0B1420; --hud:#3FE0B5; --warn:#E3A33B; --bad:#FF8A80;
+    --code-bg:#111820; --chip:#202B36; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1318; --surface:#151C23; --surface-2:#1A232C; --ink:#E4EAF0; --muted:#94A3B1; --line:#27323D;
+  --accent:#76A6FF; --accent-ink:#0B1420; --hud:#3FE0B5; --warn:#E3A33B; --bad:#FF8A80;
+  --code-bg:#111820; --chip:#202B36; color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--ground);color:var(--ink);font:15px/1.6 var(--body);margin:0}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:20px;padding-block:28px 64px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;line-height:1.15;margin:0}
+h1{font-size:clamp(30px,4.6vw,52px);font-weight:700;letter-spacing:-.01em}
+h2{font-size:clamp(24px,2.8vw,32px);font-weight:600}
+h3{font-size:19px;font-weight:600}
+p{margin:0}
+a{color:var(--accent)}
+a:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.lead{font-size:18px;max-width:64ch;color:var(--ink)}
+.muted{color:var(--muted)}
+code,.mono{font-family:var(--mono);font-size:.9em}
+.num{font-variant-numeric:tabular-nums}
+
+/* hero */
+.hero{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:32px;align-items:end;padding-block:8px 24px}
+.hero-text{display:grid;gap:16px}
+.stamp{border:1.5px solid var(--ink);font-family:var(--mono);font-size:12px;background:var(--surface)}
+.stamp div{display:grid;grid-template-columns:110px 1fr;border-top:1px solid var(--ink)}
+.stamp div:first-child{border-top:0}
+.stamp span{padding:5px 8px}
+.stamp span:first-child{border-right:1px solid var(--ink);color:var(--muted)}
+.stamp .st-title{grid-template-columns:1fr;font-family:var(--display);font-size:16px;font-weight:600}
+@media (max-width:860px){.hero{grid-template-columns:1fr}}
+
+/* viewer */
+.viewer-shell{background:#0b0f13;border-radius:6px;overflow:hidden;border:1px solid var(--line)}
+.viewer{position:relative;width:100%;aspect-ratio:16/9;max-height:78vh;min-height:360px;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+.viewer:active{cursor:grabbing}
+@media (max-width:640px){.viewer{aspect-ratio:4/5}}
+#gl{position:absolute;inset:0;width:100%;height:100%;display:block}
+.vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 75% 70% at 50% 48%,transparent 60%,rgba(0,0,0,.55) 100%)}
+.disp{position:absolute;pointer-events:none;border:1px dashed rgba(63,224,181,.55);border-radius:4px;font-family:var(--body);color:#E9FFF8;font-size:12px}
+.disp.noframe{border-color:transparent}
+.disp-label{position:absolute;left:0;top:-1.9em;font:500 .85em/1 var(--mono);color:rgba(63,224,181,.85);letter-spacing:.04em;white-space:nowrap}
+.disp.noframe .disp-label{display:none}
+.reticle{position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border:1.5px solid rgba(63,224,181,.8);border-radius:50%}
+.hud{position:absolute;right:2.5%;top:4%;width:min(38%,280px);pointer-events:auto;background:rgba(8,40,34,.42);border:1px solid rgba(63,224,181,.55);border-radius:6px;backdrop-filter:blur(1px);transition:width .35s ease,opacity .35s ease;overflow:hidden}
+.hud-head{all:unset;display:flex;align-items:center;gap:.6em;padding:.45em .7em;cursor:pointer;width:100%;box-sizing:border-box;font:600 1em/1.2 var(--mono);color:#7FF5D2}
+.hud-head:focus-visible{outline:2px solid #7FF5D2}
+.hud-dot{width:.55em;height:.55em;border-radius:50%;background:#FFC857;box-shadow:0 0 8px #FFC857;opacity:0;transition:opacity .3s}
+.hud-dot.on{opacity:1}
+.hud-state{margin-left:auto;font-weight:400;font-size:.85em;opacity:.75}
+.hud-body{padding:0 .7em .6em;display:grid;gap:.45em}
+.hud[data-state="min"]{width:auto;opacity:.8}
+.hud[data-state="min"] .hud-body{display:none}
+.hud-title{font:600 1.15em/1.2 var(--display);color:#fff}
+.hud-kv{display:grid;grid-template-columns:auto 1fr;gap:.15em .7em;margin:0;font-size:.92em}
+.hud-kv dt{color:#8FD9C3}
+.hud-kv dd{margin:0;color:#fff;font-variant-numeric:tabular-nums}
+.hud-algo{list-style:none;margin:0;padding:0;display:flex;gap:.3em}
+.hud-algo li{flex:1;height:.4em;border-radius:2px;background:rgba(127,245,210,.22)}
+.hud-algo li.done{background:#3FE0B5}
+.hud-algo li.cur{background:#FFC857}
+.hud-chat{display:grid;gap:.3em;border-top:1px solid rgba(63,224,181,.3);padding-top:.45em}
+.hud[data-state="brief"] .hud-chat .msg:not(:last-child){display:none}
+.hud[data-state="brief"] .hud-algo-wrap{display:none}
+.msg{font-size:.92em;line-height:1.3}
+.msg b{color:#FFC857;font-weight:600}
+.msg.me b{color:#8FD9C3}
+.voice{position:absolute;left:50%;bottom:5%;transform:translateX(-50%) translateY(6px);display:flex;align-items:center;gap:.5em;padding:.35em .8em;border-radius:999px;background:rgba(8,40,34,.55);border:1px solid rgba(63,224,181,.6);font:500 1.05em/1.2 var(--body);color:#fff;opacity:0;transition:opacity .25s,transform .25s;white-space:nowrap}
+.voice.on{opacity:1;transform:translateX(-50%) translateY(0)}
+.voice svg{width:1.1em;height:1.1em;fill:#3FE0B5}
+.voice-ok{font:400 .8em/1 var(--mono);color:#8FD9C3}
+.flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .5s}
+.flash.on{opacity:.55;transition:none}
+.done-banner{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);padding:.6em 1.1em;border:1px solid #3FE0B5;background:rgba(8,40,34,.6);color:#fff;font:600 1.3em/1.2 var(--display);border-radius:6px;opacity:0;transition:opacity .4s;white-space:nowrap}
+.done-banner.on{opacity:1}
+.tp-legend{position:absolute;left:12px;top:12px;display:grid;gap:6px;pointer-events:none;font:500 12px/1.2 var(--body);color:#E6EDF3}
+.tp-legend span{display:flex;align-items:center;gap:8px;background:rgba(10,14,18,.6);padding:4px 8px;border-radius:4px}
+.tp-legend i{width:12px;height:12px;border-radius:2px;display:inline-block}
+.pip{position:absolute;border:1px solid rgba(255,255,255,.35);border-radius:4px;pointer-events:none}
+.pip b{position:absolute;left:6px;top:-22px;font:500 11px/1 var(--mono);color:#DDE6EE;background:rgba(10,14,18,.7);padding:4px 6px;border-radius:3px;white-space:nowrap}
+.hint{position:absolute;right:12px;top:12px;font:400 11px/1.2 var(--mono);color:rgba(230,237,243,.7);background:rgba(10,14,18,.5);padding:4px 7px;border-radius:3px;pointer-events:none}
+
+.controls{display:grid;gap:12px;padding:14px;background:#111820;color:#E4EAF0;border-top:1px solid #222c36}
+.ctrl-row{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+.seg{display:inline-flex;border:1px solid #33414e;border-radius:5px;overflow:hidden}
+.seg button{all:unset;cursor:pointer;padding:7px 12px;font:500 13px/1 var(--body);color:#C9D4DE}
+.seg button[aria-pressed="true"]{background:#E4EAF0;color:#0B1420}
+.btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid #33414e;border-radius:5px;font:500 13px/1 var(--body);color:#E4EAF0;background:#18212b}
+.btn:hover{border-color:#5d7285}
+.btn:focus-visible,.seg button:focus-visible,.chip-btn:focus-visible{outline:2px solid #76A6FF;outline-offset:2px}
+.ctrl-label{font:500 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:#8A99A7}
+.chip-btn{all:unset;cursor:pointer;padding:6px 10px;border-radius:999px;border:1px solid #2c6b5b;color:#BFF5E5;font:500 12.5px/1 var(--body);background:#0f2a24}
+.chip-btn:hover{border-color:#3FE0B5}
+.tg{display:inline-flex;align-items:center;gap:6px;font:400 13px/1 var(--body);color:#C9D4DE;cursor:pointer}
+.tg input{accent-color:#3FE0B5;width:15px;height:15px;margin:0}
+select.sel{background:#18212b;color:#E4EAF0;border:1px solid #33414e;border-radius:5px;padding:6px 8px;font:500 13px var(--body)}
+.steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;counter-reset:s}
+.steps button{all:unset;cursor:pointer;display:grid;gap:3px;padding:8px 9px;border:1px solid #2a3642;border-radius:5px;width:100%;box-sizing:border-box;min-height:100%;background:#141c24}
+.steps button .n{font:500 11px/1 var(--mono);color:#8A99A7}
+.steps button .t{font:500 12.5px/1.25 var(--body);color:#DDE6EE}
+.steps li.done button{border-color:#1f5c4c}
+.steps li.done .n{color:#3FE0B5}
+.steps li.cur button{border-color:#FFC857;background:#221d10}
+.steps li.cur .n{color:#FFC857}
+@media (max-width:760px){.steps{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.caption{font-size:13.5px;color:var(--muted);margin-top:10px;max-width:90ch}
+
+/* sections */
+section{padding-top:56px;display:grid;gap:18px}
+.sec-head{display:grid;gap:8px;max-width:75ch}
+.grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+@media (max-width:860px){.grid-3,.grid-2{grid-template-columns:1fr}}
+.concept{display:grid;gap:8px;padding-top:14px;border-top:2px solid var(--ink)}
+.concept .k{font:500 12px/1 var(--mono);color:var(--muted);letter-spacing:.05em;text-transform:uppercase}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--line)}
+th{font:600 12.5px/1.3 var(--body);color:var(--muted);background:var(--surface-2);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td b{font-weight:600}
+.pill{display:inline-block;font:500 11.5px/1 var(--mono);padding:4px 7px;border-radius:999px;background:var(--chip);color:var(--ink);white-space:nowrap}
+.pill.hi{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
+.pill.md{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.pill.lo{background:color-mix(in srgb,var(--hud) 18%,transparent);color:var(--hud)}
+.pill.rec{background:var(--accent);color:var(--accent-ink)}
+pre.code{background:var(--code-bg);border:1px solid var(--line);border-radius:6px;padding:14px 16px;overflow-x:auto;font:13px/1.55 var(--mono);margin:0}
+.mermaid-box{background:#FFFFFF;border:1px solid var(--line);border-radius:6px;padding:16px;overflow-x:auto}
+.mermaid-box pre.mermaid{margin:0;background:transparent;color:#15202B;font-family:var(--body)}
+.note{font-size:13.5px;color:var(--muted)}
+ul.clean{margin:0;padding-left:1.1em;display:grid;gap:6px}
+ol.clean{margin:0;padding-left:1.3em;display:grid;gap:8px}
+
+/* screens */
+.screens{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+@media (max-width:980px){.screens{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.screens{grid-template-columns:1fr}}
+.screen{display:grid;gap:8px}
+.scr{position:relative;aspect-ratio:16/10;border-radius:6px;overflow:hidden;background:linear-gradient(180deg,#4b535c 0%,#3a4148 55%,#6e6658 56%,#5b5448 100%);font-size:10.5px;color:#fff}
+.scr::after{content:"";position:absolute;inset:6%;border:1px dashed rgba(63,224,181,.5);border-radius:3px}
+.scr .part{position:absolute;left:18%;right:30%;top:58%;height:14%;background:#d8d1c3;border-radius:2px;transform:perspective(200px) rotateX(38deg)}
+.scr .holo{position:absolute;border:1.5px solid #3FE0B5;background:rgba(63,224,181,.25);border-radius:2px}
+.scr .p{position:absolute;background:rgba(8,40,34,.6);border:1px solid rgba(63,224,181,.6);border-radius:4px;padding:5px 7px;line-height:1.3}
+.scr .p b{color:#7FF5D2;font-family:var(--mono);font-weight:500}
+.scr .p .y{color:#FFC857}
+.scr .kd{position:absolute;left:12%;top:12%;right:12%;bottom:12%;background:#F4F2EA;border:1px solid #333;color:#222;padding:6px;font-family:var(--mono)}
+.scr .kd i{position:absolute;border:1px solid #333}
+.screen figcaption{font-size:13px;color:var(--muted)}
+.screen figcaption b{color:var(--ink);font-weight:600}
+figure{margin:0}
+
+/* roadmap */
+.gantt{display:grid;gap:6px;min-width:760px}
+.g-row{display:grid;grid-template-columns:230px 1fr;gap:12px;align-items:center}
+.g-name{font:500 13.5px/1.25 var(--body)}
+.g-name small{display:block;font:400 11.5px/1.2 var(--mono);color:var(--muted)}
+.g-track{position:relative;height:26px;background:repeating-linear-gradient(90deg,var(--surface-2) 0 calc(100%/28 - 1px),var(--line) calc(100%/28 - 1px) calc(100%/28));border-radius:3px}
+.g-bar{position:absolute;top:3px;bottom:3px;border-radius:3px;background:var(--accent);color:var(--accent-ink);font:500 11px/20px var(--mono);padding-inline:6px;white-space:nowrap;overflow:hidden}
+.g-bar.sim{background:var(--hud);color:#062019}
+.g-bar.hw{background:var(--warn);color:#1d1300}
+.g-scale{display:grid;grid-template-columns:230px 1fr;gap:12px}
+.g-ticks{display:flex;justify-content:space-between;font:400 11px/1 var(--mono);color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:-1px;margin-right:6px}
+.req{display:grid;gap:10px;padding:16px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+footer{padding-top:56px;font-size:13px;color:var(--muted);display:grid;gap:8px}
+footer ul{margin:0;padding-left:1.1em;columns:2;column-gap:32px}
+@media (max-width:760px){footer ul{columns:1}}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header class="hero">
+  <div class="hero-text">
+    <div class="eyebrow">Обзор системы · концепция · 25.09.2026</div>
+    <h1>Сборщик видит следующий шаг прямо на изделии</h1>
+    <p class="lead">Очки накладывают 3D-модель сборки на реальную деталь в масштабе 1:1, анимируют каждый шаг и слушают голосовые команды. Технолог и мастер отвечают в чате, привязанном к шагу. Данные идут с сервера цеха по Wi-Fi. Ниже можно покрутить сцену: посмотреть на рабочее место со стороны и глазами сборщика.</p>
+  </div>
+  <div class="stamp" aria-label="Основные параметры">
+    <div class="st-title"><span>Система AR-сборки</span></div>
+    <div><span>Пример</span><span>Полка багажная, сборка кронштейнов</span></div>
+    <div><span>Очки пилота</span><span>VITURE Luma Ultra</span></div>
+    <div><span>Стек</span><span>Godot · OpenCV · Vosk · FastAPI</span></div>
+    <div><span>Разработка</span><span>Симулятор очков на ПК → пилот</span></div>
+    <div><span>Стадия</span><span>Концепция</span></div>
+  </div>
+</header>
+
+<div class="viewer-shell" id="demo">
+  <div class="viewer" id="viewer" aria-label="3D-сцена рабочего места сборки">
+    <canvas id="gl"></canvas>
+    <div class="vignette" id="vignette"></div>
+    <div class="disp" id="disp">
+      <div class="disp-label" id="dispLabel">Рабочее поле · весь обзор очков</div>
+      <div class="reticle"></div>
+      <div class="hud" id="hud" data-state="brief">
+        <button class="hud-head" id="hudToggle" type="button" aria-label="Развернуть или свернуть панель"><span id="hudStep">Шаг 1/6</span><span class="hud-dot" id="hudDot"></span><span class="hud-state" id="hudState">кратко</span></button>
+        <div class="hud-body">
+          <div class="hud-title" id="hudTitle">Привязка к ложементу</div>
+          <dl class="hud-kv" id="hudKv"></dl>
+          <div class="hud-algo-wrap"><ol class="hud-algo" id="hudAlgo"></ol></div>
+          <div class="hud-chat" id="hudChat"></div>
+        </div>
+      </div>
+      <div class="voice" id="voice"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg><span id="voiceText">«Сборка, дальше»</span><span class="voice-ok" id="voiceOk">распознано</span></div>
+      <div class="done-banner" id="doneBanner">Операция завершена · отправлено в ОТК</div>
+    </div>
+    <div class="flash" id="flash"></div>
+    <div class="tp-legend" id="tpLegend" hidden>
+      <span><i style="background:#3FE0B5"></i>Голограммы: видит только сборщик</span>
+      <span><i style="background:rgba(63,224,181,.25);border:1px solid #3FE0B5"></i>Рабочее поле очков</span>
+      <span><i style="background:#FFC857"></i>Деталь, которую нужно взять</span>
+      <span><i style="background:#2b3138;border:1px solid #888"></i>Neckband: вычислитель на шее</span>
+    </div>
+    <div class="pip" id="pip" hidden><b>Вид из очков</b></div>
+    <div class="hint" id="hint">Тяните мышью или пальцем, чтобы повернуть голову</div>
+  </div>
+  <div class="controls">
+    <div class="ctrl-row">
+      <div class="seg" role="group" aria-label="Вид">
+        <button type="button" id="btnFP" aria-pressed="true">Вид из очков</button>
+        <button type="button" id="btnTP" aria-pressed="false">Вид со стороны</button>
+      </div>
+      <button class="btn" type="button" id="btnPlay">Пауза</button>
+      <button class="btn" type="button" id="btnPrev" aria-label="Предыдущий шаг">← Шаг</button>
+      <button class="btn" type="button" id="btnNext" aria-label="Следующий шаг">Шаг →</button>
+      <label class="tg" for="selSpeed">Скорость
+        <select class="sel" id="selSpeed"><option value="0.5">0,5×</option><option value="1" selected>1×</option><option value="1.6">1,6×</option></select>
+      </label>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">Голос</span>
+      <button class="chip-btn" type="button" data-cmd="next">«Сборка, дальше»</button>
+      <button class="chip-btn" type="button" data-cmd="prev">«Назад»</button>
+      <button class="chip-btn" type="button" data-cmd="repeat">«Повтори»</button>
+      <button class="chip-btn" type="button" data-cmd="slower">«Медленнее»</button>
+      <button class="chip-btn" type="button" data-cmd="kd">«Покажи КД»</button>
+      <button class="chip-btn" type="button" data-cmd="chat">«Покажи чат»</button>
+      <button class="chip-btn" type="button" data-cmd="panel">«Панель»</button>
+    </div>
+    <div class="ctrl-row">
+      <label class="tg"><input type="checkbox" id="tgDemo" checked> Автодемо шагов</label>
+      <label class="tg"><input type="checkbox" id="tgHead" checked> Автоповорот головы</label>
+      <label class="tg"><input type="checkbox" id="tgWin"> Только окно 52° (Luma Ultra)</label>
+      <label class="tg"><input type="checkbox" id="tgFrame" checked> Граница рабочего поля</label>
+      <label class="tg"><input type="checkbox" id="tgMarkers" checked> Распознанные метки</label>
+    </div>
+    <ol class="steps" id="stepList"></ol>
+  </div>
+</div>
+<p class="caption">Сцена упрощена, но пропорции настоящие: верстак 2,2 м, ложемент с четырьмя метками ArUco, панель полки 1100×450 мм. Сборщик стоит в 0,7 м от изделия. Зелёное видно только в очках. Пунктирная рамка показывает рабочее поле: по умолчанию голограммы занимают весь обзор через очки. Переключатель «Только окно 52°» показывает, как это выглядит в Luma Ultra сейчас: за пределами окна голограмм нет, поэтому КД и чат висят в пространстве и открываются поворотом головы.</p>
+
+<p class="caption"><a href="vzglyad_sborshchika.html" target="_blank" rel="noopener">Реалистичный вид глазами сборщика</a>: поле зрения двух глаз, оправа, нос, затемнённые линзы и окно дисплея в детально проработанном цеху. <a href="montazh_fuzelyazh.html" target="_blank" rel="noopener">Монтаж багажной полки в фюзеляже</a>: крупногабаритный интерьер, крепёж, тяги и потолочная панель.</p>
+
+<section id="view">
+  <div class="sec-head">
+    <div class="eyebrow">Что видит сборщик</div>
+    <h2>Три слоя изображения поверх реального цеха</h2>
+    <p class="muted">Очки с оптическим see-through не заменяют мир картинкой: цех сборщик видит глазами, а дисплей добавляет свет поверх. Голограммы не могут закрыть реальный предмет, поэтому их делают контурными и полупрозрачными.</p>
+  </div>
+  <div class="grid-3">
+    <div class="concept"><span class="k">Слой 1 · привязан к изделию</span><h3>Анимация шага</h3><p>Деталь-голограмма вылетает из ячейки лотка, по дуге встаёт на место, крепёж вкручивается. Контур места установки пульсирует. Всё стоит на изделии, пока сборщик двигает головой: позу держит 6DoF очков, а метки на ложементе раз в секунду поправляют дрейф.</p></div>
+    <div class="concept"><span class="k">Слой 2 · привязан к пространству</span><h3>Лист КД, чат, схема</h3><p>Крупные панели висят слева и справа от верстака на уровне глаз. Не мешают работе, пока сборщик смотрит на деталь, и читаются, стоит повернуть голову. Команда «Покажи КД» подсвечивает нужный лист и позицию.</p></div>
+    <div class="concept"><span class="k">Слой 3 · привязан к голове</span><h3>Угловая панель</h3><p>Номер шага, крепёж, инструмент, момент затяжки, последнее сообщение. Сворачивается сама через 5 секунд тишины и выезжает при новом шаге или сообщении. Внизу на секунду всплывает распознанная голосовая команда.</p></div>
+  </div>
+</section>
+
+<section id="screens">
+  <div class="sec-head">
+    <div class="eyebrow">Экраны</div>
+    <h2>Состояния интерфейса в окне дисплея</h2>
+  </div>
+  <div class="screens">
+    <figure class="screen">
+      <div class="scr" aria-hidden="true">
+        <div class="part"></div>
+        <div class="holo" style="left:26%;top:52%;width:12%;height:9%"></div>
+        <div class="p" style="right:9%;top:9%"><b>Шаг 2/6</b></div>
+      </div>
+      <figcaption><b>Свёрнуто.</b> Только номер шага. Ничего не отвлекает от детали.</figcaption>
+    </figure>
+    <figure class="screen">
+      <div class="scr" aria-hidden="true">
+        <div class="part"></div>
+        <div class="holo" style="left:26%;top:52%;width:12%;height:9%"></div>
+        <div class="p" style="right:9%;top:9%;width:44%"><b>Шаг 2/6</b><br>Кронштейн К-204<br>2 × M4×12 · <span class="y">1,2 Н·м</span><br><span style="opacity:.8">Технолог: крепёж из ячейки B3</span></div>
+      </div>
+      <figcaption><b>Кратко.</b> Выезжает при новом шаге или сообщении, сворачивается через 5 с.</figcaption>
+    </figure>
+    <figure class="screen">
+      <div class="scr" aria-hidden="true">
+        <div class="part"></div>
+        <div class="p" style="right:9%;top:9%;width:52%;bottom:9%"><b>Шаг 4/6 · схема</b><br>● ● ● <span class="y">●</span> ○ ○<br><br><b>Чат · шаг 4</b><br>Мастер: после полки сразу на ОТК<br>Вы: принято<br>Технолог: замок после петли</div>
+      </div>
+      <figcaption><b>Развёрнуто.</b> Схема операции и переписка по команде «Панель».</figcaption>
+    </figure>
+    <figure class="screen">
+      <div class="scr" aria-hidden="true">
+        <div class="kd"><div style="font-size:9px">АИ.7045.200 СБ · лист 3</div><i style="left:14%;top:30%;width:62%;height:40%"></i><i style="left:18%;top:36%;width:9%;height:9%;border-color:#1E58B8;background:rgba(30,88,184,.2)"></i><i style="right:6%;bottom:6%;width:34%;height:22%"></i></div>
+      </div>
+      <figcaption><b>Лист КД.</b> «Покажи КД» открывает нужный лист, текущая позиция выделена.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="algo">
+  <div class="sec-head">
+    <div class="eyebrow">Алгоритм</div>
+    <h2>Цикл одного шага и всей операции</h2>
+    <p class="muted">Клиент работает от пакета задания, скачанного заранее. Потеря Wi-Fi не останавливает сборку: журнал копится локально и уходит на сервер при восстановлении связи.</p>
+  </div>
+  <div class="mermaid-box">
+<pre class="mermaid">
+stateDiagram-v2
+  [*] --> Загрузка: QR на ложементе или голосом
+  Загрузка --> Привязка: пакет GLB + шаги + КД
+  Привязка --> Показ: метки найдены, масштаб 1:1
+  Привязка --> Ручная: метки не видны
+  Ручная --> Показ: 3 контрольные точки
+  Показ --> Ожидание: анимация по кругу
+  Ожидание --> Показ: «повтори», «медленнее»
+  Ожидание --> Ввод: критичный шаг
+  Ввод --> Журнал: момент, фото
+  Ожидание --> Журнал: «дальше»
+  Журнал --> Показ: следующий шаг
+  Журнал --> Контроль: последний шаг
+  Контроль --> [*]: отправка в ОТК
+</pre>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Команда</th><th>Синонимы</th><th>Действие</th></tr></thead>
+      <tbody>
+        <tr><td><b>Сборка, дальше</b></td><td>следующий, далее, готово</td><td>Подтвердить шаг, записать время, показать следующий</td></tr>
+        <tr><td><b>Назад</b></td><td>предыдущий</td><td>Вернуться на шаг без отмены журнала</td></tr>
+        <tr><td><b>Повтори</b></td><td>ещё раз</td><td>Проиграть анимацию шага с начала</td></tr>
+        <tr><td><b>Медленнее / быстрее</b></td><td>тише, скорее</td><td>Скорость анимации 0,5× … 1,6×</td></tr>
+        <tr><td><b>Покажи КД</b></td><td>чертёж, лист</td><td>Подсветить лист КД и позицию детали</td></tr>
+        <tr><td><b>Панель</b></td><td>развернуть, свернуть</td><td>Переключить угловую панель</td></tr>
+        <tr><td><b>Написать технологу</b></td><td>вопрос, позвать</td><td>Диктовка в чат с привязкой к шагу и снимком</td></tr>
+        <tr><td><b>Норма / брак</b></td><td>годно, не годно</td><td>Результат контрольного шага</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">Распознавание офлайн, по закрытому словарю: Vosk small-ru (45 МБ) в режиме грамматики и детектор речи Silero VAD. Перед командой — ключевое слово «Сборка», чтобы разговоры рядом не листали шаги. Для шумных операций (клёпка, сверление) дублируем команды кнопкой.</p>
+</section>
+
+<section id="arch">
+  <div class="sec-head">
+    <div class="eyebrow">Архитектура</div>
+    <h2>Одно ядро, три источника данных: симулятор, запись, очки</h2>
+    <p class="muted">Главное решение для разработки: клиент не знает, откуда пришли кадры и поза. Слой абстракции железа (HAL) отдаёт ядру одинаковые данные из симулятора, из записи реального сеанса или с очков. Поэтому почти всё пишется и тестируется на ПК до покупки очков.</p>
+  </div>
+  <div class="mermaid-box">
+<pre class="mermaid">
+flowchart LR
+  subgraph RIG["Источники (HAL)"]
+    S["SimRig<br/>цех в Godot"]
+    R["ReplayRig<br/>записи сеансов"]
+    D["DeviceRig<br/>VITURE C API"]
+  end
+  subgraph CORE["Ядро на ПК / Neckband"]
+    T["Трекинг<br/>OpenCV ArUco"]
+    E["Движок шагов"]
+    V["Голос<br/>Vosk + VAD"]
+    C["Кэш пакета<br/>и журнал"]
+  end
+  subgraph CL["Клиент Godot"]
+    H["Голограммы<br/>и панели"]
+  end
+  subgraph SRV["Сервер цеха"]
+    A["FastAPI"]
+    W["WebSocket чат"]
+    B[("PostgreSQL")]
+    F[("GLB, КД")]
+  end
+  K["Консоль технолога<br/>веб"]
+  S --> T
+  R --> T
+  D --> T
+  T --> H
+  E --> H
+  V --> E
+  C <-->|Wi-Fi| A
+  H <-->|Wi-Fi| W
+  A --> B
+  A --> F
+  K --> A
+</pre>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Компонент</th><th>Инструмент</th><th>Лицензия</th><th>Зачем</th></tr></thead>
+      <tbody>
+        <tr><td><b>3D-клиент</b></td><td>Godot 4.6+ (GDScript, сцены в тексте)</td><td>MIT</td><td>Сцены .tscn и скрипты — обычный текст, ИИ-ассистент читает и правит их целиком. Есть MCP-сервер для запуска проекта из Claude Code</td></tr>
+        <tr><td><b>Трекинг и привязка</b></td><td>OpenCV 4.13: ArucoDetector, ChArUco, solvePnP (IPPE_SQUARE)</td><td>Apache-2.0</td><td>Метки 6×6 или AprilTag 36h11 на ложементе, поза в мм</td></tr>
+        <tr><td><b>Сенсоры очков</b></td><td>VITURE XR Glasses SDK: UVC-камера 1080p + 6DoF «Carina»</td><td>Закрытый бинарный, C API</td><td>Linux, Windows, Android без Unity</td></tr>
+        <tr><td><b>Голос</b></td><td>Vosk small-ru 0.22 + Silero VAD; для диктовки в чат — sherpa-onnx с T-one или GigaAM v2</td><td>Apache-2.0 / MIT</td><td>Офлайн, русская речь, закрытый словарь команд</td></tr>
+        <tr><td><b>Сервер</b></td><td>Python FastAPI, PostgreSQL 16, WebSocket</td><td>MIT / PostgreSQL</td><td>Шаги, пакеты, журнал, чат с привязкой к шагу</td></tr>
+        <tr><td><b>CAD → 3D</b></td><td>NX → STEP AP242 → cascadio или FreeCAD → GLB → gltf-transform (meshopt)</td><td>MIT / LGPL</td><td>Сохранить имена и иерархию деталей, упростить сетку</td></tr>
+        <tr><td><b>КД на экране</b></td><td>PDF → PNG на сервере (pdftoppm), листы по позициям</td><td>GPL (утилита на сервере)</td><td>Очкам не нужен PDF-движок</td></tr>
+        <tr><td><b>Синтетические данные</b></td><td>Godot SubViewport; BlenderProc для фотореалистичных наборов</td><td>MIT / GPL-3.0</td><td>Проверка точности меток при бликах, размытии, свете</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">Не используем Unity и Vuforia: Unity приостановил работу с Россией в марте 2022 года, а бесплатная лицензия ограничена выручкой $200 тыс.; PTC (Vuforia) ушла из России. Экспорт glTF из NX входит в отдельный модуль NX Extended Reality, поэтому надёжнее путь через STEP.</p>
+</section>
+
+<section id="sim">
+  <div class="sec-head">
+    <div class="eyebrow">Разработка на симуляторе</div>
+    <h2>Виртуальные очки в виртуальном цехе</h2>
+    <p class="muted">Готового эмулятора «любые очки + свой цех + камера + IMU» нет ни у одного производителя. Android XR Emulator не показывает кадры камеры, Meta XR Simulator моделирует только шлемы Meta, симулятор Magic Leap заброшен. Поэтому симулятор собираем сами в том же Godot, где пишем клиент. Это неделя-две работы, и она окупается: каждый сценарий проверяется автоматически.</p>
+  </div>
+  <div class="grid-2">
+    <div class="req">
+      <h3>Что симулирует SimRig</h3>
+      <ul class="clean">
+        <li><b>Цифровой двойник рабочего места:</b> верстак, ложемент с метками, изделие из того же GLB, лоток с деталями, свет цеха.</li>
+        <li><b>Камеру очков:</b> SubViewport с внутренними параметрами реальной камеры Luma Ultra (1080p, её поле зрения и дисторсия после калибровки).</li>
+        <li><b>Голову сборщика:</b> записанные траектории или WASD и мышь; синтетический IMU = производная траектории + шум и дрейф.</li>
+        <li><b>Окно дисплея:</b> вид через рамку 52°, как в этой демонстрации, чтобы проверять читаемость панелей.</li>
+        <li><b>Эталонные позы:</b> симулятор знает истинную позу, поэтому ошибка трекинга считается в мм автоматически.</li>
+        <li><b>Помехи:</b> размытие движения, блики на композитной панели, частично закрытые метки, яркость от 200 до 1000 лк.</li>
+      </ul>
+    </div>
+    <div class="req">
+      <h3>Контракт HAL: одинаков для симулятора и очков</h3>
+<pre class="code">class FrameSource(Protocol):
+    def next_frame(self) -&gt; Frame: ...     # img, t_ns, K, dist
+
+class PoseSource(Protocol):
+    def pose_at(self, t_ns: int) -&gt; Pose6D: ...  # мм, кватернион
+
+class DisplaySink(Protocol):
+    fov_deg: float                        # 52 для Luma Ultra
+    def present(self, left, right) -&gt; None: ...
+
+class AudioSource(Protocol):
+    def chunks(self) -&gt; Iterator[PCM16]: ...  # 16 кГц моно
+
+# Реализации: SimRig, ReplayRig, VitureRig
+rig = make_rig(os.environ["AR_RIG"])  # sim | replay | viture</pre>
+    </div>
+  </div>
+  <div class="req">
+    <h3>Про виртуальную машину</h3>
+    <p>3D-рендер в обычной ВМ идёт программно и медленно. Три рабочих варианта: запускать симулятор прямо на хосте с видеокартой (быстрее всего), дать ВМ видеокарту через GPU passthrough (VFIO, Proxmox или KVM), или гонять автотесты в контейнере с программным рендером Mesa llvmpipe — медленно, но для ночных прогонов хватает. Для стенда подойдёт ваш Ubuntu-сервер с RTX 3060 12 ГБ: на нём же можно держать сервер приложения и прогонять тесты.</p>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Путь разработки</th><th>Как выглядит</th><th>Плюсы</th><th>Минусы</th><th>Вердикт</th></tr></thead>
+      <tbody>
+        <tr><td><b>A. Godot + ядро на Python</b></td><td>Клиент Godot, трекинг и голос — отдельный процесс на Python, связь через локальный сокет</td><td>Быстрее всего писать с ИИ, OpenCV и Vosk на Python готовы, открытый стек</td><td>Лишний процесс; при нехватке скорости ядро переносится в C++ (GDExtension)</td><td><span class="pill rec">рекомендуем</span></td></tr>
+        <tr><td><b>B. Веб-клиент (Three.js)</b></td><td>Страница в Chromium на ноутбуке, очки как второй монитор; SDK VITURE есть в варианте WebAssembly + WebHID, камера через UVC</td><td>Самый дружелюбный к ИИ код, мгновенная перезагрузка, та же технология, что в этой демонстрации</td><td>Задержки браузера, WebHID только в Chromium, сложнее уйти на Neckband</td><td><span class="pill">быстрый прототип</span></td></tr>
+        <tr><td><b>C. Unity + VITURE Unity SDK</b></td><td>Приложение на Neckband</td><td>Лучшая поддержка от VITURE: 6DoF, руки</td><td>Лицензия Unity в РФ, сцены в YAML плохо правятся ИИ</td><td><span class="pill hi">риск лицензии</span></td></tr>
+        <tr><td><b>D. OpenXR / Android XR</b></td><td>Стандартный API, маркеры ArUco/AprilTag встроены в рантайм</td><td>Переносимость между очками, стандарт на годы</td><td>Очки Android XR (XREAL Aura) в РФ не продаются, выход — осень 2026</td><td><span class="pill md">на 2027 год</span></td></tr>
+        <tr><td><b>E. Monado + свой драйвер</b></td><td>Открытый OpenXR-рантайм на Linux с драйвером поверх SDK VITURE</td><td>Полностью открытый стек выше драйвера</td><td>Писать драйвер самим; Monado даёт этим очкам только 3DoF</td><td><span class="pill">исследование</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="roadmap">
+  <div class="sec-head">
+    <div class="eyebrow">Дорожная карта</div>
+    <h2>28 недель: 20 на симуляторе, потом очки и пилот</h2>
+    <p class="muted">Оценка для одного инженера с ИИ-ассистентом и технолога на неполный день. Очки заказываем на неделе 10, чтобы они пришли к интеграции. Сроки ориентировочные и уточняются после фазы 0.</p>
+  </div>
+  <div class="tbl-wrap" style="padding:14px">
+    <div class="gantt" role="img" aria-label="Диаграмма фаз разработки по неделям">
+      <div class="g-scale"><span></span><div class="g-ticks num"><span>нед. 1</span><span>4</span><span>8</span><span>12</span><span>16</span><span>20</span><span>24</span><span>28</span></div></div>
+      <div class="g-row"><div class="g-name">0. Подготовка<small>контракты, SDK, ИБ</small></div><div class="g-track"><div class="g-bar" style="left:0;width:calc(2/28*100%)">2 нед</div></div></div>
+      <div class="g-row"><div class="g-name">1. Сервер и данные<small>API, БД, STEP→GLB</small></div><div class="g-track"><div class="g-bar" style="left:calc(2/28*100%);width:calc(3/28*100%)">3 нед</div></div></div>
+      <div class="g-row"><div class="g-name">2. Симулятор очков<small>SimRig, цех, камера, IMU</small></div><div class="g-track"><div class="g-bar sim" style="left:calc(3/28*100%);width:calc(4/28*100%)">4 нед</div></div></div>
+      <div class="g-row"><div class="g-name">3. Трекинг и привязка<small>метки, масштаб, точность</small></div><div class="g-track"><div class="g-bar sim" style="left:calc(7/28*100%);width:calc(4/28*100%)">4 нед</div></div></div>
+      <div class="g-row"><div class="g-name">4. Шаги, анимация, HUD<small>плеер, панели, КД</small></div><div class="g-track"><div class="g-bar sim" style="left:calc(10/28*100%);width:calc(5/28*100%)">5 нед</div></div></div>
+      <div class="g-row"><div class="g-name">5. Голос и чат<small>Vosk, WebSocket</small></div><div class="g-track"><div class="g-bar sim" style="left:calc(14/28*100%);width:calc(4/28*100%)">4 нед</div></div></div>
+      <div class="g-row"><div class="g-name">6. Очки и записи<small>VitureRig, ReplayRig, калибровка</small></div><div class="g-track"><div class="g-bar hw" style="left:calc(18/28*100%);width:calc(4/28*100%)">4 нед</div></div></div>
+      <div class="g-row"><div class="g-name">7. Пилот на участке<small>1 изделие, 2–3 сборщика</small></div><div class="g-track"><div class="g-bar hw" style="left:calc(22/28*100%);width:calc(6/28*100%)">6 нед</div></div></div>
+    </div>
+  </div>
+  <div class="legend"><span><i style="background:var(--accent)"></i>Инфраструктура</span><span><i style="background:var(--hud)"></i>Разработка на симуляторе</span><span><i style="background:var(--warn)"></i>Работа с очками</span></div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Фаза</th><th>Что делаем</th><th>Тесты</th><th>Критерий выхода</th></tr></thead>
+      <tbody>
+        <tr><td><b>0. Подготовка</b></td><td>Репозиторий на своём Gitea, CLAUDE.md с правилами, схемы данных, интерфейсы HAL. Выбор первого изделия. Запрос SDK у VITURE. Согласование камеры с ИБ</td><td>—</td><td>Контракты в репозитории, SDK запрошен, решение ИБ</td></tr>
+        <tr><td><b>1. Сервер и данные</b></td><td>FastAPI + PostgreSQL: операция → шаг → деталь (узел GLB) → лист КД. Конвейер STEP→GLB, проверка «спецификация ↔ узлы модели», кириллица в именах</td><td>pytest на API и конвейер, сравнение спецификации</td><td>Пакет задания скачивается по API, все детали найдены в GLB</td></tr>
+        <tr><td><b>2. Симулятор очков</b></td><td>Сцена цеха в Godot, камера с параметрами Luma Ultra, траектории головы, синтетический IMU, эталонные позы, вид через окно 52°</td><td>Запуск без окна (headless), проверка потока кадров и поз</td><td>Ядро получает кадры и позу через HAL из симулятора</td></tr>
+        <tr><td><b>3. Трекинг и привязка</b></td><td>ArUco/AprilTag, плата меток на ложементе, solvePnP, фильтр, автомасштаб, проверка по контрольным точкам, ручная привязка</td><td>Серии по 500 кадров с помехами; ошибка против эталона</td><td>Ошибка позы на синтетике в пределах целевой (предлагаем ≤ 2 мм и 0,5°)</td></tr>
+        <tr><td><b>4. Шаги, анимация, HUD</b></td><td>Плеер шагов из JSON, голограммы и пути, угловая панель, панели КД и чата в пространстве, режимы «авто» и «ручной»</td><td>Эталонные скриншоты (golden images), сценарии прохождения операции</td><td>Операция из 6 шагов проходится в симуляторе без рук</td></tr>
+        <tr><td><b>5. Голос и чат</b></td><td>Vosk с грамматикой, VAD, ключевое слово, запасная кнопка. Чат по каналам с привязкой к шагу, офлайн-очередь</td><td>Записи команд на фоне шума цеха 80–90 дБ, разные голоса</td><td>Точность команд на записях не ниже целевой (предлагаем 95 %)</td></tr>
+        <tr><td><b>6. Очки и записи</b></td><td>VitureRig на Linux-ПК: UVC-камера + 6DoF. Запись сеансов в формате EuRoC, ReplayRig. Калибровка камера ↔ дисплей, стерео-вывод</td><td>Тот же набор тестов на записях с реальных очков</td><td>Наложение на реальном изделии измерено в мм на 3–5 точках</td></tr>
+        <tr><td><b>7. Пилот</b></td><td>1–2 комплекта, одно изделие, 2–3 сборщика, сравнение с бумажной ТД</td><td>Время на шаг, ошибки, отказы голоса, батарея, отзывы сборщиков</td><td>Решение о тиражировании и списке доработок</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="req">
+  <div class="sec-head">
+    <div class="eyebrow">Требования</div>
+    <h2>Что нужно подготовить</h2>
+  </div>
+  <div class="grid-3">
+    <div class="req"><h3>Оборудование</h3><ul class="clean">
+      <li>ПК или сервер с GPU уровня RTX 3060 для симулятора и тестов</li>
+      <li>Точка доступа Wi-Fi 6 на участке, отдельная сеть</li>
+      <li>На пилот: Luma Ultra + Neckband или ноутбук/мини-ПК на тележке, внешний аккумулятор USB-C PD 65 Вт</li>
+      <li>Ложемент с платой меток, печать меток на жёсткой основе</li>
+      <li>Гарнитура с шумоподавлением для шумных операций</li>
+    </ul></div>
+    <div class="req"><h3>Программы</h3><ul class="clean">
+      <li>Ubuntu 24.04 или Windows 11, Git + Gitea</li>
+      <li>Godot 4.6+, Python 3.12, OpenCV 4.13, Vosk</li>
+      <li>PostgreSQL 16, Docker</li>
+      <li>FreeCAD или cascadio, gltf-transform, Blender</li>
+      <li>SDK VITURE через программу разработчиков</li>
+      <li>ИИ-ассистент для кода (Claude Code или аналог)</li>
+    </ul></div>
+    <div class="req"><h3>Люди и данные</h3><ul class="clean">
+      <li>Инженер-разработчик, работающий с ИИ-ассистентом</li>
+      <li>Технолог: шаги, крепёж, моменты, контрольные точки</li>
+      <li>Специалист ИБ: камера, хранение кадров, сеть</li>
+      <li>2–3 сборщика на пилот</li>
+      <li>STEP сборки из NX, ТП операции, листы КД, спецификация</li>
+    </ul></div>
+  </div>
+</section>
+
+<section id="risks">
+  <div class="sec-head">
+    <div class="eyebrow">Риски</div>
+    <h2>Что может сорвать проект и как этого избежать</h2>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Риск</th><th>Уровень</th><th>Мера</th></tr></thead>
+      <tbody>
+        <tr><td><b>SDK VITURE не выдадут или урежут</b></td><td><span class="pill hi">высокий</span></td><td>Запросить на неделе 1. HAL позволяет сменить очки; запасные варианты — Rokid Max Pro или шлем Pico 4 Ultra Enterprise как стенд</td></tr>
+        <tr><td><b>Точность наложения хуже ожиданий</b></td><td><span class="pill hi">высокий</span></td><td>В очках с see-through реальное смещение обычно 5–15 мм на длине руки. Обещаем «около 1 см», используем плату из нескольких меток, привязанную к базам изделия, и калибровку дисплея</td></tr>
+        <tr><td><b>Разрыв «симулятор → реальность»</b></td><td><span class="pill md">средний</span></td><td>Помехи в симуляторе, ранние записи с реальных очков, прогон тех же тестов на записях</td></tr>
+        <tr><td><b>Шум цеха</b></td><td><span class="pill md">средний</span></td><td>Ключевое слово, закрытый словарь, гарнитура, кнопка вместо голоса</td></tr>
+        <tr><td><b>Камера и ИБ</b></td><td><span class="pill md">средний</span></td><td>Кадры обрабатываются только на устройстве и не сохраняются; фото — только по команде</td></tr>
+        <tr><td><b>Эргономика и батарея</b></td><td><span class="pill md">средний</span></td><td>Производитель рекомендует носить очки 3–4 ч подряд. Перерывы, сменный аккумулятор, Neckband на 4+ ч</td></tr>
+        <tr><td><b>ИИ выдумывает API SDK</b></td><td><span class="pill md">средний</span></td><td>Заголовки и документация SDK лежат в репозитории, ассистенту ставится задача сверяться с ними, каждый модуль закрыт тестами</td></tr>
+        <tr><td><b>Параллельный импорт, гарантия</b></td><td><span class="pill lo">низкий</span></td><td>Покупка у интегратора по договору с заменой брака, запасной комплект</td></tr>
+        <tr><td><b>Комфорт стерео</b></td><td><span class="pill lo">низкий</span></td><td>Голограммы на 0,5–1 м, крупный контрастный шрифт, проверка на сборщиках</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="vibe">
+  <div class="sec-head">
+    <div class="eyebrow">Разработка с ИИ-ассистентом</div>
+    <h2>Правила, которые держат вайбкодинг в рамках</h2>
+  </div>
+  <div class="grid-2">
+    <ul class="clean">
+      <li><b>Сначала контракты, потом код.</b> Папка docs/: архитектура, интерфейсы HAL, схема «операция → шаг → деталь → КД», правила стиля. Файл CLAUDE.md в корне читается ассистентом в каждой сессии.</li>
+      <li><b>Маленькие вертикальные срезы.</b> Порядок: метка → поза → голограмма в симуляторе; затем плеер шагов; голос; синхронизация; чат; КД. Каждый срез работает от начала до конца.</li>
+      <li><b>Тесты, которые ассистент запускает сам.</b> Godot без окна, pytest с ошибкой трекинга против эталона, эталонные скриншоты. Ассистент не сдаёт работу, пока тесты не зелёные.</li>
+      <li><b>Документация SDK в репозитории.</b> Заголовки VITURE, примеры, заметки о калибровке. Просить ассистента ссылаться на них, а не на память.</li>
+    </ul>
+    <ul class="clean">
+      <li><b>Текстовые форматы везде.</b> Сцены Godot, JSON шагов, YAML конфигов. Бинарные сцены ассистент не видит и ломает.</li>
+      <li><b>Одно ядро на ПК и устройстве.</b> Трекинг и голос не зависят от движка. Ранний замер скорости на ARM (телефон или мини-ПК), чтобы не переписывать поздно.</li>
+      <li><b>Записи — главная ценность.</b> Каждый сеанс с очками сохраняется в формате EuRoC и становится тестом. Через месяц у вас набор реальных сценариев цеха.</li>
+      <li><b>Коммит после каждого зелёного шага.</b> Откат дешевле, чем разбор, что ассистент поменял за час.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="glasses">
+  <div class="sec-head">
+    <div class="eyebrow">Выбор очков</div>
+    <h2>Полностью открытых очков с 6DoF в продаже нет</h2>
+    <p class="muted">У всех серийных очков с 6DoF SDK закрытый, но с документированным API. Подробное сравнение 22 устройств — в таблице «Сравнение_AR_очков_для_сборки.xlsx».</p>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Устройство</th><th>Роль</th><th>Почему</th><th>Цена в РФ</th></tr></thead>
+      <tbody>
+        <tr><td><b>VITURE Luma Ultra</b></td><td><span class="pill rec">пилот</span></td><td>6DoF и камера 1080p через C API на Linux, Windows, Android без Unity. SDK закрытый, выдаётся через программу разработчиков</td><td class="num">62 900–79 900 ₽</td></tr>
+        <tr><td><b>Rokid Max Pro + Station Pro</b></td><td><span class="pill">сравнение</span></td><td>6DoF, камера глубины, жесты, продаётся в РФ; модель 2023 г., SDK проверить до покупки</td><td class="num">334 530 ₽ (комплект)</td></tr>
+        <tr><td><b>RayNeo X3 Pro</b></td><td><span class="pill">лёгкие подсказки</span></td><td>Самый открытый SDK среди автономных очков (MIT на GitHub), но поле 30° и батарея около часа по тестам</td><td class="num">159 990 ₽</td></tr>
+        <tr><td><b>XREAL Aura (Android XR)</b></td><td><span class="pill md">следить</span></td><td>OpenXR и штатные маркеры ArUco; выход осенью 2026, в РФ не продаётся</td><td>—</td></tr>
+        <tr><td><b>Magic Leap 2, HoloLens 2</b></td><td><span class="pill hi">не брать</span></td><td>Сняты с продаж, поддержка до конца 2027 года</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer>
+  <div class="eyebrow">Источники</div>
+  <ul>
+    <li><a href="https://www.viture.com/product/viture-luma-ultra-xr-glasses" target="_blank" rel="noopener">VITURE Luma Ultra</a></li>
+    <li><a href="https://www.viture.com/developer" target="_blank" rel="noopener">VITURE для разработчиков</a></li>
+    <li><a href="https://github.com/brianhasquestions/Viture_AR_Playground" target="_blank" rel="noopener">Пример: 6DoF и камера Luma Ultra на Linux</a></li>
+    <li><a href="https://docs.opencv.org/4.13.0/d5/dae/tutorial_aruco_detection.html" target="_blank" rel="noopener">OpenCV: распознавание ArUco</a></li>
+    <li><a href="https://alphacephei.com/vosk/models" target="_blank" rel="noopener">Модели Vosk</a></li>
+    <li><a href="https://developer.android.com/develop/xr/godot" target="_blank" rel="noopener">Godot и Android XR</a></li>
+    <li><a href="https://github.com/Coding-Solo/godot-mcp" target="_blank" rel="noopener">MCP-сервер для Godot</a></li>
+    <li><a href="https://developer.android.com/develop/xr/jetpack-xr-sdk/run/emulator/ai-glasses" target="_blank" rel="noopener">Android XR Emulator для очков</a></li>
+    <li><a href="https://monado.freedesktop.org/developing-with-monado.html" target="_blank" rel="noopener">Monado: симулированные устройства</a></li>
+    <li><a href="https://pypi.org/project/cascadio/" target="_blank" rel="noopener">cascadio: STEP → GLB</a></li>
+    <li><a href="https://gltf-transform.dev/cli" target="_blank" rel="noopener">gltf-transform</a></li>
+    <li><a href="https://github.com/DLR-RM/BlenderProc" target="_blank" rel="noopener">BlenderProc</a></li>
+    <li><a href="https://unity.com/blog/news/we-stand-with-ukraine" target="_blank" rel="noopener">Unity и Россия</a></li>
+    <li><a href="https://www.ptc.com/en/news/2022/ptc-stands-with-ukraine" target="_blank" rel="noopener">PTC (Vuforia) и Россия</a></li>
+    <li><a href="https://magicleap.care/hc/en-us/articles/42141361534093-Magic-Leap-2-Availability" target="_blank" rel="noopener">Magic Leap 2: снятие с продаж</a></li>
+    <li><a href="https://github.com/IZMEHD/ARoMA" target="_blank" rel="noopener">ARoMA: открытый AR-ассистент сборки</a></li>
+  </ul>
+  <p>Данные на 25.09.2026. Детали, обозначения и сообщения в демонстрации — условный пример, не реальная КД.</p>
+</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+var $ = function(id){ return document.getElementById(id); };
+if(!window.THREE){ $('hint').textContent = '3D-сцена не загрузилась: библиотека Three.js недоступна'; return; }
+var T = window.THREE;
+var viewer = $('viewer'), canvas = $('gl');
+var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+var D2R = Math.PI/180;
+function V(x,y,z){ return new T.Vector3(x,y,z); }
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+function ease(t){ t = clamp(t,0,1); return t<.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }
+var FONT = '"IBM Plex Sans", Arial, sans-serif';
+var MONO = '"IBM Plex Mono", Consolas, monospace';
+var HUD = 0x3fe0b5, AMBER = 0xffc857;
+
+var renderer = new T.WebGLRenderer({canvas: canvas, antialias: true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.outputEncoding = T.sRGBEncoding;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = T.PCFSoftShadowMap;
+renderer.autoClear = false;
+
+var scene = new T.Scene();
+var BG = 0x262b31;
+scene.background = new T.Color(BG);
+scene.fog = new T.Fog(BG, 7, 16);
+var L_WORLD = 0, L_HOLO = 1, L_EXTRA = 2;
+function setLayer(o, l){ o.traverse(function(c){ c.layers.set(l); }); }
+
+/* ---------- light ---------- */
+scene.add(new T.HemisphereLight(0xdfe8f0, 0x3a332a, 0.45));
+var key = new T.DirectionalLight(0xfff4e6, 0.75);
+key.position.set(1.6, 4.2, 2.4); key.castShadow = true;
+key.shadow.mapSize.set(1024, 1024);
+var sc = key.shadow.camera; sc.left = -2.2; sc.right = 2.2; sc.top = 2.2; sc.bottom = -2.2; sc.near = .5; sc.far = 10;
+key.shadow.bias = -0.0006;
+scene.add(key);
+var fill = new T.DirectionalLight(0xbfd4ff, 0.3); fill.position.set(-3, 2, -1); scene.add(fill);
+
+function M(c, o){ var p = {color: c, roughness: .8, metalness: 0}; if(o) for(var k in o) p[k] = o[k]; return new T.MeshStandardMaterial(p); }
+function mesh(geo, mat, sh){ var m = new T.Mesh(geo, mat); if(sh !== false){ m.castShadow = true; m.receiveShadow = true; } return m; }
+function box(w,h,d,mat,x,y,z){ var m = mesh(new T.BoxGeometry(w,h,d), mat); m.position.set(x||0,y||0,z||0); return m; }
+function tex(c){ var t = new T.CanvasTexture(c); t.encoding = T.sRGBEncoding; t.anisotropy = 4; return t; }
+function canvas2d(w,h){ var c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+function rrect(ctx,x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function wrapText(ctx, text, maxW){ var words = text.split(' '), lines = [], line = ''; words.forEach(function(w){ var t = line ? line+' '+w : w; if(ctx.measureText(t).width > maxW && line){ lines.push(line); line = w; } else line = t; }); if(line) lines.push(line); return lines; }
+
+/* ---------- data ---------- */
+var STEPS = [
+  {title:'Привязка к ложементу', short:'Привязка', part:null},
+  {title:'Кронштейн К-204 (левый)', short:'К-204', part:'k204', fast:'2 × болт M4×12', tool:'отвёртка моментная', torque:'1,2 Н·м', cell:'ячейка B3'},
+  {title:'Кронштейн К-205 (правый)', short:'К-205', part:'k205', fast:'2 × болт M4×12', tool:'отвёртка моментная', torque:'1,2 Н·м', cell:'ячейка B4'},
+  {title:'Петля крышки П-110', short:'П-110', part:'p110', fast:'4 × винт M3×8', tool:'отвёртка моментная', torque:'0,6 Н·м', cell:'стол, за ложементом'},
+  {title:'Замок З-31', short:'З-31', part:'z31', fast:'2 × болт M4×10', tool:'отвёртка моментная', torque:'1,0 Н·м', cell:'ячейка C2'},
+  {title:'Контроль и фото', short:'Контроль', part:null}
+];
+var DUR = [4.4, 4.8, 4.8, 5.4, 4.8, 4.6];
+var SCRIPT = {
+  0: [{t:.8, a:'Система', m:'Пакет АИ.7045.200 СБ, ред. Б загружен'}, {t:4.2, a:'Система', m:'Совмещено: масштаб 1:1, отклонение 0,8 мм'}],
+  1: [{t:1.4, a:'Технолог', m:'На К-204 момент строго 1,2 Н·м. Болты из ячейки B3'}],
+  2: [{t:2.0, a:'Вы', m:'Принято', me:true}],
+  3: [{t:1.2, a:'Мастер участка', m:'После полки сразу на ОТК, партия ждёт'}],
+  4: [{t:1.2, a:'Технолог', m:'Замок ставим после петли, проверьте зазор щупом'}],
+  5: [{t:.8, a:'ОТК', m:'Жду фото с контролем зазора'}]
+};
+
+/* ---------- environment ---------- */
+var floor = mesh(new T.PlaneGeometry(24, 24), M(0x3a4047, {roughness:.95}));
+floor.rotation.x = -Math.PI/2; floor.castShadow = false; scene.add(floor);
+var grid = new T.GridHelper(24, 48, 0x4d555e, 0x444b53); grid.position.y = .001;
+grid.material.transparent = true; grid.material.opacity = .45; scene.add(grid);
+(function(){
+  var yel = new T.MeshBasicMaterial({color: 0xcf9d18});
+  var cx = 0, cz = .35, w = 3.2, d = 2.5, s = .06;
+  [[cx, cz-d/2, w, s],[cx, cz+d/2, w, s],[cx-w/2, cz, s, d],[cx+w/2, cz, s, d]].forEach(function(r){
+    var p = new T.Mesh(new T.PlaneGeometry(r[2], r[3]), yel); p.rotation.x = -Math.PI/2; p.position.set(r[0], .003, r[1]); scene.add(p);
+  });
+})();
+var wall = box(14, 4.4, .12, M(0x47505a), 0, 2.2, -1.95); wall.castShadow = false; scene.add(wall);
+(function(){
+  var c = canvas2d(1024, 128), x = c.getContext('2d');
+  x.fillStyle = '#1d3e6e'; x.fillRect(0,0,1024,128);
+  x.fillStyle = '#ffffff'; x.font = '600 54px ' + FONT; x.textBaseline = 'middle';
+  x.fillText('УЧАСТОК СБОРКИ ИНТЕРЬЕРОВ · ЦЕХ 2', 40, 66);
+  var p = new T.Mesh(new T.PlaneGeometry(2.6, .325), new T.MeshStandardMaterial({map: tex(c), roughness: .7}));
+  p.position.set(0, 2.55, -1.88); scene.add(p);
+  var rackMat = M(0x5d6670, {metalness:.3, roughness:.6});
+  [-2.3, 2.3].forEach(function(rx){
+    for(var i=0;i<4;i++) scene.add(box(1.4, .03, .5, rackMat, rx, .35+i*.5, -1.62));
+    scene.add(box(.04, 2.1, .5, rackMat, rx-.7, 1.05, -1.62));
+    scene.add(box(.04, 2.1, .5, rackMat, rx+.7, 1.05, -1.62));
+    var cols = [0x2f5f9e, 0xd0a020, 0x2f5f9e, 0x8a3b2e];
+    for(var j=0;j<4;j++) for(var k=0;k<3;k++) scene.add(box(.36, .2, .36, M(cols[(j+k)%4], {roughness:.6}), rx-.45+k*.45, .47+j*.5, -1.62));
+  });
+  var lamp = box(1.5, .05, .22, new T.MeshStandardMaterial({color:0xffffff, emissive:0xfff6e0, emissiveIntensity:1}), 0, 2.35, .05);
+  lamp.castShadow = false; scene.add(lamp);
+})();
+
+/* ---------- bench, fixture, panel ---------- */
+var wood = M(0x7b6a55, {roughness:.85});
+scene.add(box(2.2, .05, .9, wood, 0, .875, 0));
+[[-1.05,-.4],[1.05,-.4],[-1.05,.4],[1.05,.4]].forEach(function(p){ scene.add(box(.05,.85,.05, M(0x33383e,{metalness:.5,roughness:.5}), p[0], .425, p[1])); });
+scene.add(box(2.1, .03, .8, M(0x33383e,{metalness:.4,roughness:.6}), 0, .2, 0));
+scene.add(box(1.3, .02, .62, M(0x2e3339, {metalness:.45, roughness:.5}), 0, .91, 0));
+[[-.56,-.23],[.56,-.23],[-.56,.23],[.56,.23]].forEach(function(p){ var c = mesh(new T.CylinderGeometry(.008,.008,.04,10), M(0xd0a020)); c.position.set(p[0], .94, p[1]); scene.add(c); });
+var panel = box(1.1, .03, .45, M(0xb3ac9e, {roughness:.75}), 0, .935, 0); scene.add(panel);
+var tray = box(.36, .04, .5, M(0x2f5f9e, {roughness:.6}), .92, .92, .1); scene.add(tray);
+
+function markerCanvas(id){
+  var c = canvas2d(200, 200), x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0,0,200,200);
+  x.fillStyle = '#000'; x.fillRect(20,20,160,160);
+  var s = id*9301+49297;
+  x.fillStyle = '#fff';
+  for(var i=0;i<6;i++) for(var j=0;j<6;j++){ s = (s*9301+49297)%233280; if(s/233280 > .5) x.fillRect(40+j*20, 40+i*20, 20, 20); }
+  return c;
+}
+var MARKERS = [{id:7, p:V(-.6,.9205,-.26)}, {id:12, p:V(.6,.9205,-.26)}, {id:23, p:V(.6,.9205,.26)}, {id:31, p:V(-.6,.9205,.26)}];
+MARKERS.forEach(function(mk){
+  var t = tex(markerCanvas(mk.id)); t.magFilter = T.NearestFilter; t.minFilter = T.LinearFilter;
+  var p = new T.Mesh(new T.PlaneGeometry(.1,.1), new T.MeshStandardMaterial({map:t, roughness:.9}));
+  p.rotation.x = -Math.PI/2; p.position.copy(mk.p); p.receiveShadow = true; scene.add(p);
+});
+
+/* ---------- parts ---------- */
+var metal = M(0xb8c0c9, {metalness:.7, roughness:.35});
+var dark = M(0x3b3f45, {metalness:.5, roughness:.45});
+function makeBracket(mat){ var g = new T.Group(); var b = mesh(new T.BoxGeometry(.10,.012,.06), mat); b.position.y = .006; var u = mesh(new T.BoxGeometry(.10,.07,.012), mat); u.position.set(0,.035,-.024); g.add(b,u); return g; }
+function makeHinge(mat){ var g = new T.Group(); var c = mesh(new T.CylinderGeometry(.008,.008,.9,12), mat); c.rotation.z = Math.PI/2; c.position.y = .008; var l = mesh(new T.BoxGeometry(.9,.004,.03), mat); l.position.set(0,.002,.018); g.add(c,l); return g; }
+function makeLatch(mat){ var g = new T.Group(); var b = mesh(new T.BoxGeometry(.12,.03,.05), mat); b.position.y = .015; var k = mesh(new T.CylinderGeometry(.01,.01,.02,12), mat); k.position.set(0,.04,0); g.add(b,k); return g; }
+function makeBolt(mat){ var g = new T.Group(); var s = mesh(new T.CylinderGeometry(.0035,.0035,.018,8), mat); s.position.y = .009; var h = mesh(new T.CylinderGeometry(.0068,.0068,.004,6), mat); h.position.y = .02; g.add(s,h); return g; }
+
+var holoMat = new T.MeshBasicMaterial({color:HUD, transparent:true, opacity:.42, depthWrite:false});
+var holoLine = new T.LineBasicMaterial({color:0x9ffbe0, transparent:true, opacity:.95});
+var ghostMat = new T.MeshBasicMaterial({color:HUD, transparent:true, opacity:.08, depthWrite:false});
+var ghostLine = new T.LineBasicMaterial({color:HUD, transparent:true, opacity:.6});
+function withEdges(g, lineMat){ var add = []; g.traverse(function(o){ if(o.isMesh){ o.castShadow = false; o.receiveShadow = false; add.push(o); } }); add.forEach(function(o){ o.add(new T.LineSegments(new T.EdgesGeometry(o.geometry), lineMat)); }); return g; }
+
+function makeLabel(text, h, color, border){
+  var c = canvas2d(16, 16), x = c.getContext('2d'); var fs = 40;
+  x.font = '600 '+fs+'px '+FONT; var tw = x.measureText(text).width;
+  c.width = Math.ceil(tw + 44); c.height = 72; x = c.getContext('2d');
+  x.fillStyle = 'rgba(8,40,34,0.84)'; rrect(x,2,2,c.width-4,c.height-4,12); x.fill();
+  x.strokeStyle = border || '#3FE0B5'; x.lineWidth = 3; x.stroke();
+  x.fillStyle = color || '#EFFFF9'; x.font = '600 '+fs+'px '+FONT; x.textBaseline = 'middle'; x.fillText(text, 22, 38);
+  var sp = new T.Sprite(new T.SpriteMaterial({map: tex(c), depthTest:false, transparent:true}));
+  var hh = h || .042; sp.scale.set(hh*c.width/c.height, hh, 1); sp.renderOrder = 20;
+  setLayer(sp, L_HOLO); return sp;
+}
+
+var PARTS = {
+  k204:{make:makeBracket, mat:metal, tray:V(.84,.94,-.02), target:V(-.40,.95,-.12), label:'К-204 · 2×M4×12 · 1,2 Н·м', bolts:[[-.03,-.004,.01],[.03,-.004,.01]], ring:1},
+  k205:{make:makeBracket, mat:metal, tray:V(1.0,.94,-.02), target:V(.40,.95,-.12), label:'К-205 · 2×M4×12 · 1,2 Н·м', bolts:[[-.03,-.004,.01],[.03,-.004,.01]], ring:1},
+  p110:{make:makeHinge, mat:metal, tray:V(.1,.9,-.4), target:V(0,.95,-.2), label:'П-110 · 4×M3×8 · 0,6 Н·м', bolts:[[-.33,-.012,.02],[-.11,-.012,.02],[.11,-.012,.02],[.33,-.012,.02]], ring:6},
+  z31:{make:makeLatch, mat:dark, tray:V(.92,.94,.24), target:V(0,.95,.17), label:'З-31 · 2×M4×10 · 1,0 Н·м', bolts:[[-.075,-.014,0],[.075,-.014,0]], ring:1.3}
+};
+Object.keys(PARTS).forEach(function(k){
+  var P = PARTS[k];
+  P.real = P.make(P.mat); P.real.position.copy(P.tray); scene.add(P.real);
+  P.boltsReal = P.bolts.map(function(o){ var b = makeBolt(metal); b.position.copy(P.target).add(V(o[0],o[1],o[2])); b.visible = false; scene.add(b); return b; });
+  P.holo = withEdges(P.make(holoMat), holoLine); setLayer(P.holo, L_HOLO); P.holo.visible = false; scene.add(P.holo);
+  P.ghost = withEdges(P.make(ghostMat), ghostLine); P.ghost.position.copy(P.target); setLayer(P.ghost, L_HOLO); P.ghost.visible = false; scene.add(P.ghost);
+  P.boltsHolo = P.bolts.map(function(){ var b = withEdges(makeBolt(holoMat), holoLine); setLayer(b, L_HOLO); b.visible = false; scene.add(b); return b; });
+  var ring = new T.Mesh(new T.RingGeometry(.055,.07,40), new T.MeshBasicMaterial({color:AMBER, transparent:true, opacity:.8, side:T.DoubleSide, depthWrite:false}));
+  ring.rotation.x = -Math.PI/2; ring.scale.set(P.ring, 1, 1); ring.position.copy(P.tray).add(V(0,.004,0)); setLayer(ring, L_HOLO); ring.visible = false; scene.add(ring); P.trayRing = ring;
+  var a = P.tray.clone().add(V(0,.03,0)), b = P.target.clone().add(V(0,.1,0)), pts = [];
+  for(var i=0;i<=40;i++){ var u = i/40; var q = a.clone().lerp(b,u); q.y += Math.sin(Math.PI*u)*.26; pts.push(q); }
+  pts.push(P.target.clone().add(V(0,.01,0)));
+  P.arc = pts;
+  var line = new T.Line(new T.BufferGeometry().setFromPoints(pts), new T.LineDashedMaterial({color:AMBER, dashSize:.02, gapSize:.014, transparent:true, opacity:.85}));
+  line.computeLineDistances(); setLayer(line, L_HOLO); line.visible = false; scene.add(line); P.path = line;
+  P.lbl = makeLabel(P.label); P.lbl.position.copy(P.target).add(V(0,.17,0)); P.lbl.visible = false; scene.add(P.lbl);
+});
+
+/* align visuals */
+var markerBoxes = MARKERS.map(function(mk){
+  var s = .06, pts = [V(-s,0,-s),V(s,0,-s),V(s,0,s),V(-s,0,s)];
+  var l = new T.LineLoop(new T.BufferGeometry().setFromPoints(pts), new T.LineBasicMaterial({color:HUD}));
+  l.position.copy(mk.p).add(V(0,.004,0));
+  var g = new T.Group(); g.add(l);
+  var lb = makeLabel('ID '+mk.id+' · 6×6', .026); lb.position.copy(mk.p).add(V(0,.05,0)); g.add(lb);
+  setLayer(g, L_HOLO); g.visible = false; scene.add(g); return g;
+});
+var axes = new T.Group();
+[[V(.15,0,0),0xff6060],[V(0,.15,0),0x60ff90],[V(0,0,-.15),0x6aa8ff]].forEach(function(a){
+  axes.add(new T.Line(new T.BufferGeometry().setFromPoints([V(0,0,0), a[0]]), new T.LineBasicMaterial({color:a[1]})));
+});
+axes.position.set(-.6, .925, .26); setLayer(axes, L_HOLO); axes.visible = false; scene.add(axes);
+var panelGhostMat = new T.LineBasicMaterial({color:AMBER, transparent:true, opacity:.9});
+var panelGhost = new T.LineSegments(new T.EdgesGeometry(new T.BoxGeometry(1.102,.032,.452)), panelGhostMat);
+panelGhost.position.copy(panel.position); setLayer(panelGhost, L_HOLO); scene.add(panelGhost);
+var alignLbl = makeLabel('Совмещено · масштаб 1:1 · отклонение 0,8 мм', .04); alignLbl.position.set(0, 1.1, .02); alignLbl.visible = false; scene.add(alignLbl);
+var scanLbl = makeLabel('Поиск меток…', .036, '#FFE3A3', '#FFC857'); scanLbl.position.set(0, 1.06, .02); scanLbl.visible = false; scene.add(scanLbl);
+
+/* check visuals */
+var checkRing = new T.Mesh(new T.TorusGeometry(.1,.004,8,48), new T.MeshBasicMaterial({color:HUD, transparent:true, opacity:.8}));
+checkRing.rotation.x = Math.PI/2; checkRing.position.copy(PARTS.z31.target).add(V(0,.02,0)); setLayer(checkRing, L_HOLO); scene.add(checkRing);
+var gauge = withEdges(mesh(new T.BoxGeometry(.08,.0015,.014), holoMat), holoLine); setLayer(gauge, L_HOLO); scene.add(gauge);
+var checkLbl = makeLabel('Зазор ≤ 0,5 мм · скажите «Норма»', .04); checkLbl.position.copy(PARTS.z31.target).add(V(0,.16,0)); scene.add(checkLbl);
+
+/* ---------- world panels: KD, chat, algorithm ---------- */
+var HEAD_BASE = V(0, 1.63, .72);
+function worldPanel(w, h, cw, ch, pos){
+  var c = canvas2d(cw, ch), t = tex(c);
+  var m = new T.Mesh(new T.PlaneGeometry(w, h), new T.MeshBasicMaterial({map:t, transparent:true, opacity:.97, side:T.DoubleSide, depthWrite:false}));
+  m.position.copy(pos); m.lookAt(HEAD_BASE); setLayer(m, L_HOLO); scene.add(m);
+  return {mesh:m, c:c, ctx:c.getContext('2d'), tex:t, base:m.scale.clone()};
+}
+var kd = worldPanel(.66, .47, 1024, 730, V(-1.02, 1.36, -.12));
+var chatP = worldPanel(.5, .6, 720, 864, V(1.04, 1.4, -.08));
+var algoP = worldPanel(.92, .2, 1100, 240, V(0, 1.78, -.5));
+
+var chat = [];
+function drawKD(){
+  var x = kd.ctx, W = 1024, H = 730; x.clearRect(0,0,W,H);
+  x.fillStyle = '#F3F1EA'; x.fillRect(0,0,W,H);
+  x.strokeStyle = '#111'; x.lineWidth = 3; x.strokeRect(46,14,W-60,H-28);
+  x.lineWidth = 1.2; x.strokeRect(14,14,W-28,H-28);
+  // drawing
+  var ox = 110, oy = 170, pw = 620, ph = 254;
+  function mx(v){ return ox + (v+.55)/1.1*pw; } function my(v){ return oy + (v+.225)/.45*ph; }
+  x.lineWidth = 2.4; x.strokeStyle = '#1a1a1a'; x.strokeRect(ox,oy,pw,ph);
+  x.setLineDash([10,5,2,5]); x.lineWidth = 1; x.beginPath(); x.moveTo(ox-20, oy+ph/2); x.lineTo(ox+pw+20, oy+ph/2); x.moveTo(ox+pw/2, oy-20); x.lineTo(ox+pw/2, oy+ph+20); x.stroke(); x.setLineDash([]);
+  var cur = STEPS[state.cur].part;
+  var items = [
+    {k:'k204', n:1, r:[mx(-.45), my(-.15), mx(-.35)-mx(-.45), my(-.09)-my(-.15)]},
+    {k:'k205', n:2, r:[mx(.35), my(-.15), mx(.45)-mx(.35), my(-.09)-my(-.15)]},
+    {k:'p110', n:3, r:[mx(-.45), my(-.21), mx(.45)-mx(-.45), 8]},
+    {k:'z31', n:4, r:[mx(-.06), my(.145), mx(.06)-mx(-.06), my(.195)-my(.145)]}
+  ];
+  items.forEach(function(it, i){
+    var hi = it.k === cur;
+    x.fillStyle = hi ? 'rgba(30,88,184,.35)' : 'rgba(0,0,0,.08)'; x.strokeStyle = hi ? '#1E58B8' : '#1a1a1a'; x.lineWidth = hi ? 3 : 1.6;
+    x.fillRect(it.r[0], it.r[1], it.r[2], it.r[3]); x.strokeRect(it.r[0], it.r[1], it.r[2], it.r[3]);
+    var bx = 150 + i*150, by = 90;
+    x.beginPath(); x.moveTo(it.r[0]+it.r[2]/2, it.r[1]); x.lineTo(bx, by+22); x.lineWidth = 1.2; x.strokeStyle = hi ? '#1E58B8' : '#1a1a1a'; x.stroke();
+    x.beginPath(); x.arc(bx, by, 22, 0, Math.PI*2); x.fillStyle = hi ? '#1E58B8' : '#F3F1EA'; x.fill(); x.lineWidth = 2; x.stroke();
+    x.fillStyle = hi ? '#fff' : '#111'; x.font = '600 24px '+MONO; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(String(it.n), bx, by+1);
+  });
+  x.textAlign = 'left';
+  // dimensions
+  x.strokeStyle = '#111'; x.fillStyle = '#111'; x.lineWidth = 1; x.font = '22px '+MONO;
+  x.beginPath(); x.moveTo(ox, oy+ph+40); x.lineTo(ox+pw, oy+ph+40); x.moveTo(ox, oy+ph+8); x.lineTo(ox, oy+ph+50); x.moveTo(ox+pw, oy+ph+8); x.lineTo(ox+pw, oy+ph+50); x.stroke();
+  x.textAlign = 'center'; x.fillText('1100 ±0,5', ox+pw/2, oy+ph+30);
+  x.save(); x.translate(ox-40, oy+ph/2); x.rotate(-Math.PI/2); x.fillText('450 ±0,5', 0, 0); x.restore();
+  x.beginPath(); x.moveTo(ox-28, oy); x.lineTo(ox-28, oy+ph); x.stroke();
+  x.textAlign = 'left';
+  // spec list
+  var sx = 790, sy = 150;
+  x.font = '600 22px '+FONT; x.fillText('Поз.  Обозначение    Кол.', sx, sy);
+  [['1','К-204','1'],['2','К-205','1'],['3','П-110','1'],['4','З-31','1']].forEach(function(r, i){
+    var hi = items[i].k === cur; var yy = sy + 40 + i*36;
+    if(hi){ x.fillStyle = 'rgba(30,88,184,.18)'; x.fillRect(sx-8, yy-24, 200, 34); }
+    x.fillStyle = hi ? '#1E58B8' : '#111'; x.font = (hi?'600 ':'')+'22px '+MONO; x.fillText(r[0]+'     '+r[1]+'         '+r[2], sx, yy);
+  });
+  // stamp
+  var tx = W-14-520, ty = H-14-170;
+  x.fillStyle = '#F3F1EA'; x.fillRect(tx,ty,520,170); x.strokeStyle = '#111'; x.lineWidth = 2.4; x.strokeRect(tx,ty,520,170);
+  x.lineWidth = 1.2; [42, 84, 126].forEach(function(dy){ x.beginPath(); x.moveTo(tx, ty+dy); x.lineTo(tx+520, ty+dy); x.stroke(); });
+  x.beginPath(); x.moveTo(tx+170, ty); x.lineTo(tx+170, ty+170); x.moveTo(tx+350, ty+84); x.lineTo(tx+350, ty+170); x.stroke();
+  x.fillStyle = '#111'; x.font = '600 30px '+MONO; x.fillText('АИ.7045.200 СБ', tx+190, ty+31);
+  x.font = '20px '+FONT; x.fillText('Разраб.', tx+10, ty+28); x.fillText('Пров.', tx+10, ty+70); x.fillText('Т. контр.', tx+10, ty+112); x.fillText('Утв.', tx+10, ty+154);
+  x.font = '600 24px '+FONT; x.fillText('Полка багажная', tx+190, ty+70);
+  x.font = '20px '+FONT; x.fillText('Сборочный чертёж', tx+190, ty+112); x.fillText('Лист 3 · Листов 7', tx+190, ty+154);
+  x.fillText('Лит. О1', tx+362, ty+112); x.fillText('М 1:5', tx+362, ty+154);
+  x.font = '600 26px '+FONT; x.fillText('КД · лист 3 · сборка кронштейнов', 70, 52);
+  kd.tex.needsUpdate = true;
+}
+function drawChat(){
+  var x = chatP.ctx, W = 720, H = 864; x.clearRect(0,0,W,H);
+  x.fillStyle = 'rgba(6,28,26,0.86)'; rrect(x,3,3,W-6,H-6,22); x.fill();
+  x.strokeStyle = '#3FE0B5'; x.lineWidth = 3; x.stroke();
+  x.fillStyle = '#7FF5D2'; x.font = '600 30px '+MONO; x.fillText('Чат · шаг '+(state.cur+1)+'/6', 30, 56);
+  x.fillStyle = '#9fbfb6'; x.font = '22px '+FONT; x.fillText('Полка багажная · участок 2', 30, 92);
+  var y = H - 30; x.font = '26px '+FONT;
+  for(var i = chat.length-1; i >= 0 && y > 140; i--){
+    var m = chat[i]; var lines = wrapText(x, m.m, W-120); var bh = 50 + lines.length*34;
+    y -= bh;
+    var bx = m.me ? 110 : 26; x.fillStyle = m.me ? 'rgba(63,224,181,.22)' : 'rgba(255,255,255,.08)';
+    rrect(x, bx, y, W-136, bh-12, 14); x.fill();
+    x.fillStyle = m.me ? '#8FD9C3' : '#FFC857'; x.font = '600 22px '+FONT; x.fillText(m.a, bx+18, y+32);
+    x.fillStyle = '#F2FFFB'; x.font = '26px '+FONT;
+    lines.forEach(function(l, j){ x.fillText(l, bx+18, y+68+j*34); });
+    y -= 6;
+  }
+  chatP.tex.needsUpdate = true;
+}
+function drawAlgo(){
+  var x = algoP.ctx, W = 1100, H = 240; x.clearRect(0,0,W,H);
+  x.fillStyle = 'rgba(6,28,26,0.82)'; rrect(x,3,3,W-6,H-6,20); x.fill(); x.strokeStyle = '#3FE0B5'; x.lineWidth = 3; x.stroke();
+  x.fillStyle = '#7FF5D2'; x.font = '600 26px '+MONO; x.fillText('Операция 040 · сборка полки', 28, 44);
+  var bw = 150, gap = 26, sx = 28;
+  STEPS.forEach(function(s, i){
+    var bx = sx + i*(bw+gap), by = 78, done = i < state.cur || state.doneAll, cur = i === state.cur && !state.doneAll;
+    x.fillStyle = done ? 'rgba(63,224,181,.85)' : cur ? 'rgba(255,200,87,.2)' : 'rgba(255,255,255,.06)';
+    rrect(x, bx, by, bw, 120, 12); x.fill();
+    x.strokeStyle = cur ? '#FFC857' : done ? '#3FE0B5' : 'rgba(127,245,210,.35)'; x.lineWidth = cur ? 4 : 2; x.stroke();
+    x.fillStyle = done ? '#06201a' : cur ? '#FFC857' : '#9fbfb6'; x.font = '600 24px '+MONO; x.fillText(String(i+1), bx+14, by+36);
+    x.fillStyle = done ? '#06201a' : '#EFFFF9'; x.font = '600 24px '+FONT; x.fillText(s.short, bx+14, by+80);
+    if(i < STEPS.length-1){ x.strokeStyle = 'rgba(127,245,210,.6)'; x.lineWidth = 3; x.beginPath(); x.moveTo(bx+bw+4, by+60); x.lineTo(bx+bw+gap-4, by+60); x.stroke(); }
+  });
+  algoP.tex.needsUpdate = true;
+}
+
+/* ---------- worker (third-person only) ---------- */
+var worker = new T.Group();
+var jacket = M(0x2f4f6f, {roughness:.9}), trousers = M(0x2a2f36, {roughness:.9}), skin = M(0xc8a58a, {roughness:.8});
+var torso = mesh(new T.CylinderGeometry(.16,.19,.62,16), jacket); torso.position.set(0, 1.17, .86); worker.add(torso);
+[-1,1].forEach(function(sd){
+  var leg = mesh(new T.CylinderGeometry(.07,.065,.86,12), trousers); leg.position.set(sd*.09, .43, .86); worker.add(leg);
+  var a = V(sd*.2, 1.38, .84), b = V(sd*.26, .99, .4); var dir = b.clone().sub(a); var len = dir.length();
+  var arm = mesh(new T.CylinderGeometry(.045,.04,len,10), jacket); arm.position.copy(a).add(b).multiplyScalar(.5);
+  arm.quaternion.setFromUnitVectors(V(0,1,0), dir.normalize()); worker.add(arm);
+  var hand = mesh(new T.SphereGeometry(.035,10,8), skin); hand.position.copy(b); worker.add(hand);
+});
+var neck = mesh(new T.CylinderGeometry(.045,.05,.1,10), skin); neck.position.set(0, 1.5, .8); worker.add(neck);
+var neckband = mesh(new T.TorusGeometry(.085,.02,10,28), M(0x2b3138, {metalness:.4, roughness:.4})); neckband.rotation.x = Math.PI/2; neckband.position.set(0, 1.48, .8); worker.add(neckband);
+setLayer(worker, L_EXTRA); scene.add(worker);
+var headG = new T.Group();
+var headM = mesh(new T.SphereGeometry(.095, 20, 16), skin); headM.position.set(0, .02, .085); headG.add(headM);
+var hair = mesh(new T.SphereGeometry(.098, 20, 12, 0, Math.PI*2, 0, Math.PI/2.2), M(0x2b2420)); hair.position.set(0, .03, .09); headG.add(hair);
+var gl = M(0x111418, {metalness:.3, roughness:.4});
+headG.add(box(.16,.036,.02, gl, 0, 0, -.004));
+[-1,1].forEach(function(sd){ headG.add(box(.058,.03,.006, M(0x1b3a40,{metalness:.8,roughness:.2}), sd*.036, 0, -.016)); headG.add(box(.008,.012,.13, gl, sd*.082, .004, .06)); });
+var TAN_H = Math.tan(22.5*D2R), TAN_V = Math.tan(14.5*D2R), FL = 1.15;
+var fullField = true; var frus = new T.Group(); headG.add(frus);
+(function(){
+  var c = [V(-TAN_H*FL, TAN_V*FL, -FL), V(TAN_H*FL, TAN_V*FL, -FL), V(TAN_H*FL, -TAN_V*FL, -FL), V(-TAN_H*FL, -TAN_V*FL, -FL)], o = V(0,0,-.02);
+  var pts = []; c.forEach(function(p, i){ pts.push(o, p, p, c[(i+1)%4]); });
+  frus.add(new T.LineSegments(new T.BufferGeometry().setFromPoints(pts), new T.LineBasicMaterial({color:HUD, transparent:true, opacity:.85})));
+  var g = new T.BufferGeometry(); var v = [];
+  c.forEach(function(p, i){ var q = c[(i+1)%4]; v.push(o.x,o.y,o.z, p.x,p.y,p.z, q.x,q.y,q.z); });
+  v.push(c[0].x,c[0].y,c[0].z, c[1].x,c[1].y,c[1].z, c[2].x,c[2].y,c[2].z, c[0].x,c[0].y,c[0].z, c[2].x,c[2].y,c[2].z, c[3].x,c[3].y,c[3].z);
+  g.setAttribute('position', new T.Float32BufferAttribute(v, 3));
+  frus.add(new T.Mesh(g, new T.MeshBasicMaterial({color:HUD, transparent:true, opacity:.07, side:T.DoubleSide, depthWrite:false})));
+})();
+setLayer(headG, L_EXTRA); scene.add(headG);
+
+/* ---------- cameras ---------- */
+var fpCam = new T.PerspectiveCamera(60, 16/9, .03, 60);
+var tpCam = new T.PerspectiveCamera(42, 16/9, .05, 60); tpCam.layers.enableAll();
+function fovFor(a){ return Math.max(58, 2*Math.atan(.46/a)/D2R); }
+function dispRect(w, h, cam){ var tv = Math.tan(cam.fov*D2R/2), th = tv*cam.aspect; var rw = w*TAN_H/th, rh = h*TAN_V/tv; return {x:(w-rw)/2, y:(h-rh)/2, w:rw, h:rh}; }
+
+/* ---------- state ---------- */
+var state = {cur:0, stepTime:0, hold:0, playing:!reduce, demo:!reduce, speed:1, doneAll:false, doneAt:0, fired:{}};
+if(reduce){ state.cur = 0; }
+var mode = 'fp', clock = 0;
+var head = {yaw:0, pitch:-.7, roll:0, manYaw:0, manPitch:-.7, manualUntil:-1, autoHead:!reduce};
+var glance = null;
+var tp = {yaw:.85, pitch:.33, dir:1, manualUntil:-1};
+var holoPos = V(0,0,0);
+
+/* ---------- HUD (HTML) ---------- */
+var hud = $('hud'), hudTimer = 0, hudPinned = false;
+var hudNames = {min:'свёрнуто', brief:'кратко', full:'развёрнуто'};
+function setHud(s){ hud.dataset.state = s; $('hudState').textContent = hudNames[s]; }
+function bumpHud(s){ if(hudPinned) return; setHud(s || 'brief'); hudTimer = clock + 5; }
+$('hudToggle').addEventListener('click', function(){ hudPinned = hud.dataset.state !== 'full'; setHud(hudPinned ? 'full' : 'min'); $('hudDot').classList.remove('on'); });
+var kvCache = '';
+function setKV(rows){ var s = rows.map(function(r){ return '<dt>'+r[0]+'</dt><dd>'+r[1]+'</dd>'; }).join(''); if(s !== kvCache){ $('hudKv').innerHTML = s; kvCache = s; } }
+function renderHudStatic(){
+  var s = STEPS[state.cur];
+  $('hudStep').textContent = 'Шаг ' + (state.cur+1) + '/6';
+  $('hudTitle').textContent = state.doneAll ? 'Операция завершена' : s.title;
+  $('hudAlgo').innerHTML = STEPS.map(function(_, i){ var c = (i < state.cur || state.doneAll) ? 'done' : i === state.cur ? 'cur' : ''; return '<li class="'+c+'"></li>'; }).join('');
+  if(s.part) setKV([['Крепёж', s.fast], ['Инструмент', s.tool], ['Момент', s.torque], ['Взять', s.cell]]);
+  else if(state.cur === 5) setKV([['Контроль', 'зазор замка ≤ 0,5 мм'], ['Инструмент', 'щуп 0,5 мм'], ['Итог', 'скажите «Норма»']]);
+}
+function renderHudChat(){
+  $('hudChat').innerHTML = chat.slice(-3).map(function(m){ return '<div class="msg'+(m.me?' me':'')+'"><b>'+m.a+':</b> '+m.m+'</div>'; }).join('');
+}
+var voiceTimer = null;
+function showVoice(text, ok){
+  $('voiceText').textContent = text; $('voiceOk').textContent = ok || 'распознано';
+  var v = $('voice'); v.classList.add('on'); clearTimeout(voiceTimer); voiceTimer = setTimeout(function(){ v.classList.remove('on'); }, 2100);
+}
+function pushMsg(m){
+  chat.push(m); if(chat.length > 30) chat.shift(); drawChat(); renderHudChat();
+  if(!m.me){ $('hudDot').classList.add('on'); bumpHud('brief'); if(m.a !== 'Система') lookAt('chat', 2.2); }
+}
+function lookAt(name, dur){
+  var p = name === 'kd' ? kd : name === 'chat' ? chatP : algoP;
+  p.pulseUntil = clock + dur;
+  if(head.autoHead) glance = {point: p.mesh.position.clone(), until: clock + dur};
+}
+
+/* ---------- step list ---------- */
+var list = $('stepList');
+list.innerHTML = STEPS.map(function(s, i){ return '<li><button type="button" data-i="'+i+'"><span class="n">Шаг '+(i+1)+'</span><span class="t">'+s.title+'</span></button></li>'; }).join('');
+list.addEventListener('click', function(e){ var b = e.target.closest('button'); if(!b) return; setDemo(false); goStep(+b.dataset.i); });
+function renderList(){ Array.prototype.forEach.call(list.children, function(li, i){ li.className = (i < state.cur || state.doneAll) ? 'done' : i === state.cur ? 'cur' : ''; }); }
+
+/* ---------- step logic ---------- */
+function applyInstalled(){
+  STEPS.forEach(function(s, i){ if(!s.part) return; var P = PARTS[s.part]; var inst = i < state.cur || state.doneAll; P.real.position.copy(inst ? P.target : P.tray); P.boltsReal.forEach(function(b){ b.visible = inst; }); });
+}
+function goStep(i){
+  state.cur = clamp(i, 0, STEPS.length-1); state.stepTime = 0; state.hold = 0; state.doneAll = false; state.fired = {};
+  $('doneBanner').classList.remove('on');
+  applyInstalled(); renderHudStatic(); renderList(); drawKD(); drawAlgo(); drawChat(); bumpHud('brief');
+}
+function finishOp(){
+  if(state.doneAll) return;
+  state.doneAll = true; state.doneAt = clock; applyInstalled(); renderHudStatic(); renderList(); drawAlgo();
+  pushMsg({a:'Система', m:'Операция закрыта, журнал и фото отправлены в ОТК'});
+  $('doneBanner').classList.add('on');
+}
+function completeStep(){ if(state.cur < STEPS.length-1) goStep(state.cur+1); else finishOp(); }
+var SPEEDS = [.5, 1, 1.6];
+function setSpeed(v){ state.speed = v; $('selSpeed').value = String(v); }
+function setDemo(on){ state.demo = on; $('tgDemo').checked = on; }
+var CMD = {next:'«Сборка, дальше»', prev:'«Сборка, назад»', repeat:'«Сборка, повтори»', slower:'«Сборка, медленнее»', kd:'«Сборка, покажи КД»', chat:'«Сборка, покажи чат»', panel:'«Сборка, панель»'};
+function command(c, user){
+  showVoice(CMD[c]);
+  if(user && (c === 'next' || c === 'prev' || c === 'repeat')) setDemo(false);
+  if(c === 'next'){ if(state.doneAll){ chat.length = 0; goStep(0); } else completeStep(); }
+  else if(c === 'prev'){ goStep(state.cur-1); }
+  else if(c === 'repeat'){ state.stepTime = 0; state.hold = 0; }
+  else if(c === 'slower'){ var i = SPEEDS.indexOf(state.speed); setSpeed(SPEEDS[Math.max(0, i-1)]); }
+  else if(c === 'kd'){ lookAt('kd', 4); bumpHud('brief'); }
+  else if(c === 'chat'){ lookAt('chat', 4); $('hudDot').classList.remove('on'); }
+  else if(c === 'panel'){ hudPinned = hud.dataset.state !== 'full'; setHud(hudPinned ? 'full' : 'min'); }
+  if(!state.playing && (c === 'next' || c === 'prev' || c === 'repeat')) setPlaying(true);
+}
+
+/* ---------- per-frame visuals ---------- */
+function hideStepHolos(){
+  Object.keys(PARTS).forEach(function(k){ var P = PARTS[k]; P.holo.visible = P.ghost.visible = P.trayRing.visible = P.path.visible = P.lbl.visible = false; P.boltsHolo.forEach(function(b){ b.visible = false; }); });
+  checkRing.visible = gauge.visible = checkLbl.visible = false; alignLbl.visible = scanLbl.visible = false;
+}
+var cA = new T.Color(AMBER), cH = new T.Color(HUD);
+var markersOn = true, photoDone = false;
+function updateVisuals(p){
+  hideStepHolos();
+  var s = STEPS[state.cur], t = clock;
+  var aligned = state.cur > 0 || state.doneAll;
+  var found = aligned ? 4 : 0;
+  MARKERS.forEach(function(mk, i){ var vis = aligned || p > .1 + i*.12; if(vis) found = Math.max(found, i+1); markerBoxes[i].visible = markersOn && vis; });
+  axes.visible = markersOn && (aligned || p > .55);
+  if(!aligned){
+    var q = ease((p - .45)/.4); var sc = 1.14 - .14*q;
+    panelGhost.scale.set(sc, 1, sc); panelGhostMat.color.copy(cA).lerp(cH, q); panelGhostMat.opacity = .9;
+    panelGhost.visible = p > .3;
+    scanLbl.visible = p < .45; alignLbl.visible = p > .88;
+    if(scanLbl.visible) scanLbl.material.opacity = .6 + .4*Math.sin(t*6);
+    setKV([['Метки', found + '/4 найдено'], ['Масштаб', p > .85 ? '1:1 · 0,8 мм' : p > .45 ? 'подгонка ' + (sc*100).toFixed(0) + ' %' : 'поиск…'], ['Изделие', 'АИ.7045.200 СБ']]);
+  } else {
+    panelGhost.visible = true; panelGhost.scale.set(1,1,1); panelGhostMat.color.copy(cH); panelGhostMat.opacity = .22;
+  }
+  if(s.part && !state.doneAll){
+    var P = PARTS[s.part];
+    P.ghost.visible = true; ghostLine.opacity = .35 + .3*Math.sin(t*4);
+    P.trayRing.visible = p < .9; P.trayRing.material.opacity = (p < .2 ? .9 : .35) * (.6 + .4*Math.sin(t*5));
+    P.path.visible = p > .08 && p < .85;
+    var pos;
+    if(p < .14){ pos = P.tray.clone().add(V(0, .03*ease(p/.14), 0)); holoMat.opacity = .42*clamp(p/.14, .2, 1); }
+    else if(p < .64){ var u = ease((p-.14)/.5); var idx = u*40; var i0 = Math.floor(idx), i1 = Math.min(40, i0+1); pos = P.arc[i0].clone().lerp(P.arc[i1], idx - i0); holoMat.opacity = .42; }
+    else if(p < .82){ var d = ease((p-.64)/.18); pos = P.target.clone().add(V(0, .1*(1-d), 0)); holoMat.opacity = .42; }
+    else { pos = P.target.clone(); holoMat.opacity = .42; }
+    P.holo.visible = true; P.holo.position.copy(pos); holoPos.copy(pos);
+    P.holo.rotation.y = (p > .14 && p < .64) ? Math.sin((p-.14)/.5*Math.PI)*.35 : 0;
+    if(p > .8){ var qb = clamp((p-.82)/.16, 0, 1); P.boltsHolo.forEach(function(b, i){ var o = P.bolts[i]; b.visible = true; b.position.copy(P.target).add(V(o[0], o[1] + .07*(1-ease(qb)), o[2])); b.rotation.y = qb*14; }); }
+    P.lbl.visible = p > .5;
+  }
+  if(state.cur === 5 && !state.doneAll){
+    checkRing.visible = true; checkRing.material.opacity = .5 + .4*Math.sin(t*4); checkRing.scale.setScalar(1 + .05*Math.sin(t*4));
+    var g = ease(clamp((p - .2)/.5, 0, 1)); gauge.visible = p > .15; gauge.position.copy(PARTS.z31.target).add(V(.2 - .13*g, .004, 0));
+    checkLbl.visible = p > .5;
+    if(p >= .96 && !photoDone){ photoDone = true; var f = $('flash'); if(mode === 'fp'){ f.classList.add('on'); setTimeout(function(){ f.classList.remove('on'); }, 70); } pushMsg({a:'Вы', m:'Норма. Фото зазора добавлено в журнал', me:true}); }
+    if(p < .5) photoDone = false;
+  }
+  [kd, chatP, algoP].forEach(function(pn){ var on = pn.pulseUntil && pn.pulseUntil > t; var k = on ? 1.05 + .02*Math.sin(t*8) : 1; pn.mesh.scale.set(k, k, 1); });
+}
+
+/* ---------- head ---------- */
+function anglesTo(pt, from){ var d = pt.clone().sub(from); return {yaw: Math.atan2(-d.x, -d.z), pitch: Math.atan2(d.y, Math.hypot(d.x, d.z))}; }
+function autoLookPoint(p){
+  if(glance && glance.until > clock) return glance.point;
+  glance = null;
+  var s = STEPS[state.cur];
+  if(state.doneAll) return V(0, .95, .05);
+  if(state.cur === 0){ if(p < .62){ var i = Math.min(3, Math.floor(p/.62*4)); return MARKERS[[0,1,2,3][i]].p; } return V(0, .95, .02); }
+  if(s.part){ var P = PARTS[s.part]; if(p < .14) return P.tray.clone(); if(p < .82) return holoPos.clone(); return P.target.clone(); }
+  return PARTS.z31.target.clone();
+}
+var headPos = HEAD_BASE.clone();
+function updateHead(dt, p){
+  var tgt;
+  if(clock < head.manualUntil || !head.autoHead) tgt = {yaw: head.manYaw, pitch: head.manPitch};
+  else tgt = anglesTo(autoLookPoint(p), HEAD_BASE);
+  var k = 1 - Math.exp(-dt*3.2);
+  var dy = tgt.yaw - head.yaw; while(dy > Math.PI) dy -= 2*Math.PI; while(dy < -Math.PI) dy += 2*Math.PI;
+  head.yaw += dy*k; head.pitch += (tgt.pitch - head.pitch)*k;
+  var sway = reduce ? 0 : 1;
+  head.roll = .012*Math.sin(clock*.7)*sway;
+  headPos.copy(HEAD_BASE); headPos.x += -Math.sin(head.yaw)*.07 + .004*Math.sin(clock*1.3)*sway; headPos.y += .003*Math.sin(clock*2.1)*sway + Math.min(0, head.pitch+.6)*.05; headPos.z += -Math.max(0, -head.pitch-.6)*.06;
+  fpCam.position.copy(headPos); fpCam.rotation.set(head.pitch + .006*Math.sin(clock*1.7)*sway, head.yaw + .006*Math.sin(clock*1.1)*sway, head.roll, 'YXZ');
+  headG.position.copy(headPos); headG.quaternion.copy(fpCam.quaternion);
+  torso.rotation.y = head.yaw*.3;
+}
+
+/* ---------- render ---------- */
+var W = 1, H = 1;
+var disp = $('disp'), pip = $('pip');
+function resize(){
+  W = Math.max(1, viewer.clientWidth); H = Math.max(1, viewer.clientHeight);
+  renderer.setSize(W, H, false); tpCam.aspect = W/H; tpCam.updateProjectionMatrix();
+}
+function renderFP(x, y, w, h){
+  fpCam.aspect = w/h; fpCam.fov = fovFor(w/h); fpCam.updateProjectionMatrix();
+  renderer.setViewport(x, y, w, h); renderer.setScissor(x, y, w, h); renderer.setScissorTest(true);
+  fpCam.layers.set(L_WORLD); renderer.clear(true, true, true); renderer.render(scene, fpCam);
+  var r = fullField ? {x: w*.03, y: h*.05, w: w*.94, h: h*.9} : dispRect(w, h, fpCam);
+  renderer.clearDepth(); renderer.setScissor(x + r.x, y + r.y, r.w, r.h);
+  fpCam.layers.set(L_HOLO); var bg = scene.background; scene.background = null; renderer.render(scene, fpCam); scene.background = bg;
+  renderer.setScissorTest(false);
+  return r;
+}
+function render(){
+  if(mode === 'fp'){
+    var r = renderFP(0, 0, W, H);
+    disp.style.left = r.x + 'px'; disp.style.top = r.y + 'px'; disp.style.width = r.w + 'px'; disp.style.height = r.h + 'px';
+    disp.style.fontSize = clamp(r.h*.04, 9, 14) + 'px';
+  } else {
+    var R = Math.max(3.1, 3.1/Math.min(1, W/H*1.1));
+    var tgt = V(.1, 1.08, .15);
+    tpCam.position.set(tgt.x + Math.sin(tp.yaw)*Math.cos(tp.pitch)*R, tgt.y + Math.sin(tp.pitch)*R, tgt.z + Math.cos(tp.yaw)*Math.cos(tp.pitch)*R);
+    tpCam.lookAt(tgt);
+    renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H); renderer.clear(true, true, true); renderer.render(scene, tpCam);
+    var pw = Math.round(W < 640 ? W*.52 : W*.32), ph = Math.round(pw*9/16), px = W - pw - 12, py = 12;
+    renderFP(px, py, pw, ph);
+    pip.style.left = px + 'px'; pip.style.top = (H - py - ph) + 'px'; pip.style.width = pw + 'px'; pip.style.height = ph + 'px';
+  }
+}
+
+/* ---------- loop ---------- */
+var visible = true, last = performance.now();
+if('IntersectionObserver' in window) new IntersectionObserver(function(e){ visible = e[0].isIntersecting; }).observe(viewer);
+function frame(now){
+  requestAnimationFrame(frame);
+  var dt = Math.min(.05, (now - last)/1000); last = now;
+  if(!visible) return;
+  clock += dt;
+  if(state.playing && !state.doneAll) state.stepTime += dt*state.speed;
+  var p = Math.min(1, state.stepTime/DUR[state.cur]);
+  var msgs = SCRIPT[state.cur] || [];
+  msgs.forEach(function(m, i){ var key = state.cur+':'+i; if(!state.fired[key] && state.stepTime >= m.t && !state.doneAll){ state.fired[key] = true; pushMsg({a:m.a, m:m.m, me:m.me}); } });
+  if(p >= 1 && !state.doneAll){
+    state.hold += dt;
+    if(state.demo && state.playing && state.hold > 1.8){ if(state.cur === STEPS.length-1) finishOp(); else command('next', false); }
+    else if(!state.demo && state.playing && state.hold > 1.6 && STEPS[state.cur].part){ state.stepTime = 0; state.hold = 0; }
+  }
+  if(state.doneAll && state.demo && state.playing && clock - state.doneAt > 4.5){ chat.length = 0; renderHudChat(); goStep(0); }
+  if(hudTimer && clock > hudTimer && !hudPinned){ setHud('min'); hudTimer = 0; }
+  if(mode === 'tp' && clock > tp.manualUntil && !reduce){ tp.yaw += dt*.07*tp.dir; if(tp.yaw > 1.35) tp.dir = -1; if(tp.yaw < .25) tp.dir = 1; }
+  updateHead(dt, p);
+  updateVisuals(p);
+  render();
+}
+
+/* ---------- input ---------- */
+var drag = null;
+viewer.addEventListener('pointerdown', function(e){
+  if(e.target.closest && e.target.closest('.hud')) return;
+  drag = {x: e.clientX, y: e.clientY};
+  try{ viewer.setPointerCapture(e.pointerId); }catch(_){}
+  if(mode === 'fp'){ head.manYaw = head.yaw; head.manPitch = head.pitch; head.manualUntil = 1e9; }
+  else tp.manualUntil = 1e9;
+});
+viewer.addEventListener('pointermove', function(e){
+  if(!drag) return;
+  var dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
+  if(mode === 'fp'){ head.manYaw += dx*.005; head.manPitch = clamp(head.manPitch + dy*.005, -1.25, .6); }
+  else { tp.yaw -= dx*.006; tp.pitch = clamp(tp.pitch + dy*.004, .05, 1.0); }
+});
+function endDrag(){ if(!drag) return; drag = null; if(mode === 'fp') head.manualUntil = clock + 5; else tp.manualUntil = clock + 6; }
+viewer.addEventListener('pointerup', endDrag); viewer.addEventListener('pointercancel', endDrag);
+
+function setMode(m){
+  mode = m;
+  $('btnFP').setAttribute('aria-pressed', m === 'fp'); $('btnTP').setAttribute('aria-pressed', m === 'tp');
+  disp.hidden = m !== 'fp'; $('vignette').hidden = m !== 'fp'; pip.hidden = m !== 'tp'; $('tpLegend').hidden = m !== 'tp';
+  $('hint').textContent = m === 'fp' ? 'Тяните мышью или пальцем, чтобы повернуть голову' : 'Тяните, чтобы обойти рабочее место';
+}
+function setPlaying(on){ state.playing = on; $('btnPlay').textContent = on ? 'Пауза' : 'Пуск'; }
+$('btnFP').addEventListener('click', function(){ setMode('fp'); });
+$('btnTP').addEventListener('click', function(){ setMode('tp'); });
+$('btnPlay').addEventListener('click', function(){ setPlaying(!state.playing); });
+$('btnNext').addEventListener('click', function(){ setDemo(false); if(state.doneAll){ chat.length = 0; goStep(0); } else completeStep(); if(!state.playing) setPlaying(true); });
+$('btnPrev').addEventListener('click', function(){ setDemo(false); goStep(state.cur-1); if(!state.playing) setPlaying(true); });
+$('selSpeed').addEventListener('change', function(e){ state.speed = parseFloat(e.target.value); });
+document.querySelectorAll('[data-cmd]').forEach(function(b){ b.addEventListener('click', function(){ command(b.dataset.cmd, true); }); });
+$('tgDemo').addEventListener('change', function(e){ state.demo = e.target.checked; if(state.demo) setPlaying(true); });
+$('tgHead').addEventListener('change', function(e){ head.autoHead = e.target.checked; head.manYaw = head.yaw; head.manPitch = head.pitch; if(head.autoHead) head.manualUntil = -1; });
+$('tgFrame').addEventListener('change', function(e){ disp.classList.toggle('noframe', !e.target.checked); });
+$('tgMarkers').addEventListener('change', function(e){ markersOn = e.target.checked; });
+function applyField(){ frus.scale.set(fullField ? Math.tan(50*D2R)/TAN_H : 1, fullField ? Math.tan(32*D2R)/TAN_V : 1, 1); $('dispLabel').textContent = fullField ? 'Рабочее поле · весь обзор очков' : 'Дисплей Luma Ultra · 52° · 1920×1200'; }
+$('tgWin').addEventListener('change', function(e){ fullField = !e.target.checked; applyField(); });
+applyField();
+
+/* ---------- start ---------- */
+function start(){
+  resize();
+  if('ResizeObserver' in window) new ResizeObserver(resize).observe(viewer); else window.addEventListener('resize', resize);
+  setPlaying(state.playing); setDemo(state.demo); $('tgHead').checked = head.autoHead;
+  if(reduce){ state.cur = 1; state.stepTime = DUR[1]*.45; }
+  applyInstalled(); renderHudStatic(); renderList(); drawKD(); drawAlgo(); drawChat(); renderHudChat();
+  var a0 = anglesTo(V(0, .93, 0), HEAD_BASE); head.yaw = head.manYaw = a0.yaw; head.pitch = head.manPitch = a0.pitch;
+  setMode('fp');
+  requestAnimationFrame(function(t){ last = t; frame(t); });
+}
+var started = false;
+function go(){ if(started) return; started = true; start(); }
+if(document.fonts && document.fonts.ready){ document.fonts.ready.then(go); setTimeout(go, 1500); } else go();
+})();
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,7 @@
+﻿n;id;title;kind;parts;fasteners;tool;torque_nm;gap_mm;check_type;check_nominal_mm;check_tol_mm;check_text;critical;confirm;norm_s;kd;notes
+1;S1;Привязка к ложементу;align;;;;;;;;;;;voice;30;;Метки 4 шт., отклонение ≤ 2 мм
+2;S2;Кронштейн К-204 (левый);install;K204;F1,F2;Отвёртка моментная;1.2;;;;;;;voice;90;kd3;
+3;S3;Кронштейн К-205 (правый);install;K205;F3,F4;Отвёртка моментная;1.2;;;;;;;voice;90;kd3;
+4;S4;Петля крышки П-110;install;P110;F5,F6,F7,F8;Отвёртка моментная;0.6;;;;;;;voice;150;kd3;
+5;S5;Замок З-31;install;Z31;F9,F10;Отвёртка моментная;1.0;;;;;;;voice;90;kd3;Замок ставить после петли
+6;S6;Контроль и фото;check;;;;;;gap;0.3;0.2;Зазор замка ≤ 0,5 мм;да;photo;60;;

@@ -1,0 +1,15 @@
+﻿key;value
+id;040
+title;Сборка полки багажной: кронштейны, петля, замок
+product;АИ.7045.200 СБ
+revision;Б
+workplace;Участок 2, РМ-12
+units;mm
+reference_frame;fixture_top_center
+model_id;m_shelf
+model_uri;models/op040_shelf.glb
+check_from;-600,1,-260
+check_to;600,1,-260
+check_nominal_mm;1200
+check_tol_mm;1.5
+model_note;Экспорт NX → STEP AP242 → GLB, имена узлов = parts[].node
