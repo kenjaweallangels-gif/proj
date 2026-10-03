@@ -136,7 +136,7 @@ export function create(game) {
   let inside = false, shelter = 0;
   const camP = new V3();
   let flT = 0, firstRefresh = true;
-  const perf = { ms: 0, avg: 0, n: 0, max: 0 };
+  const perf = { ms: 0, avg: 0, n: 0, max: 0, first: 0 };
   const api = {
     root, rim: rimMesh, ground: gm.mesh, structures, mouth, flora, fauna, people, volume: vol, FLOOR_Y, center: C, field, grid, perf,
     hasGroundPatch: true,
@@ -175,11 +175,18 @@ export function create(game) {
       fauna.update(dt, t);
       people.update(dt, t, p || { x: 0, y: 0, z: 0 });
       const ms = performance.now() - tp;
+      if (!perf.first) perf.first = ms;
       perf.ms = ms; perf.n++; perf.avg += (ms - perf.avg) / Math.min(perf.n, 120); if (ms > perf.max) perf.max = ms;
     },
   };
   api.stats.buildMs = performance.now() - t0;
   game.add('garden', api);
+  // Прогрев шейдеров заранее (иначе первый взгляд на сад/устье даёт фриз компиляции программ): асинхронно, без блокировки кадра.
+  try {
+    const was = root.visible; root.visible = true;
+    const pr = game.renderer?.compileAsync ? game.renderer.compileAsync(scene, game.camera) : Promise.resolve(game.renderer?.compile?.(scene, game.camera));
+    Promise.resolve(pr).catch(() => {}).finally(() => { root.visible = was; });
+  } catch (e) { /* не критично */ }
   console.log(`[garden] rim ${api.stats.tris | 0} tris, ground ${gm.tris | 0} tris, ${flora.total} instances, ${api.stats.buildMs.toFixed(0)} ms, native=${nativePassage}`);
   return api;
 }

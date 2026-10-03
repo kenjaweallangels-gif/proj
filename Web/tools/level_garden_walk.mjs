@@ -1,39 +1,99 @@
-// Браузерный прогон: бот идёт по тропе (первые звенья) и по саду, считает застревания. node tools/build.mjs --out=level.html && node tools/level_garden_walk.mjs
+// Браузерный прогон сада и тропы: бот идёт по тем же heightAt/collide, что и игра (через input.axis), считает застревания.
+//   1) штольня → устье → площадь → тропы/грядки/пруд → овраг → пустыня и обратно;
+//   2) тропа к нише вверх и вниз;
+//   3) расхождение видимой земли и физики в 200 случайных точках (raycast по мешу пола против heightAt) < 0.05 м.
+// node tools/build.mjs --out=garden.html && node tools/level_garden_walk.mjs [--only=garden,trail,mismatch] [--q=low]
 import { chromium } from 'playwright';
 import { readdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`))?.split('=')[1] ?? d);
+const only = arg('only', 'garden,trail,mismatch').split(',');
 function findChromium() { const b = '/opt/pw-browsers'; if (!existsSync(b)) return undefined; const d = readdirSync(b).find((n) => /^chromium-\d+$/.test(n)); return d ? join(b, d, 'chrome-linux', 'chrome') : undefined; }
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || findChromium(), args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const page = await browser.newPage({ viewport: { width: 640, height: 360 } });
-await page.goto(`file://${join(root, 'dist', 'level.html')}?autotest=1&q=low&lang=RU&skip=1`);
-await page.waitForFunction(() => window.__rakis?.garden && window.__rakis.player && window.__rakis.realTime > 1.5, null, { timeout: 900000 });
-const res = await page.evaluate(() => new Promise((resolve) => {
-  const g = window.__rakis, G = g.garden, p = g.player;
-  g.timeScale = 3;
-  const way = [[808, 395], [818, 399], [830, 392], [845, 399], [862, 399], [878, 396], [868, 380], [850, 368], [833, 380], [826, 410], [840, 420], [852, 415], [848, 405], [820, 405], [806, 395]];
-  p.teleport(803, undefined, 395, 0);
-  let wi = 0, stuckT = 0, lastD = 1e9, t = 0, outside = 0, enter = 0, leave = 0;
-  g.bus.on('garden:enter', () => enter++); g.bus.on('garden:leave', () => leave++);
-  const ax = g.input.axis;
-  g.input.axis = () => {
-    const tg = way[wi], dx = tg[0] - p.position.x, dz = tg[1] - p.position.z, d = Math.hypot(dx, dz);
-    const cy = Math.atan2(g.camera.getWorldDirection(new g.THREE.Vector3()).z, g.camera.getWorldDirection(new g.THREE.Vector3()).x);
-    const wx = dx / d, wz = dz / d;
-    return { x: wx * -Math.sin(cy) + wz * Math.cos(cy), y: wx * Math.cos(cy) + wz * Math.sin(cy) };
-  };
-  let gt = g.time;
-  const id = setInterval(() => {
-    const dtg = g.time - gt; if (dtg < 0.1) return; gt = g.time;
-    const tg = way[wi], d = Math.hypot(tg[0] - p.position.x, tg[1] - p.position.z);
-    t += dtg;
-    if (d < 3) { wi++; stuckT = 0; lastD = 1e9; if (wi >= way.length) { clearInterval(id); g.input.axis = ax; resolve({ done: true, t, outside, enter, leave, pos: [p.position.x, p.position.z] }); return; } }
-    if (d > lastD - 0.05) stuckT += dtg; else { stuckT = 0; lastD = d; }
-    if (!G.zoneAt(p.position)) outside++;
-    if (stuckT > 25) { clearInterval(id); g.input.axis = ax; resolve({ done: false, wi, pos: [p.position.x, p.position.z], t }); }
-  }, 100);
-}));
-console.log('garden walk:', JSON.stringify(res));
+const page = await browser.newPage({ viewport: { width: 480, height: 270 } });
+const errors = [];
+page.on('console', (m) => { if (m.type() === 'error' && !/AudioContext|GPU stall|ReadPixels/.test(m.text())) errors.push(m.text()); });
+page.on('pageerror', (e) => errors.push(String(e)));
+await page.goto(`file://${join(root, 'dist', arg('file', 'garden.html'))}?autotest=1&q=${arg('q', 'low')}&lang=RU&skip=1`);
+await page.waitForFunction(() => window.__rakis?.garden && window.__rakis.player && window.__rakis.realTime > 1.5, null, { timeout: 1200000 });
+await page.evaluate(() => { const g = window.__rakis; g.timeScale = 3; g.weather?.setHours?.(10.5, true); });
+
+/** Бот: waypoints [[x,z],...], стартовая позиция/высота; возвращает итог. Шаги — по игровому времени. */
+async function walk(name, way, { start, yStart, maxStuck = 20, maxT = 600 } = {}) {
+  const res = await page.evaluate(([way, start, yStart, maxStuck, maxT]) => new Promise((resolve) => {
+    const g = window.__rakis, p = g.player;
+    p.teleport(start[0], yStart, start[1], 0, false);
+    let wi = 0, stuckT = 0, lastD = 1e9, t = 0, maxSlope = 0, falls = 0, lastY = p.position.y, minY = 1e9, maxY = -1e9;
+    const ax = g.input.axis;
+    const V = new g.THREE.Vector3();
+    g.input.axis = () => {
+      const tg = way[wi], dx = tg[0] - p.position.x, dz = tg[1] - p.position.z, d = Math.hypot(dx, dz) || 1;
+      g.camera.getWorldDirection(V);
+      const cy = Math.atan2(V.z, V.x);
+      const wx = dx / d, wz = dz / d;
+      return { x: wx * -Math.sin(cy) + wz * Math.cos(cy), y: wx * Math.cos(cy) + wz * Math.sin(cy) };
+    };
+    let gt = g.time;
+    const id = setInterval(() => {
+      const dtg = g.time - gt; if (dtg < 0.1) return; gt = g.time;
+      t += dtg;
+      const tg = way[wi], d = Math.hypot(tg[0] - p.position.x, tg[1] - p.position.z);
+      if (d < 1.6) { wi++; stuckT = 0; lastD = 1e9; if (wi >= way.length) { clearInterval(id); g.input.axis = ax; resolve({ done: true, t: +t.toFixed(0), maxSlope: +(p.slope || 0).toFixed(0), minY, maxY, pos: [+p.position.x.toFixed(1), +p.position.y.toFixed(1), +p.position.z.toFixed(1)] }); return; } }
+      if (d > lastD - 0.05) stuckT += dtg; else { stuckT = 0; lastD = d; }
+      if (p.slope > maxSlope) maxSlope = p.slope;
+      minY = Math.min(minY, p.position.y); maxY = Math.max(maxY, p.position.y);
+      if (stuckT > maxStuck || t > maxT) { clearInterval(id); g.input.axis = ax; resolve({ done: false, wi, of: way.length, pos: [+p.position.x.toFixed(1), +p.position.y.toFixed(1), +p.position.z.toFixed(1)], t: +t.toFixed(0), maxSlope: +maxSlope.toFixed(0) }); }
+    }, 100);
+  }), [way, start, yStart, maxStuck, maxT]);
+  console.log(`${res.done ? 'OK  ' : 'FAIL'} ${name}:`, JSON.stringify(res));
+  if (!res.done) process.exitCode = 1;
+  return res;
+}
+
+if (only.includes('garden')) {
+  const loop = [[803, 395.8], [812, 396.5], [822, 395.5], [832, 397.5], [842, 402.8], [852, 404], [864, 403.5], [878, 406.5], [890, 410], [902, 412.5], [914, 416.5], [926, 419.5]];
+  const y0 = await page.evaluate(() => window.__rakis.world.heightAt(796, 395.8));
+  await walk('mouth -> ravine -> desert', loop, { start: [796, 395.8], yStart: y0 });
+  await walk('ravine -> mouth', loop.slice().reverse().concat([[797, 395.8]]), { start: [926, 419.5] });
+  await walk('garden loop', [[812, 396], [818, 386], [826, 368], [828, 396], [836, 420], [846, 436], [830, 412], [850, 404], [852, 380], [870, 372], [878, 390], [868, 420], [840, 440], [820, 410], [808, 396]], { start: [808, 396] });
+  await walk('beds crossing', [[836, 395], [843, 382], [843, 397], [861, 397], [861, 412], [850, 420], [850, 404]], { start: [836, 395] });
+  const c = await page.evaluate(() => { const g = window.__rakis; return { zone: g.zone, space: g.space, surf: g.world.surfaceAt(822, 396), surfBed: g.world.surfaceAt(843, 388) }; });
+  console.log('state', JSON.stringify(c));
+}
+if (only.includes('trail')) {
+  const way = await page.evaluate(() => { const A = window.__rakis.approach; const out = []; for (let i = 0; i < A.trail.length; i += 6) out.push([A.trail[i].x, A.trail[i].z]); out.push([A.trail[A.trail.length - 1].x, A.trail[A.trail.length - 1].z]); return out; });
+  const st = await page.evaluate(() => { const A = window.__rakis.approach; return { x: A.trail[0].x, z: A.trail[0].z }; });
+  await walk('trail up', way, { start: [st.x, st.z], maxStuck: 25, maxT: 900 });
+  await walk('trail down', way.slice().reverse(), { start: way[way.length - 1], yStart: undefined, maxStuck: 25, maxT: 900 });
+}
+if (only.includes('mismatch')) {
+  const r = await page.evaluate(() => {
+    const g = window.__rakis, T = g.THREE, G = g.garden;
+    const rc = new T.Raycaster(); const dir = new T.Vector3(0, -1, 0);
+    G.root.updateMatrixWorld(true);
+    let seed = 11; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    let n = 0, worst = 0, bad = [], sum = 0, miss = 0;
+    const field = G.field;
+    while (n < 200) {
+      const x = 805 + rnd() * 110, z = 340 + rnd() * 110;
+      if (G.grid.coverAt(x, z) < 0.99) continue;
+      // вне стенок/структур: bump = 0
+      if (field.bump(x, z) > 0.001) continue;
+      const hp = g.world.heightAt(x, z, 1e3);          // «верх» колонки — только для точек в котловине без скал над головой
+      const gy = G.groundAt(x, z);
+      rc.set(new T.Vector3(x, gy + 3, z), dir); rc.far = 10;
+      const hit = rc.intersectObject(G.ground, false)[0];
+      n++;
+      if (!hit) { miss++; continue; }
+      const dy = Math.abs(hit.point.y - g.world.heightAt(x, z, gy + 0.3));
+      sum += dy; if (dy > worst) worst = dy; if (dy > 0.05) bad.push([+x.toFixed(1), +z.toFixed(1), +dy.toFixed(3)]);
+    }
+    return { n, miss, worst: +worst.toFixed(4), mean: +(sum / Math.max(1, n - miss)).toFixed(5), bad: bad.slice(0, 8) };
+  });
+  console.log(`${r.worst < 0.05 && !r.miss ? 'OK  ' : 'FAIL'} mismatch visual/physics @200:`, JSON.stringify(r));
+  if (r.worst >= 0.05 || r.miss) process.exitCode = 1;
+}
+console.log('errors:', errors.length ? '\n' + errors.slice(0, 10).join('\n') : 'none');
 await browser.close();
-process.exitCode = res.done ? 0 : 1;
