@@ -17,6 +17,7 @@ const ENV = {
   B3_Passages: { wind: 0, hum: 0.5, murmur: 0.14, drip: 0.4, cloth: 0.7, rev: 'sietch', lp: 8000 },
   B4_Cistern: { wind: 0, hum: 0.25, murmur: 0.03, drip: 1, rev: 'cistern', lp: 8000 },
   B5_Hall: { wind: 0, hum: 0.4, murmur: 0.38, rustle: 0.6, rev: 'hall', lp: 12000 },
+  B6_Cellar: { wind: 0, hum: 0.3, murmur: 0.03, drip: 1, rev: 'cistern', lp: 6500 },   // водяной погреб (sietch): капли, гулкая сырость
 };
 // Гласные для «толпы»: (F1, F2) Гц.
 const VOWELS = [[730, 1090], [530, 1840], [270, 2290], [570, 840], [300, 870], [660, 1720]];

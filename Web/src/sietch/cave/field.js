@@ -203,21 +203,22 @@ function planeFloor(p0, p1) {
 function floorOf(fl, x, z) {
   if (fl.fn) return fl.fn(x, z);
   if (fl.y !== undefined) return fl.y;
-  const s = clamp(((x - fl.x0) * fl.dx + (z - fl.z0) * fl.dz) / (fl.l2 || 1), 0, 1);
+  // плоскость продолжается за концы сегмента линейно (НЕ зажимается): иначе пол следующего сегмента «проваливается» за его начало на перекрытии капсул
+  const s = ((x - fl.x0) * fl.dx + (z - fl.z0) * fl.dz) / (fl.l2 || 1);
   return fl.y0 + (fl.y1 - fl.y0) * s;
 }
 const gOf = (fl) => (fl.fn ? fl.g : fl.y !== undefined ? 1 : fl.g);
 
 export function buildSubs() {
   const subs = [], solids = [];
-  const sub = (prim, fl, k = 0.5, noise = 0.9) => subs.push({ prim, fl, g: gOf(fl), k, noise, bb: prim.bb, tag: prim.tag });
+  const sub = (prim, fl, k = 0.5, noise = 0.9, seg = null) => subs.push({ prim, fl, g: gOf(fl), k, noise, bb: prim.bb, tag: prim.tag, seg });
   // --- выходной туннель в сад: каждый сегмент — труба со своей плоскостью пола
   {
     const E = L.EXIT;
     for (let i = 0; i < E.nodes.length - 1; i++) {
       const A = E.nodes[i], B = E.nodes[i + 1], sa = E.sect[i], sb = E.sect[i + 1];
       const a = [A[0], E.ys[i] + sa.h0, A[1]], b = [B[0], E.ys[i + 1] + sb.h0, B[1]];
-      sub(makeTube({ a, b, rw0: sa.rw, rw1: sb.rw, rh0: sa.rh, rh1: sb.rh, tag: 'exit', k: 0.9 }), planeFloor([A[0], E.ys[i], A[1]], [B[0], E.ys[i + 1], B[1]]), 0.7, 0.8);
+      sub(makeTube({ a, b, rw0: sa.rw, rw1: sb.rw, rh0: sa.rh, rh1: sb.rh, tag: 'exit', k: 0.9 }), planeFloor([A[0], E.ys[i], A[1]], [B[0], E.ys[i + 1], B[1]]), 0.7, 0.8, [A[0], A[1], B[0], B[1]]);
     }
   }
   // --- водяной погреб B6
@@ -282,11 +283,14 @@ export function createField() {
         if (v < 4 && sb.noise) { if (nz === null) nz = rockNoise(x, y, z) * noiseMask(x, y, z); v += nz * sb.noise * (1 - smoothstep(2.4, 4, v)); }
         let dfl = (floorOf(sb.fl, x, z) - y) / sb.g;
         v = smax(v, dfl, 0.25);
-        if (v < bestV) { bestV = v; best = sb; }
+        // пол объединения берём у сегмента, чья ось ближе всего (для труб с осью), иначе — у примитива с минимальным v
+        let key = v;
+        if (sb.seg) { const sg = sb.seg, ex = sg[2] - sg[0], ez = sg[3] - sg[1], l2 = ex * ex + ez * ez || 1, tt = Math.min(1, Math.max(0, ((x - sg[0]) * ex + (z - sg[1]) * ez) / l2)); key = Math.hypot(x - sg[0] - ex * tt, z - sg[1] - ez * tt) - 100; }
+        if (v < 2.5 && key < bestV) { bestV = key; best = sb; }
         ds = ds >= 1e8 ? v : smin(ds, v, sb.k);
       }
       // гладкое объединение подуровневых примитивов «проседает» пол в перекрытиях (до k/4) — возвращаем пол ближайшего примитива жёстко
-      if (best !== null && bestV < 2.5) ds = smax(ds, (floorOf(best.fl, x, z) - y) / best.g, 0.02);
+      if (best !== null) ds = smax(ds, (floorOf(best.fl, x, z) - y) / best.g, 0.02);
       if (ds < 1e8 && ds < 6) {
         for (let i = 0; i < subSolids.length; i++) { const s = subSolids[i]; if (bbDist(s.bb, x, y, z) > 1.6) continue; ds = smax(ds, -evalPrim(s, x, y, z), 0.4); }
       }

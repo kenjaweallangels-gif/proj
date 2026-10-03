@@ -107,7 +107,7 @@ export function clawInside(x, z, margin = 0) {
 export const ZONES = {
   A1_Ridge: 'A1_Ridge', A2_Erg: 'A2_Erg', A3_Approach: 'A3_Approach', A4_Crevice: 'A4_Crevice',
   B1_Airlock: 'B1_Airlock', B2_Gallery: 'B2_Gallery', B3_Passages: 'B3_Passages',
-  B4_Cistern: 'B4_Cistern', B5_Hall: 'B5_Hall',
+  B4_Cistern: 'B4_Cistern', B5_Hall: 'B5_Hall', B6_Cellar: 'B6_Cellar',
 };
 
 /** Пустынная зона по позиции (сиетч определяет свои зоны сам: game.sietch.zoneAt). */

@@ -14,19 +14,24 @@ export { BOUNDS, GRID };
 const hash1 = (n) => { let h = Math.imul(n ^ 0x9e3779b9, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
 
 /** Активность блока surface nets: |SDF в центре| меньше полудиагонали (+запас на неточность SDF). */
-export function makeBlockActive(V, k = 1.15, m = 1.3) { return (cx, cy, cz, half) => Math.abs(V.sample(cx, cy, cz)) < half * k + m; }
+export function makeBlockActive(V, k = 1.15, m = 2.0) { return (cx, cy, cz, half) => Math.abs(V.sample(cx, cy, cz)) < half * k + m; }
 
-/** Открытый торец выхода в сад: убираем треугольники за плоскостью устья ((p − mouth)·dir > cutT) — туннель не закрыт «крышкой». */
+/**
+ * Открытые торцы: треугольники за плоскостью проёма не рисуем — туннели не закрыты «крышкой» и не торчат наружу.
+ *  • выход в сад: (p − mouth)·dir > EXIT.cutT;  • вход (расщелина): (p − ENTRY_CUT.p)·n > 0 (дальше — ниша тропы, модуль level).
+ */
 export function trimExitCap(mesh) {
-  const E = L.EXIT, P = mesh.positions, I = mesh.indices;
+  const E = L.EXIT, EC = L.ENTRY_CUT, P = mesh.positions, I = mesh.indices;
   const out = new Uint32Array(I.length);
   let n = 0;
-  const side = (v) => (P[v * 3] - E.mouth[0]) * E.dir[0] + (P[v * 3 + 2] - E.mouth[1]) * E.dir[1] - E.cutT;
+  const sideExit = (v) => (P[v * 3] - E.mouth[0]) * E.dir[0] + (P[v * 3 + 2] - E.mouth[1]) * E.dir[1] - E.cutT;
+  const sideEntry = (v) => ((P[v * 3] - EC.p[0]) * EC.n[0] + (P[v * 3 + 2] - EC.p[1]) * EC.n[1]) - EC.cutT;
+  const inEntryZone = (v) => P[v * 3 + 2] > 0.5 && P[v * 3] < 2 && P[v * 3 + 2] < 30;   // область входного хода (локально)
+  const inExitZone = (v) => P[v * 3 + 2] < -40 && P[v * 3] > 185;
   for (let t = 0; t < I.length; t += 3) {
     const a = I[t], b = I[t + 1], c = I[t + 2];
-    // рядом с туннелем (в узкой полосе по z/y) — иначе плоскость пересекает и другие пещеры (их нет, но проверка дешёвая)
-    const sa = side(a), sb = side(b), sc = side(c);
-    if (sa > 0 && sb > 0 && sc > 0) continue;
+    if (inExitZone(a) && inExitZone(b) && inExitZone(c) && sideExit(a) > 0 && sideExit(b) > 0 && sideExit(c) > 0) continue;
+    if (inEntryZone(a) && inEntryZone(b) && inEntryZone(c) && sideEntry(a) > 0 && sideEntry(b) > 0 && sideEntry(c) > 0) continue;
     out[n++] = a; out[n++] = b; out[n++] = c;
   }
   mesh.indices = out.slice(0, n);

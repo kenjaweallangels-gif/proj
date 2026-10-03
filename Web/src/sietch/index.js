@@ -8,7 +8,7 @@ import { SIETCH_ORIGIN, ENTRY, GARDEN } from '../core/layout.js';
 import { makeMaterials, U, MAX_PUSHERS } from './mats.js';
 import * as plan from './plan.js';
 import { loadCave } from './cave/runtime.js';
-import { CAVE_YAW, EXIT, ENTRY_MOUTH, CELLAR } from './cave/layout.js';
+import { CAVE_YAW, EXIT, ENTRY_MOUTH, ENTRY_CUT, CELLAR } from './cave/layout.js';
 import { createProbes } from './probes.js';
 import { Builder, refine } from './builder.js';
 import { buildProps } from './props.js';
@@ -21,6 +21,8 @@ import { createLife } from './life.js';
 import { clamp, smoothstep, lerp } from '../core/util.js';
 
 const LABEL_EXAMINE = { RU: 'Осмотреть', EN: 'Examine' };
+// POI погреба: если у story ещё нет отдельных реплик (LORE_Water_Debts / LORE_Cellar_Pool / LORE_Water_Measure), читаются близкие по смыслу существующие.
+const LORE_FB = { LORE_Water_Debts: 'LORE_Water_Rings', LORE_Cellar_Pool: 'LORE_Cistern_Grate', LORE_Water_Measure: 'LORE_Water_Rings' };
 // Точки входа для отладки (локальные координаты; yaw — локальный, как atan2(dz, dx) в проектной системе).
 const _en = EXIT.nodes;
 const SPAWN = {
@@ -52,10 +54,12 @@ export function create(game) {
   const probes = createProbes(cave.probes);
   const globes = planGlobes(cave);
   const wells = planWells();
-  const _tw = new THREE.Vector3();
+  const _tw = new THREE.Vector3(), _p2 = { x: 0, z: 0 };
   const toWorld = (x, y, z, out = new THREE.Vector3()) => out.set(x, y, z).applyMatrix4(root.matrixWorld);
   const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
   const toLocal = (v, out = new THREE.Vector3()) => out.copy(v).applyMatrix4(inv);
+  // Скалярные преобразования (root — только поворот вокруг Y и сдвиг): без аллокаций, вызываются игроком/зонами по нескольку раз за кадр.
+  const lxOf = (x, z) => (x - O.x) * cY + (z - O.z) * sY, lzOf = (x, z) => -(x - O.x) * sY + (z - O.z) * cY;
   const ctx = { game, M, root, origin: O, quality: q, poi: {}, cave, probes, anchors: cave.anchors, niches: [], globes, wells, toWorld, toLocal, curtains: [] };
 
   const staticMeshes = [];
@@ -65,7 +69,7 @@ export function create(game) {
   cave.chunks.forEach((g, i) => {
     const mesh = new THREE.Mesh(g, M.rock);
     mesh.name = `Rock_${i}`; mesh.matrixAutoUpdate = false; mesh.updateMatrix();
-    root.add(mesh); staticMeshes.push(mesh); chunkMeshes[i] = mesh; pvsMeshes.push({ mesh, chunk: i });
+    root.add(mesh); staticMeshes.push(mesh); chunkMeshes[i] = mesh; pvsMeshes.push({ mesh, chunks: [i] });
   });
   // --- Декали трёх слоёв истории (запечены на стены конформно), разбиты по ячейкам 16 м.
   const decalOrder = { carving: 1, carvingB: 1, hands: 2, sigil: 3, mural: 4, chalk: 5, embroidery: 5, tally: 3 };
@@ -74,7 +78,7 @@ export function create(game) {
     for (const pc of d.pieces) {
       const mesh = new THREE.Mesh(pc.geometry, mk);
       mesh.name = `Decal_${d.tex}`; mesh.renderOrder = 1 + (decalOrder[d.tex] || 1); mesh.matrixAutoUpdate = false; mesh.updateMatrix();
-      root.add(mesh); staticMeshes.push(mesh); pvsMeshes.push({ mesh, chunk: pc.chunk });
+      root.add(mesh); staticMeshes.push(mesh); pvsMeshes.push({ mesh, chunks: pc.chunk >= 0 ? [pc.chunk] : [] });
     }
   }
   // --- Реквизит: свет и AO из запечённых зондов пещеры.
@@ -87,7 +91,11 @@ export function create(game) {
     const mesh = new THREE.Mesh(g, M[mk]);
     mesh.name = `S_${key}`; mesh.matrixAutoUpdate = false; mesh.updateMatrix();
     root.add(mesh); staticMeshes.push(mesh);
-    pvsMeshes.push({ mesh, chunk: cave.chunkIndexByKey.has(cell) ? cave.chunkIndexByKey.get(cell) : -1 });
+    { // чанки 16 м, покрытые габаритом меша: меш виден, если виден любой из них
+      const bb = g.boundingBox, CH = cave.CHUNK, ids = [];
+      for (let i = Math.floor(bb.min.x / CH); i <= Math.floor(bb.max.x / CH); i++) for (let j = Math.floor(bb.min.y / CH); j <= Math.floor(bb.max.y / CH); j++) for (let k = Math.floor(bb.min.z / CH); k <= Math.floor(bb.max.z / CH); k++) { const id = cave.chunkIndexByKey.get(`${i},${j},${k}`); if (id !== undefined) ids.push(id); }
+      pvsMeshes.push({ mesh, chunks: ids });
+    }
   }
   // Реквизит как твёрдые тела реестра game.colliders (боксы в мировых координатах).
   for (const b of plan.allBlocks()) {
@@ -138,7 +146,7 @@ export function create(game) {
       id, tag: `Rakis.POI.${id}`, label: LABEL_EXAMINE, radius: id === 'LORE_Worm_Throat' ? 7 : 3.2,
       position: toWorld(p[0], p[1], p[2]),
       get enabled() { return game.space === 'sietch'; },
-      onInteract() { game.dialogue?.lore?.(id); game.bus.emit('interact', { tag: `Rakis.POI.${id}` }); },
+      onInteract() { game.dialogue?.lore?.((!game.data?.Dialogue?.[id] && LORE_FB[id]) || id); game.bus.emit('interact', { tag: `Rakis.POI.${id}` }); },
     };
     poi.push(it); game.interactables.push(it);
   }
@@ -154,7 +162,7 @@ export function create(game) {
   // ------------------------------------------------------------------ среда: плавный переход снаружи ↔ внутри ----
   // Свет/туман/экспозиция смешиваются по расстоянию до ближайшего проёма: за последние ~22 м туннеля к саду дневной свет нарастает плавно.
   const deepDist = 40;
-  let kNow = 0, worldHidden = false, lightsT = 0;
+  let kNow = 0, worldHidden = false, lightsT = 0, sceneN = -1;
   const outLights = [];
   const isMine = (o) => { for (let p = o; p; p = p.parent) if (p === root) return true; return false; };
   function refreshLights() { outLights.length = 0; scene.traverse((o) => { if (o.isLight && !isMine(o)) outLights.push(o); }); }
@@ -232,12 +240,14 @@ export function create(game) {
   const localOf = (pos, out) => toLocal(pos, out);
   const exM = EXIT.mouth, exD = EXIT.dir;
   function inCave(pos) {
-    const l = localOf(pos, _tw);
-    if (!plan.hasAnyFloor(l.x, l.z)) return false;
+    const lx = lxOf(pos.x, pos.z), lz = lzOf(pos.x, pos.z);
+    if (!plan.hasAnyFloor(lx, lz)) return false;
     // за плоскостью устья (в котловине) пещера кончается: «хвост» туннеля существует лишь в поле для сеток, мира сада он не принадлежит
-    if (l.z < -40 && l.x > 185 && (l.x - exM[0]) * exD[0] + (l.z - exM[1]) * exD[1] > EXIT.cutT) return false;
-    const f0 = plan.heightAtLocal(l.x, l.z, 0), f1 = plan.heightAtLocal(l.x, l.z, 6);
-    const ly = l.y;
+    if (lz < -40 && lx > 185 && (lx - exM[0]) * exD[0] + (lz - exM[1]) * exD[1] > EXIT.cutT) return false;
+    // за плоскостью входа (на западе) — ниша тропы (модуль level): её меш/коллизия, сиетч уже не владеет землёй
+    if (lz > 0.5 && lx < 2 && lz < 30 && (lx - ENTRY_CUT.p[0]) * ENTRY_CUT.n[0] + (lz - ENTRY_CUT.p[1]) * ENTRY_CUT.n[1] > ENTRY_CUT.cutT) return false;
+    const f0 = plan.heightAtLocal(lx, lz, 0), f1 = plan.heightAtLocal(lx, lz, 6);
+    const ly = pos.y - O.y;
     return (ly - f0 > -1.6 && ly - f0 < 37) || (ly - f1 > -1.6 && ly - f1 < 37);
   }
 
@@ -256,7 +266,11 @@ export function create(game) {
     if (row < 0) { for (const e of pvsMeshes) e.mesh.visible = true; pvsStats.visible = pvsMeshes.length; return; }
     const o = row * pv.nb;
     let n = 0;
-    for (const e of pvsMeshes) { const v = e.chunk < 0 || (pv.bits[o + (e.chunk >> 3)] & (1 << (e.chunk & 7))) !== 0; e.mesh.visible = v; if (v) n++; }
+    for (const e of pvsMeshes) {
+      let v = e.chunks.length === 0;
+      for (let c = 0; c < e.chunks.length && !v; c++) { const ci = e.chunks[c]; v = (pv.bits[o + (ci >> 3)] & (1 << (ci & 7))) !== 0; }
+      e.mesh.visible = v; if (v) n++;
+    }
     pvsStats.visible = n;
   }
   const _cl = new THREE.Vector3();
@@ -275,23 +289,23 @@ export function create(game) {
 
   const api = {
     root, ctx, meshes: staticMeshes, cave, probes, crowd, doors, lighting, finale, poi, inside: false, get k() { return kNow; }, pvsStats,
+    /** Скользящее среднее стоимости update() по подсистемам, мс/кадр (JS-часть, без GPU). */
+    prof: { pvs: 0, lighting: 0, crowd: 0, life: 0, total: 0 },
     toWorld, toLocal,
     /** true, если точка (мировая) внутри пещер сиетча, включая входную расщелину и выходной туннель (до плоскости устья). */
     contains(pos) { return inCave(pos); },
     heightAt(x, z, yh) {
-      _tw.set(x, (yh ?? (game.player?.position?.y ?? O.y)), z); toLocal(_tw, _tw);
-      const lh = plan.heightAtLocal(_tw.x, _tw.z, _tw.y);
-      return toWorld(_tw.x, lh, _tw.z, new THREE.Vector3()).y;
+      const lx = lxOf(x, z), lz = lzOf(x, z);
+      return O.y + plan.heightAtLocal(lx, lz, (yh ?? (game.player?.position?.y ?? O.y)) - O.y);
     },
-    surfaceAt(x, z) { _tw.set(x, O.y, z); toLocal(_tw, _tw); return plan.surfaceAtLocal(_tw.x, _tw.z); },
+    surfaceAt(x, z) { return plan.surfaceAtLocal(lxOf(x, z), lzOf(x, z)); },
     collide(pos, r) {
-      toLocal(pos, _tw);
-      const p = { x: _tw.x, z: _tw.z };
-      const moved = plan.collideLocal(p, r, _tw.y);
-      if (moved) { const w = toWorld(p.x, _tw.y, p.z, new THREE.Vector3()); pos.x = w.x; pos.z = w.z; }
+      _p2.x = lxOf(pos.x, pos.z); _p2.z = lzOf(pos.x, pos.z);
+      const moved = plan.collideLocal(_p2, r, pos.y - O.y);
+      if (moved) { pos.x = O.x + _p2.x * cY - _p2.z * sY; pos.z = O.z + _p2.x * sY + _p2.z * cY; }
       return moved;
     },
-    zoneAt(pos) { toLocal(pos, _tw); return plan.zoneAtLocal(_tw.x, _tw.z, _tw.y); },
+    zoneAt(pos) { return plan.zoneAtLocal(lxOf(pos.x, pos.z), lzOf(pos.x, pos.z), pos.y - O.y); },
     /** Отладочный телепорт (внутри сиетча без затемнений): point = 'B1'..'B6'|'bowl'|'exit'|'exitStart'|'cleft'|'cellar'|'pool'|'station'|'room'|'room2'|'bay'. */
     enter(point = 'B1') {
       const P = SPAWN[point] || SPAWN.B1;
@@ -326,16 +340,22 @@ export function create(game) {
       const deep = insideNow && d > deepDist;
       if (deep !== worldHidden) { worldHidden = deep; game.world?.setVisible?.(!deep); }
       hemi.intensity = HEMI_I * kNow;
-      if ((lightsT -= dt) <= 0) { lightsT = 1.5; refreshLights(); }
+      if ((lightsT -= dt) <= 0 || scene.children.length !== sceneN) { lightsT = 8; sceneN = scene.children.length; refreshLights(); }
       if (!root.visible) return;
+      const p0 = performance.now();
       updatePVS(insideNow);
+      const p1 = performance.now();
       lighting.update(dt, t);
+      const p2 = performance.now();
       toLocal(pp, plV);
       doors.update(dt, plV);
       crowd.update(dt, t);
+      const p3 = performance.now();
       life.update(dt, t);
       finale.update(dt);
       updatePushers();
+      const p4 = performance.now(), e = 0.05, P = api.prof;
+      P.pvs += (p1 - p0 - P.pvs) * e; P.lighting += (p2 - p1 - P.lighting) * e; P.crowd += (p3 - p2 - P.crowd) * e; P.life += (p4 - p3 - P.life) * e; P.total += (p4 - p0 - P.total) * e;
     },
   };
   game.bus.on('ritual', () => { api.startRitual(); });

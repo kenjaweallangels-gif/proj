@@ -31,6 +31,7 @@ export const SEALS = [
  * (меш обрезается плоскостью EXIT.cut, чтобы торец был открытым). Три галсов-змейки с плавными дугами, уклон ≤ 14°.
  * Пол — кусочно-линейный по оси (каждый сегмент трубы несёт СВОЮ плоскость пола: cave/field.js → subPrims).
  */
+const ENTRY_Z_REF = 250.6;
 export const EXIT = (() => {
   const Y = SIETCH_ORIGIN.yaw + CAVE_YAW, c = Math.cos(Y), s = Math.sin(Y);
   const P = GARDEN.portal;
@@ -73,7 +74,10 @@ export const EXIT = (() => {
   // начало спуска — после того как путь вышел за стену зала (z < -19.5); конец — за FINAL+TAIL до торца
   let sA = 0; for (let i = 0; i < dense.length; i++) if (dense[i][1] < -19.5) { sA = cum[i]; break; }
   const sB = length - FINAL - TAIL;
-  const floorAt = (sv) => drop * Math.min(1, Math.max(0, (sv - sA) / (sB - sA)));
+  // профиль: линейный спуск со сглаженными концами (парабола на w = 14% длины) — пол плавно входит в уклон и выходит на ровное устье,
+  // иначе плоскости соседних сегментов на изломе уклона «перехлёстываются» на перекрытии капсул
+  const easeY = (t, w = 0.14) => (t <= 0 ? 0 : t >= 1 ? 1 : t < w ? (t * t) / (2 * w * (1 - w)) : t > 1 - w ? 1 - ((1 - t) * (1 - t)) / (2 * w * (1 - w)) : (t - w / 2) / (1 - w));
+  const floorAt = (sv) => drop * easeY((sv - sA) / (sB - sA));
   const ys = cum.map(floorAt);
   // сечение: стандартное; на последних метрах — раструб, согласованный с рамой устья сада (3.0 × 4.3 м)
   const sect = cum.map((sv) => { const k = Math.min(1, Math.max(0, (sv - (length - FINAL - TAIL - 2)) / 8)); return { rw: 1.5 + 0.25 * k, rh: 2.0 + 0.4 * k, h0: 0.95 + 0.25 * k }; });
@@ -81,7 +85,17 @@ export const EXIT = (() => {
     /** Плоскость обрезки: треугольники, у которых (p − mouth)·dir > cutT, не рисуются (открытый торец). */
     cutT: 0.35 };
 })();
-export const ENTRY_MOUTH = [-3.0, 9.0];   // локально; мировая точка ≈ ENTRY.cleft
+/**
+ * Вход (расщелина): геометрия сиетча начинается на плоскости мирового x = NOTCH_X (level/index.js: NOTCH_X_MAX = 652.4) — дальше на запад лежит ниша тропы (меш и
+ * коллизия модуля level). SDF входного туннеля продолжается за плоскость (открытый ход для сеток), но меш обрезается, а contains() там false.
+ */
+export const NOTCH_X = 652.4;
+export const ENTRY_CUT = (() => {
+  const Y = SIETCH_ORIGIN.yaw + CAVE_YAW, c = Math.cos(Y), s = Math.sin(Y);
+  const dx = NOTCH_X - SIETCH_ORIGIN.x, dz = ENTRY_Z_REF - SIETCH_ORIGIN.z;
+  return { p: [dx * c + dz * s, -dx * s + dz * c], n: [-c, s], cutT: 0.0 };   // n — «наружу» (мир −X)
+})();
+export const ENTRY_MOUTH = ENTRY_CUT.p;   // локально; мировая точка на плоскости x = NOTCH_X
 
 // ------------------------------------------------------------------- туннели ----
 export const TUNNELS = {

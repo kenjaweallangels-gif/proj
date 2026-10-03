@@ -69,14 +69,14 @@ const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM || findChromium(),
   args: ['--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
 });
-const page = await browser.newPage({ viewport: { width: 896, height: 504 } });
+const page = await browser.newPage({ viewport: { width: Number(arg('w', 896)), height: Number(arg('h', 504)) } });
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${m.type()}: ${m.text()}`); if (m.text().startsWith('[sietch]')) console.log(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
 const file = arg('file', 'sietch.html');
-await page.goto(`file://${join(root, 'dist', file)}?autotest=1&q=${q}&lang=RU`);
+await page.goto(`file://${join(root, 'dist', file)}?autotest=1&q=${q}&lang=RU${process.argv.includes('--keepworld') ? '&keepworld=1' : ''}`);
 await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.0, null, { timeout: 480000 });
-await page.evaluate(async () => { const w = window.__rakis.world; if (w && !new URLSearchParams(location.search).has('keepworld')) { w.setVisible(false); w.setVisible = () => {}; } await window.__rakis.sietch.enter(); window.__rakis.cinematic = { active: true, owner: 'shots' }; });
+await page.evaluate(async (hide) => { const g0 = window.__rakis; if (hide) { const h = () => { for (const c of g0.companions?.list || []) { if (c.figure?.group) c.figure.group.visible = false; } if (g0.player?.figure?.group) g0.player.figure.group.visible = false; }; g0.__hideCompanions = h; const r0 = g0.render; g0.render = (dt) => { h(); r0(dt); }; } const w = window.__rakis.world; if (w && !new URLSearchParams(location.search).has('keepworld')) { w.setVisible(false); w.setVisible = () => {}; } await window.__rakis.sietch.enter(); window.__rakis.cinematic = { active: true, owner: 'shots' }; }, !process.argv.includes('--companions'));
 await page.waitForTimeout(500);
 
 const shoot = async (name, pos, tgt, fov = 70, wait = Number(arg('wait', 1500))) => {
@@ -91,7 +91,12 @@ const shoot = async (name, pos, tgt, fov = 70, wait = Number(arg('wait', 1500)))
   }, [pos, tgt, fov]);
   await page.waitForTimeout(wait);
   await page.screenshot({ path: join(outDir, `${name}.png`), timeout: 420000 });
-  const info = await page.evaluate(() => { const g = window.__rakis, r = g.renderer.info.render; return { fps: g.stats.fps, zone: g.sietch.zoneAt?.(g.camera.position), calls: r.calls, tris: r.triangles, lights: g.scene.children.length }; });
+  const info = await page.evaluate(async () => {
+    const g = window.__rakis, ri = g.renderer.info, raf = () => new Promise((r) => requestAnimationFrame(() => r()));
+    ri.autoReset = false; await raf(); ri.reset(); await raf(); await raf();
+    const calls = ri.render.calls / 2, tris = ri.render.triangles / 2; ri.autoReset = true;
+    return { fps: g.stats.fps, zone: g.sietch.zoneAt?.(g.camera.position), calls, tris, pvs: `${g.sietch.pvsStats.visible}/${g.sietch.pvsStats.total}` };
+  });
   console.log(name, JSON.stringify(info));
 };
 
@@ -106,7 +111,7 @@ if (!only.length || only.some((o) => o.startsWith('2') || o === 'exit')) {
   const at = (k) => pts[Math.max(0, Math.min(pts.length - 1, k))];
   const n = pts.length;
   const mk = (name, i0, i1, dy = 1.5, fov = 76) => { const a = at(i0), b = at(i1); return [name, [a[0], a[1] + dy, a[2]], [b[0], b[1] + dy - 0.2, b[2]], fov]; };
-  for (const [name, pos, tgt, fov] of [mk('20_exit_mid', 28, 34), mk('21_exit_leg_a', 14, 22), mk('23_exit_final_in', n - 14, n - 1), mk('24_exit_mouth_close', n - 3, n - 1, 1.6, 70), mk('25_exit_turn', 44, 50)]) {
+  for (const [name, pos, tgt, fov] of [mk('20_exit_mid', 40, 44), mk('21_exit_leg_a', 6, 11), mk('23_exit_final_in', n - 8, n - 1), mk('24_exit_mouth_close', n - 3, n - 1, 1.6, 70), mk('25_exit_turn', 30, 34), mk('26_exit_light_a', n - 12, n - 1, 1.5, 70), mk('27_exit_light_b', n - 6, n - 1, 1.5, 70)]) {
     if (only.length && !only.some((o) => name.includes(o) || o === 'exit')) continue;
     await shoot(name, pos, tgt, fov);
   }

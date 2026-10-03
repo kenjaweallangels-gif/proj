@@ -13,7 +13,7 @@ const air = (x, y, z) => field.air(x, y, z);
 const box = arg('box', '');
 const B = box ? { min: box.split(',').slice(0, 3).map(Number), max: box.split(',').slice(3).map(Number) } : BOUNDS;
 const V = buildVolume(air, B, 0.5);
-const mesh = surfaceNets(air, B, cell, makeBlockActive(V, Number(arg('k', 1.15)), Number(arg('margin', 1.3))));
+const mesh = surfaceNets(air, B, cell, makeBlockActive(V, Number(arg('k', 1.15)), Number(arg('margin', 2.0))));
 console.log(`mesh ${((Date.now() - t0) / 1000).toFixed(1)}s: ${mesh.positions.length / 3} verts, ${mesh.indices.length / 3} tris`);
 const I = mesh.indices, P = mesh.positions;
 const edges = new Map();

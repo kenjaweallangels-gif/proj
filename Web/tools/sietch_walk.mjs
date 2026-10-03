@@ -3,7 +3,7 @@
 import data from '../src/assets/sietch_cave.js';
 import { unpack } from '../src/sietch/cave/pack.js';
 import * as plan from '../src/sietch/plan.js';
-import { CAVE_YAW, EXIT, SEALS, NICHES, CELLAR } from '../src/sietch/cave/layout.js';
+import { CAVE_YAW, EXIT, SEALS, NICHES, CELLAR, ENTRY_MOUTH } from '../src/sietch/cave/layout.js';
 import { clawInside, SIETCH_ORIGIN as O, GARDEN, ENTRY } from '../src/core/layout.js';
 
 const { header: H, A } = unpack(data);
@@ -85,8 +85,8 @@ for (const [k, y] of seen) {
 console.log('минимальный запас до края скалы по проходимой зоне: %s м, в точке', worst.toFixed(1), wp?.map((v) => v.toFixed(1)).join(' '));
 const pw = [O.x + EXIT.mouth[0] * c - EXIT.mouth[1] * s, O.z + EXIT.mouth[0] * s + EXIT.mouth[1] * c];
 console.log('устье в мире ≈', pw.map((v) => v.toFixed(2)).join(', '), ' GARDEN.portal', GARDEN.portal.x, GARDEN.portal.z);
-const ew = [O.x + -3 * c - 9 * s, O.z + -3 * s + 9 * c];
-console.log('устье расщелины в мире ≈', ew.map((v) => v.toFixed(1)).join(', '), ' ожидается ~', ENTRY.cleft.x, ENTRY.cleft.z);
+const ew = [O.x + ENTRY_MOUTH[0] * c - ENTRY_MOUTH[1] * s, O.z + ENTRY_MOUTH[0] * s + ENTRY_MOUTH[1] * c];
+console.log('устье расщелины в мире ≈', ew.map((v) => v.toFixed(1)).join(', '), ' (плоскость входа x=652.4), ENTRY.cleft', ENTRY.cleft.x, ENTRY.cleft.z);
 if (process.argv.includes('--dump')) {
   const rows = [];
   for (let z = -9; z <= 9; z += 0.5) { let r = String(z).padStart(5) + ' '; for (let x = 40; x <= 100; x += 0.5) { const [i, j] = idx(x, z); const a = seen.get(key(i, j, 0)), b = seen.get(key(i, j, 1)); r += b !== undefined ? '^' : a !== undefined ? '.' : ' '; } rows.push(r); }
