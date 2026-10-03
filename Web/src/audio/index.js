@@ -1,4 +1,5 @@
 // game.audio — процедурный звук на WebAudio (без файлов). Запускается по первому жесту пользователя / событию 'start'.
+// Слои: ветер/интерьер с плавным смешением по расстоянию до проёмов, сад (garden:enter/leave), поедание харвестера (worm:devour {phase}).
 // API: event(id, pos?), setMusic(state), finalChord(), setVolume(bus, v), resume(), ready, musicState, voice (речь на языке Ракиса: speak/stop/renderOffline).
 // Если AudioContext недоступен — все методы безопасно ничего не делают.
 import { createEngine } from './engine.js';
@@ -11,7 +12,7 @@ export function create(game) {
   const { bus } = game;
   let eng = null, amb = null, sfx = null, music = null, voice = null;
   let pendingMusic = null, failed = false, acc = 0;
-  let duckTarget = 1, harvRunning = false;
+  let duckTarget = 1, harvRunning = false, gardenPending = false;
 
   function ensure() {
     if (eng || failed) return eng;
@@ -27,6 +28,7 @@ export function create(game) {
       eng.resume();
       if (pendingMusic) music.set(pendingMusic);
       if (harvRunning) sfx.play('Harvester.Run');
+      if (gardenPending) amb.gardenFlag = true;
       applyAll();
     } catch (e) {
       console.error('[audio] не удалось построить граф:', e);
@@ -64,6 +66,43 @@ export function create(game) {
   bus.on('worm:state', ({ to } = {}) => {
     if (to === 'Listening') sfx?.ui.tick();
   });
+
+  // Сад: птицы, насекомые, ручей. Основной признак — зона C1_Garden (game.zone), события шины — подстраховка.
+  bus.on('garden:enter', () => { if (amb) amb.gardenFlag = true; gardenPending = true; });
+  bus.on('garden:leave', () => { if (amb) amb.gardenFlag = false; gardenPending = false; });
+
+  // Сценарий «червь пожирает харвестер»: подписка на события шины с разными именами (имена фаз сверяются по README модуля червя).
+  // Событие: {phase, x?, z?, duration?}. Классификация фазы по ключевым словам; неизвестные фазы игнорируются (debug-лог).
+  const DEVOUR_RULES = [
+    ['end', /^(end|done|finish|complete|over|aftermath-end)$/],
+    ['alarm', /klaxon|alarm|horn|alert|siren|warn/],
+    ['carryall', /carryall|lift|engine|rescue|airborne|strain|tow|haul/],
+    ['swallow', /swallow|devour|engulf|bite|strike|breach|emerge|surface|rise|attack|eat|maw|jaw|gulp/],
+    ['debris', /debris|collapse|crash|fall|crumble|wreck|sink|dive|aftermath|settle|crunch|rubble/],
+    ['rumble', /wormsign|rumble|tremor|approach|sign|stalk|build|start|begin|detect|sense|listen|hunt/],
+  ];
+  let lastDevourAt = 0;
+  function onDevour(e, hint) {
+    const ph = String(e?.phase ?? e?.state ?? e?.name ?? e?.id ?? hint ?? '').toLowerCase().trim();
+    const rule = DEVOUR_RULES.find(([, re]) => re.test(ph));
+    if (!rule || !ensure()) { if (!rule) console.debug(`[audio] неизвестная фаза поедания '${ph}'`); return; }
+    const pos = e && e.x !== undefined && e.z !== undefined ? { x: e.x, y: game.heightAt?.(e.x, e.z) ?? 0, z: e.z } : undefined;
+    const dur = Number.isFinite(e?.duration) ? e.duration : undefined;
+    lastDevourAt = performance.now();
+    switch (rule[0]) {
+      case 'rumble': sfx.devourRumble(pos, dur); api.setMusic('WormThreat'); break;
+      case 'alarm': sfx.devourAlarm(pos); break;
+      case 'carryall': sfx.devourCarryall(pos, dur); break;
+      case 'swallow': sfx.devourSwallow(pos); api.setMusic('WormReveal'); break;
+      case 'debris': sfx.devourDebris(pos, dur); api.setMusic('Silence'); break;
+      case 'end': api.setMusic('DesertDrone'); break;
+      default: break;
+    }
+  }
+  for (const name of ['worm:devour', 'devour', 'worm:devour:phase', 'harvester:devour']) bus.on(name, (e) => onDevour(e));
+  bus.on('worm:devour:end', () => onDevour({ phase: 'end' }));
+  bus.on('worm:devour:start', (e) => onDevour({ ...e, phase: e?.phase ?? 'rumble' }));
+  bus.on('worm:devour:swallow', (e) => onDevour({ ...e, phase: 'swallow' }));
 
   const api = {
     alwaysUpdate: true,

@@ -1,27 +1,19 @@
 // Сюжетный директор (порт ARakisStoryDirector): исполняет game.data.StoryBeats.
 // Триггеры: Start, ZoneEnter:<Zone>, Beat:<ID>, WormState:<State>, NoiseAbove:<x>, Interact:<Tag>.
-// Действия: PlayDialogue, PlayCinematic, SetWeather, SetMusic, TitleCard, ForceWorm, CrowdRitual, Hint, FadeOut, EndDemo, Ellipsis.
+// Действия: PlayDialogue, PlayCinematic, SetWeather, SetMusic, TitleCard, ForceWorm, CrowdRitual, Hint, FadeOut, EndDemo.
+// Всё происходит в реальном времени под управлением игрока: никаких склеек времени («N часов спустя») и кат-сцен с отнятым управлением.
+// PlayCinematic лишь запускает реалтайм-последовательности модулей (worm.playReveal, sietch.playFinale) и ждёт их Promise; game.cinematic не трогает.
+// Действие Ellipsis из старых таблиц распознаётся и игнорируется (бит считается выполненным).
+// Виртуальные зоны сюжета (ZoneEnter:A5_Trail, ZoneEnter:A6_Cleft, ZoneEnter:C1_Garden): берутся из game.approach.zoneAt / game.garden.zoneAt, а при их отсутствии — по геометрии ENTRY/GARDEN.
 // Каждый бит срабатывает один раз; Delay считается в игровом времени (пауза и фоторежим его замораживают).
-import { ELLIPSIS, WORM_REVEAL, ZONES, desertZoneAt } from '../core/layout.js';
+import { WORM_REVEAL, ENTRY, GARDEN } from '../core/layout.js';
 import { create as createDebug } from './debug.js';
 import { createReactions } from './reactions.js';
 
-const ZONE_ORDER = Object.keys(ZONES);
 const MUSIC_STATES = ['Silence', 'DesertCalm', 'DesertDrone', 'WormThreat', 'WormReveal', 'Encounter', 'SietchLife', 'SietchNarrow', 'HallChorale'];
 const TITLE_HOLD = 4;
-// Встреча с червём — длинная, частично интерактивная сцена (резолвится, когда червь уходит): страховка 240 с.
+// Встреча с червём — длинная реалтайм-сцена (Promise резолвится после разговора с Оссаной): страховка 240 с.
 const CINEMATIC_SAFETY = 240;
-// Параметры склейки (как в ARakisStoryDirector, метры вместо сантиметров).
-const ELLIPSIS_DEFAULT_WINDOW = 20;
-const ELLIPSIS_DEFAULT_FADE = 1.2;
-const ELLIPSIS_BLACK_HOLD = 0.6;
-const ELLIPSIS_CARD_HOLD = 1.4;
-const ELLIPSIS_CARD_FADE_IN = 0.5, ELLIPSIS_CARD_FADE_OUT = 0.6;
-const ELLIPSIS_MIN_BEHIND = 15;
-const ELLIPSIS_MAX_HEADING = 55 * Math.PI / 180;
-const ELLIPSIS_MIN_SPEED = 0.6;
-const ELLIPSIS_POLL = 0.25;
-
 /** Встроенный сценарий на случай, если StoryBeats не загрузились (как BuiltInBeats в UE). */
 const B = (id, order, trigger, action, param, delay = 0) => ({ id, order, trigger, action, param, delay });
 const BUILTIN = [
@@ -130,7 +122,7 @@ export function create(game) {
         }
         case 'PlayCinematic': actionCinematic(b, p); return;
         case 'FadeOut': actionFadeOut(b, p); return;
-        case 'Ellipsis': actionEllipsis(b); return;
+        case 'Ellipsis': console.info(`[story] Ellipsis ${b.id} устарел (всё в реальном времени) — пропущен`); break;
         case 'SetWeather': {
           const [id, blend] = p.split(',').map((s) => s.trim());
           const sec = blend !== undefined && blend !== '' ? Math.max(0, parseFloat(blend)) : 8;
@@ -169,7 +161,7 @@ export function create(game) {
     bus.emit('end');
   }
 
-  // ---- Кат-сцены ----
+  // ---- Реалтайм-последовательности (бывшие кат-сцены) ----
   function actionCinematic(b, p) {
     if (cinematicBeat) { console.warn(`[story] кат-сцена уже идёт, бит ${b.id} пропущен`); completeBeat(b); return; }
     cinematicBeat = b;
@@ -178,29 +170,19 @@ export function create(game) {
       if (/WormReveal|WormEncounter/i.test(p)) promise = game.worm?.playReveal?.() ?? game.worm?.playEncounter?.();
       else if (/HallFinale/i.test(p)) { game.audio?.finalChord?.(); promise = game.sietch?.playFinale?.(); }
     } catch (e) { console.error('[story] кат-сцена:', e); }
-    // Если у сцены нет собственного модуля (нет Promise) и режим не включён — включаем сами (леттербокс, блокировка ввода).
-    // Если модуль вернул Promise (встреча с червём: длинная, частично интерактивная), режим кат-сцены ведёт он сам:
-    // HUD и леттербокс только в те части, где game.cinematic.active = true.
-    let mine = false;
+    // Режим кат-сцены (game.cinematic, леттербокс, блокировка ввода) здесь НЕ включается: это реалтайм-последовательности,
+    // игрок сохраняет управление; модуль сам решает, что делать с камерой/ограничениями.
     const hasPromise = !!promise && typeof promise.then === 'function';
-    if (!game.cinematic.active && !hasPromise) {
-      game.cinematic.active = true; game.cinematic.owner = 'story'; mine = true;
-      bus.emit('cinematic', { active: true, id: p });
-    }
     let done = false;
     const finish = () => {
       if (done) return;
       done = true;
       cancel(safety);
-      if (mine && game.cinematic.owner === 'story') {
-        game.cinematic.active = false; game.cinematic.owner = null;
-        bus.emit('cinematic', { active: false, id: p });
-      }
       cinematicBeat = null;
       completeBeat(b);
     };
     const safety = schedule(CINEMATIC_SAFETY, finish);
-    if (promise && typeof promise.then === 'function') promise.then(finish, finish);
+    if (hasPromise) promise.then(finish, finish);
     else schedule(/Hall/i.test(p) ? 9 : 6, finish); // фоллбек по времени
   }
 
@@ -219,151 +201,6 @@ export function create(game) {
     });
   }
 
-  // ---- Эллипсис ----
-  // Param = <ТегЦели>[,<Fade>[,<Hours>]][,window=<с>][,pull=<BeatID>@<с>]...[|<RU>|<EN>]
-  const ell = { phase: 'none', beat: null, key: null, fade: ELLIPSIS_DEFAULT_FADE, hours: 0, card: '', pulls: [], deadline: 0, deferred: [], source: null, poll: 0, last: null, lastReason: '' };
-  const ellipsisEnabled = () => new URLSearchParams(location.search).get('ellipsis') !== '0' && game.settings.ellipsis !== false;
-
-  function parseEllipsis(param) {
-    let spec = param, card = '';
-    const bar = param.indexOf('|');
-    if (bar >= 0) { spec = param.slice(0, bar); card = param.slice(bar + 1).trim(); }
-    const tokens = spec.split(',').map((s) => s.trim()).filter(Boolean);
-    if (!tokens.length) return null;
-    const out = { tag: tokens[0], fade: ELLIPSIS_DEFAULT_FADE, hours: 0, card, pulls: [], window: ELLIPSIS_DEFAULT_WINDOW };
-    let positional = 0;
-    for (const t of tokens.slice(1)) {
-      const eq = t.indexOf('=');
-      if (eq > 0) {
-        const k = t.slice(0, eq).trim().toLowerCase(), v = t.slice(eq + 1).trim();
-        if (k === 'window') out.window = Math.max(1, parseFloat(v));
-        else if (k === 'pull') {
-          const [id, sec] = v.split('@');
-          if (sec !== undefined) out.pulls.push([id.trim(), Math.max(0, parseFloat(sec))]);
-        }
-        continue;
-      }
-      if (positional === 0) out.fade = Math.min(10, Math.max(0.1, parseFloat(t)));
-      else if (positional === 1) out.hours = Math.min(24, Math.max(-24, parseFloat(t)));
-      positional++;
-    }
-    return out;
-  }
-  /** Rakis.Ellipsis.A2 → ELLIPSIS.A2 из layout. */
-  const ellipsisTarget = (tag) => ELLIPSIS[String(tag).split('.').pop()];
-
-  function actionEllipsis(b) {
-    if (ell.phase !== 'none') { console.warn(`[story] Ellipsis ${b.id} отклонён: другая склейка активна`); return; }
-    if (!ellipsisEnabled()) return; // свободная игра
-    const parsed = parseEllipsis(b.param);
-    if (!parsed) { console.warn(`[story] Ellipsis ${b.id}: плохой Param`); return; }
-    if (!ellipsisTarget(parsed.tag)) { declineEllipsis(`нет цели '${parsed.tag}'`); return; }
-    Object.assign(ell, { phase: 'offer', beat: b, key: parsed.tag, fade: parsed.fade, hours: parsed.hours, card: parsed.card, pulls: parsed.pulls, deadline: game.time + parsed.window, deferred: [], poll: 0, last: null });
-    pollEllipsis(0);
-  }
-
-  function checkEllipsisOffer(dt) {
-    const T = ellipsisTarget(ell.key), p = game.player;
-    if (!T || !p?.position) return 'нет цели или игрока';
-    if (game.cinematic.active || cinematicBeat) return 'кат-сцена';
-    if (game.paused || game.ui?.photoActive || game.ui?.blocking) return 'пауза / фоторежим';
-    const ws = game.worm?.state;
-    if (ws === 'Listening' || ws === 'Approach' || ws === 'Surface') return 'угроза червя';
-    if (dlg()?.isStoryLinePlaying) return 'звучит сюжетная реплика';
-    // Золотой путь: игрок позади цели (по её курсу) и идёт к ней.
-    const fx = Math.cos(T.yaw), fz = Math.sin(T.yaw);
-    const tx = T.x - p.position.x, tz = T.z - p.position.z;
-    if (fx * tx + fz * tz < ELLIPSIS_MIN_BEHIND) return 'игрок не позади цели';
-    let vx = 0, vz = 0;
-    if (ell.last && dt > 0) { vx = (p.position.x - ell.last.x) / dt; vz = (p.position.z - ell.last.z) / dt; }
-    else if (p.velocity) { vx = p.velocity.x; vz = p.velocity.z; }
-    ell.last = { x: p.position.x, z: p.position.z };
-    const sp = Math.hypot(vx, vz);
-    if (sp < ELLIPSIS_MIN_SPEED) return 'игрок не идёт';
-    const dist = Math.hypot(tx, tz) || 1;
-    if (Math.acos(Math.min(1, (vx * tx + vz * tz) / (sp * dist))) > ELLIPSIS_MAX_HEADING) return 'игрок идёт мимо золотого пути';
-    return '';
-  }
-  function pollEllipsis(dt) {
-    if (ell.phase !== 'offer') return;
-    const reason = checkEllipsisOffer(dt);
-    if (!reason) { beginEllipsisCut(); return; }
-    ell.lastReason = reason;
-    if (!ellipsisEnabled()) declineEllipsis('Ellipsis выключен');
-    else if (game.time >= ell.deadline) declineEllipsis(`окно предложения истекло (${reason})`);
-  }
-  function resetEllipsis() { Object.assign(ell, { phase: 'none', beat: null, deferred: [], pulls: [], last: null }); }
-  function declineEllipsis(reason) {
-    console.info(`[story] Ellipsis ${ell.beat?.id ?? ''} отклонён — ${reason} (свободная игра)`);
-    const deferred = ell.deferred;
-    resetEllipsis();
-    for (const k of deferred) fireTrigger(k); // зоны, в которые успели войти, не теряются
-  }
-
-  function beginEllipsisCut() {
-    ell.phase = 'fadingOut';
-    game.player?.setInputLocked?.(true);
-    const go = () => performEllipsisCut();
-    if (game.ui?.fade) game.ui.fade(true, ell.fade).then(go); else schedule(ell.fade + 0.1, go);
-  }
-  function abortEllipsis(reason) {
-    game.ui?.fade?.(false, ell.fade);
-    game.player?.setInputLocked?.(false);
-    declineEllipsis(reason);
-  }
-  function performEllipsisCut() {
-    const T = ellipsisTarget(ell.key), p = game.player;
-    if (ell.phase !== 'fadingOut') return;
-    if (!T || !p?.teleport) { abortEllipsis('цель или игрок потеряны'); return; }
-    if (game.cinematic.active || cinematicBeat) { abortEllipsis('началась кат-сцена'); return; }
-    ell.phase = 'black';
-    ell.source = game.zone;
-    p.teleport(T.x, game.heightAt(T.x, T.z), T.z, T.yaw);
-    game.companions?.teleportBehind?.();
-    if (ell.hours && game.weather && !game.weatherManual) {
-      if (game.weather.setHours) game.weather.setHours((game.weather.hours ?? 0) + ell.hours);
-    }
-    let hold = ELLIPSIS_BLACK_HOLD;
-    if (ell.card && game.ui?.cutCard) {
-      game.ui.cutCard(pick(ell.card), ELLIPSIS_CARD_HOLD);
-      hold = ELLIPSIS_CARD_FADE_IN + ELLIPSIS_CARD_HOLD + ELLIPSIS_CARD_FADE_OUT + 0.15;
-    }
-    schedule(Math.max(hold, 0.1), beginEllipsisFadeIn);
-  }
-  function beginEllipsisFadeIn() {
-    ell.phase = 'fadingIn';
-    game.ui?.fade?.(false, ell.fade);
-    const b = ell.beat;
-    const deferred = ell.deferred; ell.deferred = [];
-    const T = ellipsisTarget(ell.key);
-    // 1) зоны, через которые «перепрыгнули», не играют свои биты
-    consumeSkippedZones(ell.source, T ? desertZoneAt(T.x, T.z) : game.zone);
-    // 2) склейка состоялась — Beat:<ID>
-    completeBeat(b);
-    // 3) биты зоны прибытия — после битов склейки
-    for (const k of deferred) fireTrigger(k);
-    // 4) сжатие времени: pull-биты
-    for (const [id, sec] of ell.pulls) {
-      const pb = beats.find((x) => x.id === id);
-      if (!pb) { console.warn(`[story] Ellipsis pull — нет бита '${id}'`); continue; }
-      if (!pb.fired) scheduleBeat(pb, sec);
-      else if (!pb.completed && pb.timer && !pb.timer.dead && pb.timer.at - game.time > sec) { cancel(pb.timer); pb.timer = schedule(sec, () => executeBeat(pb)); }
-    }
-    schedule(Math.max(ell.fade, 0.1), () => {
-      game.player?.setInputLocked?.(false);
-      console.info(`[story] Ellipsis → ${ell.key} выполнен`);
-      resetEllipsis();
-    });
-  }
-  function consumeSkippedZones(from, to) {
-    const a = ZONE_ORDER.indexOf(from), z = ZONE_ORDER.indexOf(to);
-    if (a < 0 || z < 0 || z <= a + 1) return;
-    for (let i = a + 1; i < z; i++) {
-      const key = `ZoneEnter:${ZONE_ORDER[i]}`;
-      for (const b of beats) if (!b.fired && b.trigger === key) { b.fired = true; console.info(`[story] бит ${b.id} «проглочен» склейкой`); }
-    }
-  }
-
   // ---- Подписки ----
   bus.on('start', () => {
     if (started) return;
@@ -374,7 +211,6 @@ export function create(game) {
   bus.on('zone', ({ to } = {}) => {
     if (!to) return;
     const key = `ZoneEnter:${to}`;
-    if (ell.phase === 'fadingOut' || ell.phase === 'black') { if (!ell.deferred.includes(key)) ell.deferred.push(key); return; }
     fireTrigger(key);
   });
   bus.on('worm:state', ({ to } = {}) => { if (to) fireTrigger(`WormState:${to}`); });
@@ -387,7 +223,30 @@ export function create(game) {
   });
   bus.on('interact', ({ tag } = {}) => { if (tag) { dlg()?.setFlag?.(`Interact:${tag}`, true); fireTrigger(`Interact:${tag}`); } });
 
-  let noiseAcc = 0;
+  let noiseAcc = 0, zonePoll = 0;
+  const lastVZ = { approach: null, garden: false, cleft: false };
+  // Виртуальные зоны: тропа по скале, щель-вход, сад. Дубли с bus 'zone' безвредны (бит срабатывает один раз).
+  function pollVirtualZones() {
+    const pos = game.player?.position;
+    if (!pos) return;
+    const ap = game.approach?.zoneAt?.(pos);
+    if (ap !== undefined) {
+      if (ap && ap !== lastVZ.approach) fireTrigger(`ZoneEnter:${ap}`);
+      lastVZ.approach = ap || null;
+    } else {
+      // геометрия: тропа от подножия к щели
+      const a = ENTRY.trailStart, c = ENTRY.cleft, dx = c.x - a.x, dz = c.z - a.z, L2 = dx * dx + dz * dz;
+      const t = ((pos.x - a.x) * dx + (pos.z - a.z) * dz) / L2;
+      const lat = Math.hypot(pos.x - (a.x + dx * t), pos.z - (a.z + dz * t));
+      if (t > 0.22 && t < 1.05 && lat < 20 && pos.y > (game.heightAt(a.x, a.z) + 3)) fireTrigger('ZoneEnter:A5_Trail');
+    }
+    if (!lastVZ.cleft && Math.hypot(pos.x - ENTRY.cleft.x, pos.z - ENTRY.cleft.z) < 9 && Math.abs(pos.y - ENTRY.cleft.y) < 10) {
+      lastVZ.cleft = true; fireTrigger('ZoneEnter:A6_Cleft');
+    }
+    if (!game.garden?.zoneAt && !lastVZ.garden && Math.hypot(pos.x - GARDEN.center.x, pos.z - GARDEN.center.z) < GARDEN.radius * 0.8) {
+      lastVZ.garden = true; fireTrigger('ZoneEnter:C1_Garden');
+    }
+  }
   let reactions = null;
   const api = {
     /** Отладка: story.fire('ZoneEnter:B5_Hall'). */
@@ -406,7 +265,8 @@ export function create(game) {
     get beats() { return beats; },
     get started() { return started; },
     get ended() { return ended; },
-    get ellipsisPhase() { return ell.phase; },
+    /** Совместимость: склеек больше нет. */
+    get ellipsisPhase() { return 'none'; },
     list() { console.table(beats.map((b) => ({ id: b.id, order: b.order, trigger: b.trigger, action: b.action, fired: b.fired, done: b.completed }))); },
     update(dt) {
       // таймеры игрового времени
@@ -428,10 +288,8 @@ export function create(game) {
           if (typeof n === 'number') for (const b of beats) if (!b.fired && b.noise >= 0 && n > b.noise) scheduleBeat(b);
         }
       }
-      if (ell.phase === 'offer') {
-        ell.poll += dt;
-        if (ell.poll >= ELLIPSIS_POLL) { const d = ell.poll; ell.poll = 0; pollEllipsis(d); }
-      }
+      zonePoll -= dt;
+      if (zonePoll <= 0) { zonePoll = 0.4; pollVirtualZones(); }
     },
   };
   load();

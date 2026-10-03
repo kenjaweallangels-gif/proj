@@ -78,6 +78,17 @@ export function createEngine(game) {
     for (const k of Object.keys(rev)) rev[k].gain.setTargetAtTime(k === name ? lv[k] : 0, t, 0.6);
   }
 
+  // Плавное смешение реверберации интерьера и улицы: weights = {desert: 0..1, sietch: 0..1, ...} (веса масштабируют уровни lv).
+  const REV_LV = { desert: 0.12, sietch: 0.5, cistern: 0.75, hall: 0.95 };
+  let revKey = '';
+  function setReverbMix(weights) {
+    const key = Object.keys(REV_LV).map((k) => (weights[k] || 0).toFixed(2)).join('|');
+    if (key === revKey) return;
+    revKey = key; revState.set = true; revState.name = 'mix';
+    const t = ctx.currentTime;
+    for (const k of Object.keys(rev)) rev[k].gain.setTargetAtTime(REV_LV[k] * Math.min(1, weights[k] || 0), t, 0.5);
+  }
+
   // ---- Буферы шума ----
   const noiseBufs = {};
   function noiseBuf(kind = 'white') {
@@ -204,7 +215,7 @@ export function createEngine(game) {
   }
 
   return {
-    ctx, out, comp, masterLP, level, bus, duck, rev, revIn, setReverb, revState,
+    ctx, out, comp, masterLP, level, bus, duck, rev, revIn, setReverb, setReverbMix, revState,
     noiseBuf, loopNoise, filter, gain, send, panner, stereoPan, burst, blip, ramp, T, updateListener, setVolume,
     resume() { if (ctx.state === 'suspended') ctx.resume().catch(() => {}); },
     get running() { return ctx.state === 'running'; },

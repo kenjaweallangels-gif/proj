@@ -188,15 +188,15 @@ export function createSfx(game, eng) {
     if (p) harv.lastPos = p;
     return harv.lastPos;
   }
-  function klaxon(long = false) {
-    harvBuild();
+  function klaxon(long = false, dest = null) {
+    if (!dest) { harvBuild(); dest = harv.inp; }
     const t = eng.T() + 0.02, blasts = long ? [[0, 1.6]] : [[0, 0.55], [0.75, 0.55]];
     for (const [off, d] of blasts) {
       for (const f of [392, 311]) {
         const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = f;
         const bp = eng.filter('bandpass', 950, 0.9), g = eng.gain(0);
         g.gain.setValueAtTime(0, t + off); g.gain.linearRampToValueAtTime(0.1, t + off + 0.03); g.gain.setValueAtTime(0.1, t + off + d - 0.06); g.gain.linearRampToValueAtTime(0, t + off + d);
-        o.connect(bp); bp.connect(g); g.connect(harv.inp); o.start(t + off); o.stop(t + off + d + 0.05);
+        o.connect(bp); bp.connect(g); g.connect(dest); o.start(t + off); o.stop(t + off + d + 0.05);
       }
     }
   }
@@ -243,6 +243,91 @@ export function createSfx(game, eng) {
     else if (s) harvStop(false);
   });
 
+
+  // ---------- Сценарий «червь пожирает харвестер» ----------
+  // Фазы приходят событием шины 'worm:devour' {phase, x?, z?, duration?} (см. audio/index.js): рокот червя нарастает → клаксон →
+  // переносчик тянет на пределе → рёв и поглощение → обломки. Позиция по умолчанию — game.harvester.position.
+  const devourPos = (p) => {
+    const h = p && p.x !== undefined ? p : game.harvester?.position;
+    return h ? { x: h.x, y: (h.y ?? 0) + 14, z: h.z } : null;
+  };
+  const devourDest = (p, ref = 40) => { const q = devourPos(p); return q ? eng.panner(sfx, q, { ref, rolloff: 0.8, max: 3500 }) : sfx; };
+  /** Рокот червя под землёй: низкие синусы + бурый шум, растёт за dur секунд, затем затухает. */
+  function devourRumble(p, dur = 18) {
+    const t = eng.T() + 0.02, dest = devourDest(p, 110);
+    const out = eng.gain(0.0001); out.connect(dest);
+    out.gain.setValueAtTime(0.0001, t); out.gain.exponentialRampToValueAtTime(1, t + dur * 0.9); out.gain.setTargetAtTime(0, t + dur, 2);
+    for (const [f, det] of [[23, 0], [31, 8], [39, -6], [47, 5]]) {
+      const o = ctx.createOscillator(); o.type = 'sine'; o.detune.value = det;
+      o.frequency.setValueAtTime(f * 0.8, t); o.frequency.linearRampToValueAtTime(f * 1.2, t + dur);
+      const g = eng.gain(0.3); o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + 9);
+    }
+    const src = ctx.createBufferSource(); src.buffer = eng.noiseBuf('brown'); src.loop = true;
+    const lp = eng.filter('lowpass', 60, 0.8); lp.frequency.setValueAtTime(60, t); lp.frequency.exponentialRampToValueAtTime(280, t + dur);
+    const ng = eng.gain(1.1); src.connect(lp); lp.connect(ng); ng.connect(out); src.start(t, rnd(0, 2)); src.stop(t + dur + 9);
+    // песок осыпается всё чаще
+    const n = Math.floor(dur * 2.5);
+    for (let i = 0; i < n; i++) {
+      const at = t + dur * Math.pow(i / n, 0.65);
+      eng.burst({ type: 'bandpass', f0: rnd(900, 2200), q: 3, dur: 0.04, attack: 0.001, gain: rnd(0.04, 0.1) * (0.4 + i / n), kind: 'white', out: eng.stereoPan(sfx, rnd(-1, 1)), when: at });
+    }
+  }
+  /** Тревожный клаксон харвестера: n сигналов с паузами. */
+  function devourAlarm(p, n = 5) {
+    const dest = devourDest(p, 35);
+    for (let i = 0; i < n; i++) setTimeout(() => klaxon(i === n - 1, dest), i * 1900);
+  }
+  /** Переносчик: двигатели на пределе (поднимающийся тон, дрожание винтов), в конце срыв. */
+  function devourCarryall(p, dur = 9) {
+    const t = eng.T() + 0.02, q = devourPos(p), dest = q ? eng.panner(sfx, { x: q.x, y: q.y + 40, z: q.z }, { ref: 45, rolloff: 0.8, max: 3500 }) : sfx;
+    const out = eng.gain(0); out.connect(dest); eng.send(out, 0.2);
+    out.gain.setValueAtTime(0, t); out.gain.linearRampToValueAtTime(0.55, t + 1.5); out.gain.linearRampToValueAtTime(0.9, t + dur * 0.85); out.gain.setTargetAtTime(0, t + dur, 0.8);
+    const rotor = ctx.createOscillator(); rotor.type = 'sawtooth';
+    rotor.frequency.setValueAtTime(92, t); rotor.frequency.exponentialRampToValueAtTime(136, t + dur);
+    const rl = eng.filter('lowpass', 640, 0.9), am = eng.gain(0.6), lfo = ctx.createOscillator(), lg = eng.gain(0.4);
+    lfo.frequency.setValueAtTime(10, t); lfo.frequency.linearRampToValueAtTime(17, t + dur); lfo.connect(lg); lg.connect(am.gain);
+    rotor.connect(rl); rl.connect(am); am.connect(out);
+    const whine = ctx.createOscillator(); whine.type = 'sawtooth';
+    whine.frequency.setValueAtTime(420, t); whine.frequency.exponentialRampToValueAtTime(820, t + dur);
+    const wb = eng.filter('bandpass', 900, 5), wg = eng.gain(0.05); whine.connect(wb); wb.connect(wg); wg.connect(out);
+    const air = ctx.createBufferSource(); air.buffer = eng.noiseBuf('pink'); air.loop = true;
+    const ab = eng.filter('bandpass', 1100, 0.7), ag = eng.gain(0.22); air.connect(ab); ab.connect(ag); ag.connect(out);
+    for (const o of [rotor, lfo, whine]) { o.start(t); o.stop(t + dur + 4); }
+    air.start(t, rnd(0, 2)); air.stop(t + dur + 4);
+    // перегруженный двигатель: срывы
+    for (let i = 0; i < 4; i++) {
+      const at = t + dur * (0.4 + 0.14 * i);
+      rl.frequency.setValueAtTime(640, at); rl.frequency.linearRampToValueAtTime(380, at + 0.25); rl.frequency.linearRampToValueAtTime(700 + i * 60, at + 0.6);
+    }
+  }
+  /** Поглощение: рёв червя + скрежет металла. */
+  function devourSwallow(p) {
+    const q = devourPos(p);
+    breach(q);
+    const t = eng.T() + 0.4, dest = devourDest(p, 50);
+    for (let i = 0; i < 12; i++) {
+      const at = t + i * rnd(0.12, 0.34);
+      eng.burst({ type: 'bandpass', f0: rnd(350, 2400), q: rnd(4, 9), dur: rnd(0.08, 0.2), attack: 0.002, gain: rnd(0.25, 0.6), kind: 'white', out: dest, when: at, send: 0.3 });
+      eng.blip({ freq: rnd(90, 220), freq1: rnd(40, 80), dur: 0.3, gain: 0.35, type: 'triangle', out: dest, when: at });
+    }
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(900, t); o.frequency.exponentialRampToValueAtTime(260, t + 2.6);
+    const bp = eng.filter('bandpass', 700, 6), g = eng.gain(0);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.14, t + 0.2); g.gain.setTargetAtTime(0, t + 1.6, 0.5);
+    o.connect(bp); bp.connect(g); g.connect(dest); o.start(t); o.stop(t + 3);
+  }
+  /** Обломки: затухающая россыпь лязга и осыпь песка. */
+  function devourDebris(p, dur = 8) {
+    const t = eng.T() + 0.05, dest = devourDest(p, 40);
+    eng.blip({ freq: 70, freq1: 28, dur: 1.4, gain: 0.8, out: sfx, attack: 0.02 });
+    eng.burst({ type: 'highpass', f0: 2200, q: 0.5, dur, attack: 0.6, gain: 0.16, kind: 'white', out: dest, when: t, send: 0.4 });
+    eng.burst({ type: 'lowpass', f0: 380, f1: 90, q: 0.8, dur: dur * 0.8, attack: 0.3, gain: 0.5, kind: 'brown', out: dest, when: t });
+    for (let i = 0; i < 26; i++) {
+      const at = t + dur * 0.9 * Math.pow(Math.random(), 1.7);
+      eng.burst({ type: 'bandpass', f0: rnd(500, 3200), q: rnd(3, 8), dur: rnd(0.04, 0.14), attack: 0.001, gain: rnd(0.1, 0.4), kind: 'white', out: eng.stereoPan(dest, rnd(-0.6, 0.6)), when: at, send: 0.35 });
+    }
+  }
+
   // ---------- Интерфейс ----------
   const ui = {
     hint() { eng.blip({ freq: 660, dur: 0.5, gain: 0.07, type: 'sine', out: bus.ui, attack: 0.04, send: 0.5 }); eng.blip({ freq: 990, dur: 0.6, gain: 0.04, out: bus.ui, attack: 0.05, when: eng.T() + 0.08, send: 0.5 }); },
@@ -273,6 +358,8 @@ export function createSfx(game, eng) {
     'Crowd.Hush': () => {},
     'Player.Breath.Dry': () => breath(true), 'Player.Mask.Seal': () => { eng.burst({ type: 'highpass', f0: 2500, q: 0.5, dur: 0.35, attack: 0.02, gain: 0.12, out: sfx }); },
     'Harvester.Start': () => harvStart(true), 'Harvester.Run': () => harvStart(false), 'Harvester.Stop': () => harvStop(true),
+    'Worm.Devour.Rumble': (p) => devourRumble(p), 'Worm.Devour.Alarm': (p) => devourAlarm(p), 'Worm.Devour.Carryall': (p) => devourCarryall(p),
+    'Worm.Devour.Swallow': (p) => devourSwallow(p), 'Worm.Devour.Debris': (p) => devourDebris(p),
     'UI.Hint': () => ui.hint(), 'UI.TitleCard': () => ui.titleCard(), 'UI.Interact': () => ui.interact(), 'UI.Pause': () => ui.pause(), 'UI.PhotoShutter': () => ui.photo(), 'UI.Tick': () => ui.tick(),
   };
 
@@ -292,7 +379,7 @@ export function createSfx(game, eng) {
 
   let breathAt = 0;
   return {
-    footstep, breach, thump, sealHiss, falseRock, rockRattle, heartbeat, ui,
+    footstep, breach, thump, sealHiss, falseRock, rockRattle, heartbeat, ui, devourRumble, devourAlarm, devourCarryall, devourSwallow, devourDebris,
     has: (id) => !!EVENTS[id],
     play(id, pos) { const f = EVENTS[id]; if (f) f(pos); return !!f; },
     update(dt) {
