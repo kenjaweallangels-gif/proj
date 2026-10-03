@@ -10,10 +10,12 @@
 import * as THREE from 'three';
 import { clamp, lerp, smoothstep, rng } from '../core/util.js';
 import { WORM_SPAWN, WORM_REVEAL, SUN_AZIMUTH_DEG } from '../core/layout.js';
+import { colliders } from '../core/colliders.js';
 import { Spine, RADIUS, N_PTS } from './spine.js';
 import { createUniforms, guardPostHaze } from './shaders.js';
 import { WormBody, QUALITY_ORDER } from './body.js';
-import { Gear, Riders } from './gear.js';
+import { Gear } from './gear.js';
+import { Riders } from './riders.js';
 import { WormFX } from './fx.js';
 import { EncounterDirector, DIALOGUE_ID } from './encounter.js';
 
@@ -45,10 +47,32 @@ export function create(game) {
   const body = new WormBody(game, U, spine, quality);
   const gear = new Gear(spine);
   const riders = new Riders(game, spine);
-  riders.items.forEach((it) => gear.addSaddle(it.s, it.da * 0.6, it.name === 'Ossana' ? 1 : 0));
   const fx = new WormFX(game, quality);
   scene.add(body.group, gear.group, riders.group, fx.group);
   body.group.visible = false;
+
+  // ---- твёрдое тело: цепочка капсул (owner 'worm'), по одной на 2 кольца; обновляется каждый кадр, пока тело над песком ----
+  const COL_N = Math.floor((N_PTS - 1) / 2);
+  const wormCols = [];
+  for (let i = 0; i < COL_N; i++) {
+    const id = colliders.add({ type: 'capsule', owner: 'worm', a: new THREE.Vector3(0, -500, 0), b: new THREE.Vector3(0, -500, 1), r: RADIUS * 0.96, solid: false, tags: new Set(['worm']) });
+    wormCols.push(colliders.get(id));
+  }
+  let colsOn = false;
+  function syncColliders(exposedNow) {
+    if (!exposedNow) { if (colsOn) { for (const c of wormCols) c.solid = false; colsOn = false; } return; }
+    const P = spine.P, RS = spine.RS;
+    for (let i = 0; i < COL_N; i++) {
+      const i0 = i * 2, i1 = i0 + 2, c = wormCols[i];
+      const a0 = P[i0 * 3], b0 = P[i1 * 3];
+      if (!(Number.isFinite(a0 + b0 + P[i0 * 3 + 1] + P[i1 * 3 + 1] + P[i0 * 3 + 2] + P[i1 * 3 + 2]))) { c.solid = false; continue; }
+      c.a.set(a0, P[i0 * 3 + 1], P[i0 * 3 + 2]); c.b.set(b0, P[i1 * 3 + 1], P[i1 * 3 + 2]);
+      c.r = RADIUS * 0.96 * Math.max(0.03, (RS[i0] + RS[i1]) * 0.5);
+      const top = Math.max(c.a.y, c.b.y) + c.r;
+      c.solid = top > ground((a0 + b0) * 0.5, (c.a.z + c.b.z) * 0.5) + 0.4;
+    }
+    colsOn = true;
+  }
 
   // ---- кинематика головы ----
   const K = {
@@ -62,6 +86,8 @@ export function create(game) {
     quality, autoQuality: true,
   };
 
+  worm.colliderCount = COL_N;
+  worm.colliders = wormCols;
   let stateT = 0, S = 0, quietT = 0, cooldown = 0, passT = 0, senseT = 0;
   let P = 0, playerOnRock = false;
   let impulse = 0;
@@ -228,19 +254,23 @@ export function create(game) {
   /** Сцена «Встреча» с укрощённым червём. Promise<{skipped}> выполняется, когда червь ушёл ('gone'). */
   worm.playReveal = () => director.play();
   worm.playEncounter = worm.playReveal;
-  worm.isBusy = () => director.active;
+  worm.isBusy = () => director.active && !director.resting;
+  /** Червь отдыхает у места встречи (после разговора) — остаётся на месте до dismiss()/playDevour(). */
+  Object.defineProperty(worm, 'resting', { get: () => director.active && director.resting });
+  worm.dismiss = () => director.dismiss();
   worm.encounterPhase = () => (director.active ? director.phase : 'none');
   /** Куда приземляется Оссана после спуска. */
   Object.defineProperty(worm, 'ossanaLanding', { get: () => director.oss.land.clone() });
   worm.DIALOGUE_ID = DIALOGUE_ID;
 
-  /** Позиция говорящего для позиционного звука: 'Ossana' | 'Rider1' | 'Rider2' (= третья фигура) | 'Rider3'. null — вне сцены. */
+  /** Позиция говорящего для позиционного звука: 'Ossana' | 'Rider1' | 'Rider2' (= Rider3) | 'Rider3'..'Rider5'. null — вне сцены. */
   worm.speakerPos = (id) => {
     if (!director.active || !riders.group.visible) return null;
-    const it = id === 'Ossana' ? riders.items[1] : id === 'Rider1' ? riders.items[0] : (id === 'Rider2' || id === 'Rider3') ? riders.items[2] : null;
+    const it = id === 'Rider2' ? riders.byName('Rider3') : riders.byName(id);
     if (!it || !it.root.visible) return null;
     const e = it.root.matrix.elements;
-    return new THREE.Vector3(e[12], e[13], e[14]).addScaledVector(new THREE.Vector3(e[4], e[5], e[6]), 1.6);
+    const hh = it.sitting ? 1.0 : 1.6;
+    return new THREE.Vector3(e[12], e[13], e[14]).addScaledVector(new THREE.Vector3(e[4], e[5], e[6]), hh);
   };
 
   /** Сколько метров до игрока. */
@@ -354,11 +384,12 @@ export function create(game) {
 
   function visualUpdate(dt, t) {
     const st = worm.state;
+    const inDesert = game.space !== 'sietch';
     const active = st === 'Pass' || st === 'Ridden' || worm.exposed || director.active;
     const resting = tame && K.speed < 0.5;
     spine.waveAmp = tame ? (resting ? 0.35 : 0.9) : 0;
     spine.breath = tame ? (resting ? 1 : 0.4) : 0;
-    if (active) spine.compute(t, tame ? 1 : 0.4);
+    if (active) spine.compute(director.active ? director.timeV : t, tame ? 1 : 0.4);
     // видимость тела: есть ли над песком что-то
     let exposed = false;
     if (active) {
@@ -369,12 +400,14 @@ export function create(game) {
       }
     }
     worm.exposed = exposed;
-    body.group.visible = exposed;
-    if (exposed) { body.update(); U.uTime.value = t; }
+    body.group.visible = exposed && inDesert;
+    syncColliders(exposed && inDesert);
+    if (exposed && inDesert) { body.update(); U.uTime.value = t; }
     // освещение/окружение
     getSun();
     const wd = game.weather?.windDir, ws = game.weather?.windSpeed ?? 4;
     if (wd) windVec.set(wd.x, 0, wd.z).normalize().multiplyScalar(ws * 0.9); else windVec.set(3, 0, 5);
+    fx.group.visible = inDesert;
     fx.setEnv(sunDir, windVec, scene.fog);
     U.uSunV.value.copy(sunDir).transformDirection(camera.matrixWorldInverse);
     const sc = game.world?.sandColor; if (sc) fx.shared.uSandCol.value.copy(sc);
@@ -424,7 +457,7 @@ export function create(game) {
       riderA: null, sunDir, live, rocks,
       tame: tame && director.active && exposed ? { speed: K.speed, rest: resting ? 1 : 0.25, skirt: 1, skirtWid: resting ? 1 : 1.3 } : null,
     });
-    const showGear = tame && director.active && exposed;
+    const showGear = tame && director.active && exposed && inDesert;
     riders.group.visible = showGear;
     gear.group.visible = showGear;
     if (showGear) { gear.update(dt); riders.update(dt, ground, t); }
@@ -474,18 +507,8 @@ export function create(game) {
   };
   worm.lateUpdate = (dt, t) => { if (director.active) director.lateUpdate(dt, t); };
 
-  // Отладка/тесты: сразу поставить сцену в нужную стадию ('arrive' по u, 'stop', 'depart') без кинокамеры.
-  worm.debugEncounter = ({ stage = 'stop', u } = {}) => {
-    const p = director.prepare();
-    director._active = true; director.t = 0; director.surfaced = true; director.cinematic = false;
-    worm.sensing = false; tame = true; worm.tamed = true; K.scripted = true;
-    setState('Ridden');
-    riders.items.forEach((it) => { it.hidden = false; it.free = false; it.sNow = it.s; it.a = 0; });
-    director.advanceTo(u ?? (stage === 'stop' ? p.uStop : stage === 'depart' ? p.uOut + 120 : p.o.approach - 150));
-    spine.headLift = 1.2;
-    spine.compute(game.time, 1);
-    director.phase = stage === 'stop' ? 'stop' : stage;
-  };
+  // Отладка/тесты: сразу поставить сцену в нужную стадию ('arrive' по u, 'stop', 'dismount') без ожидания.
+  worm.debugEncounter = ({ stage = 'stop', u } = {}) => { director.debugStage(stage, u); };
   worm.debugUnfreeze = () => { K.frozen = false; };
 
   // Старт: дикий червь спит далеко (WORM_SPAWN).

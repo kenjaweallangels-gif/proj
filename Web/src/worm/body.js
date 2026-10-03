@@ -299,6 +299,7 @@ export class WormBody {
     if (cfg.seamTeeth) { this.seamTeeth = buildSeamTeeth(this.petals, this.teethMat); this.head.add(this.seamTeeth); }
 
     this.open = -1;
+    this.headScale = 1;            // раструб пасти (пожиратель): голова крупнее, шея расширяется (spine.flare)
     this.setOpen(0);
     this._P = new THREE.Vector3(); this._T = new THREE.Vector3(); this._N = new THREE.Vector3(); this._B = new THREE.Vector3();
     this._m = new THREE.Matrix4();
@@ -337,7 +338,8 @@ export class WormBody {
     this.spine.frameAt(0, P, T, N);
     B.crossVectors(T, N);
     // локальные оси головы: x = -B, y = N, z = T
-    this._m.makeBasis(B.clone().negate(), N, T).setPosition(P);
+    const hs = this.headScale;
+    this._m.makeBasis(B.clone().negate().multiplyScalar(hs), N.clone().multiplyScalar(hs), T.clone().multiplyScalar(hs)).setPosition(P);
     this.head.matrix.copy(this._m);
     this.head.matrixWorldNeedsUpdate = true;
     this.head.updateMatrixWorld(true);

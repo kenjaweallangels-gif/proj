@@ -42,6 +42,11 @@ export class Spine {
     this.liftLen = 70;
     this.breath = 0;                      // 0..1, медленная пульсация радиуса (покой)
     this.bad = 0;                         // счётчик подавленных NaN (диагностика)
+    this.sag = 0;                         // м, всё тело «оседает» вниз (усталость, червь ложится на песок)
+    this.sagHead = 0;                     // м, дополнительное опускание головы (затухает вдоль тела на liftLen)
+    this.spread = 1;                      // множитель радиуса (тело расплывается при отдыхе)
+    this.flare = 1;                       // раструб шеи: радиус первых flareLen метров ×flare (пасть пожирателя)
+    this.flareLen = 46;
     this._t = new THREE.Vector3();
     this._a = new THREE.Vector3(); this._b = new THREE.Vector3();
     this._n = new THREE.Vector3(); this._bb = new THREE.Vector3();
@@ -105,7 +110,7 @@ export class Spine {
       if (!(Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z))) { v.copy(this.hp); this.bad++; }
       const s = i * SEG_LEN;
       const lf = this.headLift !== 0 ? this.headLift * (1 - sm(0, this.liftLen, s)) : 0;
-      P[i * 3] = v.x; P[i * 3 + 1] = v.y + lf; P[i * 3 + 2] = v.z;
+      P[i * 3] = v.x; P[i * 3 + 1] = v.y + lf - this.sag - this.sagHead * (1 - sm(0, this.liftLen, s)); P[i * 3 + 2] = v.z;
     }
     for (let i = 0; i < N_PTS; i++) {
       const a = Math.max(i - 1, 0), b = Math.min(i + 1, N_PTS - 1);
@@ -129,7 +134,8 @@ export class Spine {
       const s = i * SEG_LEN;
       const w = A * Math.sin(s * 0.07 - time * 1.1) * Math.min(1, s / 40);
       P[i * 3] += N[i * 3] * w; P[i * 3 + 1] += N[i * 3 + 1] * w; P[i * 3 + 2] += N[i * 3 + 2] * w;
-      { const u = Math.min(1, Math.max(0, (LENGTH - s) / 70)); RS[i] = Math.max(0.03, Math.sqrt(1 - (1 - u) * (1 - u))); }
+      { const u = Math.min(1, Math.max(0, (LENGTH - s) / 70)); RS[i] = Math.max(0.03, Math.sqrt(1 - (1 - u) * (1 - u))) * this.spread; }
+      if (this.flare !== 1) RS[i] *= 1 + (this.flare - 1) * (1 - sm(0, this.flareLen, s));
       if (this.breath > 0) RS[i] *= 1 + this.breath * 0.022 * Math.sin(s * 0.055 - time * 0.85) * Math.min(1, s / 25);
     }
     const d = this.data;

@@ -8,6 +8,7 @@ import { buildHarvester, SCOOP_PIVOT, AUGER_POS, TOWERS, FANS, STACKS, KLAXON, B
 import { createTracks, TRK, UNITS } from './tracks.js';
 import { createParticles, createBeams, P_SPICE, P_SAND, P_SMOKE, P_HEAT } from './fx.js';
 import { createCarryall } from './carryall.js';
+import { colliders } from '../core/colliders.js';
 
 export const START = { x: 330, z: -60, heading: 0 };   // метры раскладки; heading — направление (cos, sin) в (x, z); 0 = вдоль +X
 const V_MAX = 1.5;           // м/с
@@ -134,7 +135,7 @@ export function create(game) {
   const S = { state: 'off', t: 0, eng: 0, scoop: 0, belt: 0, drive: 0, plume: 0, smoke: 0, heat: 0, klax: 0, klaxT: 0 };
   const H = {
     x: START.x, z: START.z, h: START.heading, v: 0, omega: 0, y: 0, pitch: 0, roll: 0,
-    beltPhase: 0, drumA: 0, fanA: 0, augerA: 0, radarA: 0, klaxA: 0, footAcc: 0, footSide: 0, noiseT: 0, trackSpeed: [0, 0, 0, 0],
+    beltPhase: 0, blockT: 0, brake: 0, blockedByWorm: false, drumA: 0, fanA: 0, augerA: 0, radarA: 0, klaxA: 0, footAcc: 0, footSide: 0, noiseT: 0, trackSpeed: [0, 0, 0, 0],
   };
   const dir = new THREE.Vector3(), tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
   const consoleWorld = new THREE.Vector3();
@@ -185,6 +186,43 @@ export function create(game) {
     }
     if (hit) { pos.x = H.x + lx * c - lz * s; pos.z = H.z + lx * s + lz * c; }
     return hit;
+  }
+
+  // Твёрдые тела в общем реестре (core/colliders.js): корпус и ковш — повёрнутые боксы (owner 'harvester'); обновляются по ходу движения.
+  const COL_DEFS = [
+    { name: 'hull', x0: BOXES[0][0], z0: BOXES[0][1], x1: BOXES[0][2], z1: BOXES[0][3], h: 35 },
+    { name: 'scoop', x0: BOXES[1][0], z0: BOXES[1][1], x1: BOXES[1][2], z1: BOXES[1][3], h: 22 },
+  ];
+  const cols = COL_DEFS.map((d) => {
+    const id = colliders.add({ type: 'box', owner: 'harvester', c: new THREE.Vector3(), half: new THREE.Vector3((d.x1 - d.x0) / 2, d.h / 2, (d.z1 - d.z0) / 2), yaw: 0, tags: new Set(['harvester', d.name]) });
+    return { def: d, e: colliders.get(id) };
+  });
+  let colsEnabled = true;
+  function syncColliders() {
+    const c = Math.cos(H.h), s = Math.sin(H.h);
+    for (const { def, e } of cols) {
+      const lx = (def.x0 + def.x1) / 2, lz = (def.z0 + def.z1) / 2;
+      e.c.set(H.x + lx * c - lz * s, H.y + def.h / 2 - 0.5, H.z + lx * s + lz * c);
+      e.yaw = H.h;
+      e.solid = colsEnabled;
+    }
+  }
+
+  const probe = { type: 'sphere', c: new THREE.Vector3(), r: 28 };
+  const WORM_PROBE_X = [-48, -28, -8, 12, 32, 52];
+  /** Заденет ли корпус тело червя (owner 'worm') — сейчас или через 1…5 с по дуге петли. */
+  function wormInTheWay() {
+    let x = H.x, z = H.z, h = H.h;
+    const v = V_MAX, om = v / R_TURN;
+    for (let k = 0; k <= 5; k++) {
+      const c = Math.cos(h), s = Math.sin(h);
+      for (const lx of WORM_PROBE_X) {
+        probe.c.set(x + lx * c, H.y + 6, z + lx * s);
+        if (colliders.overlaps(probe, { ignore: 'harvester' }).some((o) => o.entry.owner === 'worm')) return true;
+      }
+      for (let i = 0; i < 10; i++) { h -= om * 0.1; x += Math.cos(h) * v * 0.1; z += Math.sin(h) * v * 0.1; }
+    }
+    return false;
   }
 
   // ------------------------------------------------------------ посадка на рельеф
@@ -322,8 +360,12 @@ export function create(game) {
     const inDesert = game.space !== 'sietch';
     stageValues(dt);
 
+    // не ползти на червя: раз в 0.25 с проверяем, не заденет ли корпус (сейчас и через ~5 с по дуге) тело червя; тормозим и ждём
+    H.blockT -= dt;
+    if (H.blockT <= 0) { H.blockT = 0.25; H.blockedByWorm = S.drive > 0.05 && wormInTheWay(); }
+    H.brake += ((H.blockedByWorm ? 1 : 0) - H.brake) * (1 - Math.exp(-dt * (H.blockedByWorm ? 2.5 : 0.8)));
     // кинематика: ползёт по большой петле влево (к -z)
-    H.v = V_MAX * S.drive;
+    H.v = V_MAX * S.drive * (1 - H.brake);
     H.omega = H.v / R_TURN;
     if (H.v > 1e-4) {
       H.h -= H.omega * dt;
@@ -332,6 +374,7 @@ export function create(game) {
       if (H.footAcc > FOOT_STEP) { H.footAcc = 0; stampTracks(); }
     }
     applyTransform(dt, false);
+    syncColliders();
     const camD = game.camera.position.distanceTo(root.position);
 
     // видимость и LOD
@@ -441,6 +484,9 @@ export function create(game) {
     toggle() { return S.state === 'off' ? this.start() : this.stop(); },
     /** Выталкивает pos (Vector3) из силуэта корпуса/ковша. true — было столкновение. */
     collide(pos, r = 0.4) { return collideLocal(pos, r); },
+    /** Включить/выключить твёрдость (на время проглатывания червём). */
+    setCollidersEnabled(b) { colsEnabled = !!b; syncColliders(); },
+    get colliderEntries() { return cols.map((c) => c.e); },
     /** Для тестов: мгновенно в состояние 'off' | 'running' (поза «ковш опущен»). */
     debugSet(st, t = 0) {
       if (st === 'running') { Object.assign(S, { state: 'running', t: 0, eng: 1, scoop: 1, belt: 1, drive: 1, plume: 1, smoke: 0.08, heat: 1, klax: 1, klaxT: 0 }); emitState('running'); }
@@ -448,21 +494,18 @@ export function create(game) {
       else { Object.assign(S, { state: 'off', t: 0, eng: 0, scoop: 0, belt: 0, drive: 0, plume: 0, smoke: 0, heat: 0, klax: 0 }); emitState('off'); }
       updateInteractable();
     },
-    place(x, z, heading = 0) { H.x = x; H.z = z; H.h = heading; applyTransform(0, true); },
+    place(x, z, heading = 0) { H.x = x; H.z = z; H.h = heading; applyTransform(0, true); syncColliders(); },
+    get blockedByWorm() { return H.blockedByWorm; },
     setVisible(b) { root.visible = b; },
   };
   game.add('harvester', harvester);
 
-  // ------------------------------------------------------------ коллизия через мир (пустыню не правим — оборачиваем)
-  if (game.world) {
-    const prev = game.world.collide;
-    game.world.collide = (pos, r) => !!((prev?.call(game.world, pos, r) ? 1 : 0) | (harvester.collide(pos, r) ? 1 : 0));
-  }
-  // обломок старого остова (если desert ещё не убрал) — не трогаем
+  // Коллизия — через game.colliders (боксы выше); game.collide() выталкивает персонажей автоматически, обёртка world.collide не нужна.
 
   applyTransform(0, true);
   H.y = sampleGround().y - 0.25;
   applyTransform(0, true);
+  syncColliders();
   updateInteractable();
   emitState('off');
   return harvester;

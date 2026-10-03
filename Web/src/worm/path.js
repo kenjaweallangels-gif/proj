@@ -14,6 +14,34 @@ export const PATH_DEFAULTS = {
   tail: 1200,               // м прямого отхода
 };
 
+/** Сдвинуть точки пути из препятствий и сгладить смещение (скользящее среднее ±W). Возвращает максимальное смещение, м. */
+function relaxPath(X, Z, clear, iters = 10, W = 22) {
+  const m = X.length;
+  const dx = new Float32Array(m), dz = new Float32Array(m), tx = new Float32Array(m), tz = new Float32Array(m);
+  let maxD = 0;
+  for (let it = 0; it < iters; it++) {
+    let any = false;
+    for (let i = 0; i < m; i++) {
+      const x = X[i] + dx[i], z = Z[i] + dz[i];
+      const c = clear(x, z);
+      if (c && (Math.abs(c[0] - x) > 0.05 || Math.abs(c[1] - z) > 0.05)) { dx[i] += (c[0] - x) * 1.15; dz[i] += (c[1] - z) * 1.15; any = true; }
+    }
+    if (!any) break;
+    for (let pass = 0; pass < 2; pass++) {       // два прохода скользящего среднего, максимум с исходным (чтобы не «втягивало» обратно)
+      for (let i = 0; i < m; i++) {
+        let sx = 0, sz = 0, n = 0;
+        for (let k = Math.max(0, i - W); k <= Math.min(m - 1, i + W); k++) { sx += dx[k]; sz += dz[k]; n++; }
+        tx[i] = sx / n; tz[i] = sz / n;
+      }
+      for (let i = 0; i < m; i++) {
+        if (Math.hypot(tx[i], tz[i]) > Math.hypot(dx[i], dz[i])) { dx[i] = tx[i]; dz[i] = tz[i]; } else { dx[i] = (dx[i] + tx[i]) * 0.5; dz[i] = (dz[i] + tz[i]) * 0.5; }
+      }
+    }
+  }
+  for (let i = 0; i < m; i++) { X[i] += dx[i]; Z[i] += dz[i]; maxD = Math.max(maxD, Math.hypot(dx[i], dz[i])); }
+  return maxD;
+}
+
 export class EncounterPath {
   /** @param {{x:number,z:number}} G группа  @param {number} heading курс червя на подходе, рад (atan2(dz,dx)) */
   constructor(G, heading, opts = {}) {
@@ -54,6 +82,8 @@ export class EncounterPath {
       this.X[i] = raw[k * 2] + (raw[k * 2 + 2] - raw[k * 2]) * t;
       this.Z[i] = raw[k * 2 + 1] + (raw[k * 2 + 3] - raw[k * 2 + 1]) * t;
     }
+    // обход препятствий (харвестер, Коготь, валуны): clear(x, z) → [x', z'] — позиция головы, вытолкнутая из тел; смещение сглаживается
+    this.avoided = o.clear ? relaxPath(this.X, this.Z, o.clear) : 0;
     for (let i = 0; i < m; i++) {
       const a = Math.max(0, i - 2), b = Math.min(m - 1, i + 2);
       this.Y[i] = Math.atan2(this.Z[b] - this.Z[a], this.X[b] - this.X[a]);
@@ -108,6 +138,10 @@ export class EncounterPath {
 export function choosePath(G, preferred = -1.35, opts = {}) {
   const tries = [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05, 1.4, -1.4, 1.75, -1.75, 2.1, -2.1, 2.45, -2.45, 3.14];
   for (const d of tries) {
+    const p = new EncounterPath(G, preferred + d, opts);
+    if (p.valid() && p.avoided < (opts.maxAvoid ?? 70)) return p;
+  }
+  for (const d of tries) {                       // обход слишком велик — берём любой допустимый маршрут
     const p = new EncounterPath(G, preferred + d, opts);
     if (p.valid()) return p;
   }
