@@ -122,6 +122,27 @@ export function createAmbience(game, eng) {
     }
   }
 
+  // ---------- Ночная пустыня: насекомых в глубокой пустыне нет — ветер, далёкие осыпи, холодный треск песка ----------
+  let nextSlide = 0, nextCrackle = 0;
+  function sandSlide(t) {
+    const pan = rnd(-0.9, 0.9), dur = rnd(2.5, 5.5);
+    eng.burst({ type: 'lowpass', f0: rnd(260, 420), f1: rnd(90, 150), q: 0.7, dur, attack: dur * 0.35, gain: rnd(0.05, 0.1) * 3, kind: 'brown', out: eng.stereoPan(out, pan), when: t, send: 0.5 });
+    eng.burst({ type: 'bandpass', f0: rnd(1400, 2400), f1: rnd(700, 1100), q: 0.8, dur: dur * 0.8, attack: dur * 0.3, gain: rnd(0.008, 0.02), kind: 'pink', out: eng.stereoPan(out, pan), when: t + 0.05, send: 0.4 });
+  }
+  function coldCrackle(t) {
+    const n = 1 + ((Math.random() * 4) | 0), pan = rnd(-0.8, 0.8);
+    for (let i = 0; i < n; i++) eng.burst({ type: 'bandpass', f0: rnd(2800, 6200), q: rnd(3, 7), dur: rnd(0.012, 0.03), attack: 0.001, gain: rnd(0.012, 0.035), kind: 'white', out: eng.stereoPan(out, pan + rnd(-0.1, 0.1)), when: t + i * rnd(0.03, 0.18), send: 0.3 });
+  }
+  /** 0..1: глубокая ночь по часам погоды (плавные края на рассвете и закате). */
+  function nightAmount() {
+    const w = game.weather;
+    const h = typeof w?.getHours === 'function' ? w.getHours() : w?.hours;
+    if (typeof h !== 'number') return 0;
+    const x = ((h % 24) + 24) % 24;
+    const sm = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+    return x < 12 ? 1 - sm(4.6, 6.2, x) : sm(18.2, 19.8, x);
+  }
+
   // ---------- Обновление ----------
   const api = {
     chant,
@@ -135,7 +156,8 @@ export function createAmbience(game, eng) {
       const k = 1 - Math.exp(-dt / 0.8);
       for (const key of Object.keys(env)) env[key] = lerp(env[key], e[key], k);
       eng.setReverb(prof.rev);
-      eng.ramp(eng.masterLP.frequency, game.paused ? 700 : prof.lp, 0.4);
+      // буря глушит верха: песок в воздухе
+      eng.ramp(eng.masterLP.frequency, game.paused ? 700 : prof.lp * (1 - 0.5 * clamp(game.weather?.storm ?? 0, 0, 1) * (prof.wind > 0.2 ? 1 : 0)), 0.4);
 
       const ws = clamp(w?.windSpeed ?? 4, 0, 24), storm = clamp(w?.storm ?? 0, 0, 1);
       const now = eng.T();
@@ -143,15 +165,16 @@ export function createAmbience(game, eng) {
         gust = rnd(0.55, 1.5) * (1 + storm * 0.6);
         nextGust = now + rnd(1.4, 5);
       }
+      const night = game.space === 'desert' ? nightAmount() : 0;
       const K = 4; // шумовые полосы после фильтров тихие — компенсируем усилением (замер: ~-36 дБFS при 5 м/с)
-      const base = (0.03 + 0.42 * Math.pow(ws / 16, 1.4)) * env.wind * K;
+      const base = (0.03 + 0.42 * Math.pow(ws / 16, 1.4)) * env.wind * K * (1 + 0.25 * night);
       const gg = base * gust;
       eng.ramp(wA.g.gain, gg, 0.9); eng.ramp(wB.g.gain, gg * 0.85, 1.1);
       eng.ramp(wA.bp.frequency, 240 + ws * 26, 0.8); eng.ramp(wB.bp.frequency, 420 + ws * 38, 0.8);
-      eng.ramp(wW.g.gain, 0.012 * K * Math.pow(ws / 12, 2) * gust * env.wind, 0.8);
+      eng.ramp(wW.g.gain, 0.012 * K * Math.pow(ws / 12, 2) * gust * env.wind * (1 + storm * 2.5), 0.8);
       eng.ramp(wW.bp.frequency, 1300 + ws * 70 + gust * 120, 0.7);
       const sandy = (game.player?.sandWalking ? 0.5 : 0) + ws / 24;
-      eng.ramp(wS.g.gain, (0.004 + 0.02 * sandy * gust) * env.wind * 6, 0.7);
+      eng.ramp(wS.g.gain, (0.004 + 0.02 * sandy * gust) * env.wind * 6 * (1 + storm * 4.5) * (1 - 0.5 * night), 0.7);
       eng.ramp(stormG.gain, storm * 0.32 * 2.5 * (env.wind > 0.2 ? 1 : 0.2), 1.5);
       eng.ramp(duneG.gain, 0.012 * env.dune * (1 - clamp(ws / 14, 0, 0.6)), 1.5);
 
@@ -161,6 +184,10 @@ export function createAmbience(game, eng) {
       eng.ramp(murmurOut.gain, env.murmur * (api.ritualOn ? 1.5 : 1) * 7, 0.9);
       if (env.murmur > 0.02) stepVoices(now);
 
+      if (night > 0.2 && env.wind > 0.2) {
+        if (now > nextSlide) { sandSlide(now + 0.02); nextSlide = now + rnd(11, 28) / night; }
+        if (now > nextCrackle) { coldCrackle(now + 0.02); nextCrackle = now + rnd(0.7, 2.6) / night; }
+      }
       if (env.drip > 0.02 && now > nextDrip) { drip(now + 0.01); nextDrip = now + rnd(1.4, 5.5) / env.drip; }
       if (env.cloth > 0.05 && now > nextCloth) { clothFlap(now + 0.01); nextCloth = now + rnd(5, 14) / env.cloth; }
     },

@@ -13,6 +13,19 @@ export function createHud(game, root, ctx) {
   const ripple = el('div', 'ripple', root);
   const rsvg = svgEl('svg', { viewBox: '0 0 200 72', preserveAspectRatio: 'xMidYMax meet' }, ripple);
   const arcs = RADII.map(() => svgEl('path', { fill: 'none', 'stroke-linecap': 'round' }, rsvg));
+  // ---------- Индикатор режима походки (рядом с рябью): ровные следы — обычный, рваные — «по песку» ----------
+  const modeEl = el('div', 'mode', root);
+  const msvg = svgEl('svg', { viewBox: '0 0 44 26' }, modeEl);
+  const printAt = (parent, x, y, rot, o = 1, dash = false) => {
+    const g = svgEl('g', { transform: `translate(${x} ${y}) rotate(${rot})`, opacity: o }, parent);
+    const a = { fill: dash ? 'none' : 'currentColor', stroke: 'currentColor', 'stroke-width': dash ? 0.9 : 0, 'stroke-dasharray': dash ? '1.4 1.2' : '' };
+    svgEl('ellipse', { cx: 0, cy: -2.2, rx: 2.5, ry: 3.6, ...a }, g);
+    svgEl('ellipse', { cx: 0, cy: 4.3, rx: 1.7, ry: 2, ...a }, g);
+  };
+  const gNormal = svgEl('g', {}, msvg), gDesert = svgEl('g', {}, msvg);
+  [[8, 17, 8], [22, 9, -8], [36, 17, 8]].forEach(([x, y, r]) => printAt(gNormal, x, y, r + 90));
+  printAt(gDesert, 6, 18, 100); printAt(gDesert, 15, 8, 70, 0.9); printAt(gDesert, 25, 17, 118, 0.45, true); printAt(gDesert, 37, 9, 80, 0.9);
+  svgEl('path', { d: 'M20.5 3.5 L22.5 8 M23 3 L21 6', stroke: 'currentColor', 'stroke-width': 0.9, fill: 'none', 'stroke-linecap': 'round', opacity: 0.8 }, gDesert);
   // ---------- Засечки ----------
   const ticks = el('div', 'ticks', root);
   const tsvg = svgEl('svg', { viewBox: '0 0 96 12' }, ticks);
@@ -40,7 +53,7 @@ export function createHud(game, root, ctx) {
     ripple: 0, ticks: 0, drop: 0, ring: 0, prompt: 0,
     lastNoise: -1, lastChange: -10, tailUntil: -10,
     dropShowUntil: -10, lastM: null, lastBucket: null, lastShade: null, pollT: 0,
-    promptKey: '', t: 0,
+    promptKey: '', t: 0, mode: 0, modeShowUntil: -10, lastMode: null, modeKey: '',
   };
 
   function setOpacity(node, v) { const s = v <= 0.003 ? '0' : String(v); if (node._o !== s) { node.style.opacity = s; node._o = s; } }
@@ -82,6 +95,22 @@ export function createHud(game, root, ctx) {
       }
     }
     setOpacity(ripple, easeOut(S.ripple) * S.layer);
+
+    // --- индикатор режима походки: появляется вместе с рябью и на 3.5 с после переключения ---
+    const mm = p?.moveMode;
+    if (mm === 'normal' || mm === 'desert') {
+      if (S.lastMode !== null && mm !== S.lastMode) { S.modeShowUntil = now + 3.5; ctx.modeToggled = true; }
+      S.lastMode = mm;
+      if (S.modeKey !== mm) {
+        S.modeKey = mm;
+        gNormal.style.display = mm === 'normal' ? '' : 'none'; gDesert.style.display = mm === 'desert' ? '' : 'none';
+        modeEl.style.color = mm === 'desert' ? 'rgb(200,161,101)' : 'rgb(239,230,216)';
+        modeEl.title = mm === 'desert' ? 'sand-walk' : 'normal';
+      }
+    }
+    const modeOn = (mm === 'normal' || mm === 'desert') && (S.ripple > 0.05 || now < S.modeShowUntil);
+    S.mode = approach(S.mode, modeOn ? 1 : 0, dt, 0.25, 0.8);
+    setOpacity(modeEl, easeOut(S.mode) * S.layer * 0.9);
 
     // --- засечки ритма ---
     const sw = !!p?.sandWalking && onSand;

@@ -7,9 +7,10 @@ import { create as createDebug } from './debug.js';
 import { createReactions } from './reactions.js';
 
 const ZONE_ORDER = Object.keys(ZONES);
-const MUSIC_STATES = ['Silence', 'DesertCalm', 'DesertDrone', 'WormThreat', 'WormReveal', 'SietchLife', 'SietchNarrow', 'HallChorale'];
+const MUSIC_STATES = ['Silence', 'DesertCalm', 'DesertDrone', 'WormThreat', 'WormReveal', 'Encounter', 'SietchLife', 'SietchNarrow', 'HallChorale'];
 const TITLE_HOLD = 4;
-const CINEMATIC_SAFETY = 90;
+// Встреча с червём — длинная, частично интерактивная сцена (резолвится, когда червь уходит): страховка 240 с.
+const CINEMATIC_SAFETY = 240;
 // Параметры склейки (как в ARakisStoryDirector, метры вместо сантиметров).
 const ELLIPSIS_DEFAULT_WINDOW = 20;
 const ELLIPSIS_DEFAULT_FADE = 1.2;
@@ -28,7 +29,7 @@ const BUILTIN = [
   B('S_Start_Music', 1, 'Start', 'SetMusic', 'DesertCalm'),
   B('S_A1_Title', 2, 'Start', 'TitleCard', 'Ракис. Гребень Шайтана. Рассвет|Rakis. Shaitan\'s Ridge. Dawn', 3),
   B('S_A1_Line', 3, 'Start', 'PlayDialogue', 'A1_Ilva_01', 11),
-  B('S_A1_Hint', 4, 'Beat:S_A1_Line', 'Hint', 'Удерживайте Alt (LB) — походка по песку. Сбивайте ритм.|Hold Alt (LB) to sand-walk. Break your rhythm.', 1),
+  B('S_A1_Hint', 4, 'Beat:S_A1_Line', 'Hint', 'Alt (LB) — походка по песку, C — сменить режим. Сбивайте ритм.|Alt (LB) to sand-walk, C switches gait mode. Break your rhythm.', 1),
   B('S_A2_Weather', 10, 'ZoneEnter:A2_Erg', 'SetWeather', 'Morning_Erg,10'),
   B('S_A2_Music', 11, 'ZoneEnter:A2_Erg', 'SetMusic', 'DesertDrone'),
   B('S_A2_Title', 12, 'ZoneEnter:A2_Erg', 'TitleCard', 'Открытый эрг|The Open Erg', 1),
@@ -45,7 +46,6 @@ const BUILTIN = [
   B('S_A2_AfterMusic', 25, 'Beat:S_A2_Reveal', 'SetMusic', 'DesertDrone'),
   B('S_A3_Title', 30, 'ZoneEnter:A3_Approach', 'TitleCard', 'Коготь|The Claw', 1),
   B('S_A3_Weather', 31, 'ZoneEnter:A3_Approach', 'SetWeather', 'Noon_Approach,12'),
-  B('S_A3_Ossana', 32, 'ZoneEnter:A3_Approach', 'PlayDialogue', 'A3_Ossana_01', 4),
   B('S_A3_Storm', 33, 'ZoneEnter:A3_Approach', 'SetWeather', 'Storm_Horizon,20', 30),
   B('S_A4_Weather', 40, 'ZoneEnter:A4_Crevice', 'SetWeather', 'Crevice_Shade,4'),
   B('S_B1_Title', 50, 'ZoneEnter:B1_Airlock', 'TitleCard', 'Табр-ан-Нур|Tabr-an-Nur', 1),
@@ -84,6 +84,7 @@ export function create(game) {
   let started = false, ended = false, ritualStarted = false;
   let cinematicBeat = null;
   let hasNoiseBeats = false;
+  let lastStoryWeather = null;     // последний SetWeather сюжета (применённый или пропущенный из-за ручного режима)
 
   function load() {
     const src = game.data?.StoryBeats;
@@ -132,7 +133,11 @@ export function create(game) {
         case 'Ellipsis': actionEllipsis(b); return;
         case 'SetWeather': {
           const [id, blend] = p.split(',').map((s) => s.trim());
-          game.weather?.request?.(id, blend !== undefined && blend !== '' ? Math.max(0, parseFloat(blend)) : 8);
+          const sec = blend !== undefined && blend !== '' ? Math.max(0, parseFloat(blend)) : 8;
+          lastStoryWeather = { id, sec };
+          // Ручной выбор игрока (меню «Погода и время») важнее сюжета, пока он не нажмёт «Вернуть сюжетную погоду».
+          if (game.weatherManual) { console.info(`[story] SetWeather ${id} пропущен: ручная погода`); break; }
+          game.weather?.request?.(id, sec);
           break;
         }
         case 'SetMusic':
@@ -170,12 +175,15 @@ export function create(game) {
     cinematicBeat = b;
     let promise = null;
     try {
-      if (/WormReveal/i.test(p)) promise = game.worm?.playReveal?.();
+      if (/WormReveal|WormEncounter/i.test(p)) promise = game.worm?.playReveal?.() ?? game.worm?.playEncounter?.();
       else if (/HallFinale/i.test(p)) { game.audio?.finalChord?.(); promise = game.sietch?.playFinale?.(); }
     } catch (e) { console.error('[story] кат-сцена:', e); }
-    // Если модуль кат-сцены сам не включил режим — включаем (леттербокс, блокировка ввода).
+    // Если у сцены нет собственного модуля (нет Promise) и режим не включён — включаем сами (леттербокс, блокировка ввода).
+    // Если модуль вернул Promise (встреча с червём: длинная, частично интерактивная), режим кат-сцены ведёт он сам:
+    // HUD и леттербокс только в те части, где game.cinematic.active = true.
     let mine = false;
-    if (!game.cinematic.active) {
+    const hasPromise = !!promise && typeof promise.then === 'function';
+    if (!game.cinematic.active && !hasPromise) {
       game.cinematic.active = true; game.cinematic.owner = 'story'; mine = true;
       bus.emit('cinematic', { active: true, id: p });
     }
@@ -312,7 +320,7 @@ export function create(game) {
     ell.source = game.zone;
     p.teleport(T.x, game.heightAt(T.x, T.z), T.z, T.yaw);
     game.companions?.teleportBehind?.();
-    if (ell.hours && game.weather) {
+    if (ell.hours && game.weather && !game.weatherManual) {
       if (game.weather.setHours) game.weather.setHours((game.weather.hours ?? 0) + ell.hours);
     }
     let hold = ELLIPSIS_BLACK_HOLD;
@@ -370,6 +378,13 @@ export function create(game) {
     fireTrigger(key);
   });
   bus.on('worm:state', ({ to } = {}) => { if (to) fireTrigger(`WormState:${to}`); });
+  // Встреча с приручённым червём: прибытие → величественная тема, разговор → низкий хор + рамочный барабан, отход → нарастание.
+  bus.on('worm:encounter', ({ phase } = {}) => {
+    const ph = String(phase || '').toLowerCase();
+    if (/arriv|reveal|appear|emerge|breach|approach|start/.test(ph)) game.audio?.setMusic?.('WormReveal');
+    else if (/talk|dialog|speak|rider|meet|encounter|converse/.test(ph)) game.audio?.setMusic?.('Encounter');
+    else if (/depart|leave|left|gone|exit|end|away|dive/.test(ph)) game.audio?.swell?.();
+  });
   bus.on('interact', ({ tag } = {}) => { if (tag) { dlg()?.setFlag?.(`Interact:${tag}`, true); fireTrigger(`Interact:${tag}`); } });
 
   let noiseAcc = 0;
@@ -380,6 +395,12 @@ export function create(game) {
     endDemo, startRitual,
     /** Отладка: запустить кат-сцену по Param (WormReveal / HallFinale) без бита. */
     playCinematic: (param) => actionCinematic({ id: `DBG_${param}`, fired: true, completed: false }, String(param)),
+    /** «Вернуть сюжетную погоду»: снимает ручной режим и применяет последний пресет сюжета. */
+    restoreWeather() {
+      game.weatherManual = false;
+      if (lastStoryWeather) game.weather?.request?.(lastStoryWeather.id, 3);
+    },
+    get lastStoryWeather() { return lastStoryWeather; },
     isFired: (id) => !!beats.find((b) => b.id === id)?.fired,
     isCompleted: (id) => !!beats.find((b) => b.id === id)?.completed,
     get beats() { return beats; },

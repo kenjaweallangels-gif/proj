@@ -12,11 +12,16 @@ export function createOverlays(game, root, ctx) {
   const subs = el('div', 'subs', root);
   const inner = el('div', 'inner', subs);
   const nameEl = el('div', 'name txt', inner);
+  const natEl = el('div', 'nat txt', inner);       // строка на языке мира — мелким курсивом над переводом
   const lineEl = el('div', 'line txt', inner);
   let subUntil = 0;
   function showSubtitle(e) {
     nameEl.textContent = NO_NAME.includes(e.speaker) ? '' : (e.name || '');
     nameEl.style.display = nameEl.textContent ? '' : 'none';
+    const canNat = game.settings.showNative !== false && e.kind !== 'bark' && !NO_NAME.includes(e.speaker);
+    // Галах (общий язык): вместо родной строки — крошечная метка. nativeScript в интерфейсе не показываем никогда (только для голоса).
+    const nat = canNat ? (e.galach ? game.t('галах', 'Galach') : String(e.native || '').trim()) : '';
+    natEl.textContent = nat; natEl.style.display = nat ? '' : 'none'; natEl.classList.toggle('tag', !!(canNat && e.galach));
     lineEl.textContent = e.text;
     subs.classList.add('on');
     subUntil = game.time + (e.duration || 3) + 1.5;
@@ -59,7 +64,9 @@ export function createOverlays(game, root, ctx) {
   const lore = el('div', 'lore txt', root);
   let loreUntil = 0, loreShown = false;
   function showLore(e) {
-    lore.textContent = e.text;
+    lore.textContent = '';
+    if (e.native && game.settings.showNative !== false) el('span', 'ins', lore, e.native);    // резная надпись на языке мира
+    el('span', 'desc', lore, e.text);
     lore.style.transition = 'opacity .8s ease-out';
     lore.style.opacity = '1'; loreShown = true;
     loreUntil = game.time + (e.duration || 5);
@@ -133,10 +140,11 @@ export function createOverlays(game, root, ctx) {
 
   // ---------- Затемнение ----------
   const fadeEl = el('div', 'fade', root);
-  let faded = false, fadeToken = 0;
+  let faded = false, fadeToken = 0, fadeBusyUntil = 0, idleSince = -1;
   function fade(toBlack, sec = 1) {
     faded = !!toBlack;
     const my = ++fadeToken;
+    fadeBusyUntil = performance.now() + Math.max(0, sec) * 1000 + 200;
     fadeEl.style.transition = sec > 0 ? `opacity ${sec}s linear` : 'none';
     // принудительный reflow, чтобы переход стартовал
     void fadeEl.offsetWidth;
@@ -162,6 +170,23 @@ export function createOverlays(game, root, ctx) {
     el: { subs, lore, tcard, hintEl, fadeEl },
     /** Показать концовку (затемнение → титр «Конец демо»); меню — в ui/index.js. */
     endTitle(text) { tq.length = 0; tq.push({ text, hold: 5, end: true }); runTitles(); },
+    /**
+     * Сторож чёрного экрана: если экран затемнён или в леттербоксе, а кат-сцены/склейки/концовки/активного перехода нет дольше 3 с —
+     * принудительно проявляем и убираем полосы. Возвращает true, если сработал.
+     */
+    watchdog(dt, { allowBlack, allowLetter, clearLetter }) {
+      const now = performance.now();
+      const stuckBlack = faded && !allowBlack && now > fadeBusyUntil;
+      const stuckLetter = letter && !allowLetter;
+      if (!stuckBlack && !stuckLetter) { idleSince = -1; return false; }
+      if (idleSince < 0) idleSince = now;
+      if (now - idleSince < 3000) return false;
+      idleSince = -1;
+      console.warn(`[ui] watchdog: ${stuckBlack ? 'экран остался чёрным' : ''}${stuckBlack && stuckLetter ? ' и ' : ''}${stuckLetter ? 'остался леттербокс' : ''} без кат-сцены — восстанавливаю`);
+      if (stuckBlack) fade(false, 0.6);
+      if (stuckLetter) { clearLetter(); letterbox(false); }
+      return true;
+    },
     update() {
       updateBarks();
       if (subUntil && game.time > subUntil) hideSubtitle();
