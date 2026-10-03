@@ -48,6 +48,7 @@ const cases = [
   ['galley_station_sl1_virtual', 'galley.html?intro=0&place=sl1&asm=1&field=0'],
   ['galley_station_me1_tp', 'galley.html?intro=0&place=me1&tp=1'],
   ['galley_clean', 'galley.html?intro=0&view=clean&glasses=aura'],
+  ['galley_direct', 'galley.html?intro=0&view=direct&glasses=lumaultra'],
   ['galley_system_full', 'galley.html?intro=0&sys=cat&glasses=aura&field=0'],
   ['galley_sim_em1', 'galley.html?intro=0&place=em1&auto=1&field=0'],
   ['galley_third_person', 'galley.html?intro=0&tp=1&glasses=aura'],

@@ -44,6 +44,8 @@ export const PRESETS = {
 
 /** Калибровка: 1 ед. яркости рендера ≈ 120 кд/м² (белая поверхность при ≈ 500 лк — около 1 ед.). */
 export const CD_PER_UNIT = 120;
+/** «Прямой обзор»: половина горизонтального поля на экране, ° (прямое зрение ±30° + ближняя периферия). */
+export const DIRECT_HALF_H = 45;
 
 export const DISPLAY = { diagDeg: 52, aspect: 16 / 9, centerDeg: [0, -2], distM: 4, nits: 1250, latencyMs: 22 };
 
@@ -150,7 +152,7 @@ uniform float focusD; uniform float pupilMM; uniform float dispD; uniform float 
 uniform float transmit; uniform float dispBright; uniform float blink; uniform float flash; uniform vec2 angVel;
 uniform float fatigueBlur; uniform float age; uniform float dirt; uniform float ipdErr; uniform vec4 disp; uniform float maxLod;
 uniform float exposureBias; uniform float bootFade; uniform float dbg; uniform float dispNits; uniform float sharpen; uniform float cdPerUnit;
-uniform float ghostK; uniform float edgeSoft; uniform float noPeriph;
+uniform float ghostK; uniform float edgeSoft; uniform float noPeriph; uniform float periphDark; uniform vec2 periphRange;
 uniform float vergD; uniform float ipdM; uniform float domR; uniform vec2 eyeOn; uniform float diplo; uniform float overlay;
 uniform vec4 lensA; uniform vec4 frameA; uniform vec4 fieldA; uniform float lensFrac; uniform float dispDistD;
 in vec2 vUv;
@@ -365,7 +367,11 @@ void main(){
     // плавно уходит в темноту (к ≈ 50° почти чёрная), без размытия и искажений; считается один глаз
     c = eyeView(1.0).rgb; vis = 1.0;
     float q = length(vec2(gA.x / 30.0, gA.y / 22.0));
-    c *= 1.0 - 0.9 * smoothstep(0.8, 1.75, q);
+    // «без периферии» — дальше зоны почти темно; «прямой обзор» (как съёмка через линзу очков) — ближняя
+    // периферия видна, слегка темнее и бледнее
+    float pk = smoothstep(periphRange.x, periphRange.y, q);
+    c = mix(c, vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), pk * (1.0 - periphDark) * 0.7);
+    c *= 1.0 - periphDark * pk;
   }
   else {
     gOcc = 0.0; vec4 cl = eyeOn.x > 0.0 ? eyeView(-1.0) : vec4(0.0); float ol = gOcc;
@@ -428,7 +434,7 @@ export class VisionRenderer {
         tReal: null, tDepth: null, tHolo: null, tLum: null, tDirt: dirtTexture(), res: new THREE.Vector2(1, 1), tanV: 1, aspect: 1, cNear: 0.05, cFar: 80,
         time: 0, focusD: 0.5, pupilMM: 4, dispD: 0.25, glassesOn: 0, dispOn: 0, transmit: 0.9, dispBright: 1, blink: 0, flash: 0,
         angVel: new THREE.Vector2(), fatigueBlur: 0, age: 30, dirt: 0.1, ipdErr: 0, disp: new THREE.Vector4(0, -2, 22, 12), maxLod: 7,
-        exposureBias: 1, bootFade: 1, dbg: 0, dispNits: DISPLAY.nits, sharpen: 0.45, cdPerUnit: CD_PER_UNIT, ghostK: 0.05, edgeSoft: 0.45, noPeriph: 0,
+        exposureBias: 1, bootFade: 1, dbg: 0, dispNits: DISPLAY.nits, sharpen: 0.45, cdPerUnit: CD_PER_UNIT, ghostK: 0.05, edgeSoft: 0.45, noPeriph: 0, periphDark: 0.9, periphRange: new THREE.Vector2(0.8, 1.75),
         tAtlas: null, tAtlasDepth: null, tFront: null, tFrontDepth: null, frontTan: Math.tan(Math.PI * 35 / 180), frontN: 1024, cortS0: 8, cortC: CORTICAL_C, panD: PANINI_D,
         fieldMode: 0, fieldSpan: new THREE.Vector2(220, 140), atlasFace: 512, aNear: 0.03, aFar: 80,
         vergD: 0.5, ipdM: IPD_MM / 1000, domR: 0.55, eyeOn: new THREE.Vector2(1, 1), diplo: 0, overlay: 0,
@@ -457,14 +463,28 @@ export class VisionRenderer {
    * без потери цвета к краю, виньетки, оправы, носа и век (самый быстрый).
    */
   setView(mode) {
-    this.view = mode === 'clean' || mode === 'center' ? mode : 'field';
-    this.u.noPeriph.value = this.view === 'clean' ? 1 : 0;
+    this.view = ['clean', 'center', 'direct'].includes(mode) ? mode : 'field';
+    this.u.noPeriph.value = this.view === 'clean' || this.view === 'direct' ? 1 : 0;
+    this.u.periphDark.value = this.view === 'clean' ? 0.9 : 0.45;
+    this.u.periphRange.value.set(...(this.view === 'clean' ? [0.8, 1.75] : [0.95, 1.6]));
     this.setFieldMode(this.view === 'field', true);
+    this.fitFov();
+  }
+
+  /**
+   * Угол камеры: «прямой обзор» — как съёмка через линзу очков камерой на месте глаза: ≈ ±45° по горизонтали
+   * (поле прямого зрения ±30° и полоса ближней периферии), не больше ±30° по вертикали; всё, включая окно
+   * дисплея очков, на экране крупнее, чем в «центре 72°». Остальные режимы — 72° по вертикали.
+   */
+  fitFov(aspect = this.camera.aspect) {
+    const D = THREE.MathUtils.RAD2DEG;
+    const fov = this.view === 'direct' ? Math.min(60, 2 * D * Math.atan(Math.tan(THREE.MathUtils.DEG2RAD * DIRECT_HALF_H) / aspect)) : 72;
+    if (Math.abs(this.camera.fov - fov) > 1e-3) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
   }
 
   /** Полное поле ≈ 200° (развёртка куба) или перспектива (центр 72° / без периферии). */
   setFieldMode(on, keepView = false) {
-    if (!keepView) { this.view = on ? 'field' : 'center'; this.u.noPeriph.value = 0; }
+    if (!keepView) { this.view = on ? 'field' : 'center'; this.u.noPeriph.value = 0; this.fitFov(); }
     this.fieldMode = !!on;
     this.u.fieldMode.value = on ? 1 : 0;
     this.u.lensFrac.value = on ? 0.75 : 1;
@@ -570,6 +590,7 @@ export class VisionRenderer {
   }
 
   setSize(w, h, pr) {
+    this.fitFov(w / h);
     const W = Math.floor(w * pr), H = Math.floor(h * pr);
     this.size = { W, H };
     // полное поле: ±100° по горизонтали точно в ширину экрана, центр — крупно (≈ W/80 пикс/°)

@@ -47,6 +47,7 @@ for (const t of location.hash.slice(1).split(/[-_.~]/).filter(Boolean)) {      /
   else if (['em1', 'sl1', 'me1'].includes(t)) { q.set('place', t); q.set('intro', '0'); }
   else if (t === 'narrow') q.set('field', '0');
   else if (t === 'clean') q.set('view', 'clean');
+  else if (t === 'direct') q.set('view', 'direct');
   else if (t === 'autonomous') q.set('mode', 'auto');
   else if (t === 'manual') q.set('mode', 'manual');
 }
@@ -548,9 +549,10 @@ async function main() {
   const VIEW_NOTE = {
     field: 'Поле зрения: полное, ≈ 200° (два глаза, естественная проекция: вертикали прямые, центр в натуральную величину). Tab — центр 72°',
     center: 'Поле зрения: центр 72° (как на мониторе, с периферией глаза). Tab — без периферии',
-    clean: 'Без периферии: видна только зона прямого зрения, периферия плавно затемнена (самый быстрый). Tab — полное поле',
+    clean: 'Без периферии: видна только зона прямого зрения, периферия плавно затемнена (самый быстрый). Tab — прямой обзор',
+    direct: 'Прямой обзор — как съёмка через линзу очков: прямое зрение ±30° и краешек периферии (≈ 90°), окно дисплея и окна — крупнее. Tab — полное поле',
   };
-  const VIEW_LABEL = { field: 'Поле 200°', center: 'Центр 72°', clean: 'Без периферии' };
+  const VIEW_LABEL = { field: 'Поле 200°', center: 'Центр 72°', clean: 'Без периферии', direct: 'Прямой обзор' };
   const say2 = (text, voice) => { app.notify(text, 4); if (voice && sim.tts) speak(text); };
   function fmtLeft(m) { const h = Math.floor(m / 60), mm = Math.round(m % 60); return h ? `${h} ч ${mm} мин` : `${mm} мин`; }
   function act(cmd, arg = null, src = 'клавиатура') {
@@ -691,11 +693,11 @@ async function main() {
         app.notify(`${d.brand} ${d.name}: ${d.optics}; ${d.weightG} г. Мышь — осмотр, Esc — выход`, 6);
         break;
       }
-      case 'view_clean': case 'view_field': case 'view_center': act('field', cmd.slice(5), src); break;
+      case 'view_clean': case 'view_field': case 'view_center': case 'view_direct': act('field', cmd.slice(5), src); break;
       case 'field': {
         // Tab: полное поле → центр 72° → без периферии → …
-        const order = ['field', 'center', 'clean'];
-        const want = arg == null ? order[(order.indexOf(vision.view) + 1) % 3] : arg === true || arg === '1' ? 'field' : arg === false || arg === '0' ? 'center' : arg;
+        const order = ['field', 'center', 'clean', 'direct'];
+        const want = arg == null ? order[(order.indexOf(vision.view) + 1) % order.length] : arg === true || arg === '1' ? 'field' : arg === false || arg === '0' ? 'center' : arg;
         vision.setView(want);
         app.notify(VIEW_NOTE[vision.view], 5); updateBar(); break;
       }
@@ -841,7 +843,7 @@ async function main() {
         ['WASD / стрелки', 'ходьба; Shift — быстрее; C — присесть'], ['мышь', 'обзор (щелчок — захват; ПКМ — без захвата)'], ['щелчок по окну', 'кнопки, поля, листы КД'],
         ['колесо над КД', 'зум к точке; перетаскивание — сдвиг листа'], ['F', 'осмотр точки узла + локальный алгоритм; Esc/Q — назад'], ['E', 'взаимодействие: очки, дверцы'],
         ['N / B', 'переход вперёд / назад'], ['P', 'фото в журнал'], ['G', 'закрепить окно перед глазами'], ['1–4', 'окна КД / переход / система / задание'],
-        ['Tab', 'вид: полное поле ≈ 200° (два глаза) / центр 72° / без периферии'], ['\\', 'схема зон поля зрения'],
+        ['Tab', 'вид: полное поле ≈ 200° / центр 72° / без периферии / прямой обзор'], ['\\', 'схема зон поля зрения'],
         ['I', 'имитация сборки: запуск / пауза; Shift+I — стоп'],
         ['6', 'виртуальная сборка без деталей (плеер): пробел, , . [ ] − Home End'], ['5', 'вид от третьего лица (колесо — ближе/дальше)'], ['U', 'имитация: камера ведёт / хожу сам'], ['X', 'алгоритм в углу поля зрения; Shift+X — другой угол'], ['K', 'другие очки (Shift+K — назад)'], ['R', '3DoF: окна по центру взгляда'],
         ['T', 'ускорение времени участка ×1 / ×60 / ×600'], ['L', 'затемнение линз по ступеням очков → авто'], ['V', 'снять / надеть очки'], ['O', 'модель зрения'], ['Enter', 'пропустить вступление'],
@@ -860,7 +862,7 @@ async function main() {
       <div class="presets"><button id="b_insp">🔍 Рассмотреть модель ${dv.brand} ${dv.name} на витрине</button></div>
       <h3>Два глаза и поле зрения</h3>
       <div class="presets">
-        <button data-fm="field" aria-pressed="${vision.view === 'field'}">Полное поле ≈ 200°</button><button data-fm="center" aria-pressed="${vision.view === 'center'}">Центр 72°</button><button data-fm="clean" aria-pressed="${vision.view === 'clean'}">Без периферии</button>
+        <button data-fm="field" aria-pressed="${vision.view === 'field'}">Полное поле ≈ 200°</button><button data-fm="center" aria-pressed="${vision.view === 'center'}">Центр 72°</button><button data-fm="clean" aria-pressed="${vision.view === 'clean'}">Без периферии</button><button data-fm="direct" aria-pressed="${vision.view === 'direct'}">Прямой обзор</button>
         <button id="b_zones" aria-pressed="${!!sim.zones}">Схема зон</button></div>
       <div class="presets">${[['both', 'Оба глаза'], ['L', 'Только левый'], ['R', 'Только правый']].map(([k, t]) => `<button data-eyes="${k}" aria-pressed="${params.eyes === k}">${t}</button>`).join('')}
         ${[['R', 'Ведущий правый'], ['L', 'Ведущий левый']].map(([k, t]) => `<button data-dom="${k}" aria-pressed="${params.domEye === k}">${t}</button>`).join('')}</div>
