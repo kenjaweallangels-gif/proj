@@ -37,6 +37,9 @@ const cases = [
   ['galley_onepro_3dof', 'galley.html?intro=0&glasses=onepro'],
   ['galley_air2pro_090', 'galley.html?step=090.02&glasses=air2pro'],
   ['galley_free_corner', 'galley.html?step=070.01&auto=1&autocam=free'],
+  // поле зрения: центр 72° (перспектива) и один глаз
+  ['galley_narrow_072', 'galley.html?step=090.02&field=0'],
+  ['galley_mono_right', 'galley.html?intro=0&vision=monoR'],
 ];
 let failed = 0;
 for (const [name, qs] of cases) {

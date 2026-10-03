@@ -10,11 +10,20 @@
 //  • рассеяние в глазу и на линзах (ореолы ламп растут с возрастом и грязью на линзах), блик-«призрак» от линзы;
 //  • очки: оправа и корпус (вблизи — не в фокусе), нос, затемнение линз, окно дисплея с виньетированием и
 //    хроматизмом по краю, двоение при неверном межзрачковом расстоянии, задержка отрисовки голограмм при
-//    поворотах головы, смаз при быстрых поворотах; моргание, усталость (слёзная плёнка), вспышка фото.
+//    поворотах головы, смаз при быстрых поворотах; моргание, усталость (слёзная плёнка), вспышка фото;
+//  • два глаза (binocular.js): поле каждого глаза (≈ 60° к носу, ≈ 100° к виску), зона перекрытия ≈ 120°,
+//    монокулярные серпы по краям; рамка, переносица, дужки и нос у каждого глаза свои — в зоне перекрытия
+//    они полупрозрачны (их видит только один глаз); вне зоны слияния Panum предметы ближе или дальше точки
+//    фиксации двоятся — и окно дисплея на 4 м, когда смотришь на деталь в руках; ведущий глаз весомее;
+//  • апертура очков по размерам рамки конкретной модели: сквозь линзу — затемнение и окно дисплея, вокруг —
+//    открытая периферия без затемнения; режим «полное поле ≈ 200°» — равнопромежуточная проекция развёртки
+//    пяти граней куба (то, что видит человек целиком), режим «центр 72°» — как на мониторе.
 // Параметры дисплея и линз берутся из профиля устройства (glasses.js): VITURE Luma/Beast, XREAL Air 2/One/Aura.
 import * as THREE from 'three';
 import { LAYER_HOLO, LAYER_LABEL, LAYER_REAL } from '../engine/holo.js';
 import { fbm, normalize } from '../scene/textures.js';
+import { CUBE_FACES, FIELD, IPD_MM, eyeAperture } from './binocular.js';
+import { DESIGN } from './glasses_model.js';
 
 export const PRESETS = {
   norm: { label: 'Норма, 30 лет', age: 30, refraction: 0, inserts: false, dial: 0, dirt: 0.1, fatigue: 0, ipdErr: 0, dim: 0 },
@@ -27,6 +36,8 @@ export const PRESETS = {
   dirty: { label: 'Захватанные линзы', age: 35, refraction: 0, inserts: false, dial: 0, dirt: 1, fatigue: 0.1, ipdErr: 0, dim: 0 },
   tired: { label: 'Конец смены (усталость)', age: 40, refraction: 0, inserts: false, dial: 0, dirt: 0.3, fatigue: 0.9, ipdErr: 0, dim: 0 },
   ipd: { label: 'Межзрачковое не настроено (+6 мм)', age: 30, refraction: 0, inserts: false, dial: 0, dirt: 0.1, fatigue: 0, ipdErr: 6, dim: 0 },
+  domL: { label: 'Ведущий левый глаз', age: 30, refraction: 0, inserts: false, dial: 0, dirt: 0.1, fatigue: 0, ipdErr: 0, dim: 0, domEye: 'L' },
+  monoR: { label: 'Один глаз (левый закрыт)', age: 30, refraction: 0, inserts: false, dial: 0, dirt: 0.1, fatigue: 0, ipdErr: 0, dim: 0, eyes: 'R' },
 };
 
 /** Калибровка: 1 ед. яркости рендера ≈ 120 кд/м² (белая поверхность при ≈ 500 лк — около 1 ед.). */
@@ -109,13 +120,13 @@ const QUAD_VS = 'out vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(positio
 
 const LUM_FS = /* glsl */`
 precision highp float;
-uniform sampler2D tReal; uniform sampler2D tPrev; uniform float dt; uniform float lod; uniform float first;
+uniform sampler2D tReal; uniform sampler2D tPrev; uniform float dt; uniform float lod; uniform float first; uniform vec2 uvScale;
 in vec2 vUv;
 void main(){
   float s = 0.0;
   for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++) {
     vec2 uv = vec2((float(i) + 0.5) / 4.0, (float(j) + 0.5) / 4.0) * 0.8 + 0.1;
-    vec3 c = textureLod(tReal, uv, lod).rgb;
+    vec3 c = textureLod(tReal, uv * uvScale, lod).rgb;            // в режиме полного поля — грань «вперёд» развёртки
     float w = 1.0 - 0.5 * length(uv - 0.5);                         // центр кадра весомее
     s += w * log(max(dot(c, vec3(0.2126, 0.7152, 0.0722)), 1e-4));
   }
@@ -129,123 +140,215 @@ void main(){
 const FINAL_FS = /* glsl */`
 precision highp float;
 uniform sampler2D tReal; uniform sampler2D tDepth; uniform sampler2D tHolo; uniform sampler2D tLum; uniform sampler2D tDirt;
+uniform sampler2D tAtlas; uniform sampler2D tAtlasDepth;
 uniform vec2 res; uniform float tanV; uniform float aspect; uniform float cNear; uniform float cFar; uniform float time;
+uniform float fieldMode; uniform vec2 fieldSpan; uniform float atlasFace; uniform float aNear; uniform float aFar;
 uniform float focusD; uniform float pupilMM; uniform float dispD; uniform float glassesOn; uniform float dispOn;
 uniform float transmit; uniform float dispBright; uniform float blink; uniform float flash; uniform vec2 angVel;
-uniform float fatigueBlur; uniform float age; uniform float dirt; uniform float ipdPx; uniform vec4 disp; uniform float maxLod;
+uniform float fatigueBlur; uniform float age; uniform float dirt; uniform float ipdErr; uniform vec4 disp; uniform float maxLod;
 uniform float exposureBias; uniform float bootFade; uniform float dbg; uniform float dispNits; uniform float sharpen; uniform float cdPerUnit;
-uniform float ghostK; uniform float edgeSoft; uniform float housingDeg;
+uniform float ghostK; uniform float edgeSoft;
+uniform float vergD; uniform float ipdM; uniform float domR; uniform vec2 eyeOn; uniform float diplo; uniform float overlay;
+uniform vec4 lensA; uniform vec4 frameA; uniform vec4 fieldA; uniform float lensFrac; uniform float dispDistD;
 in vec2 vUv;
 
+const float D2R = 0.0174532925;
 const vec2 P[12] = vec2[12](vec2(-0.326,-0.406),vec2(-0.840,-0.074),vec2(-0.696,0.457),vec2(-0.203,0.621),vec2(0.962,-0.195),vec2(0.473,-0.480),vec2(0.519,0.767),vec2(0.185,-0.893),vec2(0.507,0.064),vec2(0.896,0.412),vec2(-0.322,-0.933),vec2(-0.792,-0.598));
 float sdBox(vec2 p, vec2 b, float r){ vec2 q = abs(p) - b + r; return length(max(q,0.0)) + min(max(q.x,q.y),0.0) - r; }
 float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
-float linDepth(float z){ float n = cNear, f = cFar; return (2.0 * n * f) / (f + n - (z * 2.0 - 1.0) * (f - n)); }
+float linZ(float z, float n, float f){ return (2.0 * n * f) / (f + n - (z * 2.0 - 1.0) * (f - n)); }
 vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
 vec3 toSRGB(vec3 c){ return mix(c * 12.92, 1.055 * pow(c, vec3(1.0/2.4)) - 0.055, step(0.0031308, c)); }
 
-vec3 blurReal(vec2 uv, float r){
-  if (r < 0.6) return texture(tReal, uv).rgb;
-  float lod = clamp(log2(r) - 0.6, 0.0, maxLod);
-  vec3 acc = textureLod(tReal, uv, lod).rgb;
-  for (int i = 0; i < 12; i++) acc += textureLod(tReal, uv + P[i] * r / res, lod).rgb;
+// ---- направления: углы (азимут, возвышение) ↔ вектор головы (x вправо, y вверх, z вперёд) ----
+vec3 dirOf(vec2 a){ float ce = cos(a.y * D2R); return vec3(ce * sin(a.x * D2R), sin(a.y * D2R), ce * cos(a.x * D2R)); }
+vec2 angOf(vec3 d){ return degrees(vec2(atan(d.x, d.z), atan(d.y, length(d.xz)))); }
+vec2 uvPersp(vec2 a){ float tx = tan(a.x * D2R); return vec2(tx / (tanV * aspect), tan(a.y * D2R) * sqrt(1.0 + tx * tx) / tanV) * 0.5 + 0.5; }
+vec2 angOfScreen(vec2 uv){
+  if (fieldMode < 0.5) { vec2 tn = (uv * 2.0 - 1.0) * vec2(tanV * aspect, tanV); return degrees(vec2(atan(tn.x), atan(tn.y / sqrt(1.0 + tn.x * tn.x)))); }
+  vec2 t = (uv - 0.5) * fieldSpan; float r = length(t);                // равнопромежуточная проекция: угол от центра сохраняется
+  if (r < 1e-4) return vec2(0.0);
+  return angOf(vec3(t / r * sin(r * D2R), cos(r * D2R)));
+}
+// развёртка 5 граней куба (3×2): вперёд, вправо, влево, вверх, вниз
+vec2 atlasUV(vec3 d, float lod, out float cosF){
+  vec3 ad = abs(d); vec3 F; vec3 R; vec3 U; float i;
+  if (ad.z >= ad.x && ad.z >= ad.y) { i = 0.0; F = vec3(0,0,1); R = vec3(1,0,0); U = vec3(0,1,0); }
+  else if (ad.x >= ad.y) { if (d.x > 0.0) { i = 1.0; F = vec3(1,0,0); R = vec3(0,0,-1); U = vec3(0,1,0); } else { i = 2.0; F = vec3(-1,0,0); R = vec3(0,0,1); U = vec3(0,1,0); } }
+  else { if (d.y > 0.0) { i = 3.0; F = vec3(0,1,0); R = vec3(1,0,0); U = vec3(0,0,-1); } else { i = 4.0; F = vec3(0,-1,0); R = vec3(1,0,0); U = vec3(0,0,1); } }
+  float k = max(dot(d, F), 1e-3); cosF = k;
+  vec2 uv = vec2(dot(d, R), dot(d, U)) / k * 0.5 + 0.5;
+  float m = (0.5 * exp2(lod) + 0.5) / atlasFace; uv = clamp(uv, m, 1.0 - m);   // не «залезать» в соседнюю грань на размытых уровнях
+  float col = mod(i, 3.0), row = floor(i / 3.0);
+  return vec2((col + uv.x) / 3.0, (row + uv.y) / 2.0);
+}
+float outPPD(){ return fieldMode < 0.5 ? res.y / degrees(2.0 * atan(tanV)) : res.x / fieldSpan.x; }
+float texPPD(){ return fieldMode < 0.5 ? outPPD() : atlasFace / 90.0; }
+vec3 sceneAt(vec2 a, float lod){
+  if (fieldMode < 0.5) return textureLod(tReal, uvPersp(a), lod).rgb;
+  float c; return textureLod(tAtlas, atlasUV(dirOf(a), lod, c), lod).rgb;
+}
+float distAt(vec2 a){
+  if (fieldMode < 0.5) { vec2 uv = uvPersp(a); vec2 tn = (uv * 2.0 - 1.0) * vec2(tanV * aspect, tanV); return linZ(texture(tDepth, uv).r, cNear, cFar) * sqrt(1.0 + dot(tn, tn)); }
+  float c; vec2 uv = atlasUV(dirOf(a), 0.0, c); return linZ(texture(tAtlasDepth, uv).r, aNear, aFar) / c;
+}
+vec3 blurScene(vec2 a, float rDeg){
+  float rpx = rDeg * texPPD();
+  if (rpx < 0.6) return sceneAt(a, 0.0);
+  float lod = clamp(log2(rpx) - 0.6, 0.0, maxLod);
+  vec3 acc = sceneAt(a, lod);
+  for (int i = 0; i < 12; i++) acc += sceneAt(a + P[i] * rDeg, lod);
   return acc / 13.0;
 }
-vec3 blurHolo(vec2 uv, float r){
-  if (r < 0.6) return texture(tHolo, uv).rgb;
-  float lod = clamp(log2(r) + 0.4, 0.0, maxLod + 1.0);            // текстура голограмм — ×2 к экрану
+float holoPPD(){ return 2.0 * res.y / degrees(2.0 * atan(tanV)); }
+vec3 holoAt(vec2 a, float rDeg){                                       // текстура голограмм — перспектива камеры, ×2
+  vec2 uv = uvPersp(a);
+  float base = max(0.0, log2(holoPPD() / outPPD()) - 0.5);
+  float rpx = rDeg * holoPPD();
+  if (rpx < 0.6) return textureLod(tHolo, uv, base).rgb;
+  float lod = max(base, clamp(log2(rpx) - 0.6, 0.0, maxLod + 1.0));
   vec3 acc = textureLod(tHolo, uv, lod).rgb;
-  for (int i = 0; i < 12; i++) acc += textureLod(tHolo, uv + P[i] * r / res, lod).rgb;
+  for (int i = 0; i < 12; i++) acc += textureLod(tHolo, uvPersp(a + P[i] * rDeg), lod).rgb;
   return acc / 13.0;
+}
+// поле глаза (x — к виску): эллипс по квадрантам, мягкая граница
+float eyeField(vec2 e){
+  vec2 q = vec2(e.x >= 0.0 ? e.x / fieldA.x : -e.x / fieldA.y, e.y >= 0.0 ? e.y / fieldA.z : -e.y / fieldA.w);
+  return 1.0 - smoothstep(0.97, 1.03, length(q));
+}
+float sdLens(vec2 e){                                                   // линза: [−nasal, temporal] × [−down, up]
+  vec2 c = vec2((lensA.y - lensA.x) * 0.5, (lensA.z - lensA.w) * 0.5);
+  vec2 h = vec2((lensA.x + lensA.y) * 0.5, (lensA.z + lensA.w) * 0.5);
+  return sdBox(e - c, h, 9.0);
+}
+
+// общие для обоих глаз величины (вычисляются в main)
+vec2 gA; float gEcc; float gR; vec2 gSm; float gH; float gHH; float gExpo; vec3 gScat; vec3 gGhost; float gDesat; float gMeso; float gRH; float gOcc;
+
+vec4 eyeView(float s){
+  vec2 e = vec2(s * gA.x, gA.y);                                        // для этого глаза: x — к виску
+  float field = eyeField(e);
+  if (field <= 0.0) return vec4(0.0);
+  // мир: диспаратность (вне зоны слияния — двоение), расфокусировка, острота периферии, смаз при повороте
+  vec2 aS = gA + vec2(s * gH, 0.0);
+  vec3 col = blurScene(aS, gR);
+  if (length(gSm) > 0.15) {
+    float lod = clamp(log2(max(1.0, gR * texPPD())), 0.0, maxLod);
+    vec3 m = col; for (int i = 1; i <= 6; i++) m += sceneAt(aS + gSm * (float(i) / 6.0 - 0.5), lod);
+    col = m / 7.0;
+  }
+  vec3 lin = col * gExpo + gScat;
+  // сумеречный сдвиг и потеря цвета на периферии
+  float L = dot(lin, vec3(0.2126, 0.7152, 0.0722));
+  lin = mix(lin, vec3(L) * vec3(0.85, 0.95, 1.15), clamp(gMeso * 0.7 + gDesat, 0.0, 1.0));
+  // линза очков: свет мира через затемнение; блик от задней поверхности
+  float lsd = sdLens(e);
+  float inLens = glassesOn * (1.0 - smoothstep(-2.0, 2.0, lsd));
+  lin *= mix(vec3(1.0), transmit * vec3(0.94, 0.98, 1.0), inLens);
+  lin += gGhost * inLens;
+  // окно дисплея: у каждого глаза своё изображение; виртуальный экран на distM — при фиксации вблизи двоится
+  vec2 aH = gA + vec2(s * (gHH + ipdErr * 0.06), 0.0);
+  vec2 ac = aH - disp.xy;
+  float wsd = sdBox(ac, disp.zw, 1.2);
+  float wm = dispOn * glassesOn * inLens * (1.0 - smoothstep(-0.2 - edgeSoft, 0.2 + edgeSoft, wsd));
+  if (wm > 0.0) {
+    float edge = smoothstep(0.55, 1.0, length(ac / disp.zw));
+    vec2 ca = ac * edge * 0.012 * edgeSoft;                              // хроматизм у края окна
+    vec3 h;
+    h.r = holoAt(aH + ca, gRH).r; h.g = holoAt(aH, gRH).g; h.b = holoAt(aH - ca, gRH).b;
+    h += holoAt(aH + vec2(0.0, -0.22), gRH + 0.08) * ghostK;                       // вторичное отражение призмы
+    h += holoAt(vec2(aH.x, 2.0 * disp.y - aH.y), gRH + 0.3) * ghostK * 0.35;     // зеркальный «призрак» окна
+    vec3 hb = holoAt(aH, gRH + 0.11);
+    h = max(h + sharpen * (h - hb), 0.0);
+    // нит дисплея — в единицах мира: свет дисплея не проходит через затемнение и складывается со светом цеха
+    h *= dispNits / cdPerUnit * dispBright * (1.0 - 0.55 * edgeSoft * edge) * bootFade;
+    lin += h * gExpo * wm;
+  }
+  vec3 c = toSRGB(aces(lin));
+  c += glassesOn * dispOn * inLens * vec3(0.25, 0.85, 0.75) * (1.0 - smoothstep(0.0, 0.3, abs(wsd))) * 0.03;
+  // ---- то, что у самого глаза (2–4 см) — всегда не в фокусе: рамка, модуль, дужка, нос ----
+  float g = glassesOn;
+  float inFrameX = 1.0 - smoothstep(frameA.y - 4.0, frameA.y + 4.0, e.x);
+  float openBelow = smoothstep(-(lensA.w + frameA.x) + 4.0, -(lensA.w + frameA.x) - 4.0, e.y);
+  float frame = g * inFrameX * (1.0 - smoothstep(-2.0, 2.0, -lsd)) * (1.0 - openBelow);
+  float housing = g * inFrameX * smoothstep(lensA.z - 1.0, lensA.z + 6.0, e.y);
+  c = mix(c, vec3(0.012, 0.013, 0.016) + vec3(0.035) * (1.0 - smoothstep(lensA.z, lensA.z + 14.0, e.y)), max(frame * 0.9, housing * 0.97));
+  float temple = g * smoothstep(frameA.y - 2.0, frameA.y + 6.0, e.x) * (1.0 - smoothstep(frameA.w - 3.0, frameA.w + 4.0, abs(e.y - frameA.z)));
+  c = mix(c, vec3(0.02, 0.021, 0.024), temple * 0.92);
+  float xn = -e.x;                                                      // к носу
+  float edgeN = 51.0 + 0.45 * min(0.0, e.y + 12.0);
+  float nose = smoothstep(edgeN - 5.0, edgeN + 5.0, xn) * smoothstep(28.0, 6.0, e.y);
+  c = mix(c, vec3(0.26, 0.18, 0.15) * (0.6 + 0.4 * smoothstep(-45.0, 0.0, e.y)), nose * 0.9);
+  float cheek = smoothstep(-46.0, -62.0, e.y) * smoothstep(-25.0, 10.0, e.x);
+  c = mix(c, vec3(0.14, 0.10, 0.09), cheek * 0.85);
+  gOcc = clamp(max(max(frame * 0.9, housing), max(temple, max(nose, cheek))), 0.0, 1.0);
+  return vec4(c, field);
 }
 
 void main(){
   if (dbg > 0.5) {
-    float dd = linDepth(texture(tDepth, vUv).r);
-    gl_FragColor = dbg < 1.5 ? vec4(toSRGB(aces(texture(tReal, vUv).rgb)), 1.0) : dbg < 2.5 ? vec4(vec3(dd / 10.0), 1.0) : vec4(toSRGB(aces(textureLod(tReal, vUv, 4.0).rgb)), 1.0);
+    gl_FragColor = vec4(toSRGB(aces(fieldMode < 0.5 ? texture(tReal, vUv).rgb : texture(tAtlas, vUv).rgb)), 1.0);
     return;
   }
-  vec2 ndc = vUv * 2.0 - 1.0;
-  vec2 tn = vec2(ndc.x * tanV * aspect, ndc.y * tanV);
-  vec2 a = degrees(vec2(atan(tn.x), atan(tn.y / sqrt(1.0 + tn.x * tn.x))));
-  float ecc = length(a);
-  float pxPerRad = res.y / (2.0 * atan(tanV));
-
-  // ---- реальность: расфокусировка по глубине + периферия + смаз при повороте ----
-  float d = linDepth(texture(tDepth, vUv).r) * sqrt(1.0 + dot(tn, tn));
-  float dD = max(0.0, abs(1.0 / max(d, 0.05) - focusD) - 0.25);          // глубина резкости глаза ≈ ±0,25 дптр
-  float rDef = pupilMM * 1e-3 * dD * pxPerRad;
-  float rPer = smoothstep(24.0, 75.0, ecc) * 2.2 * (res.y / 900.0);
-  float r = sqrt(rDef * rDef + rPer * rPer) + fatigueBlur;
-  vec3 col = blurReal(vUv, r);
-  vec2 sm = angVel * pxPerRad * 0.012;                          // смаз ≈ 12 мс «выдержки» сетчатки при повороте
-  float smL = length(sm);
-  if (smL > 1.5) {
-    vec3 m = col; for (int i = 1; i <= 6; i++) m += blurReal(vUv + sm * (float(i) / 6.0 - 0.5) / res * vec2(-1.0, 1.0), r);
-    col = m / 7.0;
-  }
-  // ---- адаптация ----
-  // глаз адаптируется к тому, что прошло через линзы: при затемнении зрачок и адаптация «открываются»
-  float adapted = texture(tLum, vec2(0.5)).r * mix(1.0, transmit, glassesOn);
-  float expo = clamp(0.18 / max(adapted, 1e-4), 0.08, 12.0) * exposureBias;
-  vec3 lin = col * expo;
-  // ---- рассеяние в глазу и на линзах: ореолы ярких источников ----
-  vec3 g = (textureLod(tReal, vUv, 4.0).rgb * 0.5 + textureLod(tReal, vUv, 6.0).rgb * 0.35 + textureLod(tReal, vUv, 8.0).rgb * 0.15) * expo;
+  gA = angOfScreen(vUv);
+  vec3 dir = dirOf(gA);
+  gEcc = degrees(acos(clamp(dir.z, -1.0, 1.0)));
+  // ---- общее: расстояние, расфокусировка, острота периферии (MAR растёт линейно), смаз, диспаратность ----
+  float d = max(distAt(gA), 0.05);
+  float dD = max(0.0, abs(1.0 / d - focusD) - 0.25);                   // глубина резкости глаза ≈ ±0,25 дптр
+  float rDef = degrees(pupilMM * 1e-3 * dD);
+  float rPer = 0.8 * (1.0 + gEcc / 2.5) / 60.0;                         // ≈ минимальный угол разрешения, град
+  float fat = fatigueBlur * 0.08;
+  gR = sqrt(rDef * rDef + rPer * rPer) + fat;
+  gSm = vec2(-angVel.x, angVel.y) * degrees(0.012);                     // ≈ 12 мс «выдержки» сетчатки
+  float panum = 0.12 + 0.065 * gEcc;                                    // зона слияния Panum, град
+  float h = 0.5 * degrees(ipdM * (1.0 / d - vergD));
+  gH = h * smoothstep(0.5 * panum, panum, abs(2.0 * h)) * diplo;
+  float hh = 0.5 * degrees(ipdM * (dispDistD - vergD));
+  gHH = hh * smoothstep(0.5 * panum, panum, abs(2.0 * hh)) * diplo;
+  gRH = degrees(pupilMM * 1e-3 * max(0.0, abs(dispD - focusD) - 0.25)) + fat;
+  // ---- адаптация: глаз видит мир через линзы (в режиме полного поля часть поля — мимо линз) ----
+  float adapted = texture(tLum, vec2(0.5)).r * mix(1.0, transmit, glassesOn * lensFrac);
+  gExpo = clamp(0.18 / max(adapted, 1e-4), 0.08, 12.0) * exposureBias;
+  // ---- рассеяние в глазу и на линзах (ореолы ярких источников) ----
+  vec3 sg = (sceneAt(gA, 4.0) * 0.5 + sceneAt(gA, 6.0) * 0.35 + sceneAt(gA, 8.0) * 0.15) * gExpo;
   float dirtM = texture(tDirt, vUv * vec2(aspect, 1.0) * 0.7).r * dirt * glassesOn;
   float scatter = 0.035 + max(age - 30.0, 0.0) * 0.0025 + dirtM * 0.35;
-  lin += max(g - 0.9, 0.0) * scatter * 3.0;
-  // блик-«призрак» от задней поверхности линзы (зеркально к центру)
-  vec3 ghost = textureLod(tReal, vec2(1.0) - vUv * 0.9 - 0.05, 5.0).rgb * expo;
-  lin += max(ghost - 1.5, 0.0) * 0.012 * glassesOn;
-  // ---- сумеречное зрение и периферия ----
-  float L = dot(lin, vec3(0.2126, 0.7152, 0.0722));
-  float mesopic = 1.0 - smoothstep(0.003, 0.05, adapted);
-  lin = mix(lin, vec3(L) * vec3(0.85, 0.95, 1.15), clamp(mesopic * 0.7 + smoothstep(32.0, 75.0, ecc) * 0.35, 0.0, 1.0));
-  // ---- линзы очков: пропускание (затемнение), лёгкий тон ----
-  float lensSD = sdBox(a - vec2(0.0, -6.0), vec2(56.0, 26.0), 16.0);
-  float inLens = glassesOn * (1.0 - smoothstep(-3.5, 3.5, lensSD));
-  lin *= mix(vec3(1.0), transmit * vec3(0.94, 0.98, 1.0), inLens);
-  // ---- голограммы: окно дисплея, фокус дисплея, двоение (МЗР), хроматизм у края, задержка (в позе камеры) ----
-  vec2 ac = a - disp.xy;
-  float wsd = sdBox(ac, disp.zw, 1.2);
-  float wm = dispOn * glassesOn * (1.0 - smoothstep(-0.2 - edgeSoft, 0.2 + edgeSoft, wsd));
-  if (wm > 0.0) {
-    float rH = pupilMM * 1e-3 * max(0.0, abs(dispD - focusD) - 0.25) * pxPerRad + fatigueBlur;
-    float edge = smoothstep(0.55, 1.0, length(ac / disp.zw));
-    vec2 ca = (vUv - 0.5) * edge * 0.009 * edgeSoft;
-    vec3 h;
-    h.r = blurHolo(vUv + ca, rH).r; h.g = blurHolo(vUv, rH).g; h.b = blurHolo(vUv - ca, rH).b;
-    h += blurHolo(vUv + vec2(ipdPx, 0.0) / res, rH) * (ipdPx > 0.5 ? 0.45 : 0.0);
-    h += blurHolo(vUv + vec2(0.0, 3.0) / res, rH + 1.0) * ghostK;                  // вторичное отражение призмы (birdbath)
-    h += blurHolo(vec2(vUv.x, 2.0 * (0.5 + disp.y / 90.0) - vUv.y), rH + 4.0) * ghostK * 0.35;  // зеркальный «призрак» окна
-    // резкость дисплея: лёгкое нерезкое маскирование (micro-OLED + обработка изображения в очках)
-    vec3 hb = blurHolo(vUv, rH + 1.4);
-    h = max(h + sharpen * (h - hb), 0.0);
-    // яркость дисплея в нитах в тех же единицах, что и мир (калибровка cdPerUnit): свет дисплея не проходит
-    // через затемняющую плёнку и складывается со светом цеха до тональной компрессии — как на сетчатке
-    h *= dispNits / cdPerUnit * dispBright * (1.0 - 0.55 * edgeSoft * edge) * bootFade;
-    lin += h * expo * wm;
-  }
-  vec3 c = toSRGB(aces(lin));
-  c += glassesOn * dispOn * vec3(0.25, 0.85, 0.75) * (1.0 - smoothstep(0.0, 0.3, abs(wsd))) * 0.03;
-  // ---- оправа и корпус очков (в 2–3 см от глаза — всегда не в фокусе), нос, щёки ----
-  float housing = glassesOn * smoothstep(housingDeg, housingDeg + 9.0, a.y) * (1.0 - smoothstep(55.0, 70.0, abs(a.x)));
-  c = mix(c, vec3(0.012, 0.013, 0.016) + vec3(0.03) * (1.0 - smoothstep(housingDeg + 4.0, housingDeg + 17.0, a.y)), housing * 0.97);
-  float rim = glassesOn * (1.0 - smoothstep(0.5, 8.0, abs(lensSD)));
-  c = mix(c, vec3(0.015, 0.016, 0.02), rim * 0.8 * (1.0 - housing));
-  float w = max(0.0, -20.0 - a.y) * 0.7 + 1.0;
-  float nose = (1.0 - smoothstep(0.0, 11.0, abs(a.x) - w)) * smoothstep(-16.0, -36.0, a.y);
-  c = mix(c, vec3(0.24, 0.17, 0.14) * (0.75 + 0.25 * smoothstep(-42.0, -20.0, a.y)), nose * 0.35);
-  float cheek = smoothstep(-28.0, -46.0, a.y) * smoothstep(10.0, 36.0, abs(a.x));
-  c = mix(c, vec3(0.13, 0.095, 0.085), cheek * 0.5);
-  // виньетирование поля зрения
-  vec2 qv = vUv - 0.5; qv.x *= aspect;
-  c *= 1.0 - 0.5 * smoothstep(0.62, 1.15, length(qv * vec2(0.82, 1.28)));
-  c = mix(c, vec3(1.0), flash * 0.5);
+  gScat = max(sg - 0.9, 0.0) * scatter * 3.0;
+  gGhost = max(sceneAt(-gA * 0.9 + vec2(0.0, 2.0 * disp.y), 5.0) * gExpo - 1.5, 0.0) * 0.012;
+  gMeso = 1.0 - smoothstep(0.003, 0.05, adapted);
+  gDesat = smoothstep(25.0, 90.0, gEcc) * 0.6;
+  // ---- два глаза: в зоне перекрытия — смесь (ведущий глаз весомее), по краям — монокулярные серпы ----
+  // подавление: размытое близкое препятствие у одного глаза (рамка, нос) проигрывает чёткой сцене другого —
+  // переносица и нос видны лишь «призраком»
+  gOcc = 0.0; vec4 cl = eyeOn.x > 0.0 ? eyeView(-1.0) : vec4(0.0); float ol = gOcc;
+  gOcc = 0.0; vec4 cr = eyeOn.y > 0.0 ? eyeView(1.0) : vec4(0.0); float orr = gOcc;
+  float wl = cl.a * eyeOn.x * (1.0 - domR) * (1.0 - 0.8 * ol), wr = cr.a * eyeOn.y * domR * (1.0 - 0.8 * orr);
+  vec3 c = (cl.rgb * wl + cr.rgb * wr) / max(wl + wr, 1e-4);
+  float vis = max(cl.a * eyeOn.x, cr.a * eyeOn.y);
+  c *= vis;
+  // падение освещённости сетчатки на дальней периферии (наклонный зрачок)
+  c *= 1.0 - 0.35 * smoothstep(50.0, 100.0, gEcc);
+  if (fieldMode < 0.5) { vec2 qv = vUv - 0.5; qv.x *= aspect; c *= 1.0 - 0.35 * smoothstep(0.75, 1.2, length(qv * vec2(0.82, 1.28))); }
+  c = mix(c, vec3(1.0), flash * 0.5 * vis);
   // веки при моргании
-  float lt = mix(64.0, -3.0, blink), lb = mix(-64.0, -3.0, blink);
-  float lid = max(smoothstep(lt - 6.0, lt + 1.0, a.y), smoothstep(lb + 6.0, lb - 1.0, a.y));
-  c = mix(c, vec3(0.03, 0.012, 0.01), lid);
+  float lt = mix(64.0, -3.0, blink), lb = mix(-75.0, -3.0, blink);
+  float lid = max(smoothstep(lt - 6.0, lt + 1.0, gA.y), smoothstep(lb + 6.0, lb - 1.0, gA.y)) * step(0.001, blink);
+  c = mix(c, vec3(0.03, 0.012, 0.01), lid * vis);
+  // ---- схема зон поля зрения ----
+  if (overlay > 0.5) {
+    float px = 1.0 / outPPD();
+    float ring = 0.0;
+    for (int k = 0; k < 6; k++) { float R = k == 0 ? 1.0 : k == 1 ? 2.5 : k == 2 ? 5.0 : k == 3 ? 15.0 : k == 4 ? 30.0 : 60.0; ring = max(ring, 1.0 - smoothstep(0.6 * px, 1.6 * px, abs(gEcc - R))); }
+    c = mix(c, gEcc < 2.5 ? vec3(1.0, 0.85, 0.2) : vec3(0.45, 0.95, 1.0), ring * 0.8);
+    c = mix(c, vec3(1.0, 0.9, 0.3), (1.0 - smoothstep(0.0, 1.0, gEcc)) * 0.25);                 // фовеа (≈ 2°)
+    float fl = eyeField(vec2(-gA.x, gA.y)), fr = eyeField(vec2(gA.x, gA.y));
+    c = mix(c, vec3(1.0, 0.45, 0.35), fr * (1.0 - fl) * 0.18);                                 // видит только правый глаз
+    c = mix(c, vec3(0.35, 0.55, 1.0), fl * (1.0 - fr) * 0.18);                                 // только левый
+    float edgeB = (1.0 - smoothstep(0.0, 0.12, abs(fl - 0.5))) + (1.0 - smoothstep(0.0, 0.12, abs(fr - 0.5)));
+    c = mix(c, vec3(0.4, 1.0, 0.55), clamp(edgeB, 0.0, 1.0) * 0.8);
+    if (glassesOn > 0.5) for (int k = 0; k < 2; k++) { float sx = k == 0 ? -1.0 : 1.0; float l = abs(sdLens(vec2(sx * gA.x, gA.y))); c = mix(c, vec3(1.0), (1.0 - smoothstep(0.6 * px, 1.6 * px, l)) * 0.55); }
+  }
   c += (hash(vUv * res + fract(time) * 100.0) - 0.5) * 0.006;
   gl_FragColor = vec4(c, 1.0);
 }`;
@@ -270,13 +373,17 @@ export class VisionRenderer {
     this.qScene = new THREE.Scene(); this.qScene.add(this.quad);
     this.qCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     this.lumMat = new THREE.ShaderMaterial({ vertexShader: QUAD_VS, fragmentShader: LUM_FS,
-      uniforms: { tReal: { value: null }, tPrev: { value: null }, dt: { value: 0 }, lod: { value: 6 }, first: { value: 1 } } });
+      uniforms: { tReal: { value: null }, tPrev: { value: null }, dt: { value: 0 }, lod: { value: 6 }, first: { value: 1 }, uvScale: { value: new THREE.Vector2(1, 1) } } });
     this.finalMat = new THREE.ShaderMaterial({ vertexShader: QUAD_VS, fragmentShader: FINAL_FS, depthTest: false, depthWrite: false,
       uniforms: Object.fromEntries(Object.entries({
         tReal: null, tDepth: null, tHolo: null, tLum: null, tDirt: dirtTexture(), res: new THREE.Vector2(1, 1), tanV: 1, aspect: 1, cNear: 0.05, cFar: 80,
         time: 0, focusD: 0.5, pupilMM: 4, dispD: 0.25, glassesOn: 0, dispOn: 0, transmit: 0.9, dispBright: 1, blink: 0, flash: 0,
-        angVel: new THREE.Vector2(), fatigueBlur: 0, age: 30, dirt: 0.1, ipdPx: 0, disp: new THREE.Vector4(0, -2, 22, 12), maxLod: 7,
-        exposureBias: 1, bootFade: 1, dbg: 0, dispNits: DISPLAY.nits, sharpen: 0.45, cdPerUnit: CD_PER_UNIT, ghostK: 0.05, edgeSoft: 0.45, housingDeg: 15,
+        angVel: new THREE.Vector2(), fatigueBlur: 0, age: 30, dirt: 0.1, ipdErr: 0, disp: new THREE.Vector4(0, -2, 22, 12), maxLod: 7,
+        exposureBias: 1, bootFade: 1, dbg: 0, dispNits: DISPLAY.nits, sharpen: 0.45, cdPerUnit: CD_PER_UNIT, ghostK: 0.05, edgeSoft: 0.45,
+        tAtlas: null, tAtlasDepth: null, fieldMode: 0, fieldSpan: new THREE.Vector2(220, 140), atlasFace: 512, aNear: 0.03, aFar: 80,
+        vergD: 0.5, ipdM: IPD_MM / 1000, domR: 0.55, eyeOn: new THREE.Vector2(1, 1), diplo: 1, overlay: 0,
+        lensA: new THREE.Vector4(48, 58, 20, 55), frameA: new THREE.Vector4(12, 64, -6, 10), fieldA: new THREE.Vector4(FIELD.temporal, FIELD.nasal, FIELD.up, FIELD.down),
+        lensFrac: 1, dispDistD: 1 / DISPLAY.distM,
       }).map(([k, v]) => [k, { value: v }])) });
     this.u = this.finalMat.uniforms;
     this.u.disp.value.set(DISPLAY.centerDeg[0], DISPLAY.centerDeg[1], this.win.h / 2, this.win.v / 2);
@@ -284,6 +391,77 @@ export class VisionRenderer {
     this.occluder = new THREE.MeshBasicMaterial({ colorWrite: false });
     this.occlusion = false;
     this.latencyMs = DISPLAY.latencyMs;
+    this.fieldMode = false;
+    this.atlas = null;
+    this.faceCam = new THREE.PerspectiveCamera(90, 1, camera.near, camera.far);
+    // поворот каждой грани относительно головы (лицевая сторона камеры three — −Z)
+    this.faceQ = CUBE_FACES.map(({ F, U }) => {
+      const m = new THREE.Matrix4().lookAt(new THREE.Vector3(0, 0, 0), new THREE.Vector3(F[0], F[1], -F[2]), new THREE.Vector3(U[0], U[1], -U[2]));
+      return new THREE.Quaternion().setFromRotationMatrix(m);
+    });
+  }
+
+  /** Режим «полное поле ≈ 200°» (развёртка куба, равнопромежуточная проекция) или «центр 72°» (перспектива). */
+  setFieldMode(on) {
+    this.fieldMode = !!on;
+    this.u.fieldMode.value = on ? 1 : 0;
+    this.u.lensFrac.value = on ? 0.75 : 1;
+    this.lumMat.uniforms.uvScale.value.set(on ? 1 / 3 : 1, on ? 1 / 2 : 1);
+    if (on) this.ensureAtlas();
+  }
+
+  ensureAtlas() {
+    const H = this.size?.H || 900;
+    // пикселей на грань 90°: как у экрана в равнопромежуточной проекции (с запасом 15 %)
+    const face = Math.min(1280, Math.max(320, Math.round(((H / this.u.fieldSpan.value.y) * 90 * 1.15) / 16) * 16));
+    if (this.atlas && this.atlasFace === face) return;
+    this.atlas?.dispose();
+    this.atlas = new THREE.WebGLRenderTarget(face * 3, face * 2, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
+    this.atlas.depthTexture = new THREE.DepthTexture(face * 3, face * 2);
+    this.atlas.depthTexture.type = THREE.UnsignedIntType;
+    this.atlasFace = face;
+    this.u.atlasFace.value = face;
+  }
+
+  /** Отрисовать мир в 5 граней куба вокруг головы (вперёд, вправо, влево, вверх, вниз). */
+  renderAtlas() {
+    const { renderer, scene, camera, atlas } = this;
+    const fc = this.faceCam, F = this.atlasFace;
+    fc.near = camera.near; fc.far = camera.far; fc.updateProjectionMatrix();
+    fc.position.copy(camera.position);
+    fc.layers.set(LAYER_REAL); fc.layers.enable(LAYER_LABEL);
+    const shadowAuto = renderer.shadowMap.autoUpdate;
+    renderer.setRenderTarget(atlas);
+    atlas.scissorTest = true;
+    this.faceQ.forEach((q, i) => {
+      const col = i % 3, row = Math.floor(i / 3);
+      atlas.viewport.set(col * F, row * F, F, F); atlas.scissor.set(col * F, row * F, F, F);
+      fc.quaternion.copy(camera.quaternion).multiply(q);
+      fc.updateMatrixWorld();
+      renderer.setRenderTarget(atlas);
+      if (i === 1) renderer.shadowMap.autoUpdate = false;            // тени считаем один раз за кадр
+      renderer.render(scene, fc);
+    });
+    renderer.shadowMap.autoUpdate = shadowAuto;
+    atlas.scissorTest = false;
+    atlas.viewport.set(0, 0, F * 3, F * 2); atlas.scissor.set(0, 0, F * 3, F * 2);
+    this.u.aNear.value = fc.near; this.u.aFar.value = fc.far;
+  }
+
+  /**
+   * Курсор экрана (NDC) → NDC перспективной камеры (для выбора окон и деталей). В режиме полного поля экран —
+   * равнопромежуточная проекция; возвращает null, если направление вне перспективы камеры.
+   */
+  screenToCamNdc(ndc) {
+    if (!this.fieldMode) return ndc;
+    const span = this.u.fieldSpan.value;
+    const tx = ndc.x * 0.5 * span.x, ty = ndc.y * 0.5 * span.y, r = Math.hypot(tx, ty);
+    if (r < 1e-6) return new THREE.Vector2(0, 0);
+    const k = Math.PI / 180, sr = Math.sin(r * k) / r;
+    const v = new THREE.Vector3(tx * sr, ty * sr, -Math.cos(r * k));     // СК камеры three: вперёд — −Z
+    if (v.z >= -0.05) return null;
+    v.applyMatrix4(this.camera.projectionMatrix);
+    return new THREE.Vector2(v.x, v.y);
   }
 
   /** Профиль очков: окно дисплея, яркость, оптика (блики, мягкость края), корпус, задержка. */
@@ -295,19 +473,30 @@ export class VisionRenderer {
     this.u.dispNits.value = d.nits;
     this.u.ghostK.value = d.ghost;
     this.u.edgeSoft.value = d.edgeSoft;
-    this.u.housingDeg.value = d.housing;
+    // апертура очков для глаза — по размерам рамки этой модели (binocular.eyeAperture)
+    const ap = eyeAperture(DESIGN[d.id], d, this.ipdMM || IPD_MM);
+    this.aperture = ap;
+    this.u.lensA.value.set(ap.nasal, ap.temporal, ap.up, ap.down);
+    this.u.frameA.value.set(ap.rim, ap.frameT, ap.templeY, ap.templeH);
+    this.u.dispDistD.value = 1 / d.distM;
     // одинаковые 1920 пикс на более широкое поле — мельче детали: меньше подъём резкости
     this.u.sharpen.value = 0.45 * Math.min(1.2, (d.res[0] / this.win.h) / 42);
   }
 
   setSize(w, h, pr) {
     const W = Math.floor(w * pr), H = Math.floor(h * pr);
+    this.size = { W, H };
+    // полное поле: по вертикали ±70°, по горизонтали — сколько поместится (не меньше 220°)
+    const dpp = Math.max(220 / W, 140 / H);
+    this.u.fieldSpan.value.set(W * dpp, H * dpp);
+    if (this.fieldMode) this.ensureAtlas();
     this.rtReal.setSize(W, H);
     this.rtHolo.setSize(Math.min(4096, W * 2), Math.min(4096, H * 2));      // голограммы — с суперсэмплингом ×2: чётче текст окон
     this.u.res.value.set(W, H);
     this.u.aspect.value = w / h;
-    this.u.maxLod.value = Math.floor(Math.log2(Math.max(W, H))) - 1;
-    this.lumMat.uniforms.lod.value = Math.max(0, Math.floor(Math.log2(Math.max(W, H))) - 4);
+    this.maxLodReal = Math.floor(Math.log2(Math.max(W, H))) - 1;
+    this.u.maxLod.value = this.maxLodReal;
+    this.lodReal = Math.max(0, Math.floor(Math.log2(Math.max(W, H))) - 4);
   }
 
   /** Поза камеры с задержкой latency (интерполяция по истории). */
@@ -330,10 +519,13 @@ export class VisionRenderer {
     camera.updateMatrixWorld();
     this.history.push({ t: now, p: camera.position.clone(), q: camera.quaternion.clone() });
     while (this.history.length > 30) this.history.shift();
-    // 1) реальность
-    camera.layers.set(LAYER_REAL); camera.layers.enable(LAYER_LABEL);
-    renderer.setRenderTarget(this.rtReal);
-    renderer.render(scene, camera);
+    // 1) реальность: перспектива (центр 72°) или развёртка куба вокруг головы (полное поле)
+    if (this.fieldMode) this.renderAtlas();
+    else {
+      camera.layers.set(LAYER_REAL); camera.layers.enable(LAYER_LABEL);
+      renderer.setRenderTarget(this.rtReal);
+      renderer.render(scene, camera);
+    }
     // 2) голограммы — с позой «из прошлого» (задержка дисплея), на прозрачном фоне
     this.holoCam.copy(camera);
     this.delayedPose(now);
@@ -357,7 +549,8 @@ export class VisionRenderer {
     scene.background = bg; scene.environment = env;
     // 3) адаптация к яркости
     const prev = this.lum[this.lumIdx], next = this.lum[1 - this.lumIdx];
-    this.lumMat.uniforms.tReal.value = this.rtReal.texture;
+    this.lumMat.uniforms.tReal.value = this.fieldMode ? this.atlas.texture : this.rtReal.texture;
+    this.lumMat.uniforms.lod.value = this.fieldMode ? Math.max(0, Math.floor(Math.log2(this.atlasFace * 3)) - 4) : this.lodReal;
     this.lumMat.uniforms.tPrev.value = prev.texture;
     this.lumMat.uniforms.dt.value = dt;
     this.lumMat.uniforms.first.value = this.first;
@@ -369,6 +562,8 @@ export class VisionRenderer {
     // 4) итог: глаз + очки
     Object.assign(u.tReal, { value: this.rtReal.texture });
     u.tDepth.value = this.rtReal.depthTexture;
+    if (this.fieldMode) { u.tAtlas.value = this.atlas.texture; u.tAtlasDepth.value = this.atlas.depthTexture; }
+    u.maxLod.value = this.fieldMode ? Math.floor(Math.log2(this.atlasFace * 3)) - 1 : this.maxLodReal;
     u.tHolo.value = this.rtHolo.texture;
     u.tLum.value = next.texture;
     u.tanV.value = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));

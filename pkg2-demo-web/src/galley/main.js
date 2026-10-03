@@ -36,6 +36,7 @@ for (const t of location.hash.slice(1).split(/[-_.~]/).filter(Boolean)) {      /
   else if (t === 'auto') q.set('auto', '1');
   else if (t === 'free') { q.set('auto', '1'); q.set('autocam', 'free'); }
   else if (t === 'corner') q.set('corner', '1');
+  else if (t === 'narrow') q.set('field', '0');
 }
 const $ = (id) => document.getElementById(id);
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -155,9 +156,13 @@ async function main() {
 
   // ---------- сборщик, глаз, очки ----------
   const player = new Player(cam, canvas, world.colliders);
-  const params = { light: 1, ...(PRESETS[q.get('vision')] || PRESETS.norm) };
+  // зрение: два глаза (оба / только левый / только правый), ведущий глаз, межзрачковое расстояние, двоение
+  const BINO = { eyes: 'both', domEye: 'R', ipd: 64, diplo: 1 };
+  const params = { light: 1, ...BINO, ...(PRESETS[q.get('vision')] || PRESETS.norm) };
   const eye = new Eye(params);
   const vision = new VisionRenderer(renderer, scene, cam);
+  vision.ipdMM = params.ipd;
+  vision.setFieldMode(q.get('field') !== '0');                     // по умолчанию — полное поле ≈ 200°
   const sim = { glasses: 0, display: 0, boot: 0, dimLevel: params.dim, dimMode: q.get('vision') === 'dimmed' ? 'manual' : 'auto', bright: 1, occlusion: false, tts: true,
     device: deviceById.get(q.get('glasses')) || deviceById.get(DEFAULT_DEVICE), wearMin: 0 };
   const STAND = V(0, 1.68, 3.4);            // место сборщика у стапеля: для него задана раскладка окон
@@ -312,7 +317,8 @@ async function main() {
 
   // ---------- ввод ----------
   const center = new THREE.Vector2(0, 0);
-  const pointerNdc = () => (player.locked ? center : player.mouse);
+  const OFF = new THREE.Vector2(9, 9);                               // вне кадра камеры — луч ни во что не попадёт
+  const pointerNdc = () => (player.locked ? center : (vision.screenToCamNdc(player.mouse) || OFF));
   const rayReal = new THREE.Raycaster(); rayReal.layers.set(LAYER_REAL);
   function pickReal(ndc) {
     rayReal.setFromCamera(ndc, cam);
@@ -374,6 +380,8 @@ async function main() {
     if (k === 'KeyR') act('recenter');
     if (k === 'KeyX') act(e.shiftKey ? 'corner_side' : 'corner');
     if (k === 'KeyU') act('auto_cam');
+    if (k === 'Tab') { e.preventDefault(); act('field'); }
+    if (k === 'Backslash') act('zones');
   });
   function featureOf(o) { while (o) { if (o.userData?.featureId) return o.userData.featureId; o = o.parent; } return null; }
 
@@ -488,6 +496,8 @@ async function main() {
         app.notify(`${d.brand} ${d.name}: ${d.optics}; ${d.weightG} г. Мышь — осмотр, Esc — выход`, 6);
         break;
       }
+      case 'field': vision.setFieldMode(arg == null ? !vision.fieldMode : !!arg); app.notify(vision.fieldMode ? 'Поле зрения: полное, ≈ 200° (два глаза, периферия, оправа целиком). Tab — центр 72°' : 'Поле зрения: центр 72° (как на мониторе). Tab — полное поле', 5); updateBar(); break;
+      case 'zones': sim.zones = !sim.zones; app.notify(sim.zones ? 'Схема зон: фовеа 2°, 5°, 10°, 30° (центр), 60° (периферия); зелёным — границы полей глаз; красным/синим — видит только правый/левый глаз; белым — линзы' : 'Схема зон скрыта', 7); break;
       case 'recenter': app.notify(mgr.recenter() ? 'Окна — по центру взгляда' : 'Окна закреплены у стапеля (6DoF) — центрировать не нужно'); break;
       case 'device': {
         const i = DEVICES.indexOf(sim.device);
@@ -503,7 +513,7 @@ async function main() {
       case 'follow': { const h = mgr.pick(center); if (h) { h.panel.mode = h.panel.mode === 'follow' ? 'world' : 'follow'; h.panel.dirty = true; } break; }
       case 'call': app.sendChat(`Прошу подойти к стапелю СТ-3: переход ${run.step.id}`); app.notify('Мастер вызван'); break;
       case 'message': if (arg) { app.sendChat(String(arg)); app.notify('Сообщение отправлено'); } break;
-      case 'preset': if (PRESETS[arg]) { Object.assign(params, { light: 1 }, PRESETS[arg]); params.dial = Math.max(sim.device.dial, params.dial); sim.dimLevel = sim.device.dimLevels ? params.dim : 0; } break;
+      case 'preset': if (PRESETS[arg]) { Object.assign(params, { light: 1, eyes: 'both', domEye: 'R' }, PRESETS[arg]); params.dial = Math.max(sim.device.dial, params.dial); sim.dimLevel = sim.device.dimLevels ? params.dim : 0; } break;
       case 'light': params.light = THREE.MathUtils.clamp(Number(arg) || 1, 0.3, 3); break;
       case 'glasses': sim.glasses = sim.glasses ? 0 : 1; sim.display = sim.glasses; mgr.setEnabled(!!sim.glasses && app.aligned); break;
       case 'speed': app.speed = Number(arg) || 60; break;
@@ -618,6 +628,7 @@ async function main() {
         ['WASD / стрелки', 'ходьба; Shift — быстрее; C — присесть'], ['мышь', 'обзор (щелчок — захват; ПКМ — без захвата)'], ['щелчок по окну', 'кнопки, поля, листы КД'],
         ['колесо над КД', 'зум к точке; перетаскивание — сдвиг листа'], ['F', 'осмотр точки узла + локальный алгоритм; Esc/Q — назад'], ['E', 'взаимодействие: очки, дверцы'],
         ['N / B', 'переход вперёд / назад'], ['P', 'фото в журнал'], ['G', 'закрепить окно перед глазами'], ['1–4', 'окна КД / переход / система / задание'],
+        ['Tab', 'поле зрения: полное ≈ 200° (два глаза) / центр 72°'], ['\\', 'схема зон поля зрения'],
         ['I', 'имитация сборки: запуск / пауза; Shift+I — стоп'], ['U', 'имитация: камера ведёт / хожу сам'], ['X', 'алгоритм в углу поля зрения; Shift+X — другой угол'], ['K', 'другие очки (Shift+K — назад)'], ['R', '3DoF: окна по центру взгляда'],
         ['T', 'ускорение времени участка ×1 / ×60 / ×600'], ['L', 'затемнение линз по ступеням очков → авто'], ['V', 'снять / надеть очки'], ['O', 'модель зрения'], ['Enter', 'пропустить вступление'],
       ].map(([a, b]) => `<tr><td><kbd>${a}</kbd></td><td>${b}</td></tr>`).join('')}</table>`;
@@ -633,6 +644,17 @@ async function main() {
       ${dv.estimates.length ? `<br><i>Оценка (не опубликовано): ${dv.estimates.join(', ')}.</i>` : ''}
       <br>Источники: ${dv.sources.map((u, i) => `<a href="${u}" target="_blank" rel="noopener">[${i + 1}]</a>`).join(' ')}</div>
       <div class="presets"><button id="b_insp">🔍 Рассмотреть модель ${dv.brand} ${dv.name} на витрине</button></div>
+      <h3>Два глаза и поле зрения</h3>
+      <div class="presets">
+        <button data-fm="1" aria-pressed="${vision.fieldMode}">Полное поле ≈ 200°</button><button data-fm="0" aria-pressed="${!vision.fieldMode}">Центр 72°</button>
+        <button id="b_zones" aria-pressed="${!!sim.zones}">Схема зон</button></div>
+      <div class="presets">${[['both', 'Оба глаза'], ['L', 'Только левый'], ['R', 'Только правый']].map(([k, t]) => `<button data-eyes="${k}" aria-pressed="${params.eyes === k}">${t}</button>`).join('')}
+        ${[['R', 'Ведущий правый'], ['L', 'Ведущий левый']].map(([k, t]) => `<button data-dom="${k}" aria-pressed="${params.domEye === k}">${t}</button>`).join('')}</div>
+      ${sl('ipd', 'Межзрачковое расстояние, мм', 54, 74, 1)}
+      <label>Физиологическое двоение (вне зоны слияния Panum)<input type="checkbox" id="r_diplo" ${params.diplo ? 'checked' : ''}></label>
+      <div class="note">Апертура ${dv.name} для каждого глаза: к носу ${vision.aperture.nasal.toFixed(0)}°, к виску ${vision.aperture.temporal.toFixed(0)}°,
+        вверх ${vision.aperture.up.toFixed(0)}°, вниз ${vision.aperture.down.toFixed(0)}° (поле глаза: к носу 60°, к виску 100°, вверх 58°, вниз 72°).
+        Вне линз — открытая периферия без затемнения, рамка и дужки — размытые, у самого глаза.</div>
       <h3>Модель зрения в очках</h3>
       <div class="presets">${Object.entries(PRESETS).map(([k, p]) => `<button data-p="${k}" aria-pressed="${q.get('vision') === k}">${p.label}</button>`).join('')}</div>
       ${sl('age', 'Возраст, лет', 18, 65, 1)}${sl('refraction', 'Рефракция глаза, дптр', -4, 2, 0.25)}
@@ -646,11 +668,17 @@ async function main() {
       Вес ${dv.weightG} г: усталость за смену <b id="v_wear"></b>.</div>`;
     c.querySelectorAll('[data-dev]').forEach((b) => b.onclick = () => setDevice(b.dataset.dev));
     $('b_insp').onclick = () => act('inspect_glasses');
+    c.querySelectorAll('[data-fm]').forEach((b) => b.onclick = () => { act('field', b.dataset.fm === '1'); toggleCard('x'); toggleCard('vision'); });
+    $('b_zones').onclick = () => { act('zones'); toggleCard('x'); toggleCard('vision'); };
+    c.querySelectorAll('[data-eyes]').forEach((b) => b.onclick = () => { params.eyes = b.dataset.eyes; toggleCard('x'); toggleCard('vision'); });
+    c.querySelectorAll('[data-dom]').forEach((b) => b.onclick = () => { params.domEye = b.dataset.dom; toggleCard('x'); toggleCard('vision'); });
+    $('r_diplo').onchange = (e) => { params.diplo = e.target.checked ? 1 : 0; };
     c.querySelectorAll('[data-p]').forEach((b) => b.onclick = () => { act('preset', b.dataset.p); q.set('vision', b.dataset.p); toggleCard('x'); toggleCard('vision'); });
     c.querySelectorAll('input[type=range]').forEach((r) => r.oninput = () => {
       const key = r.id.slice(2); const v = Number(r.value);
       if (key in sim) sim[key] = v; else params[key] = v;
       if (key === 'dim') { sim.dimLevel = v; sim.dimMode = 'manual'; }
+      if (key === 'ipd') { vision.ipdMM = v; vision.setDevice(sim.device); }
       $(`v_${key}`).textContent = v;
     });
     $('r_inserts').onchange = (e) => { params.inserts = e.target.checked; };
@@ -663,14 +691,15 @@ async function main() {
       ...(auto.on ? [['⏹', 'stop', '']] : []),
       [auto.cam === 'free' ? '🚶 Хожу сам (U)' : '🎥 Камера ведёт (U)', 'cam', auto.cam === 'free' ? 'on' : ''],
       [panels.algo.visible ? '▣ Алгоритм в углу (X)' : '□ Алгоритм в угол (X)', 'corner', panels.algo.visible ? 'on' : ''],
-      [`👓 ${sim.device.brand} ${sim.device.name} (K)`, 'dev', ''], ['Клавиши (H)', 'help', ''], ['Зрение (O)', 'vision', ''], ['Окна 1–4', 'win', ''],
+      [`👓 ${sim.device.brand} ${sim.device.name} (K)`, 'dev', ''],
+      [vision.fieldMode ? '👁 Поле 200° (Tab)' : '👁 Центр 72° (Tab)', 'field', vision.fieldMode ? 'on' : ''], ['Клавиши (H)', 'help', ''], ['Зрение (O)', 'vision', ''], ['Окна 1–4', 'win', ''],
       [`Время ×${app.speed} (T)`, 'time', ''], ['Очки (V)', 'glasses', ''], ['Планшет (J)', 'tablet', ''], ['Голос', 'voice', ''],
     ].map(([t, k, c]) => `<button data-b="${k}" class="${c}">${t}</button>`).join('');
     $('bar').querySelectorAll('button').forEach((b) => b.onclick = (e) => {
       e.stopPropagation();
       const k = b.dataset.b;
       if (k === 'auto') act('auto_toggle'); if (k === 'stop') act('auto_stop');
-      if (k === 'cam') act('auto_cam'); if (k === 'corner') act('corner');
+      if (k === 'cam') act('auto_cam'); if (k === 'corner') act('corner'); if (k === 'field') act('field');
       if (k === 'dev') toggleCard('vision');
       if (k === 'help') toggleCard('help'); if (k === 'vision') toggleCard('vision');
       if (k === 'win') for (const p of [panels.kd, panels.step, panels.sys, panels.task]) mgr.toggle(p, true);
@@ -860,6 +889,7 @@ async function main() {
   addEventListener('resize', resize); resize();
 
   // ---------- кадр ----------
+  const eyeOnV = new THREE.Vector2(1, 1);
   const gazeRay = new THREE.Raycaster();
   gazeRay.layers.set(LAYER_REAL);
   let gaze = { dist: 2, holo: false }, frame = 0, last = performance.now(), chatIdx = 0;
@@ -910,12 +940,15 @@ async function main() {
       glassesOn: sim.glasses, dispOn: sim.display, bootFade: sim.boot,
       transmit: transmitAt(sim.device, sim.dimLevel), dispBright: sim.bright,
       blink: eye.lid, angVel: player.angVel, age: params.age, dirt: params.dirt,
-      fatigueBlur: eye.fat * Math.min(1, Math.max(0, (eye.sinceBlink - 2) / 6)) * 1.5, ipdPx: params.ipdErr * 1.2,
+      fatigueBlur: eye.fat * Math.min(1, Math.max(0, (eye.sinceBlink - 2) / 6)) * 1.5, ipdErr: params.ipdErr,
+      // два глаза: вергенция — на точку взгляда, ведущий глаз, какие глаза открыты, двоение, схема зон
+      vergD: 1 / Math.max(0.2, gaze.dist), ipdM: params.ipd / 1000, domR: params.eyes === 'R' ? 1 : params.eyes === 'L' ? 0 : params.domEye === 'L' ? 0.42 : 0.58,
+      eyeOn: eyeOnV.set(params.eyes === 'R' ? 0 : 1, params.eyes === 'L' ? 0 : 1), diplo: params.diplo, overlay: sim.zones ? 1 : 0,
       exposureBias: 1.15,
     });
     vision.u.flash.value = Math.max(0, vision.u.flash.value - dt * 2.5);
     if (frame % 10 === 0) {
-      $('status').textContent = `${app.plantClock()} ×${app.speed} · ${run.step.id} · фокус ${eye.focusDist > 20 ? '∞' : `${eye.focusDist.toFixed(2)} м`} · зрачок ${eye.pupil.toFixed(1)} мм · ${sim.glasses ? `${sim.device.name} ${sim.device.tracking === '6dof' ? '6DoF' : '3DoF'}, пропускание ${(transmitAt(sim.device, sim.dimLevel) * 100).toFixed(0)} %${sim.dimMode === 'auto' && sim.device.dimLevels ? ' (авто)' : ''}` : 'без очков'}${player.mode === 'inspect' ? ' · осмотр (Esc)' : ''}${auto.on ? (auto.paused ? ' · имитация: пауза (I)' : ` · имитация: ${auto.phaseLabel()}`) : ''}`;
+      $('status').textContent = `${vision.fieldMode ? 'поле 200°' : 'центр 72°'}${params.eyes === 'both' ? '' : params.eyes === 'L' ? ', левый глаз' : ', правый глаз'} · ${app.plantClock()} ×${app.speed} · ${run.step.id} · фокус ${eye.focusDist > 20 ? '∞' : `${eye.focusDist.toFixed(2)} м`} · зрачок ${eye.pupil.toFixed(1)} мм · ${sim.glasses ? `${sim.device.name} ${sim.device.tracking === '6dof' ? '6DoF' : '3DoF'}, пропускание ${(transmitAt(sim.device, sim.dimLevel) * 100).toFixed(0)} %${sim.dimMode === 'auto' && sim.device.dimLevels ? ' (авто)' : ''}` : 'без очков'}${player.mode === 'inspect' ? ' · осмотр (Esc)' : ''}${auto.on ? (auto.paused ? ' · имитация: пауза (I)' : ` · имитация: ${auto.phaseLabel()}`) : ''}`;
       const c = $('card');
       if (!c.hidden && c.dataset.kind === 'vision' && $('v_focus')) {
         $('v_focus').textContent = eye.focusDist > 20 ? '∞' : `${eye.focusDist.toFixed(2)} м`;
