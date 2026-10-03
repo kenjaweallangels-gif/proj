@@ -5,7 +5,6 @@ SB_A1_02_Title,30,Start,TitleCard,Ракис. Гребень Шайтана. Р�
 SB_A1_03_RaynStep,40,Beat:SB_A1_02_Title,PlayDialogue,DLG_A1_001,3.0
 SB_A1_04_Hint,50,Beat:SB_A1_03_RaynStep,Hint,"C / LB — шаг пустыни (тише, но медленнее). Пробел / A — сбить ритм ещё сильнее.|C / LB — desert step (quieter, slower). Space / A — break the rhythm further.",1.0
 SB_A1_05_Banter,60,Beat:SB_A1_04_Hint,PlayDialogue,DLG_A1_005,20.0
-SB_A1_06_EllipsisA2,65,Beat:SB_A1_04_Hint,Ellipsis,"Rakis.Ellipsis.A2,1.0,1.8333,window=15,pull=SB_A2_10_Tension@22|Два часа спустя|Two hours later",5.0
 SB_A2_00_Title,70,ZoneEnter:A2_Erg,TitleCard,Открытый эрг|The Open Erg,1.0
 SB_A2_01_Weather,80,ZoneEnter:A2_Erg,SetWeather,"Morning_Erg,25",0
 SB_A2_02_Music,90,ZoneEnter:A2_Erg,SetMusic,DesertDrone,4.0
@@ -14,7 +13,7 @@ SB_A2_04_TooLoud,110,NoiseAbove:0.7,PlayDialogue,DLG_TUT_002,0.5
 SB_A2_05_EarlyListen,120,WormState:Listening,PlayDialogue,DLG_WRM_L01,0.5
 SB_A2_06_EarlyTension,130,WormState:Listening,SetWeather,"Worm_Tension,6",0
 SB_A2_07_EarlyApproach,140,WormState:Approach,PlayDialogue,DLG_WRM_A01,0.5
-SB_A2_10_Tension,150,ZoneEnter:A2_Erg,SetWeather,"Worm_Tension,6",95.0
+SB_A2_10_Tension,150,ZoneEnter:A2_Erg,SetWeather,"Worm_Tension,6",75.0
 SB_A2_11_ThreatMusic,160,Beat:SB_A2_10_Tension,SetMusic,WormThreat,0
 SB_A2_12_Stop,170,Beat:SB_A2_10_Tension,PlayDialogue,DLG_A2_ARR_01,2.0
 SB_A2_13_Tremble,180,Beat:SB_A2_12_Stop,PlayDialogue,DLG_A2_ARR_03,3.0
@@ -27,9 +26,6 @@ SB_A2_19_RevealMusic,240,Beat:SB_A2_17_TitleWorm,SetMusic,WormReveal,0
 SB_A2_20_After,250,Beat:SB_A2_18_Cinematic,SetMusic,Silence,0
 SB_A2_21_Gone,260,Beat:SB_A2_18_Cinematic,PlayDialogue,DLG_WRM_P01,2.5
 SB_A2_22_Drone,270,Beat:SB_A2_21_Gone,SetMusic,DesertDrone,6.0
-SB_A2_23_EllipsisA3,275,Beat:SB_A2_21_Gone,Ellipsis,"Rakis.Ellipsis.A3,1.2,3,window=30,pull=SB_A2_22_Drone@0|Три часа спустя|Three hours later",1.0
-SB_A3_G0_ClawTitle,276,Beat:SB_A2_23_EllipsisA3,TitleCard,Коготь|The Claw,0.8
-SB_A3_G1_Ossana,277,Beat:SB_A2_23_EllipsisA3,PlayDialogue,DLG_A3_001,1.5
 SB_A3_00_Title,280,ZoneEnter:A3_Approach,TitleCard,Коготь|The Claw,0.5
 SB_A3_01_Weather,290,ZoneEnter:A3_Approach,SetWeather,"Noon_Approach,30",0
 SB_A3_02_Ossana,300,ZoneEnter:A3_Approach,PlayDialogue,DLG_A3_001,4.0
@@ -37,9 +33,13 @@ SB_A3_03_Stairs,310,Beat:SB_A3_02_Ossana,PlayDialogue,DLG_A3_010,12.0
 SB_A3_04_Storm,320,Beat:SB_A3_02_Ossana,SetWeather,"Storm_Horizon,45",20.0
 SB_A3_05_StormLine,330,Beat:SB_A3_04_Storm,PlayDialogue,DLG_A3_020,8.0
 SB_A3_06_Calm,340,Beat:SB_A3_04_Storm,SetMusic,DesertCalm,10.0
-SB_A4_00_Weather,350,ZoneEnter:A4_Crevice,SetWeather,"Crevice_Shade,10",0
-SB_A4_01_Music,360,ZoneEnter:A4_Crevice,SetMusic,Silence,2.0
-SB_A4_02_FalseRock,370,ZoneEnter:A4_Crevice,PlayDialogue,DLG_A4_001,3.0
+SB_A4_00_Music,352,ZoneEnter:A4_Crevice,SetMusic,Silence,2.0
+SB_A4_01_Hooks,354,ZoneEnter:A4_Crevice,PlayDialogue,DLG_A4_001,3.0
+SB_A5_00_Weather,356,ZoneEnter:A5_Trail,SetWeather,"Crevice_Shade,10",0
+SB_A5_01_Title,357,ZoneEnter:A5_Trail,TitleCard,Тропа по уступам|The Ledge Trail,1.5
+SB_A5_02_Climb,358,ZoneEnter:A5_Trail,PlayDialogue,DLG_A5_001,4.0
+SB_A5_03_Hidden,359,Beat:SB_A5_02_Climb,PlayDialogue,DLG_A5_005,12.0
+SB_A6_00_Cleft,362,ZoneEnter:A6_Cleft,PlayDialogue,DLG_A6_001,1.0
 SB_B1_00_Title,380,ZoneEnter:B1_Airlock,TitleCard,Табр-ан-Нур|Tabr-an-Nur,1.5
 SB_B1_01_Weather,390,ZoneEnter:B1_Airlock,SetWeather,"Sietch_Interior,6",0
 SB_B1_02_Guard,400,ZoneEnter:B1_Airlock,PlayDialogue,DLG_B1_001,3.0
@@ -50,6 +50,7 @@ SB_B2_03_Tithe,440,ZoneEnter:B2_Gallery,PlayDialogue,DLG_B2_C03,70.0
 SB_B2_04_RitualTimer,450,ZoneEnter:B2_Gallery,CrowdRitual,,240.0
 SB_B3_00_Music,460,ZoneEnter:B3_Passages,SetMusic,SietchNarrow,0.5
 SB_B3_01_Ritual,470,ZoneEnter:B3_Passages,CrowdRitual,,0
+SB_B3_02_Curtains,472,ZoneEnter:B3_Passages,PlayDialogue,DLG_B3_C01,6.0
 SB_B4_00_Water,480,ZoneEnter:B4_Cistern,PlayDialogue,DLG_B3_001,2.0
 SB_B4_01_Grate,490,Interact:Rakis.POI.LORE_Cistern_Grate,PlayDialogue,DLG_B4_001,4.0
 SB_B5_00_Weather,500,ZoneEnter:B5_Hall,SetWeather,"Hall_Ritual,4",0
@@ -63,3 +64,8 @@ SB_B5_07_Finale,570,Beat:SB_B5_06_Feet,PlayCinematic,/Game/Rakis/Cinematics/LS_H
 SB_B5_08_Ossana,580,Beat:SB_B5_06_Feet,PlayDialogue,DLG_B5_020,9.0
 SB_B5_09_Fade,590,Beat:SB_B5_07_Finale,FadeOut,4,1.0
 SB_B5_10_End,600,Beat:SB_B5_09_Fade,EndDemo,,0.5
+SB_C1_00_Weather,605,ZoneEnter:C1_Garden,SetWeather,"Noon_Approach,8",0
+SB_C1_01_Music,606,ZoneEnter:C1_Garden,SetMusic,DesertCalm,1.0
+SB_C1_02_Title,607,ZoneEnter:C1_Garden,TitleCard,Тайный сад|The Hidden Garden,1.5
+SB_C1_03_Plants,608,ZoneEnter:C1_Garden,PlayDialogue,DLG_C1_001,4.0
+SB_C1_04_Birds,609,Beat:SB_C1_03_Plants,PlayDialogue,DLG_C1_003,14.0

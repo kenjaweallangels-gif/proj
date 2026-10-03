@@ -6,8 +6,9 @@
   "type": "module",
   "scripts": {
     "data": "node tools/build_data.mjs",
-    "build": "node tools/build_data.mjs && node tools/build.mjs",
-    "dev": "node tools/build_data.mjs && node tools/build.mjs --serve",
+    "bake": "node tools/sietch_bake.mjs",
+    "build": "node tools/build_data.mjs && node tools/sietch_bake.mjs --if-stale && node tools/build.mjs",
+    "dev": "node tools/build_data.mjs && node tools/sietch_bake.mjs --if-stale && node tools/build.mjs --serve",
     "test": "node tools/smoke.mjs"
   },
   "dependencies": {

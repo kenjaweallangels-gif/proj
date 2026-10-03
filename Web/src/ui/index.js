@@ -77,8 +77,9 @@ export function create(game) {
     game.audio?.event?.('UI.Pause');
     bus.emit('pause', { paused: true });
   }
-  function resume() {
+  function resume(fromBack = false) {
     if (!ctx.pauseOpen) return;
+    if (fromBack && menus.back()) return;
     if (wx.isOpen) { ctx.wxOnly = false; wx.close(); if (!ctx.pauseOpen) return; }
     ctx.pauseOpen = false; game.paused = false; recalc();
     menus.closePause();
@@ -107,8 +108,7 @@ export function create(game) {
     if (ctx.titleVisible) { wx.open(); return; }
     if (!ctx.started) return;
     if (ctx.pauseOpen) { menus.setWxMode(true); wx.open(() => { menus.setWxMode(false); menus.renderPause(); }); return; }
-    const ell = game.story?.ellipsisPhase;
-    if (game.cinematic?.active || (ell && ell !== 'none')) return;
+    if (game.cinematic?.active) return;
     ctx.wxOnly = true;
     openPause(false, true);
     menus.setWxMode(true);
@@ -116,7 +116,7 @@ export function create(game) {
   }
   function weatherToggle() { if (wx.isOpen) { if (performance.now() > pauseGuard) wx.close(); } else openWeather(); }
   ctx.actions = {
-    start: () => startGame(), resume, photo: enterPhoto, exitPhoto, weather: openWeather, weatherToggle,
+    start: () => startGame(), resume: () => resume(), photo: enterPhoto, exitPhoto, weather: openWeather, weatherToggle,
     quit: () => { location.href = menuURL(); },
     replay: () => { const u = new URL(menuURL()); u.searchParams.set('skip', '1'); location.href = u.toString(); },
   };
@@ -135,10 +135,10 @@ export function create(game) {
     else overlays.fade(true, game.settings.autotest ? 0.4 : 2.5).then(go);
   }
 
-  // ---------- Кинорежим ----------
-  let letterExplicit = false, letterShown = false, ellSince = -1, lastDoorAt = -1e9;
+  // ---------- Леттербокс (только явный вызов; кинорежима в сюжете нет) ----------
+  let letterExplicit = false, letterShown = false, lastDoorAt = -1e9;
   bus.on('interact', ({ tag } = {}) => { if (/FalseRock/i.test(tag || '')) lastDoorAt = performance.now(); });
-  bus.on('cinematic', ({ active } = {}) => { ctx.cinematic = !!active; if (!active) letterExplicit = false; });
+  bus.on('cinematic', ({ active } = {}) => { ctx.cinematic = !!active; });
 
   // ---------- Автоскрытие: 3 с без изменений — внутри виджетов HUD (hud.js) ----------
 
@@ -184,34 +184,27 @@ export function create(game) {
       const inp = game.input;
       if (ctx.started && !ctx.endVisible) {
         const cin = !!game.cinematic?.active;
-        const ell = game.story?.ellipsisPhase;
-        const busyCut = ell === 'fadingOut' || ell === 'black' || ell === 'fadingIn';
         // Потеря pointer lock = пауза (Esc браузер не отдаёт при захваченном курсоре).
         if (lockWas && !inp.locked && !cin && !ctx.photo && !ctx.pauseOpen && !ctx.titleVisible) openPause(true);
         if (inp.pressed('Pause')) {
           if (wx.isOpen) { if (performance.now() > pauseGuard) wx.close(); }
           else if (ctx.photo) exitPhoto();
-          else if (ctx.pauseOpen) { if (performance.now() > pauseGuard) resume(); }
-          else if (!cin && !busyCut) openPause();
+          else if (ctx.pauseOpen) { if (performance.now() > pauseGuard) resume(true); }
+          else if (!cin) openPause();
         } else if (inp.pressed('PhotoMode')) {
           if (ctx.photo) exitPhoto();
-          else if (!ctx.blocking && !cin && !busyCut) enterPhoto();
+          else if (!ctx.blocking && !cin) enterPhoto();
         }
       }
       lockWas = inp.locked;
-      // Источник правды — game.cinematic.active: событие 'cinematic' могло потеряться (модуль завершил кат-сцену «тихо»).
+      // Сюжет идёт в реальном времени: леттербокс и «режим кат-сцены» больше не включаются сами (только явный letterbox(true)).
       ctx.cinematic = !!game.cinematic?.active;
-      // Леттербокс: game.cinematic.active / явный вызов letterbox(true).
-      const want = ctx.cinematic || letterExplicit;
-      if (want !== letterShown) { letterShown = want; overlays.letterbox(want); }
-      // Сторож: чёрный экран / леттербокс без кат-сцены, склейки и концовки дольше 3 с — восстановить.
-      const ellP = game.story?.ellipsisPhase;
-      if (ellP && ellP !== 'none') { if (ellSince < 0) ellSince = performance.now(); } else ellSince = -1;
-      const ellOK = ellSince >= 0 && performance.now() - ellSince < 12000;           // склейка штатно длится секунд 5–8
-      const doorOK = performance.now() - lastDoorAt < 12000;                          // вход в сиетч: затемнение держится на время enter()
+      if (letterExplicit !== letterShown) { letterShown = letterExplicit; overlays.letterbox(letterShown); }
+      // Сторож: чёрный экран без концовки/титула/перехода дольше 3 с — восстановить (страховка от залипшего fade).
+      const doorOK = performance.now() - lastDoorAt < 12000;                          // старый вход через фальшивый камень держит затемнение на время enter()
       overlays.watchdog(dt, {
-        allowBlack: ctx.endVisible || ctx.titleVisible || ellOK || doorOK || !ctx.started,
-        allowLetter: ctx.cinematic || !letterExplicit || ctx.endVisible,
+        allowBlack: ctx.endVisible || ctx.titleVisible || doorOK || !ctx.started,
+        allowLetter: letterExplicit,
         clearLetter: () => { letterExplicit = false; letterShown = false; },
       });
       wx.update();

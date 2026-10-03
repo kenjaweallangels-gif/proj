@@ -1,0 +1,90 @@
+// Сценарный проход игрока по всем зонам сиетча в РЕАЛЬНОЙ игре (headless): проверяет, что heightAt/collide
+// (из SDF-сеток + реквизит + game.colliders) не застревают и не проваливают игрока, а contains() даёт true внутри и false снаружи.
+// node tools/sietch_walktest.mjs [--file=sietch.html] [--q=low]
+import { chromium } from 'playwright';
+import { existsSync, readdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`))?.split('=')[1] ?? d);
+function findChromium() {
+  const base = '/opt/pw-browsers';
+  if (!existsSync(base)) return undefined;
+  const d = readdirSync(base).find((n) => /^chromium-\d+$/.test(n));
+  return d ? join(base, d, 'chrome-linux', 'chrome') : undefined;
+}
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || findChromium(), args: ['--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const page = await browser.newPage({ viewport: { width: 640, height: 360 } });
+const errors = [];
+page.on('pageerror', (e) => errors.push(String(e)));
+page.on('console', (m) => { if (m.type() === 'error' && !/AudioContext/.test(m.text())) errors.push(m.text()); });
+await page.goto(`file://${join(root, 'dist', arg('file', 'sietch.html'))}?autotest=1&q=${arg('q', 'low')}&lang=RU`);
+await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.0, null, { timeout: 480000 });
+
+const res = await page.evaluate(() => {
+  const g = window.__rakis, S = g.sietch;
+  const out = { legs: [], outside: null };
+  S.doors.doors.forEach((d) => { d.open = 1; d.target = 1; });
+  // маршрут в проектных координатах [x, z] (локальные), с этапами
+  const ROUTE = [
+    ['B1 вход', [[-2.2, 7.2], [-1.5, 3.5], [2.4, 0], [12, 0], [24, 0], [36, -0.3], [41.5, 0]]],
+    ['B2 низ', [[46, 0], [60, 0], [75.5, 0], [92, 0], [96, 0]]],
+    ['B2 лестница N → карниз → мост', [[44, -3], [43.5, -6], [49, -6.1], [53, -6], [58, -6.2], [74, -6.1], [75.5, -3], [75.5, 3], [75.5, 6], [56, 6.3], [50, 6.1], [46, 6.1], [41.5, 5.5], [41.5, 2]]],
+    ['B3 центр', [[96, 0], [104, 0.4], [112, -0.6], [120, 0.7], [136, 0.6], [150, 0]]],
+    ['B3 ниша (север)', [[114, 0.2], [114, -1.6], [114, -3.2], [114, 0.2]]],
+    ['B3 юг → решётка', [[92, 0], [96, 2.5], [97, 3.4], [99, 4.4], [100.5, 5.4], [102, 7], [107, 7.6], [116, 7.5], [121, 7.4]]],
+    ['B5 зал', [[153, 0], [160, 0], [167, 0], [175, 0], [182, 6], [188, 9.4], [193.8, 9.4], [193.8, 5.6], [193.5, 2.5], [192, 0]]],
+    ['выход', [[183, -13], [184, -18.5], [195, -23], [206, -27], [208, -32], [199, -35], [186, -33], [173, -32], [169, -38], [173, -42], [181, -44], [187, -45], [191, -45.5], [195, -46.2]]],
+  ];
+  const V3 = g.camera.position.constructor;
+  const pos = new V3();
+  const place = (lx, lz) => { const w = S.toWorld(lx, 0, lz); const y = S.heightAt(w.x, w.z, 0); pos.set(w.x, y, w.z); };
+  let first = true;
+  for (const [name, pts] of ROUTE) {
+    const leg = { name, stuck: null, maxStepUp: 0, minY: 1e9, maxY: -1e9, inside: 0, total: 0 };
+    place(pts[0][0], pts[0][1]);
+    if (first) { first = false; }
+    for (let i = 1; i < pts.length; i++) {
+      const tw = S.toWorld(pts[i][0], 0, pts[i][1]);
+      let guard = 0;
+      while (guard++ < 4000) {
+        const dx = tw.x - pos.x, dz = tw.z - pos.z, d = Math.hypot(dx, dz);
+        if (d < 0.5) break;
+        const step = Math.min(d, 3 * 0.05);
+        // как игрок у стены: если прямой шаг упирается, пробуем скользить под углами ±45°/±90°
+        let best = null, bd = 1e9; const px = pos.x, pz = pos.z;
+        for (const a of [0, 0.7, -0.7, 1.4, -1.4]) {
+          const ca = Math.cos(a), sa = Math.sin(a), ux = dx / d, uz = dz / d;
+          pos.x = px + (ux * ca - uz * sa) * step; pos.z = pz + (ux * sa + uz * ca) * step;
+          S.collide(pos, 0.35); g.colliders?.push(pos, 0.35);
+          const rem = Math.hypot(tw.x - pos.x, tw.z - pos.z);
+          if (rem < bd - 1e-4) { bd = rem; best = [pos.x, pos.z]; }
+          if (a === 0 && rem < d - step * 0.6) break;
+        }
+        pos.x = best[0]; pos.z = best[1];
+        const y = S.heightAt(pos.x, pos.z, pos.y);
+        const du = y - pos.y; if (du > leg.maxStepUp) leg.maxStepUp = du;
+        pos.y = y;
+        leg.minY = Math.min(leg.minY, y); leg.maxY = Math.max(leg.maxY, y);
+        leg.total++; if (S.contains(pos)) leg.inside++;
+      }
+      if (guard >= 4000) { leg.stuck = { at: i, pos: [pos.x, pos.y, pos.z].map((v) => +v.toFixed(1)), target: pts[i] }; break; }
+    }
+    out.legs.push(leg);
+  }
+  // снаружи: точка в пустыне перед расщелиной
+  const o = new V3(640, 30, 262);
+  out.outside = { contains: S.contains(o) };
+  return out;
+});
+let bad = 0;
+for (const l of res.legs) {
+  const ok = !l.stuck && l.inside / Math.max(1, l.total) > 0.9 && l.maxStepUp < 0.7;
+  if (!ok) bad++;
+  console.log(`${ok ? 'OK ' : 'XX '} ${l.name.padEnd(34)} шагов ${l.total}, внутри ${(100 * l.inside / Math.max(1, l.total)).toFixed(0)}%, y ${l.minY.toFixed(1)}..${l.maxY.toFixed(1)}, макс. подъём за шаг ${l.maxStepUp.toFixed(2)}${l.stuck ? ' ЗАСТРЯЛ ' + JSON.stringify(l.stuck) : ''}`);
+}
+console.log('снаружи contains =', res.outside.contains, res.outside.contains ? '(ОШИБКА)' : '(ok)');
+await browser.close();
+if (errors.length) console.error(`Ошибки страницы (${errors.length}):\n` + [...new Set(errors)].slice(0, 10).join('\n'));
+process.exit(bad || res.outside.contains ? 1 : 0);
