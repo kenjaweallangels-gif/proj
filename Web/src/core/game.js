@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { bus } from './bus.js';
 import { createInput } from './input.js';
+import { colliders } from './colliders.js';
 
 export function createGame(canvas, settings) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: settings.quality !== 'low', powerPreference: 'high-performance', stencil: false });
@@ -50,8 +51,17 @@ export function createGame(canvas, settings) {
     /** y — текущая высота ступней (для многоуровневых полов сиетча); можно не передавать. */
     heightAt(x, z, y) { return game.ground()?.heightAt?.(x, z, y) ?? 0; },
     surfaceAt(x, z) { return game.ground()?.surfaceAt?.(x, z) ?? 'sand'; },
-    /** Выталкивает позицию (Vector3) из препятствий радиуса r; возвращает true, если было столкновение. */
-    collide(pos, r) { return game.ground()?.collide?.(pos, r) ?? false; },
+    /** Реестр твёрдых тел (core/colliders.js): червь, харвестер, люди, валуны, пропсы. */
+    colliders,
+    /**
+     * Выталкивает позицию (Vector3, ступни) из препятствий радиуса r: сначала земля/стены текущего пространства,
+     * затем все зарегистрированные тела. opt: {ignore: owner|Set, height}. Возвращает true при столкновении.
+     */
+    collide(pos, r, opt) {
+      const a = game.ground()?.collide?.(pos, r) ?? false;
+      const b = colliders.push(pos, r, opt);
+      return a || b;
+    },
   };
 
   addEventListener('resize', () => {
