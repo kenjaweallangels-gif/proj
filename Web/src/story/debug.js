@@ -86,7 +86,7 @@ export function create(game) {
         }
         if (!game.worm?.playDevour) { console.warn('[debug] game.worm.playDevour отсутствует'); return null; }
         game.bus.emit('scenario', { id: 'devour' });
-        return await game.worm.playDevour();
+        return await game.worm.playDevour({ teleport: true });
       } catch (e) { console.error('[debug.devour]', e); return null; }
       finally { devourBusy = false; }
     },
