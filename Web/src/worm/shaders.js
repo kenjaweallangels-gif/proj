@@ -225,6 +225,20 @@ const FRAG_COLOR_BODY = /* glsl */`
     float lipEdge = smoothstep(0.62, 0.98, abs(vPet.y)) * (1.0 - smoothstep(0.5, 1.0, vPet.x)*0.6);
     if (gl_FrontFacing) { wH += 0.22*lipRib + 0.35*lipEdge; wAlb *= 1.0 - 0.18*lipRib; wCav = max(wCav, 0.4*lipRib); }
     wAlb *= 1.0 - 0.55*smoothstep(0.82,1.0,abs(vPet.y));          // швы между лепестками темнее
+  #elif WORM_MODE == 3
+    {
+      // губное кольцо и воронка пасти: снаружи хитиновые плиты тела, к внутреннему краю — розовая плоть с радиальными складками
+      vec3 wAlbS, wAlbF; float wRS, wRF, wHS, wHF;
+      wormSkin(vSA.x, vSA.y, wN, wPm, wAlbS, wRS, wHS, wCav);
+      wormFlesh(vSA.x, vSA.y, wFpm, wAlbF, wRF, wHF);
+      float wT0 = mix(0.55, 0.34, uOpen);
+      float wFm = wss(wT0, wT0 + 0.09, vPet.x);
+      float wRib = pow(0.5 + 0.5*sin(vSA.y*30.0 + 2.0*wvn(vec2(vPet.x*40.0, vSA.y*3.0))), 2.0);
+      if (gl_FrontFacing) {
+        wAlb = mix(wAlbS, wAlbF*(0.8 + 0.35*wRib), wFm); wRough = mix(wRS, wRF, wFm); wH = mix(wHS, wHF + 0.5*wRib, wFm);
+        wCav = mix(wCav, 0.35*wRib, wFm);
+      } else { wAlb = wAlbF; wRough = wRF; wH = wHF; wCav = 0.0; }
+    }
   #elif WORM_MODE == 2
     wormFlesh(vSA.x, vSA.y, wFpm, wAlb, wRough, wH);
   #else
@@ -313,11 +327,12 @@ export function patchChitin(material, mode, U, hq = true) {
         `)
         .replace('#include <begin_vertex>', `vec3 transformed = wWp; vSA = vec2(wSS, wAA); vShade = 1.0;`);
     } else {
+      const pet = mode === 1 || mode === 3;
       injectCommon(shader,
-        `varying vec2 vSA; varying float vShade;${mode === 1 ? 'attribute vec2 aPet; varying vec2 vPet;' : ''}`,
-        `varying vec2 vSA; varying float vShade;${mode === 1 ? 'varying vec2 vPet;' : ''}`);
+        `varying vec2 vSA; varying float vShade;${pet ? 'attribute vec2 aPet; varying vec2 vPet;' : ''}`,
+        `varying vec2 vSA; varying float vShade;${pet ? 'varying vec2 vPet;' : ''}`);
       shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>',
-        `#include <begin_vertex>\n vSA = uv; ${mode === 1 ? 'vPet = aPet; vShade = 1.0;' : 'vShade = mix(0.03, 1.0, exp(-uv.x*0.085));'}`);
+        `#include <begin_vertex>\n vSA = uv; ${mode === 1 ? 'vPet = aPet; vShade = 1.0;' : mode === 3 ? 'vPet = aPet; vShade = aPet.y;' : 'vShade = mix(0.03, 1.0, exp(-uv.x*0.085));'}`);
     }
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <color_fragment>', `#include <color_fragment>\n${FRAG_COLOR_BODY}`)

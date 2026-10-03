@@ -10,6 +10,7 @@ import * as harvester from './harvester/index.js';
 import * as level from './level/all.js';
 import * as player from './player/index.js';
 import * as companions from './player/companions.js';
+import * as freecam from './core/freecam.js';
 import * as dialogue from './story/dialogue.js';
 import * as story from './story/director.js';
 import * as audio from './audio/index.js';
@@ -38,6 +39,7 @@ const steps = [
   ['level', () => level.create(game)],
   ['player', () => player.create(game)],
   ['companions', () => companions.create(game)],
+  ['freecam', () => game.add('freecam', freecam.create(game))],
   ['zones', () => game.add('zones', zones.create(game))],
   ['dialogue', () => dialogue.create(game)],
   ['story', () => story.create(game)],

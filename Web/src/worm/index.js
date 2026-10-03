@@ -145,6 +145,9 @@ export function create(game) {
     return best;
   }
 
+  /** 1 вблизи (d <= near), 0 далеко (d >= far): гул/дрожь/стук камней привязаны к расстоянию, а не висят «везде». */
+  const nearF = (d, far, near = 100) => 1 - smoothstep(near, far, d);
+
   function sensingOn() {
     return worm.sensing && game.space === 'desert' && !game.cinematic.active && !director.active && !devour.active && game.zone !== 'A4_Crevice';
   }
@@ -348,7 +351,7 @@ export function create(game) {
         if (!on) { setState('Dormant'); break; }
         if (P >= tune.approachThreshold) S += dt * (lastTarget && /thump/i.test(lastTarget.src) ? 2 : 1); else S = Math.max(0, S - dt * 0.5);
         if (P < tune.listenThreshold) quietT += dt; else quietT = 0;
-        worm.threat = 0.15 + 0.25 * clamp(S / tune.listenTime, 0, 1);
+        worm.threat = 0;                    // слушает под землёй далеко: ни дрожи, ни стука камней (только дальняя рябь)
         if (S >= tune.listenTime && lastTarget) {
           computeAim(lastTarget.x, lastTarget.z);
           K.depth = tune.burrowDepth; K.steer = { x: aim.x, z: aim.z }; K.speed = tune.approachSpeed; quietT = 0; aimT = 0;
@@ -361,7 +364,7 @@ export function create(game) {
         aimT += dt;
         if (P < tune.listenThreshold) quietT += dt; else quietT = 0;
         if (aimT > 0.5 && lastTarget && game.time - lastTarget.t < 8) { aimT = 0; const a = computeAim(lastTarget.x, lastTarget.z); K.steer = { x: a.x, z: a.z }; }
-        worm.threat = 0.4 + 0.45 * clamp(1 - dPl / tune.hearingRadius, 0, 1);
+        worm.threat = nearF(dPl, 520, tune.wildMinDistance) * 0.55 + (dPl < 520 ? 0.12 : 0);      // угроза только вблизи: дальше полукилометра земля спокойна
         if (!sensingOn() || quietT >= tune.passTime || dPl <= tune.wildMinDistance) beginPass();
         break;
       }
@@ -370,16 +373,17 @@ export function create(game) {
           const dPl = pl ? Math.hypot(pl.x - K.pos.x, pl.z - K.pos.z) : 1e9;
           forced.armedT += dt;
           K.steer = { x: aim.x, z: aim.z }; K.speed = tune.forcedSpeed;
-          worm.threat = 0.25 + 0.3 * clamp(1 - dPl / 600, 0, 1);
+          worm.threat = nearF(dPl, 460, 260) * 0.35;
           if (dPl <= tune.wildMinDistance + 30 || forced.armedT > 24) { forced = null; beginPass(); }
           break;
         }
-        worm.threat = director.phase === 'arrive' || director.phase === 'depart' ? clamp(0.1 + K.speed / 120, 0, 0.35) : 0.05;
+        // укрощённый червь: гул только пока он идёт и близко; лежащий/отдыхающий — тишина
+        worm.threat = director.phase === 'arrive' ? clamp(K.speed / 100, 0, 0.3) * nearF(pl ? Math.hypot(pl.x - K.pos.x, pl.z - K.pos.z) : 1e9, 420, 120) : 0;
         break;
       }
       case 'Pass': {
         passT += dt;
-        worm.threat = Math.max(0, 0.7 - passT / 8);
+        worm.threat = Math.max(0, 0.7 - passT / 8) * nearF(pl ? Math.hypot(pl.x - K.pos.x, pl.z - K.pos.z) : 1e9, 520, 260);
         if (passT >= tune.passTime) { cooldown = tune.dormantCooldown; setState('Dormant'); K.speed = 0; }
         break;
       }
@@ -468,9 +472,9 @@ export function create(game) {
     const wildNear = !tame && (st === 'Approach' || st === 'Pass') && underground;
     const rocks = {
       player: pl, head: K.pos,
-      playerI: tame ? 0 : (st === 'Listening' ? 0.2 + 0.5 * worm.threat : st === 'Approach' ? 0.3 + 0.5 * worm.threat : st === 'Pass' ? 0.5 * worm.threat : 0),
+      playerI: tame ? 0 : (st === 'Approach' ? 0.3 + 0.5 * worm.threat : st === 'Pass' ? 0.5 * worm.threat : 0) * nearF(pl ? Math.hypot(pl.x - K.pos.x, pl.z - K.pos.z) : 1e9, 330, 150),
       rPlayer: tune.rockHopRadius,
-      headI: wildNear ? clamp(0.4 + 0.5 * worm.threat, 0, 1) * (st === 'Pass' ? worm.threat : 1) : 0,
+      headI: wildNear && worm.distanceToPlayer() < 300 ? clamp(0.4 + 0.5 * worm.threat, 0, 1) * (st === 'Pass' ? worm.threat : 1) : 0,
       rHead: 55,
     };
     if (st === 'Dormant') { rocks.playerI = 0; rocks.headI = 0; }
@@ -488,14 +492,15 @@ export function create(game) {
 
   function shakeUpdate(dt) {
     const pl = game.player?.position;
-    if (!pl) return;
-    const dist = Math.hypot(pl.x - K.pos.x, pl.z - K.pos.z);
-    const prox = clamp(1.15 - dist / 520, 0, 1);
-    const st = worm.state;
-    const amp = st === 'Listening' ? 0.05 : st === 'Approach' ? lerp(0.05, 0.22, worm.threat) : st === 'Pass' ? 0.2 * worm.threat : st === 'Ridden' ? 0.35 * clamp(K.speed / 25, 0, 1) : 0;
     impulse = Math.max(0, impulse - dt / 0.9);
+    if (!pl || devour.active) return;           // при пожирании тряской ведает сценарий
+    const dist = Math.hypot(pl.x - K.pos.x, pl.z - K.pos.z);
+    const prox = nearF(dist, 340, 110);
+    if (prox <= 0.001) return;                  // дальше ~340 м земля не дрожит вовсе
+    const st = worm.state;
+    const amp = st === 'Approach' ? lerp(0.03, 0.14, worm.threat) : st === 'Pass' ? 0.1 * worm.threat : st === 'Ridden' && !worm.resting ? 0.22 * clamp(K.speed / 25, 0, 1) : 0;
     const f = Math.max(amp * prox * prox, impulse * prox);
-    if (f > 0.005) game.shake = Math.max(game.shake || 0, clamp(f, 0, 1));
+    if (f > 0.01) game.shake = Math.max(game.shake || 0, clamp(f, 0, 1));
   }
 
   function startRipple() {
