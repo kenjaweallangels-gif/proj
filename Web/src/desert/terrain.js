@@ -144,8 +144,8 @@ float f1 = 1.0 - smoothstep(6.0, 28.0, dist);
 float f2 = 1.0 - smoothstep(22.0, 110.0, dist);
 float f3 = 1.0 - smoothstep(90.0, 480.0, dist);
 float rOcc = 0.0;
-if (f1 > 0.001 && uQual > 0.5) { vec3 r = rkRipple(xz, 0.12, 1.6, 1.0, 0.7); g += r.yz * f1 * 0.7; }
-if (f2 > 0.001) { vec3 r = rkRipple(xz, 0.62, 1.8, 5.0, 0.72); g += r.yz * f2 * 0.3; rOcc += (1.0 - gRH) * f2 * 0.55 * (1.0 - smoothstep(20.0, 70.0, dist)); }
+if (f1 > 0.001 && uQual > 0.5) { vec3 r = rkRipple(xz, 0.12, 1.6, 1.0, 0.7); g += r.yz * f1 * 0.55; }
+if (f2 > 0.001) { vec3 r = rkRipple(xz, 0.62, 1.8, 5.0, 0.72); g += r.yz * f2 * 0.17; rOcc += (1.0 - gRH) * f2 * 0.55 * (1.0 - smoothstep(20.0, 70.0, dist)); }
 if (f3 > 0.001) { vec3 r = rkRipple(xz, 2.9, 2.5, 9.0, 0.75); g += r.yz * f3 * 0.1; rOcc += (1.0 - gRH) * f3 * 0.15 * (1.0 - smoothstep(60.0, 300.0, dist)); }
 g *= calmR;
 // лавинные полосы на подветренных склонах
@@ -199,7 +199,7 @@ col *= vec3(1.0 + 0.20 * hv + 0.12 * hv2, 1.0 + 0.03 * hv, 1.0 - 0.17 * hv - 0.1
 // тени гребней ряби при скользящем свете (когда солнце идёт вдоль ветра)
 float grazing = 1.0 - smoothstep(0.04, 0.42, uKeyDir.y);
 float along = abs(dot(normalize(uKeyDir.xz + vec2(1e-4)), uWind));
-col *= 1.0 - clamp(rOcc, 0.0, 1.0) * grazing * (0.15 + 0.45 * along) * (1.0 - rockM) * (1.0 - disturb);
+col *= 1.0 - clamp(rOcc, 0.0, 1.0) * grazing * (0.08 + 0.22 * along) * (1.0 - rockM) * (1.0 - disturb);
 float fgr = (1.0 - smoothstep(0.5, 6.0, dist));
 col *= 1.0 + 0.05 * fgr * (rkNoise(xz * 70.0) - 0.5) * 2.0;
 col = mix(col, rockC, rockM);

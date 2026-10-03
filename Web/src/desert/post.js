@@ -174,8 +174,8 @@ const GradeShader = {
         vec2 uvw = vec2(dot(vUv * vec2(uAspect, 1.0), wd), dot(vUv * vec2(uAspect, 1.0), vec2(-wd.y, wd.x)));
         float s1 = vn(vec2(uvw.x * 1.2 - uTime * 5.5, uvw.y * 55.0));
         float s2 = vn(vec2(uvw.x * 2.6 - uTime * 9.0, uvw.y * 130.0 + 7.0));
-        float streak = smoothstep(0.55, 1.0, s1 * 0.6 + s2 * 0.5);
-        col = mix(col, vec3(0.62, 0.38, 0.17) * (0.35 + lum * 0.8), streak * 0.2 * sK);
+        float streak = smoothstep(0.5, 1.15, s1 * 0.6 + s2 * 0.5) * (0.5 + 0.5 * vn(vec2(uvw.x * 0.35 + uTime * 0.7, uvw.y * 4.0)));
+        col = mix(col, vec3(0.62, 0.38, 0.17) * (0.35 + lum * 0.8), streak * 0.12 * sK);
         col = mix(col, vec3(0.58, 0.36, 0.17) * (0.3 + 0.5 * lum), 0.12 * sK);
       }
       // виньетка

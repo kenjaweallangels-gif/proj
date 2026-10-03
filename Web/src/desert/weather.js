@@ -388,7 +388,7 @@ export function createWeather(game, sky, world) {
     const dM = clamp(eff.dust * 0.6 + S * 0.6, 0, 0.85) * smoothstep(-10, 6, el);
     srgbToLin(eff.fogColor, tmpF);
     // цвет тумана = FogInscatterColor пресета (sRGB) × яркость неба, к сумеркам/ночи — цвет горизонта неба
-    const fogLevel = (0.35 + 0.65 * kd) * 1.9 * (0.55 + 0.45 * clamp(sinE * 2.4, 0, 1));
+    const fogLevel = (0.35 + 0.65 * kd) * 1.9 * (0.55 + 0.45 * clamp(sinE * 2.4, 0, 1)) * (1 - 0.55 * sFull);
     fogC.setRGB(tmpF.r * fogLevel, tmpF.g * fogLevel, tmpF.b * fogLevel);
     const twil = 1 - smoothstep(-1.5, 9, el);               // 1 в сумерках и ночью → туман берёт цвет горизонта неба
     tmpG.copy(hAway).lerp(hSun, 0.3).multiplyScalar(level * 1.1);
@@ -429,7 +429,7 @@ export function createWeather(game, sky, world) {
     const cm = Math.max(dayHemi.r, dayHemi.g, dayHemi.b, 1e-4);
     const dayI = skyE * cm * 2.4;
     // ночной ambient: звёзды + лунное небо (синий), не ноль даже в новолуние
-    const nightI = night * (0.15 + 0.09 * clamp(moonAmb, 0, 1.4) ) * (1 - 0.5 * S);
+    const nightI = night * (0.22 + 0.1 * clamp(moonAmb, 0, 1.4) ) * (1 - 0.5 * S);
     const nr = 0.26, ng = 0.40, nb = 1.0;
     const totI = dayI + nightI;
     sky.hemi.color.setRGB((dayHemi.r / cm * dayI + nr * nightI) / Math.max(totI, 1e-5), (dayHemi.g / cm * dayI + ng * nightI) / Math.max(totI, 1e-5), (dayHemi.b / cm * dayI + nb * nightI) / Math.max(totI, 1e-5));
@@ -441,7 +441,7 @@ export function createWeather(game, sky, world) {
     // --- экспозиция (имитация адаптации глаза + ExposureBias) ---
     const Ecur = sunI * Math.max(sinE, 0.1) * dayK + sky.hemi.intensity + moonKey * 1.2;
     const Eref = 4 * 0.97 + 0.8;
-    const base = 0.74 * Math.pow(Eref / Math.max(Ecur, 0.5), 0.4);
+    const base = 0.74 * Math.pow(Eref / Math.max(Ecur, 0.38), 0.4);
     let target = base * Math.pow(2, (eff.exposure - 1) * 0.42);
     if (!Number.isFinite(target)) target = 1;
     target = clamp(target, 0.25, 4.5);
