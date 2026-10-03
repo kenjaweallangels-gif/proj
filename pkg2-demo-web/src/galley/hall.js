@@ -65,6 +65,43 @@ function sign(lines, w, h, opts) {
   return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: textTexture(lines, opts), roughness: 0.6 }));
 }
 
+/** Экран терминала «Система сборщика»: сменное задание и статусы операций (вместо одной строки текста). */
+function terminalScreen() {
+  const c = document.createElement('canvas'); c.width = 1160; c.height = 680;
+  const g = c.getContext('2d');
+  g.fillStyle = '#0d1c26'; g.fillRect(0, 0, 1160, 680);
+  g.fillStyle = '#163447'; g.fillRect(0, 0, 1160, 70);
+  g.fillStyle = '#e8f3f7'; g.font = '600 34px "IBM Plex Sans", sans-serif'; g.textBaseline = 'middle'; g.fillText('Система сборщика', 24, 36);
+  g.fillStyle = '#8fb6c8'; g.font = '400 24px "IBM Plex Sans", sans-serif'; g.fillText('Иванов С. А. · таб. № 1047 · 07:28', 760, 36);
+  g.fillStyle = '#bfe9ff'; g.font = '600 28px "IBM Plex Sans", sans-serif'; g.fillText('Сменное задание 02.10.2026 · стапель СТ-3 · КМ2.000.000 СБ № 017', 24, 110);
+  const rows = [['010', 'Подготовка рабочего места и стапеля', 'к выполнению', '#ffc845'], ['020–050', 'Каркас, перегородки, полки (смена 1.10)', 'выполнено', '#4ee69a'],
+    ['060', 'Стол-перегородка и столешница', 'к выполнению', '#ffc845'], ['070', 'Выдержка клея до фиксации', 'к выполнению', '#ffc845'], ['080–110', 'Уголки, вставки, кромки, ниши', 'к выполнению', '#ffc845'],
+    ['120–140', 'Окраска, плёнка', 'к выполнению', '#ffc845'], ['145–175', 'Облицовка, раковина, электромонтаж, дверцы', 'к выполнению', '#ffc845'], ['180–190', 'Оборудование, предъявление ОТК', 'к выполнению', '#ffc845']];
+  g.font = '400 26px "IBM Plex Sans", sans-serif';
+  rows.forEach(([op, t, st, col], i) => {
+    const y = 160 + i * 56;
+    g.fillStyle = i % 2 ? '#10232f' : '#132a38'; g.fillRect(16, y - 24, 1128, 50);
+    g.fillStyle = '#58e6ff'; g.fillText(op, 32, y); g.fillStyle = '#dcf6ff'; g.fillText(t, 170, y);
+    g.fillStyle = col; g.fillText(st, 930, y);
+  });
+  g.fillStyle = '#58e6ff'; g.fillRect(16, 620, 260, 46); g.fillStyle = '#04161c'; g.font = '600 26px "IBM Plex Sans", sans-serif'; g.fillText('Открыть ТП в очках', 34, 643);
+  g.fillStyle = '#8fb6c8'; g.font = '400 22px "IBM Plex Sans", sans-serif'; g.fillText('ТП 7.КМ2.00001 · КД КМ2.000.000 СБ · чат с мастером', 300, 643);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+}
+
+/** Клавиатура: ряды клавиш с кириллицей. */
+function keyboardTexture() {
+  const c = document.createElement('canvas'); c.width = 840; c.height = 250;
+  const g = c.getContext('2d'); g.fillStyle = '#121315'; g.fillRect(0, 0, 840, 250);
+  const rows = ['ЁЙЦУКЕНГШЩЗХЪ', 'ФЫВАПРОЛДЖЭ', 'ЯЧСМИТЬБЮ'];
+  g.font = '600 18px "IBM Plex Sans", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (let k = 0; k < 14; k++) { g.fillStyle = '#26282c'; g.fillRect(10 + k * 58, 10, 52, 44); }
+  rows.forEach((r, i) => [...r].forEach((ch, k) => { const x = 20 + i * 20 + k * 58, y = 64 + i * 56; g.fillStyle = '#26282c'; g.fillRect(x, y, 52, 48); g.fillStyle = '#cfd3d6'; g.fillText(ch, x + 26, y + 24); }));
+  g.fillStyle = '#26282c'; g.fillRect(200, 232 - 6, 380, 20);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+
+let dockLabel = null;
 export function buildHall(scene) {
   RectAreaLightUniformsLib.init();
   const root = new THREE.Group();
@@ -187,12 +224,25 @@ export function buildHall(scene) {
   // терминал системы сборщика: монитор, клавиатура
   const mon = new THREE.Group();
   mon.add(box(0.62, 0.38, 0.03, GM.blackPlastic(), 0, 0, 0, 0.01));
-  const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.58, 0.34), new THREE.MeshBasicMaterial({ map: textTexture(['СИСТЕМА СБОРЩИКА', 'Задание на 02.10 · КМ2.000.000 · ТП 7.КМ2.00001'], { w: 1024, h: 600, bg: '#0e2230', fg: '#bfe9ff', size: 64, border: '#3f8fb5' }), toneMapped: true }));
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.58, 0.34), new THREE.MeshBasicMaterial({ map: terminalScreen(), toneMapped: true }));
   scr.position.z = 0.016; mon.add(scr);
   mon.add(box(0.05, 0.3, 0.05, GM.blackPlastic(), 0, -0.3, -0.04, 0.01), box(0.25, 0.015, 0.18, GM.blackPlastic(), 0, -0.45, -0.04, 0.005));
   mon.position.set(-0.25, 1.22, -0.25);
   wp.add(mon);
-  wp.add(box(0.44, 0.02, 0.14, GM.blackPlastic(), -0.25, 0.778, 0.1, 0.004));
+  // клавиатура (раскладка), мышь на коврике, настольная лампа, лоток документов с сменным заданием
+  const kb = box(0.44, 0.018, 0.14, GM.blackPlastic(), -0.25, 0.778, 0.1, 0.004); wp.add(kb);
+  const keys = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.125), new THREE.MeshStandardMaterial({ map: keyboardTexture(), roughness: 0.6 }));
+  keys.rotation.x = -Math.PI / 2; keys.position.set(-0.25, 0.788, 0.1); wp.add(keys);
+  const pad = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.18), new THREE.MeshStandardMaterial({ color: '#1d2a33', roughness: 0.9 })); pad.rotation.x = -Math.PI / 2; pad.position.set(0.12, 0.7705, 0.12); wp.add(pad);
+  const mouse = new THREE.Mesh(new THREE.SphereGeometry(0.03, 20, 12), GM.blackPlastic()); mouse.scale.set(0.9, 0.45, 1.5); mouse.position.set(0.12, 0.78, 0.12); mouse.castShadow = true; wp.add(mouse);
+  const lampArm = new THREE.Group(); lampArm.position.set(-0.7, 0.77, -0.25); wp.add(lampArm);
+  lampArm.add(box(0.14, 0.02, 0.14, GM.blackPlastic(), 0, 0.01, 0, 0.006));
+  lampArm.add(strut([0, 0.02, 0], [0.05, 0.42, 0.05], 0.008, GM.blackPlastic()), strut([0.05, 0.42, 0.05], [0.25, 0.48, 0.18], 0.008, GM.blackPlastic()));
+  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.09, 20, 1, true), GM.blackPlastic()); shade.material.side = THREE.DoubleSide; shade.position.set(0.27, 0.45, 0.2); lampArm.add(shade);
+  const bulb = new THREE.Mesh(new THREE.CircleGeometry(0.05, 20), new THREE.MeshBasicMaterial({ color: new THREE.Color('#fff4e0').multiplyScalar(3) })); bulb.rotation.x = Math.PI / 2; bulb.position.set(0.27, 0.41, 0.2); lampArm.add(bulb);
+  const trayD = box(0.34, 0.03, 0.26, painted('#2f6fb0', { rough: 0.5 }), 0.62, 0.785, -0.15, 0.004); wp.add(trayD);
+  const sheet = new THREE.Mesh(new THREE.PlaneGeometry(0.21, 0.297), new THREE.MeshStandardMaterial({ map: textTexture(['СМЕННОЕ ЗАДАНИЕ', '02.10.2026 · 1 смена · стапель СТ-3', 'КМ-2 № 017 · оп. 010, 060–190'], { w: 420, h: 594, size: 34, bg: '#ffffff' }), roughness: 0.8 }));
+  sheet.rotation.x = -Math.PI / 2; sheet.rotation.z = 0.08; sheet.position.set(0.62, 0.802, -0.15); wp.add(sheet);
   // зарядная станция AR-очков
   const dock = new THREE.Group();
   dock.add(box(0.22, 0.04, 0.12, GM.greyPlastic(), 0, 0.02, 0, 0.01));
@@ -200,7 +250,8 @@ export function buildHall(scene) {
   led.position.set(0.09, 0.041, 0.05); led.rotation.x = -Math.PI / 2; dock.add(led);
   dock.position.set(0.45, 0.78, 0.15);
   wp.add(dock);
-  const lab = sign(['Зарядная станция AR-очков', 'VITURE · инв. 0071'], 0.2, 0.06, { w: 512, h: 150, size: 40 });
+  const lab = sign(['Зарядная станция AR-очков', 'инв. 0071'], 0.2, 0.06, { w: 512, h: 150, size: 40 });
+  dockLabel = lab;
   lab.position.set(0.45, 0.83, 0.215); lab.rotation.x = -0.5; wp.add(lab);
   // стул, инструментальная тумба, шкафчик
   const chair = new THREE.Group();
@@ -310,7 +361,7 @@ export function buildHall(scene) {
 
   // стены — препятствия
   colliders.push({ x0: x0 - 1, x1: x0 + 0.3, z0, z1 }, { x0: x1 - 0.3, x1: x1 + 1, z0, z1 }, { x0, x1, z0: z0 - 1, z1: z0 + 0.3 }, { x0, x1, z0: z1 - 0.3, z1: z1 + 1 });
-  return { root, colliders, lamps, key, task };
+  return { root, colliders, lamps, key, task, dockLabel };
 }
 
 export { colliders, solid };

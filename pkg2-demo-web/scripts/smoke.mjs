@@ -44,6 +44,9 @@ const cases = [
   ['galley_manual', 'galley.html#manual'],
   // виртуальная сборка без деталей (плеер)
   ['galley_virtual', 'galley.html?intro=0&asm=1&field=0'],
+  ['galley_station_em1', 'galley.html?intro=0&place=em1&field=0'],
+  ['galley_station_sl1_virtual', 'galley.html?intro=0&place=sl1&asm=1&field=0'],
+  ['galley_station_me1_tp', 'galley.html?intro=0&place=me1&tp=1'],
   ['galley_third_person', 'galley.html?intro=0&tp=1&glasses=aura'],
 ];
 let failed = 0;

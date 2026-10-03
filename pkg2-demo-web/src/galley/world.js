@@ -11,6 +11,7 @@ import * as S from './spec.js';
 import { galleyMat as GM, textTexture } from './tex.js';
 import { DEVICES } from './glasses.js';
 import { buildGlassesModel } from './glasses_model.js';
+import { buildStations } from './stations/index.js';
 
 /** Положение модуля на стапеле: центр модуля по X и Z — в начале координат мира. */
 export const GALLEY_ORIGIN = new THREE.Vector3(0, -FLOOR / 1000, -S.G.D / 2000);
@@ -127,8 +128,10 @@ export function buildWorld(scene) {
   // ---------- витрина AR-очков у рабочего места: все профили симулятора в натуральную величину ----------
   const showcase = buildShowcase();
   scene.add(showcase.root);
+  // ---------- дополнительные участки: ЭМ-1 (жгуты), СЛ-1 (слесарный), МЭ-1 (монтаж электрооборудования) ----------
+  const stations = buildStations(scene);
 
-  return { hall, jig, galley, kit, rack, cart, finished: done, showcase, colliders: hall.colliders };
+  return { hall, jig, galley, kit, rack, cart, finished: done, showcase, stations, colliders: hall.colliders };
 }
 
 export { HALL, PLACES };

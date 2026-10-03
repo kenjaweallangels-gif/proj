@@ -90,8 +90,13 @@ export function textTexture(lines, { w = 512, h = 128, bg = '#f2f2ee', fg = '#1a
   if (border) { g.strokeStyle = border; g.lineWidth = 6; g.strokeRect(8, 8, w - 16, h - 16); }
   g.fillStyle = fg; g.textAlign = 'center'; g.textBaseline = 'middle';
   const L = [].concat(lines);
+  const pad = border ? 28 : 16;
   L.forEach((t, i) => {
-    g.font = `${font} ${i === 0 ? size : size * 0.6}px "IBM Plex Sans", system-ui, sans-serif`;
+    // шрифт подгоняется по ширине и высоте строки — надпись не обрезается
+    let fs = Math.min(i === 0 ? size : size * 0.6, (h / (L.length + 0.6)) * (i === 0 ? 0.82 : 0.62));
+    g.font = `${font} ${fs}px "IBM Plex Sans", system-ui, sans-serif`;
+    const wd = g.measureText(t).width;
+    if (wd > w - 2 * pad) { fs *= (w - 2 * pad) / wd; g.font = `${font} ${fs}px "IBM Plex Sans", system-ui, sans-serif`; }
     g.fillText(t, w / 2, h * ((i + 1) / (L.length + 1)));
   });
   const t = new THREE.CanvasTexture(c);

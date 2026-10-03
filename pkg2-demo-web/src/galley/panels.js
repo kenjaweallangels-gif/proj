@@ -224,18 +224,21 @@ export function buildPanels(mgr, app) {
   const algo = mgr.add(new Panel(mgr, {
     id: 'algo', title: 'Алгоритм', w: 0.6, h: 0.42, ppm: 1600, chrome: false,
     draw(ui, p) {
-      const W = p.px, H = p.py, run = app.run, s = run.step;
-      const idx = STEPS.indexOf(s) + 1;
+      const W = p.px, H = p.py, run = app.run;
+      const si = app.stationInfo?.();                    // у участка — его переход
+      const s = si ? si.step : run.step;
+      const idx = si ? si.index + 1 : STEPS.indexOf(s) + 1;
+      const total = si ? si.total : STEPS.length;
       ui.rect(3, 3, W - 6, H - 6, { fill: 'rgba(30,110,140,0.035)', stroke: 'rgba(88,230,255,0.55)', r: 22, lw: 3 });
       const ai = app.autoInfo?.();
       ui.text(`${s.id} · ${KIND_RU[s.kind] || s.kind}`, 28, 62, { size: 48, color: s.critical ? C.warn : C.acc, weight: 600, max: W - 260 });
-      ui.text(`${idx}/${STEPS.length}${ai ? (ai.includes('пауза') ? ' ⏸' : ' ▶') : ''}`, W - 28, 62, { size: 42, color: ai ? C.warn : C.dim, align: 'right' });
+      ui.text(`${idx}/${total}${ai ? (ai.includes('пауза') ? ' ⏸' : ' ▶') : ''}`, W - 28, 62, { size: 42, color: ai ? C.warn : C.dim, align: 'right' });
       let y = 88;
       y += ui.wrap(s.title, 28, y + 56, W - 56, { size: 58, weight: 600, color: '#ffffff', lh: 1.12, maxLines: 2 }) + 10;
       if (s.text[0]) ui.wrap(s.text[0], 28, y + 44, W - 56, { size: 44, lh: 1.18, maxLines: Math.max(1, Math.floor((H - 110 - y) / 52)) });
       // нижняя строка: что нужно для перехода дальше, таймер
-      const tm = run.blockingTimer() || run.activeTimers()[0];
-      const need = run.needs();
+      const tm = si ? null : run.blockingTimer() || run.activeTimers()[0];
+      const need = si ? (s.check && !(s.id in si.st.values) ? 'value' : null) : run.needs();
       const msg = need === 'timer' ? 'Идёт выдержка' : need === 'value' ? `Замер: ${s.check.name}` : need === 'photo' ? 'Нужно фото' : 'Можно дальше ▸';
       ui.text(msg, 28, H - 32, { size: 46, weight: 600, color: need ? C.warn : C.ok, max: tm ? W - 290 : W - 56 });
       if (tm) ui.text(`⏱ ${fmtMin(run.remaining(tm))}`, W - 28, H - 32, { size: 50, color: C.warn, align: 'right', mono: true });
@@ -346,4 +349,44 @@ export function placeCorner(panel, camera, win, centerDeg = -2, distM = 4, corne
   g.translateZ(-distM);
   g.scale.setScalar(k);
   toParent(g);
+}
+
+const STATION_KIND = { prep: 'подготовка', install: 'установка', fasten: 'крепёж', wire: 'монтаж', check: 'контроль' };
+/** Окно участка в очках: текущий переход участка, инструмент, контроль, кнопки. Ставится у участка. */
+export function stationPanel(mgr, app, st, { pos, look }) {
+  const p = mgr.add(new Panel(mgr, {
+    id: `st_${st.id}`, title: st.short, w: 0.86, h: 0.78, ppm: 1000,
+    home: { pos, look },
+    draw(ui, p, top) {
+      const W = p.px, H = p.py;
+      let y = top + 6;
+      ui.text(st.name, 22, y + 20, { size: 18, color: C.dim, max: W - 44 }); y += 30;
+      ui.text(`Изделие: ${st.product}`, 22, y + 20, { size: 18, color: C.acc, max: W - 44 }); y += 34;
+      if (st.done) {
+        ui.wrap('Все переходы выполнены — изделие готово, передать дальше по маршруту.', 22, y + 26, W - 44, { size: 24, color: C.ok });
+      } else {
+        const s = st.step;
+        ui.text(`${s.id} · ${STATION_KIND[s.kind] || ''}${s.photo ? ' · фото' : ''}`, 22, y + 22, { size: 20, color: C.dim }); y += 30;
+        y += ui.wrap(s.title, 22, y + 28, W - 44, { size: 28, weight: 600, color: '#ffffff', maxLines: 2 }) + 4;
+        for (const t of s.text) y += ui.wrap(`— ${t}`, 22, y + 22, W - 44, { size: 20, maxLines: 3 }) + 2;
+        if (s.tools?.length) y += ui.wrap(`Инструмент: ${s.tools.join('; ')}`, 22, y + 22, W - 44, { size: 18, color: C.dim, maxLines: 2 }) + 4;
+        if (s.check) {
+          const v = st.values[s.id];
+          ui.text(`${s.check.name}: ${String(s.check.nominal).replace('.', ',')} ± ${String(s.check.tol).replace('.', ',')} ${s.check.unit}${v != null ? `  ✓ ${String(v).replace('.', ',')}` : ''}`, 22, y + 24, { size: 20, color: v != null ? C.ok : C.warn, max: W - 44 });
+          y += 34;
+        }
+      }
+      // ход по переходам
+      const n = st.steps.length, k = Math.min(st.index, n);
+      ui.progress(22, H - 116, W - 44, 12, k / n, C.acc);
+      ui.text(`${k}/${n}`, W - 22, H - 124, { size: 18, color: C.dim, align: 'right' });
+      ui.button(22, H - 92, 140, 44, '◂ Назад', () => app.stationAct(st, 'prev'), { size: 18 });
+      ui.button(170, H - 92, 250, 44, st.done ? 'Готово ✓' : st.step.check && !(st.step.id in st.values) ? 'Ввести замер (голос)' : 'Выполнено ▸', () => app.stationAct(st, 'next'), { size: 18, color: C.ok, disabled: st.done });
+      ui.button(430, H - 92, W - 452, 44, '🧩 Виртуальная сборка', () => app.stationAct(st, 'player'), { size: 18, color: C.warn });
+      ui.text('Голос: «сборка дальше», «сборка значение …», «сборка виртуальная сборка»', 22, H - 22, { size: 15, color: C.dim, max: W - 44 });
+    },
+  }));
+  p.animated = true;
+  p.visible = false;
+  return p;
 }

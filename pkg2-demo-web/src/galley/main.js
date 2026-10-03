@@ -10,7 +10,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { HOLO, LAYER_HOLO, LAYER_LABEL, LAYER_REAL, markerFrame } from '../engine/holo.js';
 import { AUTO_REPLIES, CHAT_SCRIPT, docByCode } from './catalog.js';
 import { docFormat, FORMATS } from './kd_draw.js';
-import { buildPanels, placeCorner, placeHud } from './panels.js';
+import { buildPanels, placeCorner, placeHud, stationPanel } from './panels.js';
 import { Player } from './player.js';
 import { DONE_BEFORE_SHIFT, ProcessRun, STEPS, stateFrom, stepById, stepsForFeature } from './process.js';
 import * as S from './spec.js';
@@ -26,6 +26,7 @@ import { buildGlassesModel } from './glasses_model.js';
 import { AssemblyPlayer, SPEEDS } from './assembly_player.js';
 import { galleyTarget } from './galley_player.js';
 import { buildWorker } from './humanoid.js';
+import { textTexture } from './tex.js';
 import { DEFAULT_DEVICE, DEVICES, deviceById, deviceSummary, dimLevelOfStep, dimStepOf, fitDistance, matchDevice, transmitAt, weightFatigue, windowDeg } from './glasses.js';
 import '../style.css';
 import './galley.css';
@@ -41,6 +42,7 @@ for (const t of location.hash.slice(1).split(/[-_.~]/).filter(Boolean)) {      /
   else if (t === 'corner') q.set('corner', '1');
   else if (t === 'virtual') { q.set('asm', '1'); q.set('intro', '0'); }
   else if (t === 'tp') q.set('tp', '1');
+  else if (['em1', 'sl1', 'me1'].includes(t)) { q.set('place', t); q.set('intro', '0'); }
   else if (t === 'narrow') q.set('field', '0');
   else if (t === 'autonomous') q.set('mode', 'auto');
   else if (t === 'manual') q.set('mode', 'manual');
@@ -140,6 +142,30 @@ async function main() {
   const fromJig = (p) => V(p.x, p.y, p.z).multiplyScalar(0.001).add(GALLEY_ORIGIN);
   const mgr = new PanelManager(scene, cam, { toJig, fromJig });
   const panels = buildPanels(mgr, app);
+  // ---------- дополнительные участки: окна в очках, активный участок, переходы ----------
+  // окна участков — перед участком, сбоку от рабочей зоны, на уровне глаз (СК участка: +z — к сборщику)
+  const STATION_PANEL = { em1: [1.45, 1.72, 1.15], sl1: [-0.95, 1.72, 1.15], me1: [-1.45, 1.75, 1.45] };
+  const stations = world.stations || [];
+  for (const st of stations) {
+    st.root.updateMatrixWorld(true);
+    const [x, y, z] = STATION_PANEL[st.id];
+    st.panel = stationPanel(mgr, app, st, { pos: st.root.localToWorld(V(x, y, z)).toArray(), look: st.root.localToWorld(V(x * 0.6, y, z + 3)).toArray() });
+  }
+  let activeSt = null;
+  /** Участок рядом со сборщиком (≤ 4,5 м от центра участка), иначе — стапель. */
+  function nearStation() {
+    let best = null, bd = 4.5;
+    for (const st of stations) { const d = Math.hypot(player.pos.x - st.center.x, player.pos.z - st.center.z); if (d < bd) { bd = d; best = st; } }
+    return best;
+  }
+  app.stationAct = (st, cmd) => {
+    if (cmd === 'next') { const r = st.next(); app.notify(r === 'value' ? `Введите замер: ${st.step.check.name} (голос «сборка значение …»)` : st.done ? `${st.short}: изделие готово` : `${st.short}: ${st.step.id} ${st.step.title}`, 4); }
+    if (cmd === 'prev') st.prev();
+    if (cmd === 'player') { asm.openFor(st.asm, 0); asm.play(1); }
+    st.panel.dirty = true; st.showHolo(holoOn(st)); pushState(true);
+  };
+  app.stationInfo = () => (activeSt && !activeSt.done ? { st: activeSt, step: activeSt.step, index: activeSt.index, total: activeSt.steps.length } : null);
+  const holoOn = (st) => st === activeSt && !!sim.glasses && !!sim.display && !asm?.open && app.aligned;
 
   let asm = null;                                                     // плеер виртуальной сборки (создаётся ниже)
   function applyState() {
@@ -201,6 +227,8 @@ async function main() {
     viz.setAnchored(d.tracking === '6dof');
     markerFrames?.forEach((f) => { f.visible = false; });
     q.set('glasses', d.short);
+    const dl = world.hall.dockLabel;                                     // табличка станции — по выбранным очкам
+    if (dl) { dl.material.map?.dispose(); dl.material.map = textTexture(['Зарядная станция AR-очков', `${d.brand} ${d.name} · инв. 0071`], { w: 512, h: 150, size: 40 }); dl.material.needsUpdate = true; }
     if (!quiet) {
       const w = windowDeg(d);
       app.notify(`${d.brand} ${d.name}: ${d.fovDiag}° (${w.h.toFixed(0)}×${w.v.toFixed(0)}°), ${d.nits} нит, ${d.tracking === '6dof' ? '6DoF — окна и голограммы на стапеле' : '3DoF — окна вокруг головы, голограмм на изделии нет (R — по центру)'}`, 6);
@@ -505,11 +533,31 @@ async function main() {
   function act(cmd, arg = null, src = 'клавиатура') {
     const voice = src === 'голос';
     switch (cmd) {
-      case 'next': auto.pause(); app.next(); break;
-      case 'prev': auto.pause(); app.prev(); break;
+      case 'next': if (activeSt && !asm.open) { app.stationAct(activeSt, 'next'); break; } auto.pause(); app.next(); break;
+      case 'prev': if (activeSt && !asm.open) { app.stationAct(activeSt, 'prev'); break; } auto.pause(); app.prev(); break;
       case 'repeat': { const s = run.step; showStep(); say2(`${s.id}. ${s.title}. ${s.text[0] || ''}`, voice); break; }
-      case 'photo': app.photo(); break;
-      case 'value': app.value(arg); break;
+      case 'photo': if (activeSt) { vision.u.flash.value = 1; app.notify(`Фото ${activeSt.step?.id || ''} (${activeSt.short}) — в журнал`); break; } app.photo(); break;
+      case 'goto_place': {
+        const P = { jig: [0, 3.4, 0], desk: [-7.2, -3.2, Math.PI], showcase: [-9.5, -3.4, 0] };
+        for (const st of stations) { const f = V(0, 0, 2.6).applyAxisAngle(V(0, 1, 0), st.root.rotation.y).add(st.center); P[st.id] = [f.x, f.z, st.root.rotation.y]; }
+        const t = P[arg]; if (!t) break;
+        if (scen.state !== 'free') { $('start').hidden = true; finishIntro(); }
+        if (player.mode === 'inspect') player.exitInspect();
+        player.path = null; player.mode = 'walk'; player.place(t[0], t[1], t[2], -0.15);
+        app.notify(`Переход: ${({ jig: 'стапель СТ-3', desk: 'рабочее место', showcase: 'витрина очков' })[arg] || stations.find((s) => s.id === arg)?.short}`, 3);
+        break;
+      }
+      case 'value': {
+        if (activeSt && activeSt.step?.check) {
+          const x = parseFloat(String(arg ?? '').replace(',', '.')), c = activeSt.step.check;
+          if (!Number.isFinite(x)) break;
+          const ok = Math.abs(x - c.nominal) <= c.tol + 1e-9;
+          if (ok) activeSt.values[activeSt.step.id] = x;
+          app.notify(`${c.name}: ${String(x).replace('.', ',')} ${c.unit} — ${ok ? 'в допуске' : 'ВНЕ допуска, сообщите мастеру'}`, 4);
+          activeSt.panel.dirty = true; break;
+        }
+        app.value(arg); break;
+      }
       case 'ok': app.notify('Отмечено: норма'); break;
       case 'reject': app.sendChat(`Брак на переходе ${run.step.id}: остановил работу`); app.notify('Брак: мастер уведомлён', 4); break;
       case 'timer': { const t = run.activeTimers()[0]; say2(t ? `${t.label}: осталось ${fmtLeft(run.remaining(t))}` : 'Активных таймеров нет', voice); break; }
@@ -676,6 +724,7 @@ async function main() {
       panels: Object.fromEntries(Object.entries(PANEL_OF).map(([k, p]) => [k, !!p.visible])),
       dim: { mode: sim.dimMode, level: Math.round(sim.dimLevel * 100) / 100, t: Math.round(transmitAt(sim.device, sim.dimLevel) * 1000) / 1000 }, bright: sim.bright, light: params.light, lux: Math.round(lumCd * 5),
       device: sim.device.id, auto: { on: auto.on, paused: auto.paused, cam: auto.cam },
+      station: activeSt ? { name: activeSt.short, step: activeSt.done ? 'готово' : `${activeSt.step.id} ${activeSt.step.title}`, k: activeSt.index, n: activeSt.steps.length } : null,
       asm: asm?.open ? { name: asm.target.name, t: Math.round(asm.t * 100) / 100, n: asm.n, playing: asm.playing, speed: asm.speed, dir: asm.dir, step: asm.current.step ? `${asm.current.step.id} ${asm.current.step.title}` : '' } : null,
       inspect: app.local && player.mode === 'inspect' ? app.local.features.slice(0, 4).map(({ f }) => trimText(`${f.designation || f.id} — ${f.name || ''}`, 70)) : null,
       heard: voiceUi.last,
@@ -716,6 +765,14 @@ async function main() {
         голосовая строка внизу (Y) или микрофон планшета. На очках в цеху — офлайн Vosk, тот же словарь.</p>
         <div class="presets">${PHRASES.map((p) => `<button data-ph="${p}">${p}</button>`).join('')}</div>`;
       c.querySelectorAll('[data-ph]').forEach((b) => b.onclick = () => voiceUi.handle([b.dataset.ph], 'голос'));
+      return;
+    }
+    if (kind === 'places') {
+      const rows = [['jig', 'Стапель СТ-3 · модуль КМ-2', `${run.index}/${STEPS.length}`], ['desk', 'Рабочее место сборщика', ''], ['showcase', 'Витрина AR-очков', ''],
+        ...stations.map((st) => [st.id, st.short, `${Math.min(st.index, st.steps.length)}/${st.steps.length}`])];
+      c.innerHTML = `<h3>Участки цеха</h3><div class="presets devs">${rows.map(([id, t, k]) => `<button data-go="${id}">${t}<small>${k ? `переходов: ${k}` : ''}</small></button>`).join('')}</div>
+        <p class="note">Рядом с участком (≤ 4,5 м) его окно появляется в очках; N/B, голос и кнопки окна ведут переходы участка, 6 — виртуальная сборка его изделия.</p>`;
+      c.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => { act('goto_place', b.dataset.go); c.hidden = true; });
       return;
     }
     if (kind === 'help') {
@@ -794,6 +851,7 @@ async function main() {
       [panels.algo.visible ? '▣ Алгоритм в углу (X)' : '□ Алгоритм в угол (X)', 'corner', panels.algo.visible ? 'on' : ''],
       [asm.open ? '⏹ Закрыть виртуальную сборку (6)' : '🧩 Виртуальная сборка (6)', 'asm', asm.open ? 'on' : ''],
       [tp.on ? '👁 От первого лица (5)' : '🧍 Вид от третьего лица (5)', 'tp', tp.on ? 'on' : ''],
+      [activeSt ? `📍 ${activeSt.short.split(' · ')[0]}` : '📍 Участки', 'places', activeSt ? 'on' : ''],
       [`👓 ${sim.device.brand} ${sim.device.name} (K)`, 'dev', ''],
       [vision.fieldMode ? '👁 Поле 200° (Tab)' : '👁 Центр 72° (Tab)', 'field', vision.fieldMode ? 'on' : ''], ['Клавиши (H)', 'help', ''], ['Зрение (O)', 'vision', ''], ['Окна 1–4', 'win', ''],
       [`Время ×${app.speed} (T)`, 'time', ''], ['Очки (V)', 'glasses', ''], ['Планшет (J)', 'tablet', ''], ['Голос', 'voice', ''],
@@ -802,7 +860,7 @@ async function main() {
       e.stopPropagation();
       const k = b.dataset.b;
       if (k === 'auto') act('auto_toggle'); if (k === 'stop') act('auto_stop');
-      if (k === 'cam') act('auto_cam'); if (k === 'corner') act('corner'); if (k === 'field') act('field'); if (k === 'asm') act('player'); if (k === 'tp') act('tp');
+      if (k === 'cam') act('auto_cam'); if (k === 'corner') act('corner'); if (k === 'field') act('field'); if (k === 'asm') act('player'); if (k === 'tp') act('tp'); if (k === 'places') toggleCard('places');
       if (k === 'dev') toggleCard('vision');
       if (k === 'help') toggleCard('help'); if (k === 'vision') toggleCard('vision');
       if (k === 'win') for (const p of [panels.kd, panels.step, panels.sys, panels.task]) mgr.toggle(p, true);
@@ -1042,6 +1100,7 @@ async function main() {
     map.strokeStyle = '#ffc845'; map.strokeRect(X(-1.25), Z(-0.8), 2.5 * sx, 1.6 * sz);
     map.fillStyle = '#ffc845'; map.font = '600 18px "IBM Plex Sans", sans-serif'; map.fillText('СТ-3', X(-1.1), Z(-1.0));
     map.fillStyle = '#9fd6e8'; map.fillText('рабочее место', X(-10.5), Z(-5.4)); map.fillText('вход', X(-19.5), Z(5.5));
+    map.fillStyle = '#ffc845'; for (const st of stations) map.fillText(st.short.split(' · ')[0].replace('Участок ', ''), X(st.center.x - 1), Z(st.center.z));
     const p = player.pos, yaw = player.yaw;
     map.save(); map.translate(X(p.x), Z(p.z)); map.rotate(-yaw);
     map.fillStyle = '#5dffa8'; map.beginPath(); map.moveTo(0, -12); map.lineTo(7, 8); map.lineTo(-7, 8); map.closePath(); map.fill();
@@ -1097,6 +1156,16 @@ async function main() {
     sim.wearMin = sim.glasses ? sim.wearMin + dMin : Math.max(0, sim.wearMin - dMin * 3);
     eye.wear = Math.min(0.5, (sim.wearMin / 480) * 0.35 * weightFatigue(sim.device));
     auto.update(dt);
+    if (frame % 15 === 0) {
+      const ns = nearStation();
+      if (ns !== activeSt) {
+        if (activeSt) { mgr.toggle(activeSt.panel, false); activeSt.showHolo(false); }
+        activeSt = ns;
+        if (activeSt) { mgr.toggle(activeSt.panel, true); activeSt.panel.dirty = true; app.notify(`${activeSt.short}: ${activeSt.done ? 'изделие готово' : `${activeSt.step.id} ${activeSt.step.title}`}. N — выполнено, 6 — виртуальная сборка`, 5); }
+        updateBar(); pushState(true);
+      }
+      if (activeSt) activeSt.showHolo(holoOn(activeSt));
+    }
     if (asm.open) { asm.update(dt); if (asm.playing && frame % 4 === 0) playerUi(); }
     pushState();
     // взгляд: окно (голограмма) или предмет
@@ -1147,10 +1216,12 @@ async function main() {
     else if (navigator.webdriver || q.has('shot')) startScenario('intro');
   }
   if (q.get('corner') === '1') cornerAlgo(true, true);
+  if (q.get('place')) act('goto_place', q.get('place'));
   if (q.get('asm') === '1') togglePlayer(true);
   if (tp.on) setTP(true);
   window.__demo = {
-    ready: true, scene, world, run, cam, player, eye, vision, app, mgr, panels, viz, finishIntro, inspectAtGaze, sim, params, auto, setDevice, act, asm, tp, worker,
+    ready: true, scene, world, run, cam, player, eye, vision, app, mgr, panels, viz, finishIntro, inspectAtGaze, sim, params, auto, setDevice, act, asm, tp, worker, stations,
+    get activeStation() { return activeSt; },
     // для проверок: перескочить к этапу сценария
     jump(state) {
       if (scen.state === 'choose') { scen.state = 'intro'; scen.mode = 'auto'; }
