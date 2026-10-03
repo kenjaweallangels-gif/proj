@@ -105,7 +105,7 @@ export function setHoloLayer(obj, style) {
  */
 /** Уголки рамки-габарита (единичный куб): мелкую виртуальную деталь видно издалека. */
 let CORNERS = null;
-function cornerGeometry(k = 0.28) {
+export function cornerGeometry(k = 0.28) {
   if (CORNERS) return CORNERS;
   const p = [];
   for (const x of [-0.5, 0.5]) for (const y of [-0.5, 0.5]) for (const z of [-0.5, 0.5]) {

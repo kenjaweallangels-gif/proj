@@ -7,7 +7,7 @@ import { HOLO, LAYER_HOLO } from '../../engine/holo.js';
 import { painted } from '../../scene/materials.js';
 import { ease } from '../assembly_player.js';
 import { galleyMat as GM, textTexture } from '../tex.js';
-import { HoloMirror } from '../virtual.js';
+import { HoloMirror, cornerGeometry } from '../virtual.js';
 
 export { GM, painted, textTexture, ease };
 
@@ -147,9 +147,30 @@ export class Station {
   /** Голограммы текущего перехода (на место детали или на оборудование), в слое дисплея очков. */
   showHolo(on) {
     for (const h of this.holos.values()) h.visible = false;
+    this.marks ??= new Map();
+    for (const m of this.marks.values()) m.visible = false;
     if (!on || this.done) return;
     const s = this.step;
-    for (const id of [...(s.parts || []), ...(s.focus || [])]) {
+    // оборудование, на котором выполняется переход (верстак, станок, пресс), — настоящее: голограмма лишь
+    // указывает на него уголками по габариту, а не рисует его копию
+    for (const id of s.focus || []) {
+      if ((s.parts || []).includes(id)) continue;
+      const o = this.machines?.get(id) || this.items.get(id);
+      if (!o) continue;
+      let m = this.marks.get(id);
+      if (!m) {
+        m = new THREE.LineSegments(cornerGeometry(0.18), holoEdge());
+        m.layers.set(LAYER_HOLO); m.raycast = () => {}; m.frustumCulled = false;
+        let top = o; while (top.parent) top = top.parent;
+        o.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(o).expandByScalar(0.03);
+        box.getCenter(m.position); box.getSize(m.scale);
+        top.add(m);
+        this.marks.set(id, m);
+      }
+      m.visible = true;
+    }
+    for (const id of s.parts || []) {
       const o = this.items.get(id) || this.machines?.get(id);
       if (!o) continue;
       let h = this.holos.get(id);
