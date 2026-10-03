@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { clamp, smoothstep, rng } from '../core/util.js';
 import { HALL, zoneAtLocal } from './plan.js';
 import { U } from './mats.js';
-import { SHAFT_R, VAULT_TOP } from './hall.js';
+const SHAFT_R = HALL.shaftR, VAULT_TOP = HALL.shaftTop - 0.6;
 
 const FOGMIX = (extra = '') => /* glsl */`
 #ifdef USE_FOG
@@ -23,6 +23,7 @@ const regionOfZone = (z) => ({ B1_Airlock: 'B1', B2_Gallery: 'B2', B3_Passages: 
 
 export function createLighting(ctx) {
   const { root, globes, wells, game } = ctx;
+  const CIS = { x0: 112.4, x1: 137.6, z0: 10.4, z1: 25.6, y: -1.2 };
   const q = ctx.quality;
   const O = ctx.origin;
   const out = {};
@@ -151,35 +152,31 @@ export function createLighting(ctx) {
   // небо над шахтой
   const skyMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(5.5, 6.2, 7.4), fog: false });
   const sky = new THREE.Mesh(new THREE.CircleGeometry(SHAFT_R + 0.2, 32), skyMat);
-  sky.rotation.x = Math.PI / 2; sky.position.set(HALL.cx, VAULT_TOP + 6.9, HALL.cz);
+  sky.rotation.x = Math.PI / 2; sky.position.set(HALL.cx, HALL.shaftTop - 0.15, HALL.cz);
   root.add(sky);
-  // колодцы B2
+  // колодцы B2 (шахты прорезаны в самой скале — здесь только луч и «небо» над ними)
   const wellMeshes = [];
   for (const w of wells) {
-    if (w.kind !== 'well') continue;
-    const len = w.y0 - 0.1;
+    const top = w.y1 - 0.5, len = top - 0.1;
     const m = shaftMat('#9bbcff', 0.32);
     m.uniforms.uY0.value = -len / 2; m.uniforms.uY1.value = len / 2;
-    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(w.r, w.r * 1.9, len, 28, 6, true), m);
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(w.r, w.rBottom, len, 28, 6, true), m);
     mesh.position.set(w.x, len / 2 + 0.1, w.z); mesh.renderOrder = 6;
     root.add(mesh); wellMeshes.push(mesh);
     const disc = new THREE.Mesh(new THREE.CircleGeometry(w.r + 0.25, 24), new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 5, 6.5), fog: false }));
-    disc.rotation.x = Math.PI / 2; disc.position.set(w.x, w.y0 + 2.7, w.z);
+    disc.rotation.x = Math.PI / 2; disc.position.set(w.x, w.y1 - 0.35, w.z);
     root.add(disc);
-    // шахта над сводом
-    const tube = new THREE.Mesh(new THREE.CylinderGeometry(w.r + 0.1, w.r + 0.1, 2.8, 20, 1, true), new THREE.MeshStandardMaterial({ color: '#6a5238', roughness: 1, side: THREE.BackSide }));
-    tube.position.set(w.x, w.y0 + 1.3, w.z); root.add(tube);
   }
 
   // ---- Щель фальшивого камня: холодный свет снаружи.
   {
-    const slit = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 3.1), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.5, 2.1, 3.0), fog: false }));
-    slit.rotation.y = Math.PI / 2; slit.position.set(0.03, 1.55, -1.27);
+    const slit = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 3.9), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 2.2, 3.2), fog: false }));
+    slit.rotation.y = Math.PI / 2; slit.position.set(-3.72, 2.0, -1.3);
     root.add(slit);
     const halo = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 4.2), new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
       vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0);} ',
       fragmentShader: 'varying vec2 vUv; void main(){ vec2 p = (vUv-0.5)*2.0; float a = pow(max(0.0,1.0-length(p*vec2(0.9,0.8))),2.0); gl_FragColor = vec4(vec3(0.35,0.5,0.8)*a*0.5,1.0); }' }));
-    halo.rotation.y = Math.PI / 2; halo.position.set(0.12, 1.55, -1.27); halo.renderOrder = 6;
+    halo.rotation.y = Math.PI / 2; halo.position.set(-3.4, 2.0, -1.3); halo.renderOrder = 6;
     root.add(halo);
   }
   // ---- Пылинки (вся сцена, камерой-центрированные) + пылинки луча.
@@ -190,7 +187,7 @@ export function createLighting(ctx) {
   mGeo.setAttribute('position', new THREE.BufferAttribute(mp, 3)); mGeo.setAttribute('aS', new THREE.BufferAttribute(ms, 1)); mGeo.setAttribute('aPh', new THREE.BufferAttribute(mph, 1));
   const cones = [
     { x: HALL.cx, z: HALL.cz, r: 3.0, y0: HALL.bowlY, y1: VAULT_TOP, col: [1.0, 0.85, 0.55], k: 2.2 },
-    ...wells.filter((w) => w.kind === 'well').map((w) => ({ x: w.x, z: w.z, r: 1.7, y0: 0, y1: 12, col: [0.6, 0.75, 1.0], k: 1.4 })),
+    ...wells.map((w) => ({ x: w.x, z: w.z, r: 1.7, y0: 0, y1: 12, col: [0.6, 0.75, 1.0], k: 1.4 })),
   ];
   const coneArr = cones.map((c) => new THREE.Vector4(c.x, c.z, c.r, c.k));
   while (coneArr.length < 4) coneArr.push(new THREE.Vector4(0, 0, 0, 0));
@@ -267,7 +264,7 @@ export function createLighting(ctx) {
   }
   const NC = q === 'low' ? 200 : q === 'high' ? 700 : 420;
   const coneMats = [coneMotes(HALL.cx, HALL.cz, HALL.bowlY, VAULT_TOP, SHAFT_R, 3.3, NC, [2.2, 1.7, 1.1], 0.06)];
-  for (const w of wells) if (w.kind === 'well') coneMats.push(coneMotes(w.x, w.z, 0.1, w.y0, w.r, w.r * 1.9, Math.round(NC * 0.35), [1.0, 1.3, 1.9], 0.05));
+  for (const w of wells) coneMats.push(coneMotes(w.x, w.z, 0.1, w.y1 - 0.5, w.r, w.rBottom, Math.round(NC * 0.35), [1.0, 1.3, 1.9], 0.05));
 
   // ---- Пар/конденсат у шлюзов.
   const NS = 90;
@@ -311,7 +308,7 @@ export function createLighting(ctx) {
   let steamT = 0;
 
   // ---- Вода цистерны.
-  const B4 = { x0: 112.4, x1: 137.6, z0: 10.4, z1: 25.6, y: -1.2 };
+  const B4 = CIS;
   const wg = globes.filter((g) => g.region === 'B4').slice(0, 8);
   const gArr = []; for (let i = 0; i < 8; i++) gArr.push(wg[i] ? new THREE.Vector3(wg[i].x, wg[i].y, wg[i].z) : new THREE.Vector3(0, -99, 0));
   const drips = [new THREE.Vector4(118, 13, -10, 0), new THREE.Vector4(129, 22, -10, 0), new THREE.Vector4(124, 17, -10, 0)];
@@ -379,7 +376,7 @@ export function createLighting(ctx) {
     for (let i = 0; i < N; i++) {
       const g = globes[i];
       const bob = Math.sin(t * 0.9 + g.phase) * 0.055 + Math.sin(t * 0.37 + g.phase * 2) * 0.03;
-      g.x = g.bx + Math.sin(t * 0.31 + g.phase) * 0.012 * (g.chain ? 4 : 1); g.y = g.by + bob; g.z = g.bz;
+      g.x = g.bx + Math.sin(t * 0.31 + g.phase) * 0.07 + Math.sin(t * 0.17 + g.phase * 3) * 0.05; g.y = g.by + bob; g.z = g.bz + Math.cos(t * 0.27 + g.phase * 1.7) * 0.07;
       _m.makeTranslation(g.x, g.y, g.z); gMesh.setMatrixAt(i, _m);
       const fl = 0.85 + 0.15 * Math.sin(t * (2.2 + g.phase * 0.2) + g.phase * 4) * Math.sin(t * 1.3 + g.phase);
       _c.setRGB(2.5 * fl, 1.45 * fl, 0.55 * fl); gMesh.setColorAt(i, _c);
@@ -424,7 +421,7 @@ export function createLighting(ctx) {
       const ph = (t - dripT[i]) % dripPeriod[i];
       const fall = ph < 0 ? 99 : ph;
       const d = drips[i];
-      if (ph >= 0 && ph < 0.6) { const f = ph / 0.6; pos[i * 3] = d.x; pos[i * 3 + 1] = 3.4 - (3.4 + 1.2) * f * f; pos[i * 3 + 2] = d.y; }
+      if (ph >= 0 && ph < 0.6) { const f = ph / 0.6; pos[i * 3] = d.x; pos[i * 3 + 1] = 6.0 - 7.2 * f * f; pos[i * 3 + 2] = d.y; }
       else { pos[i * 3] = 0; pos[i * 3 + 1] = -99; pos[i * 3 + 2] = 0; }
       if (ph >= 0.58 && ph < 0.6 + dt * 2 && (drips[i].w < t - 3)) { drips[i].w = t; out.onDrip?.(i, d.x + O.x, d.y + O.z); }
     }

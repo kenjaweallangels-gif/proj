@@ -21,35 +21,14 @@ function findChromium() {
 
 // Точки обзора: локальные координаты сиетча [x,y,z] → цель [x,y,z]. fov необязателен.
 const VIEWS = [
-  ['01_airlock', [3.0, 1.7, 0.3], [20, 1.8, 0], 70],
-  ['02_airlock_doors', [14, 1.7, 0.4], [26, 1.8, 0], 70],
-  ['03_gallery_entry', [41.5, 1.75, 0], [70, 2.5, 0], 75],
-  ['04_gallery_balcony', [52, 7.7, -5.8], [78, 4.5, 2], 78],
-  ['05_gallery_wide', [44, 5, 6.5], [80, 5, -2], 80],
-  ['06_market_close', [62, 1.7, 3.2], [67, 1.5, 6.4], 70],
-  ['07_market_water', [74, 1.7, 1.0], [79, 1.4, 5.8], 70],
-  ['08_stairs_children', [45, 1.7, 1.5], [49, 1.2, -1], 70],
-  ['09_passage', [102, 1.7, 0], [124, 1.6, 0], 68],
-  ['10_shrine', [106, 1.6, -0.6], [107, 1.0, 2.6], 68],
-  ['11_funeral', [122, 1.7, -15], [136, 1.5, -15], 68],
-  ['12_cistern', [122, 1.6, 6.2], [124, 0.6, 16], 72],
-  ['13_hall_entry', [150.8, 1.7, 0], [178, -0.5, 0], 74],
-  ['14_hall_wide', [152, 3.5, 12], [185, 0, -2], 80],
-  ['15_hall_vault', [160, 0, 0], [175, 19, 0], 82],
-  ['16_godray', [169, -1.0, 3.5], [175, 8, 0], 74],
-  ['17_hall_bowl', [163, -0.2, -5], [175, -2.2, 0], 66],
-  ['18_stall_goods', [60, 1.6, -2.4], [62, 1.1, -6.2], 62],
-  ['19_looms', [58, 1.6, 2.2], [60, 1.2, 6.5], 64],
-  ['20_repair_bench', [80, 1.6, -2.0], [80, 1.0, -6.2], 60],
-  ['21_balcony_mural', [66, 7.6, -5.9], [71, 8.0, -7.5], 70],
-  ['22_bridge', [68, 7.4, 0], [76, 6.6, 0], 75],
-  ['23_hooks_rack', [30, 1.6, 0.3], [34, 1.3, -1.6], 66],
-  ['24_door_slit', [4, 1.6, 0.0], [0.5, 1.7, -0.3], 66],
-  ['25_weaver', [57.6, 1.5, 3.8], [56, 1.0, 7.3], 55],
-  ['26_elders_bench', [50, 1.5, -1.2], [51.5, 0.9, -3.8], 55],
-  ['27_children', [50.5, 1.5, 3.2], [47, 0.8, -0.4], 62],
-  ['28_guard_check', [12, 1.6, 0.3], [19, 1.3, 0], 62],
-  ['29_cistern_water', [122, 1.7, 11.5], [125, -1.2, 21], 80],
+  ['01_cleft', [1.0, 1.5, 0.1], [8, 1.4, 0], 72],
+  ['02_airlock', [12, 1.5, 0], [22, 1.4, 0], 72],
+  ['03_inner_passage', [27, 1.5, 0.3], [40, 1.6, 0], 72],
+  ['04_gallery_entry', [41.5, 1.7, 0], [70, 3, 0], 78],
+  ['05_gallery_wide', [44, 2.2, -2], [88, 7, 3], 84],
+  ['06_hall_wide', [152, 1.7, 0], [178, -0.5, 0], 80],
+  ['07_hall_vault', [160, 0, 0], [175, 19, 0], 84],
+  ['08_passage', [102, 1.6, 0.4], [124, 1.5, 0], 70],
 ];
 
 const browser = await chromium.launch({
@@ -62,7 +41,7 @@ page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') 
 page.on('pageerror', (e) => errors.push(String(e)));
 const file = arg('file', 'sietch.html');
 await page.goto(`file://${join(root, 'dist', file)}?autotest=1&q=${q}&lang=RU`);
-await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.0, null, { timeout: 180000 });
+await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.0, null, { timeout: 480000 });
 await page.evaluate(async () => { await window.__rakis.sietch.enter(); window.__rakis.cinematic = { active: true, owner: 'shots' }; });
 
 const shoot = async (name, pos, tgt, fov = 70, wait = Number(arg('wait', 1500))) => {

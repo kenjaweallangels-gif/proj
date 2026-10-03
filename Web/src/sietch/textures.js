@@ -150,6 +150,28 @@ export function makeTextures() {
   });
   // --- Водяные кольца на шнуре ---
   T.rings = decal(256, 256, () => {});
+
+  // --- Отпечатки ладоней (трафареты охрой/киноварью и тёмные прикосновения) — следы людей всех эпох ---
+  T.hands = decal(512, 256, (c, P, w, h) => {
+    const R = rng(21);
+    const handPath = (x, y, s, rot, flip) => {
+      c.save(); c.translate(x, y); c.rotate(rot); c.scale(flip, 1); c.scale(s, s);
+      c.beginPath(); c.ellipse(0, 0, 0.52, 0.62, 0, 0, Math.PI * 2);
+      const fingers = [[-0.38, -0.55, -0.2, 0.62], [-0.14, -0.7, -0.07, 0.82], [0.12, -0.7, 0.06, 0.78], [0.36, -0.55, 0.2, 0.62]];
+      for (const [fx, fy, ang, len] of fingers) { c.moveTo(fx + 0.1, fy); c.ellipse(fx, fy - len / 2 + 0.05, 0.1, len / 2, ang, 0, Math.PI * 2); }
+      c.moveTo(-0.5, 0.15); c.ellipse(-0.68, -0.12, 0.1, 0.38, -0.9, 0, Math.PI * 2);
+      c.restore();
+    };
+    const cols = ['rgba(176,70,40,0.92)', 'rgba(205,160,80,0.92)', 'rgba(228,220,196,0.9)'];
+    for (let k = 0; k < 4; k++) {
+      const x = 70 + k * 120 + R() * 20, y = 90 + R() * 40, s = 46 + R() * 8, rot = (R() - 0.5) * 0.5, col = cols[k % 3];
+      if (P.mode === 'color') {
+        c.save(); c.fillStyle = col; c.beginPath(); c.ellipse(x, y - 8, s * 1.15, s * 1.25, rot, 0, Math.PI * 2); c.fill();
+        c.globalCompositeOperation = 'destination-out'; c.fillStyle = '#000'; handPath(x, y, s, rot, k % 2 ? 1 : -1); c.fill(); c.restore();
+      }
+    }
+    for (let k = 0; k < 3; k++) { c.fillStyle = P.paint('rgba(44,30,24,0.8)'); handPath(100 + k * 150 + R() * 30, 205 + R() * 10, 28, (R() - 0.5) * 0.6, k % 2 ? 1 : -1); c.fill(); }
+  });
   // --- Ткани ---
   T.cloth = {};
   const weave = (c, w, h, a = 0.12) => { const R = rng(3); for (let y = 0; y < h; y += 2) { c.fillStyle = `rgba(0,0,0,${R() * a})`; c.fillRect(0, y, w, 1); } for (let x = 0; x < w; x += 2) { c.fillStyle = `rgba(255,255,255,${R() * a * 0.5})`; c.fillRect(x, 0, 1, h); } };
