@@ -77,7 +77,7 @@ if (has('close')) {
   }
 }
 if (has('gait')) {
-  const seqs = [['walk', 3, 0, 8, 0.07], ['run', 6, 0, 8, 0.055], ['desert', 1.8, 1, 8, 0.45], ['idle', 0, 0, 6, 0.9]];
+  const seqs = [['walk', 3, 0, 6, 0.09], ['run', 6, 0, 6, 0.07], ['desert', 1.8, 1, 6, 0.55]];
   for (const preset of ['Kair']) for (const [name, sp, irr, n, dtf] of seqs) {
     await page.evaluate(([preset, sp, irr, n, dtf]) => {
       const S = window.__S; S.clear();
@@ -88,7 +88,7 @@ if (has('gait')) {
         f.group.position.z = S.at.z;
         S.sim(f, sp, irr, T0 + i * dtf, { allowPause: true, desert: irr > 0 });
       }
-      S.cam([0, 1.0, 11], [0, 0.95, 0], 30);
+      S.cam([0, 1.0, 8.5], [0, 0.95, 0], 30);
     }, [preset, sp, irr, n, dtf]);
     await shot('gait_' + name + '_' + preset, 1200);
   }
