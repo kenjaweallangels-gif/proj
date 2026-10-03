@@ -68,19 +68,19 @@ const FRAG_COLOR = /* glsl */`
     float r = min(e.x < 0.4 ? r1 : 9.0, e.y < 0.4 ? r2 : 9.0);
     riv = (1.0 - smoothstep(0.05, 0.075, r)) * lod;
   }
-  base *= 0.86 + 0.28 * ch;
+  base *= (0.9 + 0.24 * ch) * 1.25;
   // латаные листы: более светлые оливково-серые
-  float patch = step(0.9, ch2) * step(float(tag), 0.5);
-  base = mix(base, vec3(0.30, 0.31, 0.26) * (0.8 + 0.4 * ch), patch);
+  float patchK = step(0.9, ch2) * step(float(tag), 0.5);
+  base = mix(base, vec3(0.30, 0.31, 0.26) * (0.8 + 0.4 * ch), patchK);
   base *= 1.0 - 0.45 * seam;
-  base += vec3(0.07) * riv * (1.0 - patch * 0.5);
+  base += vec3(0.07) * riv * (1.0 - patchK * 0.5);
 
   // --- грязь, масляные потёки, ржавчина
   float n1 = rkFbm(uv * 0.45 + ax * 9.0 + vLP.x * 0.05);
   float n2 = rkFbm(uv * 2.3 + 3.0 + ax * 5.0);
   float n3 = rkNoise(uv * 9.0 + ax);
   float dirt = smoothstep(0.30, 0.85, n1) * (0.5 + 0.5 * uWear);
-  base = mix(base, base * vec3(0.38, 0.32, 0.27), dirt * 0.65);
+  base = mix(base, base * vec3(0.62, 0.54, 0.46), dirt * 0.55);
   float rustN = rkFbm(uv * 0.9 + 11.0 + ax * 3.0) + seam * 0.22 + (1.0 - smoothstep(0.0, 9.0, vLP.y)) * 0.12;
   float rustK = (tag == 3 ? 1.7 : 0.8) * uWear;
   float rust = smoothstep(0.56, 0.78, rustN) * clamp(rustK, 0.0, 1.0);
@@ -119,6 +119,7 @@ const FRAG_COLOR = /* glsl */`
   diffuseColor.rgb = base;
 }
 `;
+const FRAG_FILL = `reflectedLight.indirectDiffuse += diffuseColor.rgb * uAmbient * (0.4 + 0.4 * clamp(normalize(vLN).y * 0.5 + 0.5, 0.0, 1.0));`;
 const FRAG_ROUGH = `roughnessFactor = gR;`;
 const FRAG_NORMAL = /* glsl */`
 {
@@ -133,12 +134,12 @@ const FRAG_NORMAL = /* glsl */`
 
 /** Основной материал (используется и InstancedMesh: звенья гусениц, колёса, перила, болты). */
 export function createHullMaterial(quality) {
-  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7, metalness: 0.45, vertexColors: true });
+  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7, metalness: 0.12, vertexColors: true });
   mat.userData.wear = { value: 1 };
   patchMaterial(mat, 'hv-hull' + (quality === 'low' ? 'L' : ''), {
     uniforms: { uWear: mat.userData.wear },
     vertexPars: VERT_PARS, vertexMain: VERT_MAIN,
-    fragPars: FRAG_PARS, fragColor: FRAG_COLOR, fragRough: FRAG_ROUGH,
+    fragPars: FRAG_PARS, fragColor: FRAG_COLOR, fragRough: FRAG_ROUGH, fragLightsEnd: FRAG_FILL,
     fragNormal: quality === 'low' ? '' : FRAG_NORMAL,
   });
   return mat;

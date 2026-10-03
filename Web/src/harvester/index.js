@@ -12,7 +12,7 @@ import { createCarryall } from './carryall.js';
 export const START = { x: 330, z: -60, heading: 0 };   // метры раскладки; heading — направление (cos, sin) в (x, z); 0 = вдоль +X
 const V_MAX = 1.5;           // м/с
 const R_TURN = 30;           // радиус большой петли, м (диаметр 60 м — не уходит далеко от старта)
-const SCOOP_RAISE = 0.5;     // рад, подъём ковша
+const SCOOP_RAISE = 0.22;     // рад, подъём ковша
 const FOOT_STEP = 3.6;       // м между штампами колеи
 
 export function create(game) {
@@ -49,7 +49,7 @@ export function create(game) {
   const glowMesh = mk(G.glow, glowMat, near, false);
   const decalMesh = new THREE.Mesh(buildDecals(G.decals), decalMat);
   decalMesh.frustumCulled = false; decalMesh.renderOrder = 2; near.add(decalMesh);
-  const farMesh = mk(G.far, hullMat, far);
+  const farMesh = mk(G.far, hullMat, far, false);
 
   // гусеницы
   const tracks = createTracks(game, hullMat, quality);

@@ -9,6 +9,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`))?.split('=')[1] ?? d);
 const q = arg('q', 'med');
 const only = arg('only', 'all');
+const want = (k) => only === 'all' || only.split(',').includes(k);
 const outDir = join(root, 'dist', 'shots', arg('tag', 'harvester'));
 mkdirSync(outDir, { recursive: true });
 
@@ -25,33 +26,33 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage({ viewport: { width: Number(arg('w', 1280)), height: Number(arg('h', 720)) } });
 const errors = [];
-page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${m.type()}: ${m.text()}`); });
+page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !/AudioContext/.test(m.text())) errors.push(`${m.type()}: ${m.text()}`); });
 page.on('pageerror', (e) => errors.push(String(e)));
 await page.goto(`file://${join(root, 'dist', arg('file', 'harvester.html'))}?autotest=1&q=${q}&lang=RU`);
-await page.waitForFunction(() => window.__rakis && window.__rakis.harvester && window.__rakis.realTime > 1.5, null, { timeout: 180000 });
+await page.waitForFunction(() => window.__rakis && window.__rakis.harvester && window.__rakis.realTime > 1.5, null, { timeout: 600000 });
 
 // камера под контролем теста
 await page.evaluate(() => { const g = window.__rakis; g.cinematic.active = true; g.cinematic.owner = 'harvester_shots'; });
 
 async function cam(x, y, z, lx, ly, lz, fov = 60, wait = 1200) {
   await page.evaluate(([x, y, z, lx, ly, lz, fov]) => {
-    const g = window.__rakis; g.camera.position.set(x, y, z); g.camera.fov = fov; g.camera.updateProjectionMatrix(); g.camera.lookAt(lx, ly, lz);
+    const g = window.__rakis; g.camera.position.set(x, y + (g.world?.heightAt?.(x, z) ?? 0), z); g.camera.fov = fov; g.camera.updateProjectionMatrix(); g.camera.lookAt(lx, ly + (g.world?.heightAt?.(lx, lz) ?? 0), lz);
   }, [x, y, z, lx, ly, lz, fov]);
   await page.waitForTimeout(wait);
 }
-const shot = (name) => page.screenshot({ path: join(outDir, `${name}.png`) });
+const shot = (name) => page.screenshot({ path: join(outDir, `${name}.png`), timeout: 240000 });
 const H = await page.evaluate(() => { const p = window.__rakis.harvester.position; return { x: p.x, y: p.y, z: p.z }; });
 console.log('harvester at', JSON.stringify(H));
 const stats = async (tag) => console.log(tag, JSON.stringify(await page.evaluate(() => { const g = window.__rakis, r = g.renderer.info.render; return { calls: r.calls, tris: r.triangles, fps: g.stats.fps, state: g.harvester.state }; })));
 
-if (only === 'all' || only === 'views') {
+if (want('views')) {
   const P2 = [108, 43], P4 = [279, 95];
   await cam(P2[0], 1.7, P2[1], H.x, 14, H.z, 62); await shot('view_P2'); await stats('P2');
   await cam(P4[0], 1.7, P4[1], H.x, 14, H.z, 62); await shot('view_P4'); await stats('P4');
   await cam(P4[0] + 60, 1.7, P4[1] - 60, H.x, 14, H.z, 62); await shot('view_approach');
   await cam(H.x + 40, 90, H.z + 230, H.x, 12, H.z, 40); await shot('view_aerial');
 }
-if (only === 'all' || only === 'close') {
+if (want('close')) {
   await cam(H.x - 20, 2, H.z + 70, H.x - 6, 14, H.z, 55); await shot('close_side');
   await cam(H.x + 30, 1.8, H.z + 36, H.x + 30, 7, H.z + 18, 60); await shot('close_tracks');
   await cam(H.x + 90, 5, H.z + 25, H.x + 52, 5, H.z, 62); await shot('close_scoop');
@@ -60,7 +61,7 @@ if (only === 'all' || only === 'close') {
   await cam(H.x - 80, 18, H.z + 20, H.x - 40, 24, H.z, 55); await shot('close_rear');
   await cam(H.x - 4, 40, H.z + 40, H.x - 14, 28, H.z, 60); await shot('close_towers');
 }
-if (only === 'all' || only === 'startup') {
+if (want('startup')) {
   await page.evaluate(() => { const g = window.__rakis; g.timeScale = 1; window.__log = []; g.bus.on('harvester', (e) => window.__log.push(`${g.time.toFixed(1)} ${e.state}`)); g.bus.on('noise', (e) => e.source === 'Harvester' && window.__log.push(`${g.time.toFixed(1)} noise ${e.loudness.toFixed(2)}`)); g.audio = g.audio || {}; const ev = g.audio.event; g.audio.event = (id, pos) => { window.__log.push(`${g.time.toFixed(1)} audio ${id}`); return ev?.call(g.audio, id, pos); }; });
   // игрок рядом с пультом: проверяем интерактив
   const ip = await page.evaluate(() => { const i = window.__rakis.harvester.interactable; return [i.position.x, i.position.y, i.position.z]; });
@@ -85,7 +86,7 @@ if (only === 'all' || only === 'startup') {
   console.log('focus running', JSON.stringify(await page.evaluate(() => { const f = window.__rakis.player.focus; return f ? { label: f.label, tag: f.tag } : null; })));
   await page.evaluate(() => { window.__rakis.timeScale = 1; });
 }
-if (only === 'all' || only === 'run') {
+if (want('run')) {
   await page.evaluate(() => { const g = window.__rakis; if (g.harvester.state === 'off') g.harvester.debugSet('running'); g.timeScale = 4; });
   await page.waitForTimeout(6000);
   const H2 = await page.evaluate(() => { const p = window.__rakis.harvester.position; return { x: p.x, y: p.y, z: p.z, h: window.__rakis.harvester.heading }; });
@@ -95,6 +96,7 @@ if (only === 'all' || only === 'run') {
   await cam(H2.x - 85, 8, H2.z + 38, H2.x - 55, 9, H2.z, 62, 1200); await shot('run_plume_close');
   await cam(H2.x + 80, 6, H2.z + 60, H2.x + 40, 6, H2.z, 62, 1200); await shot('run_scoop_dust');
   await cam(H2.x + 10, 3, H2.z + 60, H2.x - 25, 14, H2.z, 60, 1200); await shot('run_side');
+  await cam(H2.x + 105, 4, H2.z + 22, H2.x + 52, 7, H2.z, 62, 1200); await shot('run_front');
   await stats('running');
   // колея
   await page.evaluate(() => { const g = window.__rakis; g.harvester.stop(); g.timeScale = 4; });
@@ -103,7 +105,7 @@ if (only === 'all' || only === 'run') {
   const H3 = await page.evaluate(() => { const p = window.__rakis.harvester.position; return { x: p.x, z: p.z }; });
   await cam(H3.x - 30, 55, H3.z + 90, H3.x - 60, 0, H3.z + 10, 55, 1500); await shot('stopped_furrows');
 }
-if (only === 'all' || only === 'night') {
+if (want('night')) {
   await page.evaluate(() => {
     const g = window.__rakis, w = g.weather;
     const ids = Object.keys(g.data?.WeatherPresets || {});
