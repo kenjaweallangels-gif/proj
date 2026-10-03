@@ -34,8 +34,10 @@ H_TYPES = os.path.join(ROOT, "Source", "Rakis", "Public", "Core", "RakisTypes.h"
 MODULAR_MD = os.path.join(ROOT, "docs", "art", "characters", "modular_clothing.md")
 INSCR_MD = os.path.join(ROOT, "docs", "lore", "inscriptions.md")
 
-SPEAKERS = {"Kair", "Ilva", "Rayn", "Ossana", "Rider1", "Rider2", "Guard", "Harmat", "Priestess", "Crowd", "Lore"}
-EMOTIONS = {"Neutral", "Calm", "Tense", "Afraid", "Angry", "Whisper", "Reverent", "Wry"}
+SPEAKERS = {"Kair", "Ilva", "Rayn", "Ossana", "Rider1", "Rider2", "Guard", "Harmat", "Priestess", "Crowd", "Lore",
+            # жители сиетча (Ред. 2: подслушанные сцены)
+            "Trader", "Carrier", "Weaver", "Mother", "Child", "Girl", "Elder", "Youth", "Pilgrim"}
+EMOTIONS = {"Neutral", "Calm", "Tense", "Afraid", "Angry", "Whisper", "Reverent", "Wry", "Amused", "Warm", "Joy"}  # Amused/Warm/Joy — Ред. 2
 ARCHETYPES = {"Trader", "Artisan", "WaterCarrier", "Child", "Guard", "Pilgrim", "Elder", "Weaver"}
 CONTEXTS = {"Idle", "Stranger", "Market", "Water", "Shiana", "Kin", "WormNear", "Ritual", "Offworld"}
 SO_TAGS = {"Loom", "Stall", "WaterJar", "PrayerMat", "Bench", "Niche", "StillsuitRepair"}
@@ -45,7 +47,7 @@ WEATHER = {"Dawn_Ridge", "Morning_Erg", "Worm_Tension", "Worm_Reveal", "Noon_App
            "Crevice_Shade", "Sietch_Interior", "Hall_Ritual"}
 CINEMATICS = {"/Game/Rakis/Cinematics/LS_WormReveal", "/Game/Rakis/Cinematics/LS_HallFinale"}
 ACTIONS = {"PlayDialogue", "PlayCinematic", "SetWeather", "SetMusic", "TitleCard", "ForceWorm", "CrowdRitual",
-           "Hint", "FadeOut", "EndDemo"}  # Ellipsis (склейки времени) убран: всё в реальном времени
+           "Hint"}  # Ellipsis (склейки времени), FadeOut и EndDemo убраны: всё в реальном времени, демо не заканчивается
 LORE_IDS = ["LORE_Carving_Fremen", "LORE_Quizarate_Sigil", "LORE_Revivalist_Mural", "LORE_Cistern_Grate",
             "LORE_Thumper_Rack", "LORE_Shiana_Shrine", "LORE_Water_Rings", "LORE_Maker_Hooks"]
 # Словарь Condition диалогов: триггеры StoryBeats + реактивные условия компаньонов (docs/design/mechanics.md §6)
@@ -184,6 +186,7 @@ def check_dialogue(fn, rows, rep, ctx):
             rep.err(fn, f"нет строки лора {lid}")
         elif row["Speaker"] != "Lore":
             rep.err(fn, f"{lid}: Speaker должен быть Lore")
+    check_native(fn, rows, rep)
     lines = len(rows)
     rep.ok(f"{fn}: {lines} реплик ({sum(1 for r in rows if r['Speaker'] == 'Lore')} лор), "
            f"спикеров {len({r['Speaker'] for r in rows})}")
@@ -194,6 +197,49 @@ def check_dialogue(fn, rows, rep, ctx):
         for lid in LORE_IDS:
             if lid not in md:
                 rep.warn(fn, f"{lid} не описан в docs/lore/inscriptions.md")
+
+
+def check_native(fn, rows, rep):
+    """Ред. 2: Line_NativeScript строится автоматически из Line_Native (Tools/tts/native2ar.py); у каждой озвучиваемой реплики есть
+    Line_Native и арабица, галах — '[Galach]' без арабицы; Duration > 0; озвучка (assets/vo.js) покрывает все реплики хашшаны."""
+    sys.path.insert(0, os.path.join(ROOT, "Tools", "tts"))
+    try:
+        from native2ar import to_script
+    except Exception as e:  # noqa: BLE001
+        rep.warn(fn, f"native2ar не импортируется: {e}")
+        return
+    vo_keys = None
+    vo_path = os.path.join(ROOT, "Web", "src", "assets", "vo.js")
+    if os.path.exists(vo_path):
+        head = open(vo_path, encoding="utf-8").read()
+        vo_keys = set(re.findall(r'"((?:DLG|BRK)_\w+)":"data:audio', head))
+    n_native = n_missing_vo = 0
+    for r in rows:
+        i = r["DialogueID"]
+        if r["Speaker"] == "Lore":
+            continue
+        nat = r["Line_Native"].strip()
+        if not nat:
+            rep.err(fn, f"{i}: пустая Line_Native")
+            continue
+        if nat.lower() == "[galach]":
+            if r["Line_NativeScript"].strip():
+                rep.err(fn, f"{i}: у галаха Line_NativeScript должна быть пустой")
+            continue
+        n_native += 1
+        exp = to_script(nat)
+        if r["Line_NativeScript"] != exp:
+            rep.err(fn, f"{i}: Line_NativeScript не совпадает с native2ar.to_script(Line_Native)")
+        try:
+            if float(r["Duration"]) <= 0:
+                rep.err(fn, f"{i}: Duration ≤ 0")
+        except ValueError:
+            pass
+        if vo_keys is not None and i not in vo_keys:
+            n_missing_vo += 1
+    if vo_keys is not None and n_missing_vo:
+        rep.warn(fn, f"нет записи в assets/vo.js для {n_missing_vo} реплик (запустите Tools/tts/piper_build.py)")
+    rep.ok(f"{fn}: родная строка и арабица согласованы у {n_native} реплик")
 
 
 def check_condition(fn, rid, c, rep, ctx):
@@ -348,13 +394,14 @@ def check_beats(fn, rows, rep, ctx):
             rep.err(fn, f"{i}: {a} ожидает 'RU|EN'")
         elif a == "ForceWorm" and not p.startswith("Rakis.Worm."):
             rep.err(fn, f"{i}: ForceWorm ожидает тег Rakis.Worm.*")
-        elif a == "FadeOut" and not is_float(p):
-            rep.err(fn, f"{i}: FadeOut ожидает секунды")
         if a == "Hint":
             hints += 1
-    if hints != 1:
-        rep.err(fn, f"Hint должен быть ровно один (онбординг), найдено {hints}")
-    for need in ("PlayCinematic", "CrowdRitual", "EndDemo", "ForceWorm"):
+    if hints < 1:
+        rep.err(fn, "нужен хотя бы один Hint (онбординг в начале); второй — тихая подсказка после зала (Ред. 2)")
+    for bad in ("FadeOut", "EndDemo"):
+        if any(r["Action"] == bad for r in rows):
+            rep.err(fn, f"действие {bad} запрещено: демо не заканчивается, управление свободно всегда")
+    for need in ("PlayCinematic", "CrowdRitual", "ForceWorm"):
         if not any(r["Action"] == need for r in rows):
             rep.err(fn, f"нет действия {need}")
     used_presets = {r["Param"].partition(",")[0] for r in rows if r["Action"] == "SetWeather"}

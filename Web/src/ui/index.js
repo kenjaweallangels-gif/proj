@@ -122,18 +122,8 @@ export function create(game) {
   };
 
   // ---------- Концовка ----------
-  function endCard() {
-    if (ctx.endVisible) return;
-    ctx.endVisible = true;
-    if (ctx.pauseOpen) { ctx.pauseOpen = false; game.paused = false; menus.closePause(); }
-    if (ctx.photo) exitPhoto();
-    wx.close();
-    recalc();
-    game.input.exitLock();
-    const go = () => { overlays.endTitle(game.t('Конец демо', 'End of demo')); menus.showEnd(); };
-    if (overlays.faded) setTimeout(go, 400);
-    else overlays.fade(true, game.settings.autotest ? 0.4 : 2.5).then(go);
-  }
+  // Концовки в игре нет (Ред. 2): демо не заканчивается, управление свободно всегда. Заглушка оставлена ради совместимости API.
+  function endCard() { /* no-op */ }
 
   // ---------- Леттербокс (только явный вызов; кинорежима в сюжете нет) ----------
   let letterExplicit = false, letterShown = false, lastDoorAt = -1e9;

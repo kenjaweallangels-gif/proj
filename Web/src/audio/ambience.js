@@ -38,11 +38,11 @@ export function createAmbience(game, eng) {
   const wW = mkBand('white', 1700, 7, 0);     // свист по кромке
   const wS = mkBand('white', 4200, 0.5, 0);   // шорох песка
   // Далёкая буря: низкий гул.
-  const stormSrc = eng.loopNoise('brown'), stormLP = eng.filter('lowpass', 110, 0.7), stormG = eng.gain(0);
+  const stormSrc = eng.loopNoise('brown'), stormLP = eng.filter('lowpass', 220, 0.6), stormG = eng.gain(0);
   stormSrc.connect(stormLP); stormLP.connect(stormG); stormG.connect(out);
   // «Пение» дюн в эрге: тональный гул 70–110 Гц (очень тихо).
   const duneG = eng.gain(0); duneG.connect(out);
-  for (const [f, d] of [[78, -4], [92, 3], [110, 7]]) {
+  for (const [f, d] of []) {  // «пение» дюн убрано (Ред. 2): постоянный тон 78–110 Гц читался как гул
     const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f; o.detune.value = d;
     const lfo = ctx.createOscillator(), lg = eng.gain(0.15); lfo.frequency.value = rnd(0.05, 0.12); lfo.connect(lg);
     const og = eng.gain(0.4); lg.connect(og.gain); o.connect(og); og.connect(duneG); o.start(); lfo.start();
@@ -53,7 +53,7 @@ export function createAmbience(game, eng) {
   const ENV_KEYS = Object.keys(env);
 
   // ---------- Сиетч: комнатный тон, гул светошаров ----------
-  const roomSrc = eng.loopNoise('brown'), roomLP = eng.filter('lowpass', 180, 0.6), roomG = eng.gain(0);
+  const roomSrc = eng.loopNoise('pink'), roomLP = eng.filter('bandpass', 700, 0.5), roomG = eng.gain(0);
   roomSrc.connect(roomLP); roomLP.connect(roomG); roomG.connect(out);
   const humG = eng.gain(0); humG.connect(out); eng.send(humG, 0.2);
   for (const [f, d, a] of [[110, 0, 0.5], [110.8, 0, 0.5], [220.5, 4, 0.18], [331, -3, 0.06]]) {
@@ -249,11 +249,13 @@ export function createAmbience(game, eng) {
       eng.ramp(wW.bp.frequency, 1300 + ws * 70 + gust * 120, 0.7);
       const sandy = (game.player?.sandWalking ? 0.5 : 0) + ws / 24;
       eng.ramp(wS.g.gain, (0.004 + 0.02 * sandy * gust) * env.wind * 6 * (1 + storm * 4.5) * (1 - 0.5 * night), 0.7);
-      eng.ramp(stormG.gain, storm * 0.32 * 2.5 * (env.wind > 0.2 ? 1 : 0.2), 1.5);
+      // дальняя буря: слышна только при заметной буре и вне сиетча; без низкого «землетрясения»
+      const stormK = clamp((storm - 0.3) / 0.6, 0, 1);
+      eng.ramp(stormG.gain, stormK * 0.22 * (env.wind > 0.2 ? 1 : 0), 1.5);
       eng.ramp(duneG.gain, 0.012 * env.dune * (1 - clamp(ws / 14, 0, 0.6)), 1.5);
 
-      eng.ramp(roomG.gain, 0.1 * Math.min(1, env.hum + env.murmur), 0.8);
-      eng.ramp(humG.gain, 0.034 * env.hum, 0.8);
+      eng.ramp(roomG.gain, 0.045 * Math.min(1, env.hum + env.murmur), 0.8);
+      eng.ramp(humG.gain, 0.012 * env.hum, 0.8);
       eng.ramp(rustleG.gain, 0.03 * env.rustle, 1.2);
       eng.ramp(murmurOut.gain, env.murmur * (api.ritualOn ? 1.5 : 1) * 7, 0.9);
       if (env.murmur > 0.02) stepVoices(now);

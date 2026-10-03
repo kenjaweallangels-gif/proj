@@ -179,9 +179,9 @@ export function createMusic(game, eng) {
 
     DesertCalm(out) {
       const pad = eng.gain(1); pad.connect(out); eng.send(pad, 0.35);
-      const holds = [hold(pad, 'sine', mtof(38), 0.1), hold(pad, 'sine', mtof(45), 0.05, 4), hold(pad, 'triangle', mtof(26), 0.05)];
+      const holds = [hold(pad, 'sine', mtof(50), 0.03), hold(pad, 'sine', mtof(57), 0.018, 4), hold(pad, 'triangle', mtof(26), 0.0)];   // Ред. 2: дрон на октаву выше и тише (73/110 Гц читались как постоянный гул)
       // медленное «дыхание» дрона
-      const lfo = ctx.createOscillator(), lg = eng.gain(0.03); lfo.frequency.value = 0.07; lfo.connect(lg); lg.connect(holds[0].g.gain); lfo.start();
+      const lfo = ctx.createOscillator(), lg = eng.gain(0.012); lfo.frequency.value = 0.07; lfo.connect(lg); lg.connect(holds[0].g.gain); lfo.start();
       let nextPhrase = T() + 4, nextDrum = T() + rnd(8, 14);
       const phrases = [
         [[0, 2.2], [1, 1.4], [2, 1.2], [3, 1.6], [4, 3.2]],
@@ -210,7 +210,7 @@ export function createMusic(game, eng) {
       const saw = ctx.createOscillator(); saw.type = 'sawtooth'; saw.frequency.value = f0;
       const saw2 = ctx.createOscillator(); saw2.type = 'sawtooth'; saw2.frequency.value = f0; saw2.detune.value = 6;
       const src = eng.gain(0.5); saw.connect(src); saw2.connect(src);
-      const lowF = eng.filter('lowpass', 500, 0.7), lg = eng.gain(0.5); src.connect(lowF); lowF.connect(lg); lg.connect(pad);
+      const lowF = eng.filter('lowpass', 500, 0.7), lowHP = eng.filter('highpass', 130, 0.7), lg = eng.gain(0.2); src.connect(lowF); lowF.connect(lowHP); lowHP.connect(lg); lg.connect(pad);
       const f1 = eng.filter('bandpass', 340, 8), g1 = eng.gain(0.9);
       const f2 = eng.filter('bandpass', 880, 28), g2 = eng.gain(1.6);
       const f3 = eng.filter('bandpass', 2900, 12), g3 = eng.gain(0.4);
@@ -232,14 +232,14 @@ export function createMusic(game, eng) {
 
     WormThreat(out) {
       const pad = eng.gain(1); pad.connect(out);
-      const sub1 = hold(pad, 'sine', 22, 0.0), sub2 = hold(pad, 'sine', 44, 0.0, 5), mid = hold(pad, 'sine', 58, 0.0, -6);
+      const sub1 = hold(pad, 'sine', 22, 0.0), sub2 = hold(pad, 'sine', 44, 0.0, 5), mid = hold(pad, 'sine', 58, 0.0, -6);   // sub1 (22 Гц) беззвучен: только «давление» через sub2
       let nextStep = T() + 0.4, step = 0, nextScrape = T() + rnd(4, 8);
       const cycle = [5, 7]; let cyc = 0, pos = 0;
       return {
         tick(now) {
           const th = clamp(game.worm?.threat ?? 0.35, 0, 1);
-          sub1.g.gain.setTargetAtTime(0.2 * Math.pow(0.4 + th, 0.7), now, 0.4);
-          sub2.g.gain.setTargetAtTime(0.11 * (0.3 + th), now, 0.4);
+          sub1.g.gain.setTargetAtTime(0, now, 0.4);
+          sub2.g.gain.setTargetAtTime(0.05 * (0.3 + th), now, 0.4);
           mid.g.gain.setTargetAtTime(0.05 * th, now, 0.4);
           const bpm = 70 + 25 * th, unit = 60 / bpm / 2;
           while (now + 0.4 > nextStep) {

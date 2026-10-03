@@ -48,11 +48,13 @@ export function createEngine(game) {
     return { rms: db(Math.sqrt(sum / tbuf.length)), peak: db(peak) };
   }
 
+  // Фон (amb) идёт через узел приглушения: под голосами он садится (дакинг), как и музыка (duck).
+  const ambDuck = ctx.createGain(); ambDuck.gain.value = 1; ambDuck.connect(pre);
   const bus = {};
   for (const n of BUS_NAMES) {
     const g = ctx.createGain();
     g.gain.value = n === 'ui' ? 0.6 : (vol[n] ?? 1);
-    g.connect(pre);
+    g.connect(n === 'amb' ? ambDuck : pre);
     bus[n] = g;
   }
   // Музыка идёт через узел приглушения (дакинг под диалоги).
@@ -215,7 +217,7 @@ export function createEngine(game) {
   }
 
   return {
-    ctx, out, comp, masterLP, level, bus, duck, rev, revIn, setReverb, setReverbMix, revState,
+    ctx, out, comp, masterLP, level, bus, duck, ambDuck, rev, revIn, setReverb, setReverbMix, revState,
     noiseBuf, loopNoise, filter, gain, send, panner, stereoPan, burst, blip, ramp, T, updateListener, setVolume,
     resume() { if (ctx.state === 'suspended') ctx.resume().catch(() => {}); },
     get running() { return ctx.state === 'running'; },
