@@ -31,7 +31,7 @@ vec3 starLayers(vec3 s, float tw, float dens){
   vec3 acc = vec3(0.0);
   for (int L = 0; L < 3; L++) {
     float sc = L == 0 ? 55.0 : (L == 1 ? 120.0 : 260.0);
-    float thr = L == 0 ? 0.945 : (L == 1 ? 0.95 : 0.955);
+    float thr = L == 0 ? 0.972 : (L == 1 ? 0.962 : 0.962);
     thr -= dens * (L == 2 ? 0.05 : 0.02);
     vec3 p = s * sc;
     vec3 id = floor(p);
@@ -41,10 +41,10 @@ vec3 starLayers(vec3 s, float tw, float dens){
     vec3 sp = vec3(rkHash13(id + 3.1), rkHash13(id + 7.7), rkHash13(id + 11.3)) * 0.6 + 0.2;
     float aa = length(fwidth(p)) + 1e-4;
     float d = length(f - sp);
-    float sig = 0.55 * aa + 0.012;
+    float sig = 0.42 * aa + 0.002;
     float prof = exp(-d * d / (2.0 * sig * sig));
     float mag = rkHash13(id + 29.0);
-    float amp = (L == 0 ? 1.7 : (L == 1 ? 0.7 : 0.35)) * (0.08 + 0.92 * mag * mag * mag);
+    float amp = (L == 0 ? 1.0 : (L == 1 ? 0.55 : 0.3)) * (0.08 + 0.92 * mag * mag * mag);
     float ph = rkHash13(id + 41.0);
     amp *= 1.0 + tw * sin(uTime * (2.0 + 5.0 * ph) + ph * 60.0);
     vec3 col = mix(vec3(1.0, 0.72, 0.5), vec3(0.62, 0.76, 1.0), rkHash13(id + 53.0));
@@ -126,13 +126,14 @@ void main(){
   float band = exp(-yy * 7.0);
   sky = mix(sky, uFogColor * 1.05, band * (0.35 + 0.4 * uDust + 0.3 * uStorm));
   sky = mix(sky, uFogColor, smoothstep(0.02, -0.08, y));
+  sky = mix(sky, uFogColor * 1.0, 0.92 * smoothstep(0.45, 1.0, uStorm));
 
   float vis = smoothstep(-0.02, 0.06, y);
   // ---- ночь: звёзды, Млечный Путь, луны
   if (uSkyNight > 0.003 && y > -0.1) {
     vec3 s = uStarMat * d;
     float hz = 1.0 - smoothstep(0.0, 0.45, y);
-    float fadeH = smoothstep(-0.02, 0.18, y);
+    float fadeH = smoothstep(0.06, 0.4, y);
     float mwBand = 0.0;
     vec3 mw = milkyWay(s, mwBand);
     vec3 st = starLayers(s, 0.2 + 0.5 * hz, mwBand);
