@@ -69,11 +69,11 @@ for (const [name, hours, preset, ov, view] of SHOTS) {
     w.timeScale = 0;
     if (ov && w.setOverride) w.setOverride(ov, 0);
     const cam = g.camera;
-    const x = 279, z = 95;
+    const x = 0, z = 0;
     cam.position.set(x, g.world.heightAt(x, z) + 1.8, z);
     cam.fov = 62; cam.updateProjectionMatrix();
     const sd = g.world.sunDir;
-    let yaw = Math.atan2(175, 436), pitch = 0.1;
+    let yaw = Math.atan2(270, 680), pitch = 0.1;
     if (view === 'sun') { yaw = Math.atan2(sd.z, sd.x); pitch = Math.max(0.05, Math.asin(Math.max(sd.y, 0)) * 0.6 + 0.05); }
     else if (view === 'moon') { const m = w.moons?.[0]?.dir; if (m) { yaw = Math.atan2(m.z, m.x); pitch = Math.asin(Math.max(m.y, -0.2)) * 0.8 + 0.1; } else pitch = 0.3; }
     else if (view === 'sky') { yaw += 2.4; pitch = 0.75; }

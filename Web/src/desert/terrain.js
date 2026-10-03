@@ -84,6 +84,7 @@ varying vec2 vMask;
 varying float vShade;
 vec3 gNW;
 vec3 gSpark;
+float gRH;
 
 // Ripple: (высота 0..1 * амплитуда, градиент по x,z)
 vec3 rkRipple(vec2 p, float wl, float warpAmp, float seed, float asym){
@@ -97,6 +98,7 @@ vec3 rkRipple(vec2 p, float wl, float warpAmp, float seed, float asym){
   float br = 0.55 + 0.45 * rkNoise(p / (wl * 6.0) + seed * 3.7);
   vec2 dph = uWind / wl + warpAmp * nw.yz / (wl * 7.0);
   float amp = wl * 0.10 * br;
+  gRH = hh;
   return vec3(hh * amp, dph * dh * amp);
 }
 `;
@@ -141,9 +143,10 @@ vec2 g = vec2(0.0);
 float f1 = 1.0 - smoothstep(6.0, 28.0, dist);
 float f2 = 1.0 - smoothstep(22.0, 110.0, dist);
 float f3 = 1.0 - smoothstep(90.0, 480.0, dist);
-if (f1 > 0.001 && uQual > 0.5) { vec3 r = rkRipple(xz, 0.12, 1.6, 1.0, 0.7); g += r.yz * f1 * 0.7; }
-if (f2 > 0.001) { vec3 r = rkRipple(xz, 0.62, 1.8, 5.0, 0.72); g += r.yz * f2 * 0.3; }
-if (f3 > 0.001) { vec3 r = rkRipple(xz, 2.9, 2.5, 9.0, 0.75); g += r.yz * f3 * 0.1; }
+float rOcc = 0.0;
+if (f1 > 0.001 && uQual > 0.5) { vec3 r = rkRipple(xz, 0.12, 1.6, 1.0, 0.7); g += r.yz * f1 * 0.7; rOcc += (1.0 - gRH) * f1 * 0.35; }
+if (f2 > 0.001) { vec3 r = rkRipple(xz, 0.62, 1.8, 5.0, 0.72); g += r.yz * f2 * 0.3; rOcc += (1.0 - gRH) * f2 * 0.65; }
+if (f3 > 0.001) { vec3 r = rkRipple(xz, 2.9, 2.5, 9.0, 0.75); g += r.yz * f3 * 0.1; rOcc += (1.0 - gRH) * f3 * 0.25; }
 g *= calmR;
 // лавинные полосы на подветренных склонах
 if (lee > 0.01) {
@@ -187,7 +190,16 @@ vec3 col = mix(uSandLoose, uSandPacked, packedM);
 col *= 1.0 + 0.2 * macro + 0.09 * streak + 0.05 * micro;
 float dmin = smoothstep(0.6, 0.82, rkNoise(vec2(uu / 6.5, vv / 80.0) + 11.0)) * wnd;
 col = mix(col, col * vec3(0.60, 0.50, 0.43), dmin * 0.55);
-col = mix(col, col * 1.07 + 0.012, lee);
+// подветренные лавинные склоны: плотнее и темнее, краснее
+col = mix(col, col * vec3(0.80, 0.68, 0.58), lee * 0.6);
+// разнообразие дюн: крупные тёплые/светлые пятна и полосы вдоль ветра
+float hv = rkFbm(xz / 900.0 + 17.0) - 0.5;
+float hv2 = rkNoise(vec2(uu / 240.0, vv / 650.0) + 3.0) - 0.5;
+col *= vec3(1.0 + 0.20 * hv + 0.12 * hv2, 1.0 + 0.03 * hv, 1.0 - 0.17 * hv - 0.10 * hv2);
+// тени гребней ряби при скользящем свете (когда солнце идёт вдоль ветра)
+float grazing = 1.0 - smoothstep(0.04, 0.42, uKeyDir.y);
+float along = abs(dot(normalize(uKeyDir.xz + vec2(1e-4)), uWind));
+col *= 1.0 - clamp(rOcc, 0.0, 1.0) * grazing * (0.15 + 0.45 * along) * (1.0 - rockM) * (1.0 - disturb);
 float fgr = (1.0 - smoothstep(0.5, 6.0, dist));
 col *= 1.0 + 0.05 * fgr * (rkNoise(xz * 70.0) - 0.5) * 2.0;
 col = mix(col, rockC, rockM);
@@ -203,18 +215,19 @@ gNW = normalize(Ng - gw);
 
 // искры кварца
 gSpark = vec3(0.0);
-float fs = 1.0 - smoothstep(4.0, 34.0, dist);
+float lowSunS = 1.0 - smoothstep(0.04, 0.5, uKeyDir.y);
+float fs = 1.0 - smoothstep(4.0, 34.0 + 22.0 * lowSunS, dist);
 if (fs > 0.001 && uQual > 0.5 && rockM < 0.5) {
   vec2 cp = xz * 46.0;
   vec2 ci = floor(cp);
   float hc = rkHash12(ci);
-  if (hc > 0.985) {
+  if (hc > 0.985 - 0.014 * lowSunS) {
     vec2 rn = rkHash22(ci + 17.0) * 2.0 - 1.0;
     vec3 cn = normalize(gNW + vec3(rn.x, 0.6 + 0.4 * rn.y, rn.y) * 0.8);
-    vec3 Hh = normalize(uSunDir + Vv);
+    vec3 Hh = normalize(uKeyDir + Vv);
     float sp = pow(max(dot(cn, Hh), 0.0), 160.0);
     float shape = smoothstep(0.5, 0.12, length(fract(cp) - 0.5));
-    gSpark = uSunColor * sp * shape * 0.8 * fs * (1.0 - lee * 0.6);
+    gSpark = uKeyColor * sp * shape * (0.8 + 1.8 * lowSunS) * fs * (1.0 - lee * 0.6);
   }
 }
 `;
@@ -229,10 +242,10 @@ roughnessFactor = mix(roughnessFactor, 0.88, rockM);
 const FRAG_LIGHTS_END = /* glsl */`
 reflectedLight.directDiffuse *= vShade;
 reflectedLight.directSpecular *= vShade;
-float gSunVis = clamp(dot(reflectedLight.directDiffuse, vec3(0.3333)) / (dot(uSunColor, vec3(0.3333)) * max(dot(gNW, uSunDir), 0.03) * dot(diffuseColor.rgb, vec3(0.3333)) * 0.3183 + 1e-5), 0.0, 1.0);
+float gSunVis = clamp(dot(reflectedLight.directDiffuse, vec3(0.3333)) / (dot(uKeyColor, vec3(0.3333)) * max(dot(gNW, uKeyDir), 0.03) * dot(diffuseColor.rgb, vec3(0.3333)) * 0.3183 + 1e-5), 0.0, 1.0);
 `;
 const FRAG_BEFORE_OUT = /* glsl */`
-outgoingLight += gSpark * gSunVis * step(0.0, dot(gNW, uSunDir));
+outgoingLight += gSpark * gSunVis * step(0.0, dot(gNW, uKeyDir));
 `;
 
 const FRAG_FAR_FADE = /* glsl */`

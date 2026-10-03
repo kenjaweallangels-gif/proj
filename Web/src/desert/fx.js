@@ -59,7 +59,7 @@ void main(){
   vAlpha = uIntensity * vis * (0.12 + 0.88 * crest) * gust * (0.5 + aSeed2.z * 0.6)
          * smoothstep(1.5, 8.0, dist) * (1.0 - smoothstep(uR * 0.6, uR * 0.98, length(rel)));
   float lit = rkClawShade(center);
-  vCol = vec3(0.78, 0.6, 0.38) * (uSunColor * (0.28 + 0.72 * smoothstep(0.0, 0.35, uSunDir.y)) * lit * 0.5 + uAmbient * 0.9);
+  vCol = vec3(0.78, 0.6, 0.38) * (uKeyColor * (0.28 + 0.72 * smoothstep(0.0, 0.35, uKeyDir.y)) * lit * 0.5 + uAmbient * 0.9);
   vUv = position.xy; vWP = wp;
   gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
 }`;
@@ -91,8 +91,8 @@ void main(){
   vec4 mv = viewMatrix * vec4(wp, 1.0);
   gl_Position = projectionMatrix * mv;
   vec3 v = normalize(wp - cameraPosition);
-  float mu = max(dot(v, uSunDir), 0.0);
-  float sunUp = smoothstep(0.0, 0.2, uSunDir.y);
+  float mu = max(dot(v, uKeyDir), 0.0);
+  float sunUp = smoothstep(0.0, 0.2, uKeyDir.y);
   float d = length(rel);
   vA = (0.1 + 0.9 * (pow(mu, 3.0) * 0.8 + pow(mu, 30.0) * 2.0)) * sunUp * (0.35 + uDust * 1.6) * (1.0 - smoothstep(uR * 0.7, uR, d)) * smoothstep(0.6, 3.0, d);
   gl_PointSize = uPx * (0.6 + aSeed.w * 1.2) * clamp(7.0 / max(d, 1.0), 0.35, 1.6);
@@ -141,7 +141,7 @@ void main(){
   float rim = abs(dot(normalize(cameraPosition - vWP), vN));
   float al = prof * core * (0.18 + 0.55 * pow(rim, 0.7)) * uFade * (0.5 + 0.5 * (1.0 - y));
   if (al < 0.004) discard;
-  vec3 lit = uSunColor * (0.1 + 0.22 * max(dot(vN, uSunDir), 0.0)) + uAmbient * 0.55;
+  vec3 lit = uKeyColor * (0.1 + 0.22 * max(dot(vN, uKeyDir), 0.0)) + uAmbient * 0.55;
   vec3 col = vec3(0.7, 0.5, 0.3) * lit * (0.65 + 0.7 * n);
   col = rkApplyFog(col, vWP);
   gl_FragColor = vec4(col, al);
@@ -189,13 +189,13 @@ void main(){
   float low = smoothstep(-0.01, 0.05, y);
   float al = body * low * (0.8 + 0.4 * (bands - 0.5) + 0.14 * (wisp - 0.5)) * k * arcF * uAlpha;
   al = clamp(al, 0.0, 0.95);
-  vec3 L = uSunDir;
+  vec3 L = uKeyDir;
   vec3 N = normalize(vec3(-d.x, 0.0, -d.y));
   float lit = 0.35 + 0.65 * max(dot(N, normalize(vec3(L.x, 0.2, L.z))), 0.0) + 0.5 * pow(max(dot(normalize(vWP - cameraPosition), L), 0.0), 3.0);
   vec3 dark = vec3(0.06, 0.032, 0.015);
   vec3 bright = vec3(0.6, 0.38, 0.2);
   vec3 col = mix(dark, bright, clamp(0.08 + 0.85 * pow(clamp(y, 0.0, 1.2), 1.4) + 0.5 * (bands - 0.45) + 0.25 * (small - 0.45), 0.0, 1.0));
-  col *= (uSunColor * 0.2 + uAmbient * 0.9 + 0.1) * lit * (0.5 + 0.7 * dens);
+  col *= (uKeyColor * 0.2 + uAmbient * 0.9 + 0.1) * lit * (0.5 + 0.7 * dens);
   col = mix(col, uFogColor, 0.04 + 0.14 * (1.0 - y));
   if (al < 0.005) discard;
   gl_FragColor = vec4(col, al);
@@ -330,7 +330,7 @@ export function createFx(game, world, terrain, weather) {
         float n = rkNoise(vUv * 2.0 + vSeed * 10.0 + uTime * 0.2) * 0.6 + 0.4;
         float a = smoothstep(1.0, 0.1, r) * n * vAl;
         if (a < 0.004) discard;
-        vec3 col = vec3(0.78, 0.6, 0.38) * (uSunColor * 0.32 + uAmbient * 0.95);
+        vec3 col = vec3(0.78, 0.6, 0.38) * (uKeyColor * 0.32 + uAmbient * 0.95);
         col = rkApplyFog(col, vWP);
         gl_FragColor = vec4(col, a);
       }`,
@@ -370,7 +370,7 @@ export function createFx(game, world, terrain, weather) {
       const wspd = w.windSpeed;
       driftMat.uniforms.uGT.value = L1.tex;
       driftMat.uniforms.uIntensity.value = 1;
-      moteMat.uniforms.uCol.value.copy(ENV.uniforms.uSunColor.value).multiplyScalar(0.35);
+      moteMat.uniforms.uCol.value.copy(ENV.uniforms.uKeyColor.value).multiplyScalar(0.35);
       // вихри
       for (const d of devils) {
         d.age += dt;
