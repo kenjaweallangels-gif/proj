@@ -36,7 +36,9 @@ jobs:
         with:
           path: pkg2-demo-web/dist
 
+  # публикация — только из main (ветки PR проверяются сборкой и тестами); нужен Settings → Pages → Source: GitHub Actions
   deploy:
+    if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     environment:
