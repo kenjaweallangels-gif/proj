@@ -44,7 +44,7 @@ export function createDressing(game, world) {
   const R = rng(777);
   const group = new THREE.Group();
   scene.add(group);
-  const boulderMat = createRockMaterial({ band: 0.9, sand: 0.8 });
+  const boulderMat = createRockMaterial({ band: 0.9, sand: 0.8, tex: 'rock_desert', texScale: 2.2, quality: q });
   const obstacles = (x, z, r) => world.addObstacle(x, z, r);
 
   // ---------- валуны ----------
