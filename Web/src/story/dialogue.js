@@ -21,9 +21,6 @@ const FALLBACK = {
   A2_Rayn_01: ['Rayn', 'Сколько ещё?', 'How much farther?', 'A2_Kair_01'],
   A2_Kair_01: ['Kair', 'Столько, сколько песок позволит.', 'As far as the sand allows.'],
   A2_Kair_02: ['Kair', 'Стоять. Не бежать.', 'Stand still. Don\'t run.'],
-  A3_Ossana_01: ['Ossana', 'Городские в пустыне пахнут страхом. Кто вас послал?', 'Town folk smell of fear out here. Who sent you?', 'A3_Kair_01'],
-  A3_Kair_01: ['Kair', 'Жрецы Кина.', 'The priests of Keen.', 'A3_Ossana_02'],
-  A3_Ossana_02: ['Ossana', 'Тогда вам к наибу. Молитесь, чтобы он был в духе.', 'Then you want the naib. Pray he\'s in a good mood.'],
   B1_Guard_01: ['Guard', 'Маски подтяни. Здесь влагу не дарят.', 'Tighten your masks. Nobody gives water away here.'],
   B3_Ilva_01: ['Ilva', 'Не смотри на воду так долго. Здесь это оскорбление.', 'Don\'t look at the water so long. Here that is an insult.'],
   B5_Harmat_01: ['Harmat', 'Вы пришли от тех, кто променял Бога на воду. Посмотрим, что вы принесли.', 'You come from those who traded God for water. Let us see what you have brought.'],
@@ -64,16 +61,13 @@ export function create(game) {
     return f ? { id, speaker: f[0], RU: f[1], EN: f[2], next: f[3] || '', condition: '', duration: 0 } : null;
   }
   function textOf(r) { return game.lang === 'RU' ? (r.RU || r.EN) : (r.EN || r.RU); }
-  /** Перевод для субтитра + реплика на языке мира. Строки жрицы «язык [перевод]» без native: перевод — в скобках, native — латинская часть EN-строки. */
+  /** Перевод для субтитра + реплика на языке мира. native '[Galach]' (без письменности) — галах: озвучивается переводом, над субтитром — метка. */
   function lineParts(r) {
-    let text = textOf(r);
-    let native = r.native || '', nativeScript = r.nativeScript || '';
-    const m = /^([^\[]*)\[([^\]]*)\]\s*$/.exec(text);
-    if (m) {
-      text = m[2].trim();
-      if (!native) { const e = /^([^\[]*)\[/.exec(r.EN || ''); native = e ? e[1].trim() : ''; }
-    }
-    return { text, native, nativeScript };
+    const text = textOf(r);
+    let native = String(r.native || '').trim(), nativeScript = r.nativeScript || '';
+    const galach = /^\[galach\]$/i.test(native);
+    if (galach) { native = ''; nativeScript = ''; }
+    return { text, native, nativeScript, galach };
   }
   function speakerName(id) {
     const n = SPEAKERS[id];
@@ -130,11 +124,11 @@ export function create(game) {
       return;
     }
     playing = true; curId = id;
-    const { text, native, nativeScript } = lineParts(r);
+    const { text, native, nativeScript, galach } = lineParts(r);
     const isLore = r.speaker === 'Lore';
     const duration = r.duration > 0 ? r.duration : (isLore ? clamp(0.07 * text.length + 2, 4, 10) : autoDuration(text));
     remaining = duration;
-    bus.emit('subtitle', { id, speaker: r.speaker, name: speakerName(r.speaker), text, native, nativeScript, duration, kind: isLore ? 'lore' : 'line', emotion: r.emotion });
+    bus.emit('subtitle', { id, speaker: r.speaker, name: speakerName(r.speaker), text, native, nativeScript, galach, duration, kind: isLore ? 'lore' : 'line', emotion: r.emotion });
   }
   function lineDone() {
     const id = curId;
@@ -188,7 +182,8 @@ export function create(game) {
       lastLoreId = id; lastLoreAt = now();
       const text = textOf(r);
       const duration = r.duration > 0 ? r.duration : clamp(0.07 * text.length + 2, 4, 10);
-      bus.emit('subtitle', { id, speaker: 'Lore', name: '', text, duration, kind: 'lore' });
+      const nat = lineParts(r).native;
+      bus.emit('subtitle', { id, speaker: 'Lore', name: '', text, native: nat, duration, kind: 'lore' });
     },
     /** Лай толпы: pos — Vector3 говорящего; работает только в радиусе 10 м от игрока. */
     bark(archetype, context, pos) {

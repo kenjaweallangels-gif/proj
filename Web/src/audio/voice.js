@@ -181,11 +181,28 @@ export function createVoice(game, eng) {
       const vo = voiceOf(o.speaker);
       u.pitch = Math.max(0.2, Math.min(2, Math.pow(vo.f0 / 140, 0.75)));
       const est = o.nativeScript.length / 12;
-      u.rate = Math.max(0.6, Math.min(1.7, est / Math.max(0.8, (o.duration || est) * 0.92)));
+      u.rate = 0.9;
       u.volume = Math.max(0, Math.min(1, (S.volume?.vo ?? 1) * (S.volume?.master ?? 1)));
       u.onerror = () => {};
       speechSynthesis.cancel();
       speechSynthesis.speak(u);
+      return { handles: [], tts: true };
+    } catch { return null; }
+  }
+
+  /** Галах: перевод голосом языка игры (TTS); нет TTS-голоса — синтезатор-«бормотание» по слогам перевода. */
+  function startGalach(o) {
+    if (!tts) return null;
+    try {
+      const want = game.lang === 'RU' ? 'ru' : 'en';
+      const v = ttsVoices.find((x) => (x.lang || '').toLowerCase().startsWith(want));
+      if (!v) return null;
+      const u = new SpeechSynthesisUtterance(o.text);
+      u.voice = v; u.lang = v.lang; u.rate = 0.95;
+      u.pitch = Math.max(0.2, Math.min(2, Math.pow(voiceOf(o.speaker).f0 / 140, 0.75)));
+      u.volume = Math.max(0, Math.min(1, (S.volume?.vo ?? 1) * (S.volume?.master ?? 1)));
+      u.onerror = () => {};
+      speechSynthesis.cancel(); speechSynthesis.speak(u);
       return { handles: [], tts: true };
     } catch { return null; }
   }
@@ -197,7 +214,7 @@ export function createVoice(game, eng) {
     if (o.exclusive !== false) stop(0.05);
     const pos = posOf(o.speaker, o.pos);
     const wantTTS = (m === 'tts' || (m === 'auto' && !SYNTH_ONLY.has(o.speaker))) && !!o.nativeScript;
-    let r = wantTTS ? startTTS(o) : null;
+    let r = o.galach ? startGalach(o) : (wantTTS ? startTTS(o) : null);
     if (!r) r = startSynth(o, 0, pos);
     cur = { id: o.id, speaker: o.speaker, o, pos, startedAt: game.time, duration: o.duration || 3, ...r };
     return cur;
@@ -205,13 +222,13 @@ export function createVoice(game, eng) {
 
   // ---- События ----
   game.bus.on('subtitle', (e) => {
-    if (!e || e.kind === 'lore') return;
+    if (!e || e.kind === 'lore') return;   // надписи не озвучиваем
     if (e.kind === 'bark') {
       if (cur && game.dialogue?.isStoryLinePlaying) return;
       speak({ id: e.id, speaker: e.archetype === 'Child' ? 'Child' : 'Crowd', native: e.native, text: e.text, duration: e.duration, pos: e.pos, gain: 0.6, exclusive: false });
       return;
     }
-    speak({ id: e.id, speaker: e.speaker, native: e.native, nativeScript: e.nativeScript, text: e.text, duration: e.duration });
+    speak({ id: e.id, speaker: e.speaker, native: e.native, nativeScript: e.nativeScript, galach: e.galach, text: e.text, duration: e.duration });
   });
   game.bus.on('dialogue:stop', () => stop());
   game.bus.on('chain:end', () => { /* реплика доигрывает до конца сама */ });

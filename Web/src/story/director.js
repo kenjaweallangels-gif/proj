@@ -46,7 +46,6 @@ const BUILTIN = [
   B('S_A2_AfterMusic', 25, 'Beat:S_A2_Reveal', 'SetMusic', 'DesertDrone'),
   B('S_A3_Title', 30, 'ZoneEnter:A3_Approach', 'TitleCard', 'Коготь|The Claw', 1),
   B('S_A3_Weather', 31, 'ZoneEnter:A3_Approach', 'SetWeather', 'Noon_Approach,12'),
-  B('S_A3_Ossana', 32, 'ZoneEnter:A3_Approach', 'PlayDialogue', 'A3_Ossana_01', 4),
   B('S_A3_Storm', 33, 'ZoneEnter:A3_Approach', 'SetWeather', 'Storm_Horizon,20', 30),
   B('S_A4_Weather', 40, 'ZoneEnter:A4_Crevice', 'SetWeather', 'Crevice_Shade,4'),
   B('S_B1_Title', 50, 'ZoneEnter:B1_Airlock', 'TitleCard', 'Табр-ан-Нур|Tabr-an-Nur', 1),

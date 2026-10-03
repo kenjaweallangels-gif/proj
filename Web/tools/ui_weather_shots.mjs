@@ -109,10 +109,10 @@ check('после панели и паузы игра идёт', await until(pag
 // ---------- 2. Субтитры с родной строкой ----------
 await G(page, () => {
   const g = window.__rakis;
-  g.data.Dialogue.DLG_A1_003.native = 'Lā tamshi fī ṭ-ṭaqṭaq. Ar-ramlu yasmaʿ.';
+  g.data.Dialogue.DLG_A1_003.native = g.data.Dialogue.DLG_A1_003.native || 'Lā tamshi fī ṭ-ṭaqṭaq.';
   g.dialogue.play('DLG_A1_003');
 });
-await page.waitForTimeout(1300);
+await until(page, () => document.querySelector('#ui .subs.on') && document.querySelector('#ui .subs .line').textContent.length > 3 && getComputedStyle(document.querySelector('#ui .subs')).opacity > 0.95, 20000);
 await shot(page, 'wx_06_subtitle_native');
 const natVisible = await G(page, () => { const n = document.querySelector('#ui .subs .nat'); return !!n && n.style.display !== 'none' && n.textContent.length > 3; });
 check('родная строка показана над переводом', natVisible);
@@ -122,9 +122,14 @@ check('родная строка выключается настройкой', a
 await G(page, () => { window.__rakis.settings.showNative = true; window.__rakis.dialogue.stopAll(); });
 // строка жрицы «язык [перевод]»: перевод в субтитре, латиница — как native
 await G(page, () => { window.__rakis.dialogue.play('DLG_B5_P01'); });
-await page.waitForTimeout(1200);
+await until(page, () => /./.test(document.querySelector('#ui .subs .nat').textContent) && document.querySelector('#ui .subs.on'), 20000);
 const pr = await G(page, () => ({ nat: document.querySelector('#ui .subs .nat').textContent, line: document.querySelector('#ui .subs .line').textContent }));
-check('жрица: translation из скобок, native из EN-латиницы', /Ash-ka/.test(pr.nat) && /Спящий/.test(pr.line), JSON.stringify(pr));
+check('жрица: native над переводом (без скобок)', pr.nat.length > 3 && !/\[/.test(pr.line), JSON.stringify(pr));
+await G(page, () => window.__rakis.dialogue.stopAll());
+await G(page, () => { window.__rakis.dialogue.play('DLG_WRM_P03'); });
+await until(page, () => document.querySelector('#ui .subs .nat.tag'), 20000);
+check('галах: метка вместо native', await G(page, () => !!document.querySelector('#ui .subs .nat.tag')));
+await shot(page, 'wx_07b_galach');
 await shot(page, 'wx_07_subtitle_priestess');
 await G(page, () => window.__rakis.dialogue.stopAll());
 
@@ -133,10 +138,11 @@ await G(page, () => {
   const g = window.__rakis;
   g.player.moveMode = 'normal'; g.player.noise = 0.6; g.player.sandWalking = false;
 });
-await page.waitForTimeout(1500);
+check('индикатор режима (normal) виден', await until(page, () => { const m = document.querySelector('#ui .mode'); return m && +getComputedStyle(m).opacity > 0.6; }, 20000));
 await shot(page, 'wx_08_mode_normal');
 await G(page, () => { const g = window.__rakis; g.player.moveMode = 'desert'; g.player.noise = 0.35; g.player.sandWalking = true; });
-await page.waitForTimeout(1300);
+await page.waitForTimeout(2500);
+check('индикатор режима (desert) виден', await until(page, () => { const m = document.querySelector('#ui .mode'); return m && +getComputedStyle(m).opacity > 0.6; }, 20000));
 await shot(page, 'wx_09_mode_desert');
 // разовая подсказка
 await G(page, () => { const g = window.__rakis; g.settings.hintsSeen = {}; g.ui.hint(g.t('C / LB — переключить походку: обычная / по песку.', 'C / LB — switch gait.')); });
@@ -149,10 +155,8 @@ page = await open('q=low&lang=RU&skip=1&autotest=1');
 await G(page, () => { window.__rakis.ui.fade(true, 0.5); window.__rakis.ui.letterbox(true); });
 await page.waitForTimeout(800);
 check('экран чёрный сразу после fade(true)', await G(page, () => window.__rakis.ui.isFaded));
-await shot(page, 'wx_11_black');
 await page.waitForTimeout(4600);
 check('сторож проявил экран и снял леттербокс за ~3 с', await G(page, () => !window.__rakis.ui.isFaded && document.querySelector('#ui .bar.top') && !document.querySelector('#ui .bar.top').classList.contains('on')));
-await shot(page, 'wx_12_after_watchdog');
 // кат-сцена: чёрный/леттербокс НЕ трогаем, пока game.cinematic.active
 await G(page, () => { const g = window.__rakis; g.cinematic.active = true; g.ui.letterbox(true); });
 await page.waitForTimeout(4500);

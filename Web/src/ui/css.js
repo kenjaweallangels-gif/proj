@@ -17,7 +17,7 @@ export const CSS = `
 /* ---- HUD ---- */
 #ui .ripple { left:50%; bottom:${U(64)}; width:${U(200)}; height:${U(72)}; margin-left:${U(-100)}; opacity:0; }
 #ui .ripple svg, #ui .ticks svg { width:100%; height:100%; overflow:visible; filter:drop-shadow(0 0 ${U(1.5)} rgba(11,8,5,.85)) drop-shadow(0 0 ${U(6)} rgba(11,8,5,.35)); }
-#ui .mode { left:50%; bottom:${U(70)}; width:${U(44)}; height:${U(26)}; margin-left:${U(-132)}; opacity:0; }
+#ui .mode { left:50%; bottom:${U(70)}; width:${U(66)}; height:${U(39)}; margin-left:${U(-200)}; opacity:0; }
 #ui .mode svg { width:100%; height:100%; overflow:visible; filter:drop-shadow(0 0 ${U(1.5)} rgba(11,8,5,.85)) drop-shadow(0 0 ${U(6)} rgba(11,8,5,.35)); }
 #ui .ticks { left:50%; bottom:${U(40)}; width:${U(96)}; height:${U(12)}; margin-left:${U(-48)}; opacity:0; }
 #ui .drop { right:${U(56)}; bottom:${U(56)}; width:${U(26)}; height:${U(30)}; opacity:0; }
@@ -36,6 +36,7 @@ export const CSS = `
 #ui .subs .name { font:500 ${U(16)}/1.2 ${SANS}; text-transform:uppercase; letter-spacing:.18em; color:var(--ochre); margin-bottom:${U(6)}; text-shadow:1px 1.5px 1px rgba(11,8,5,.8), 0 0 ${U(4)} rgba(11,8,5,.8), 0 0 ${U(12)} rgba(11,8,5,.55); }
 #ui .subs .nat { font:italic 400 ${U(17)}/1.3 ${SERIF}; letter-spacing:.04em; color:rgba(200,161,101,.92); margin-bottom:${U(5)}; }
 #ui[data-sub="S"] .subs .nat { font-size:${U(14)}; } #ui[data-sub="L"] .subs .nat { font-size:${U(22)}; }
+#ui .subs .nat.tag { font:500 ${U(11)}/1 ${SANS}; font-style:normal; letter-spacing:.3em; text-transform:uppercase; color:rgba(239,230,216,.5); margin-bottom:${U(6)}; }
 #ui .subs .line { font:400 ${U(26)}/1.32 ${SANS}; color:var(--warm); text-wrap:balance; }
 #ui[data-sub="S"] .subs .name { font-size:${U(13)}; } #ui[data-sub="S"] .subs .line { font-size:${U(20)}; }
 #ui[data-sub="L"] .subs .name { font-size:${U(21)}; } #ui[data-sub="L"] .subs .line { font-size:${U(34)}; }
@@ -49,6 +50,8 @@ export const CSS = `
 #ui .tcard .rule { width:${U(140)}; height:${U(1)}; margin:${U(18)} auto 0; background:rgba(200,161,101,.7); }
 #ui .tcard.end { top:44%; } #ui .tcard.end .t { font-size:${U(44)}; letter-spacing:.3em; padding-left:.3em; }
 #ui .lore { z-index:6; left:50%; top:50%; width:min(70%, ${U(1100)}); transform:translate(-50%,-50%); text-align:center; font:300 ${U(26)}/1.5 ${SERIF}; letter-spacing:.12em; opacity:0; }
+#ui .lore .ins { display:block; margin-bottom:${U(12)}; font:400 ${U(22)}/1.3 ${SERIF}; letter-spacing:.32em; color:rgba(200,161,101,.95); text-shadow:0 1px 0 rgba(239,230,216,.25), 0 -1px 0 rgba(11,8,5,.8), 0 0 ${U(10)} rgba(11,8,5,.7); }
+#ui .lore .desc { display:block; }
 #ui .lore::before, #ui .lore::after { content:""; display:block; width:${U(60)}; height:${U(1)}; margin:0 auto; background:rgba(200,161,101,.6); }
 #ui .lore::before { margin-bottom:${U(18)}; } #ui .lore::after { margin-top:${U(18)}; }
 #ui .cut { left:0; right:0; top:50%; transform:translateY(-50%); text-align:center; font:300 ${U(30)}/1.3 ${SERIF}; letter-spacing:.3em; padding-left:.3em; color:var(--warm); opacity:0; z-index:22; }
@@ -80,7 +83,7 @@ export const CSS = `
 /* ---- Панель «Погода и время» (справа; слева остаётся мир для живого просмотра) ---- */
 #ui .pause.wxonly { background:none; backdrop-filter:none; -webkit-backdrop-filter:none; pointer-events:none; }
 #ui .pause.wxonly .menu { display:none; }
-#ui .wx { right:0; top:0; bottom:0; width:min(${U(560)}, 52%); display:none; opacity:0; z-index:50; pointer-events:auto; transition:opacity .25s ease-out;
+#ui .wx { right:0; top:0; bottom:0; width:min(${U(680)}, 56%); display:none; opacity:0; z-index:50; pointer-events:auto; transition:opacity .25s ease-out;
   background:linear-gradient(to left, rgba(11,8,5,.82) 0%, rgba(11,8,5,.66) 62%, rgba(11,8,5,0) 100%); }
 #ui .wx.on { display:block; } #ui .wx.vis { opacity:1; }
 #ui .wxc { position:absolute; right:${U(56)}; top:50%; transform:translateY(-50%); width:${U(410)}; max-height:94%; overflow:hidden; }

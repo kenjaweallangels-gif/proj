@@ -18,8 +18,10 @@ export function createOverlays(game, root, ctx) {
   function showSubtitle(e) {
     nameEl.textContent = NO_NAME.includes(e.speaker) ? '' : (e.name || '');
     nameEl.style.display = nameEl.textContent ? '' : 'none';
-    const nat = game.settings.showNative !== false && e.kind !== 'bark' && !NO_NAME.includes(e.speaker) ? String(e.native || '').trim() : '';
-    natEl.textContent = nat; natEl.style.display = nat ? '' : 'none';
+    const canNat = game.settings.showNative !== false && e.kind !== 'bark' && !NO_NAME.includes(e.speaker);
+    // Галах (общий язык): вместо родной строки — крошечная метка. nativeScript в интерфейсе не показываем никогда (только для голоса).
+    const nat = canNat ? (e.galach ? game.t('галах', 'Galach') : String(e.native || '').trim()) : '';
+    natEl.textContent = nat; natEl.style.display = nat ? '' : 'none'; natEl.classList.toggle('tag', !!(canNat && e.galach));
     lineEl.textContent = e.text;
     subs.classList.add('on');
     subUntil = game.time + (e.duration || 3) + 1.5;
@@ -62,7 +64,9 @@ export function createOverlays(game, root, ctx) {
   const lore = el('div', 'lore txt', root);
   let loreUntil = 0, loreShown = false;
   function showLore(e) {
-    lore.textContent = e.text;
+    lore.textContent = '';
+    if (e.native && game.settings.showNative !== false) el('span', 'ins', lore, e.native);    // резная надпись на языке мира
+    el('span', 'desc', lore, e.text);
     lore.style.transition = 'opacity .8s ease-out';
     lore.style.opacity = '1'; loreShown = true;
     loreUntil = game.time + (e.duration || 5);
