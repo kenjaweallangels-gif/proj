@@ -50,11 +50,21 @@ export function create(game) {
     m.frustumCulled = false; m.castShadow = shadow && shadows; m.receiveShadow = shadows;
     parent.add(m); return m;
   };
-  const mainMesh = mk(G.main, hullMat);
+  const mainMesh = mk(G.main, hullMat, near, false);
   const glowMesh = mk(G.glow, glowMat, near, false);
   const decalMesh = new THREE.Mesh(buildDecals(G.decals), decalMat);
   decalMesh.frustumCulled = false; decalMesh.renderOrder = 2; near.add(decalMesh);
   const farMesh = mk(G.far, hullMat, far, false);
+  // прокси-кастер теней: упрощённая геометрия (в десятки раз легче детального корпуса), не рисуется в основном проходе,
+  // чуть уменьшена (0.97), чтобы корпус не затенял сам себя
+  const shadowProxy = (() => {
+    const g = G.far.clone();
+    const S = new THREE.Matrix4().makeTranslation(0, 17, 0).multiply(new THREE.Matrix4().makeScale(0.97, 0.97, 0.97)).multiply(new THREE.Matrix4().makeTranslation(0, -17, 0));
+    g.applyMatrix4(S);
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
+    m.frustumCulled = false; m.castShadow = shadows; m.receiveShadow = false; m.name = 'HarvesterShadowProxy';
+    root.add(m); return m;
+  })();
   const sandMesh = mk(G.sand, hullMat, root, false);   // наносы на кровлях (видны и издали)
   sandMesh.receiveShadow = shadows;
   const berm = createBerm(createSandMaterial(quality));
@@ -81,13 +91,13 @@ export function create(game) {
   // гусеницы
   const tracks = createTracks(game, hullMat, quality);
   near.add(tracks.group);
-  tracks.meshes.forEach((m) => { m.castShadow = shadows; m.receiveShadow = shadows; });
+  tracks.meshes.forEach((m) => { m.castShadow = false; m.receiveShadow = shadows; });
 
   // ковш + шнек
   const scoopGroup = new THREE.Group();
   scoopGroup.position.copy(SCOOP_PIVOT);
   near.add(scoopGroup);
-  const scoopMesh = mk(G.scoop, hullMat, scoopGroup);
+  const scoopMesh = mk(G.scoop, hullMat, scoopGroup, false);
   const augerMesh = mk(G.auger, hullMat, scoopGroup);
   const scoopDecalMesh = new THREE.Mesh(buildDecals(G.scoopDecals.map((d) => ({ ...d, c: [d.c[0] - SCOOP_PIVOT.x, d.c[1] - SCOOP_PIVOT.y, d.c[2] - SCOOP_PIVOT.z] }))), decalMat);
   scoopDecalMesh.frustumCulled = false; scoopDecalMesh.renderOrder = 2; scoopGroup.add(scoopDecalMesh);
@@ -98,7 +108,7 @@ export function create(game) {
   const fans = new THREE.InstancedMesh(G.fan, hullMat, 2);
   const radar = mk(G.radar, hullMat);
   radar.position.set(28, 32.6, 10);
-  for (const m of [drums, fans]) { m.frustumCulled = false; m.castShadow = shadows; m.receiveShadow = shadows; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); near.add(m); }
+  for (const m of [drums, fans]) { m.frustumCulled = false; m.castShadow = false; m.receiveShadow = shadows; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); near.add(m); }
 
   // перила (стойки), болты, рёбра радиатора, планки ленты
   const inst = (geo, list, fn, mat = hullMat, shadow = false) => {
@@ -145,9 +155,9 @@ export function create(game) {
     return l;
   });
   const workLight = new THREE.PointLight(0xffb060, 0, 55, 2);
-  workLight.position.set(50, 7.5, 0); root.add(workLight);
+  workLight.position.set(50, SINK + 7.5, 0); root.add(workLight);
   const consoleLight = new THREE.PointLight(0xffd9a0, 0, 26, 2);
-  consoleLight.position.set(CONSOLE_POS.x - 1.5, 5.0, CONSOLE_POS.z + 0.5); root.add(consoleLight);
+  consoleLight.position.set(CONSOLE_POS.x - 1.5, SINK + 4.0, CONSOLE_POS.z + 0.5); root.add(consoleLight);
 
   // частицы
   const particles = createParticles(game, Math.round(1100 * qf));
@@ -266,6 +276,14 @@ export function create(game) {
     if (dx * dx + dz * dz > 85 * 85) return false;
     _lp.copy(pos).applyMatrix4(_inv);
     return interior.contains(_lp.x, _lp.z, _lp.y);
+  }
+  /** Игрок на борту, а машину подняли/потащили (сценарий): высаживаем у подножия трапа. */
+  function evacuate() {
+    const pl = game.player;
+    if (!pl?.teleport) return;
+    const w = harvester.toWorld(CONSOLE_POS.x + 6, 0, CONSOLE_POS.z + 4, new THREE.Vector3());
+    pl.teleport(w.x, ground(w.x, w.z), w.z, undefined, false);
+    bus.emit('harvester:board', { inside: false });
   }
   /** Высота пола в точке (x, z), если игрок (ступни на y) находится на борту; иначе высота грунта. */
   function heightAtBoard(x, z, y) {
@@ -466,6 +484,8 @@ export function create(game) {
     game.shake = Math.max(game.shake || 0, 0.05 * k * (1 - smoothstep(40, 260, game.camera.position.distanceTo(cs.pos))));
   }
   function devourNow() {
+    if (H.occupied && game.player?.position && containsPos(game.player.position)) evacuate();
+    H.occupied = false;
     H.devoured = true; H.alarmTarget = 0; H.alarm = 0;
     Object.assign(S, { state: 'devoured', t: 0, eng: 0, scoop: 0, belt: 0, drive: 0, plume: 0, smoke: 0, heat: 0, klax: 0 });
     scriptPose = null; colsEnabled = false; syncColliders();
@@ -528,7 +548,8 @@ export function create(game) {
     // игрок на борту (трап/интерьер): машина стоит, пока он там; твёрдость корпуса снимается (проходит по схеме интерьера)
     {
       const pp = game.player?.position;
-      const occ = !!(pp && interior.ready && !scriptPose && containsPos(pp));
+      let occ = !!(pp && interior.ready && containsPos(pp));
+      if (occ && (scriptPose || H.lift > 0.4)) { evacuate(); occ = false; }   // машину поднимают/уводят сценарием — игрока высаживаем
       if (occ !== H.occupied) {
         H.occupied = occ;
         bus.emit('harvester:board', { inside: occ });
@@ -567,8 +588,7 @@ export function create(game) {
     root.visible = inView;
     const isNear = camD < 420;
     near.visible = isNear; far.visible = !isNear;
-    const shadowOn = shadows && camD < 260;
-    mainMesh.castShadow = scoopMesh.castShadow = shadowOn;
+    shadowProxy.visible = shadows && camD < 450;
     particles.mesh.visible = inDesert; carryall.group.visible = inDesert && !carryall.script.hidden;
     carryall.cabMesh.visible = inDesert && !carryall.script.hidden; wreck.group.visible = inDesert; stainGroup.visible = inDesert;
 

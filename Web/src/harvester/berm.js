@@ -22,8 +22,8 @@ export function bermHeight(x, z) {
   const outside = Math.hypot(dx, dz);
   const inside = -Math.min(x - RECT.x0, RECT.x1 - x, z + RECT.z, RECT.z - z);
   const d = outside > 0 ? outside : inside;
-  const amp = 2.3 + 1.9 * sstep(36, 50, x) + 0.5 * sstep(-50, -60, x) + 0.9 * (vnoise(x * 0.07, z * 0.07) - 0.5);
-  const W = 13 + 5 * sstep(36, 50, x);
+  const amp = 3.2 + 2.6 * sstep(36, 50, x) + 0.9 * sstep(-50, -60, x) + 1.1 * (vnoise(x * 0.07, z * 0.07) - 0.5);
+  const W = 15 + 6 * sstep(36, 50, x);
   const f = 1 - sstep(-1.5, W, d);
   let h = amp * Math.pow(f, 1.35);
   const rip = Math.sin((x * 0.8 + z * 0.45) * 1.1 + vnoise(x * 0.2, z * 0.2) * 5) * 0.5 + 0.5;

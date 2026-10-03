@@ -17,7 +17,7 @@ export class Plan {
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 export const PAL = {
-  WALL: '#757c72', WALL2: '#5f665f', DADO: '#454c46', CEIL: '#666a64', FLOOR: '#4a4d49', FLOOR2: '#5a5c56', STEEL: '#8c8e8b', DARK: '#2a2c2e',
+  WALL: '#757c72', WALL2: '#5f665f', DADO: '#454c46', CEIL: '#666a64', FLOOR: '#5b5f5a', FLOOR2: '#6b6d66', STEEL: '#8c8e8b', DARK: '#2a2c2e',
   RUST: '#6d4a33', YEL: '#c79a1c', RED: '#9a3326', TEAL: '#3c7c76', CREAM: '#c8bd9f', BLUE: '#41607a', OLIVE: '#5f6650', SAND: '#b9a07a',
   FAB1: '#7a4a3c', FAB2: '#4a5d6b', FAB3: '#5f6a45', FAB4: '#8a7452', WOOD: '#6a5238', ORANGE: '#c8601c',
 };
@@ -87,7 +87,7 @@ export class Room {
   gquad(a, b, c, d, color) { this.glow.quad(a, b, c, d, color, 0); return this; }
   /** Пол (визуальная плита + проходимость). */
   floor(x0, z0, x1, z1, y, color = PAL.FLOOR, tag = 5, kind = 'metal') {
-    this.slab(x0, y - 0.3, z0, x1, y, z1, color, tag);
+    this.slab(x0, y - 0.26, z0, x1, y + 0.04, z1, color, tag, { tess: 0.95 });   // +4 см: не спорит по глубине с верхом плиты оболочки (одинаковая отметка)
     this.plan.addFloor(x0, z0, x1, z1, y, y, 'x', kind);
     return this;
   }

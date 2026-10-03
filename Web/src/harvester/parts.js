@@ -15,7 +15,7 @@ const BOX = new THREE.BoxGeometry(1, 1, 1);
 const _boxCache = new Map();
 /** Бокс 1x1x1 с делением граней под размер (для запекания света по вершинам крупных стен/полов). */
 function tessBox(sx, sy, sz, step) {
-  const nx = Math.min(24, Math.max(1, Math.ceil(Math.abs(sx) / step))), ny = Math.min(24, Math.max(1, Math.ceil(Math.abs(sy) / step))), nz = Math.min(24, Math.max(1, Math.ceil(Math.abs(sz) / step)));
+  const nx = Math.min(64, Math.max(1, Math.ceil(Math.abs(sx) / step))), ny = Math.min(64, Math.max(1, Math.ceil(Math.abs(sy) / step))), nz = Math.min(64, Math.max(1, Math.ceil(Math.abs(sz) / step)));
   const key = nx + ',' + ny + ',' + nz;
   let g = _boxCache.get(key);
   if (!g) { g = new THREE.BoxGeometry(1, 1, 1, nx, ny, nz); _boxCache.set(key, g); }
