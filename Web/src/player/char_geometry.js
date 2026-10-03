@@ -101,6 +101,21 @@ export class GB {
     g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
     g.setIndex(this.n > 65000 ? new THREE.Uint32BufferAttribute(this.idx, 1) : new THREE.Uint16BufferAttribute(this.idx, 1));
     g.computeVertexNormals();
+    // Сварка нормалей в совпадающих вершинах одного материала (шов окружности, стыки лофтов) — без «ступенек» освещения.
+    {
+      const nrm = g.attributes.normal.array, pos = this.p, map = new Map(), n = this.n;
+      const keyOf = (i) => `${Math.round(pos[i * 3] * 5000)},${Math.round(pos[i * 3 + 1] * 5000)},${Math.round(pos[i * 3 + 2] * 5000)},${this.reg[i]}`;
+      const keys = new Array(n);
+      for (let i = 0; i < n; i++) {
+        const k = keys[i] = keyOf(i);
+        let a = map.get(k); if (!a) { a = [0, 0, 0]; map.set(k, a); }
+        a[0] += nrm[i * 3]; a[1] += nrm[i * 3 + 1]; a[2] += nrm[i * 3 + 2];
+      }
+      for (let i = 0; i < n; i++) {
+        const a = map.get(keys[i]), l = Math.hypot(a[0], a[1], a[2]) || 1;
+        nrm[i * 3] = a[0] / l; nrm[i * 3 + 1] = a[1] / l; nrm[i * 3 + 2] = a[2] / l;
+      }
+    }
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.95, 0), 1.45);
     g.boundingBox = new THREE.Box3(new THREE.Vector3(-1.2, -0.1, -1.2), new THREE.Vector3(1.2, 2.3, 1.2));
     return g;
@@ -388,7 +403,7 @@ function buildHead(b, o, lod, B) {
   // волосы (если голова открыта у скулы/виска; под капюшоном лишь шапка)
   if (o.hair !== 'none' && lod < 2) {
     const long = o.hair === 'long', bun = o.hair === 'bun' || o.hair === 'braid';
-    const hr = [0.14, 0.128, 0.108, 0.085, 0.06, 0.035, 0.01], hth = [0.0, 0.25, 0.7, 1.15, 1.5, 1.75, 1.9];
+    const hr = [0.141, 0.13, 0.118, 0.108, 0.098, 0.08, 0.055, 0.03, 0.005], hth = [0, 0, 0, 0, 1.0, 1.35, 1.65, 1.85, 1.95];
     const rr = hr.map((y, k) => { const [rx, rz, cz] = headRow(y); return ringY(Y(y), 0, Z(cz / 1) - 0.006, rx * hs + 0.007, rz * hs + 0.009, N, null, hth[k], Math.PI * 2 - hth[k], true); });
     // шапка волос: от линии лба по макушке к затылку и вискам
     b.loft(rr.reverse(), (j, i, p) => ({ reg: REG.HAIR, aux: [0, 0, 0, 0], sk: HSK }), { closed: false, capEnd: true });

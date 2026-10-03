@@ -124,9 +124,11 @@ if (has('crowd')) {
     }
     window.__rakis.figures.setFigureView(window.__rakis.camera.position);
     S.cam([0, 2.4, 14], [0, 1.0, -5], 50);
+    window.__rakis.figures.setFigureView(window.__rakis.camera.position);
+    S.figs.forEach((f) => { f.animate(1.0, 0.5, 0); });
   });
   await shot('crowd_60', 1500);
-  const info = await page.evaluate(() => { const r = window.__rakis.renderer.info.render; return { calls: r.calls, tris: r.triangles, fps: window.__rakis.stats.fps, lod: window.__S.figs.map((f) => f.lod()).reduce((a, l) => { a[l]++; return a; }, [0, 0, 0]) }; });
+  const info = await page.evaluate(() => { const g = window.__rakis, ri = g.renderer.info; ri.autoReset = false; ri.reset(); g.render(0.016); const r = ri.render; ri.autoReset = true; return { calls: r.calls, tris: r.triangles, fps: window.__rakis.stats.fps, lod: window.__S.figs.map((f) => f.lod()).reduce((a, l) => { a[l]++; return a; }, [0, 0, 0]) }; });
   console.log('crowd stats', JSON.stringify(info));
 }
 console.log(errors.length ? 'ERRORS:\n' + errors.slice(0, 20).join('\n') : 'no console errors');

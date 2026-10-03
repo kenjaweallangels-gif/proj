@@ -117,7 +117,7 @@ function resolveOptions(opts) {
     if (!explicit('beard')) o.beard = o.build === 'm' && R() < 0.22 && !child;
     if (!explicit('hairColor')) o.hairColor = HAIRS[Math.floor(R() * HAIRS.length)];
     if (!explicit('skin')) o.skin = SKINS[Math.floor(R() * SKINS.length)];
-    if (!explicit('fold')) o.fold = 0.035 + R() * 0.04;
+    if (!explicit('fold')) o.fold = R() < 0.5 ? 0.04 : 0.065;
     if (!explicit('scarf')) o.scarf = R() < 0.12 && !child;
     if (!explicit('armPads')) o.armPads = R() < 0.2;
     if (!explicit('wear')) o.wear = 0.2 + R() * 0.6;
@@ -235,19 +235,19 @@ export function makeFigure(opts = {}) {
 
   // --- меши (LOD по расстоянию) ---
   const key = geoKey(o);
-  const geos = [0, 1, 2].map((l) => geometryFor(o, l, key));
+  const geoAt = (l) => geometryFor(o, l, key); // строится лениво и кэшируется по варианту
   const U = makeUniforms({ ...o, cloth2: o.cloth2 || o.cloth, lining: o.lining });
   const bodyMat = makeBodyMaterial(U), clothMat = makeClothMaterial(U);
-  const body = new THREE.SkinnedMesh(geos[0].body, bodyMat);
-  const cloth = new THREE.SkinnedMesh(geos[0].cloth, clothMat);
+  let lod = o.lod ?? 1;
+  const g0 = geoAt(lod);
+  const body = new THREE.SkinnedMesh(g0.body, bodyMat);
+  const cloth = new THREE.SkinnedMesh(g0.cloth, clothMat);
   for (const m of [body, cloth]) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = true; root.add(m); }
   body.name = 'FigureBody'; cloth.name = 'FigureCloth';
   root.updateMatrixWorld(true);
   body.bind(skeleton, body.matrixWorld);
   cloth.bind(skeleton, cloth.matrixWorld);
-  let lod = o.lod ?? 0;
-  const setLod = (l) => { if (l === lod && body.geometry === geos[l].body) return; lod = l; body.geometry = geos[l].body; cloth.geometry = geos[l].cloth; };
-  setLod(lod);
+  const setLod = (l) => { const e = geoAt(l); if (l === lod && body.geometry === e.body) return; lod = l; body.geometry = e.body; cloth.geometry = e.cloth; };
   const parts = { root, pelvis, spine, chest, neck, headPivot, limbs, body, cloth, skeleton };
   const props = addProps(parts, o);
 
@@ -257,7 +257,7 @@ export function makeFigure(opts = {}) {
   const cl = { lag: new V(), lv: new V(), prev: new V(), have: false, vel: new V(), lastPos: new V(), lodT: Math.random() * 0.3, skip: 0, acc: 0, wasCtxWind: false };
   const fig = {
     group: g, height: H, parts, options: o, props, gait: null, onStep: null, lod: () => lod,
-    stats: { tris: geos.map((e) => triCount(e.body.index ? e.body : e.body) + triCount(e.cloth)), key },
+    get stats() { return { tris: [0, 1, 2].map((l) => { const e = geoAt(l); return triCount(e.body) + triCount(e.cloth); }), key }; },
     /** Скорость в м/с; irregular>0.45 — «походка по песку» (рваный шаг). 4-й параметр — ctx (см. шапку). Возвращает фазу цикла (рад). */
     animate(speed, dt, irregular = 0, ctx) {
       if (dt <= 0) return anim.state.ph * Math.PI * 2;
