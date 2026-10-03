@@ -142,6 +142,27 @@ export function makeTextures() {
       c.beginPath(); c.moveTo(x0 + 40, y0 + 14); c.lineTo(x0 + 40, y0 - 10); c.lineTo(x0 + 50, y0 - 10); c.stroke(); // наездник-палочка
     }
   });
+  // --- Книга водяных долгов (погреб B6): вырезанные столбцы счёта — капля, кольцо, пучки по пять чёрточек; поверх — свежие мазки охрой ---
+  T.tally = decal(512, 384, (c, P, w, h) => {
+    const R = rng(33);
+    engraved(c, P, 5, () => { c.beginPath(); c.rect(14, 14, w - 28, h - 28); c.stroke(); });
+    for (let col = 0; col < 3; col++) {
+      const x0 = 34 + col * 160;
+      engraved(c, P, 3, () => { c.beginPath(); c.moveTo(x0 + 140, 30); c.lineTo(x0 + 140, h - 30); c.stroke(); });
+      for (let row = 0; row < 6; row++) {
+        const y = 52 + row * 54;
+        drop(c, P, x0 + 12, y, 9, 3.4);
+        engraved(c, P, 3, () => { c.beginPath(); c.arc(x0 + 40, y, 9, 0, Math.PI * 2); c.stroke(); });
+        const n = 2 + Math.floor(R() * 11);
+        for (let k = 0; k < n; k++) {
+          const gx = x0 + 62 + (k % 5) * 12 + Math.floor(k / 5) * 2, gy = y - 14 + Math.floor(k / 5) * 0;
+          engraved(c, P, 2.6, () => { c.beginPath(); c.moveTo(gx + (k % 5 === 4 ? -48 : 0), gy + (k % 5 === 4 ? 24 : 0)); c.lineTo(gx + (k % 5 === 4 ? 0 : 3), gy + (k % 5 === 4 ? 4 : 28)); c.stroke(); });
+        }
+      }
+    }
+    // свежие мазки охрой: возрожденцы «перебили» часть счёта
+    if (P.mode === 'color') { c.save(); c.strokeStyle = 'rgba(176,70,40,0.85)'; c.lineWidth = 7; c.lineCap = 'round'; for (let i = 0; i < 4; i++) { const x = 60 + R() * 380, y = 60 + R() * 260; c.beginPath(); c.moveTo(x, y); c.lineTo(x + 40 + R() * 30, y + (R() - 0.5) * 20); c.stroke(); } c.restore(); }
+  });
   // --- Вышитая капля вниз (занавесь похоронной ниши) ---
   T.embroidery = decal(256, 256, (c, P) => {
     c.strokeStyle = P.mode === 'color' ? 'rgba(190,206,236,0.95)' : 'rgb(170,170,170)'; c.lineWidth = 6; c.lineCap = 'round';

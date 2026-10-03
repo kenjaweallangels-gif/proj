@@ -67,6 +67,18 @@ function blockDist(list, x, z) {
 }
 function dist(W, list, x, z) { return Math.min(wallSample(W, x, z), blockDist(list, x, z)); }
 
+/** Расстояние до ближайшей стены/блока на высоте ступней yFeet (м, > 0 в проходимой зоне) и направление «от стены» (единичный вектор в out). */
+export function wallDistLocal(x, z, yFeet = 0, out = null) {
+  if (!G) return 9;
+  const lv = yFeet > LAYER_Y, W = lv ? G.w1 : G.w0, list = lv ? blocks1 : blocks0;
+  const s = dist(W, list, x, z);
+  if (out) {
+    const e = 0.12, gx = dist(W, list, x + e, z) - dist(W, list, x - e, z), gz = dist(W, list, x, z + e) - dist(W, list, x, z - e), gl = Math.hypot(gx, gz) || 1;
+    out.x = gx / gl; out.z = gz / gl;
+  }
+  return s;
+}
+
 /** Выталкивает локальную позицию p ({x,z}) из стен; true, если сдвинули. */
 export function collideLocal(p, r, yFeet) {
   if (!G) return false;
@@ -96,9 +108,12 @@ export function collideLocal(p, r, yFeet) {
   return moved;
 }
 
-export function zoneAtLocal(x, z) {
+/** Зона по локальной позиции. y — высота ступней (локально); нужна для нижнего уровня (водяной погреб B6) под южной веткой B3. */
+export function zoneAtLocal(x, z, y = 0) {
+  if (y < -0.5 && z > 9.5 && x > 96 && x < 152) return 'B6_Cellar';
   if (x < 40.5) return 'B1_Airlock';
   if (x < 99) return 'B2_Gallery';
+  if (x >= 150 && z < -19.5 && x > 158) return 'B3_Passages';   // выходной туннель в сад: низкий ход, без реверберации зала
   if (x >= 150) return 'B5_Hall';
   if (z > 6.6 && x > 119.5 && x < 125.5) return 'B4_Cistern';
   return 'B3_Passages';

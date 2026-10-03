@@ -41,8 +41,12 @@ export class Builder {
     }
     geo.setAttribute('color', new THREE.BufferAttribute(c, 3));
     geo.setAttribute('aPar', new THREE.BufferAttribute(p, 3));
-    const key = `${mat}@${this.region}`;
-    if (!this.groups.has(key)) this.groups.set(key, { mat, region: this.region, list: [] });
+    // группировка по (материал, регион, ячейка 16 м): мелкие меши отсекаются frustum/PVS (см. index.js)
+    geo.computeBoundingBox();
+    const bb = geo.boundingBox, CS = 16;
+    const cell = `${Math.floor((bb.min.x + bb.max.x) / 2 / CS)},${Math.floor((bb.min.y + bb.max.y) / 2 / CS)},${Math.floor((bb.min.z + bb.max.z) / 2 / CS)}`;
+    const key = `${mat}@${this.region}@${cell}`;
+    if (!this.groups.has(key)) this.groups.set(key, { mat, region: this.region, cell, list: [] });
     this.groups.get(key).list.push(geo);
     return geo;
   }
@@ -105,7 +109,7 @@ export class Builder {
     for (const [key, grp] of this.groups) {
       const geo = mergeGeometries(grp.list, false);
       grp.list.forEach((g) => g.dispose());
-      out.push({ key, mat: grp.mat, region: grp.region, geo });
+      out.push({ key, mat: grp.mat, region: grp.region, cell: grp.cell, geo });
     }
     return out;
   }

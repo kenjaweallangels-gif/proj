@@ -1,5 +1,6 @@
 // Раскладка пещерного сиетча «Табр-ан-Нур» — данные (локальные координаты: +X вглубь скалы, +Z на юг, Y вверх).
 // Всё, что описывает ФОРМУ, лежит здесь; сама SDF — в field.js; запекание — в bake.js.
+import { SIETCH_ORIGIN, GARDEN } from '../../core/layout.js';
 // Зоны/размеры сохранены из docs: B1 шлюз ~40 м, B2 галерея 60×15 м с верхним карнизом, B3 три ветки, B4 цистерна, B5 зал 35×50 м, 25 м.
 
 /** Узел трубы: [x, z, h0, rw, rh] — h0 = высота оси над полом, rw/rh = полуширина/полувысота сечения. Потолок ≈ h0 + rh. */
@@ -20,19 +21,66 @@ export const SEALS = [
   { id: 'outer', axis: 'x', x: 8, z: 0, hw: 1.0, yc: 0.9, rh: 1.6, label: 'B1' },
   { id: 'inner', axis: 'x', x: 24, z: 0, hw: 1.0, yc: 0.9, rh: 1.6, label: 'B1' },
   { id: 'cistern', axis: 'z', x: 122, z: 8.0, hw: 1.2, yc: 0.85, rh: 1.9, label: 'B4', fixedOpen: true },
+  // водяной погреб B6 (нижний уровень): уплотнитель у входа в зал сосудов, пол −9 м
+  { id: 'cellar', axis: 'x', x: 107.5, z: 31.4, hw: 1.15, yc: 0.95, rh: 1.7, label: 'B6', fy: -9.0 },
 ];
 
-/** Выходной туннель: от северо-восточной стены зала вниз (−25 м) к порталу в котловину (мир: GARDEN.portal ↔ локально (190, −45)). */
-export const EXIT = {
-  nodes: [[183, -12], [184, -18.5], [195, -23], [206, -27], [208, -32], [199, -35], [186, -33], [173, -32], [169, -38], [173, -42], [181, -44], [187, -45], [191, -45.5], [195, -46.2]],
-  drop: -25, rw: 1.35, rh: 1.95, portalIndex: 12,
-};
-{
-  let L = 0; EXIT.cum = [0];
-  for (let i = 1; i < EXIT.nodes.length; i++) { L += Math.hypot(EXIT.nodes[i][0] - EXIT.nodes[i - 1][0], EXIT.nodes[i][1] - EXIT.nodes[i - 1][1]); EXIT.cum.push(L); }
-  EXIT.length = L; EXIT.portalLen = EXIT.cum[EXIT.portalIndex];
-  EXIT.floorAt = (s) => EXIT.drop * Math.min(1, Math.max(0, s / EXIT.portalLen));
-}
+/**
+ * Выходной туннель: от северо-восточной стены зала (ниже на 25 м) к устью котловины. ГЕОМЕТРИЯ ПОСТРОЕНА ОТ МИРОВОЙ ТОЧКИ УСТЬЯ
+ * (core/layout.js: GARDEN.portal): последние 14 м идут строго на восток (мир +X), ровный пол на уровне устья сада, дальше — 3 м «хвоста»
+ * (меш обрезается плоскостью EXIT.cut, чтобы торец был открытым). Три галсов-змейки с плавными дугами, уклон ≤ 14°.
+ * Пол — кусочно-линейный по оси (каждый сегмент трубы несёт СВОЮ плоскость пола: cave/field.js → subPrims).
+ */
+export const EXIT = (() => {
+  const Y = SIETCH_ORIGIN.yaw + CAVE_YAW, c = Math.cos(Y), s = Math.sin(Y);
+  const P = GARDEN.portal;
+  const dx = P.x - SIETCH_ORIGIN.x, dz = P.z - SIETCH_ORIGIN.z;
+  const M = [dx * c + dz * s, -dx * s + dz * c];                  // устье (локально)
+  const d = [c, -s];                                                // направление «наружу» = мир +X
+  const FINAL = 14, TAIL = 8, uLen = 17.4;
+  const P6 = [M[0] - d[0] * uLen, M[1] - d[1] * uLen];
+  const zc = P6[1], zb = zc + 8, za = zb + 8;
+  const way = [[184, -6, 0], [184, za, 4], [209, za, 3.8], [209, zb, 3.8], [166, zb, 3.8], [166, zc, 3.8], [P6[0], zc, 6], [M[0] + d[0] * TAIL, M[1] + d[1] * TAIL, 0]];
+  // скругление углов дугами радиуса R
+  const pts = [[way[0][0], way[0][1]]];
+  for (let i = 1; i < way.length - 1; i++) {
+    const a = way[i - 1], b = way[i], n = way[i + 1], R = b[2];
+    const v1 = [a[0] - b[0], a[1] - b[1]], v2 = [n[0] - b[0], n[1] - b[1]];
+    const l1 = Math.hypot(...v1), l2 = Math.hypot(...v2);
+    const u1 = [v1[0] / l1, v1[1] / l1], u2 = [v2[0] / l2, v2[1] / l2];
+    const ang = Math.acos(Math.max(-1, Math.min(1, u1[0] * u2[0] + u1[1] * u2[1])));
+    const t = R / Math.tan(ang / 2);
+    const p1 = [b[0] + u1[0] * t, b[1] + u1[1] * t], p2 = [b[0] + u2[0] * t, b[1] + u2[1] * t];
+    const bis = [u1[0] + u2[0], u1[1] + u2[1]], bl = Math.hypot(...bis), cd = R / Math.sin(ang / 2);
+    const C = [b[0] + (bis[0] / bl) * cd, b[1] + (bis[1] / bl) * cd];
+    let a0 = Math.atan2(p1[1] - C[1], p1[0] - C[0]), a1 = Math.atan2(p2[1] - C[1], p2[0] - C[0]);
+    let da = a1 - a0; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+    const n2 = Math.max(3, Math.ceil(Math.abs(da) * R / 1.3));
+    for (let k = 0; k <= n2; k++) { const aa = a0 + (da * k) / n2; pts.push([C[0] + R * Math.cos(aa), C[1] + R * Math.sin(aa)]); }
+  }
+  pts.push([way[way.length - 1][0], way[way.length - 1][1]]);
+  // равномерная передискретизация (шаг ≈ 2.4 м)
+  const dense = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const a = dense[dense.length - 1], b = pts[i], l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (l < 0.9 && i < pts.length - 1) continue;
+    const n = Math.max(1, Math.round(l / 2.4));
+    for (let k = 1; k <= n; k++) dense.push([a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n]);
+  }
+  const cum = [0]; for (let i = 1; i < dense.length; i++) cum.push(cum[i - 1] + Math.hypot(dense[i][0] - dense[i - 1][0], dense[i][1] - dense[i - 1][1]));
+  const length = cum[cum.length - 1];
+  const drop = -25;
+  // начало спуска — после того как путь вышел за стену зала (z < -19.5); конец — за FINAL+TAIL до торца
+  let sA = 0; for (let i = 0; i < dense.length; i++) if (dense[i][1] < -19.5) { sA = cum[i]; break; }
+  const sB = length - FINAL - TAIL;
+  const floorAt = (sv) => drop * Math.min(1, Math.max(0, (sv - sA) / (sB - sA)));
+  const ys = cum.map(floorAt);
+  // сечение: стандартное; на последних метрах — раструб, согласованный с рамой устья сада (3.0 × 4.3 м)
+  const sect = cum.map((sv) => { const k = Math.min(1, Math.max(0, (sv - (length - FINAL - TAIL - 2)) / 8)); return { rw: 1.5 + 0.25 * k, rh: 2.0 + 0.4 * k, h0: 0.95 + 0.25 * k }; });
+  return { nodes: dense, ys, cum, length, drop, sect, mouth: M, dir: d, tail: TAIL, final: FINAL, sA, sB, floorAt, portalIndex: dense.length - 1, portalLen: length - TAIL,
+    /** Плоскость обрезки: треугольники, у которых (p − mouth)·dir > cutT, не рисуются (открытый торец). */
+    cutT: 0.35 };
+})();
 export const ENTRY_MOUTH = [-3.0, 9.0];   // локально; мировая точка ≈ ENTRY.cleft
 
 // ------------------------------------------------------------------- туннели ----
@@ -47,8 +95,8 @@ export const TUNNELS = {
   entry: [[-0.6, 0, 1.0, 0.95, 1.9], [-1.8, 4.5, 1.0, 0.8, 2.0], [-3.0, 9.0, 1.0, 0.75, 2.0], [-4.2, 13.0, 1.0, 0.75, 2.0]],
   // B3: центральная ветка (к залу) и две боковые (север — тупик с поминальной нишей, юг — к цистерне).
   C: [[95, 0, 0.8, 1.3, 1.9], [104, 0.5, 0.8, 1.2, 1.85], [112, -0.6, 0.85, 1.25, 1.9], [120, 0.7, 0.8, 1.2, 1.8], [128, -0.4, 0.85, 1.25, 1.95], [136, 0.6, 0.8, 1.2, 1.85], [144, -0.3, 0.85, 1.25, 1.9], [151.5, 0, 0.9, 1.6, 2.3]],
-  N: [[95, -3.4, 0.8, 1.15, 1.85], [99, -4.6, 0.8, 1.15, 1.85], [102, -7.0, 0.85, 1.2, 1.9], [107, -7.6, 0.8, 1.15, 1.85], [116, -7.5, 0.85, 1.2, 1.9], [117.5, -11, 0.8, 1.15, 1.85], [119, -15, 0.85, 1.2, 1.9], [125, -15.3, 0.8, 1.15, 1.85], [131, -14.8, 0.85, 1.2, 1.9], [137, -15.0, 0.8, 1.2, 1.9]],
-  S: [[95, 3.4, 0.8, 1.15, 1.85], [99, 4.6, 0.8, 1.15, 1.85], [102, 7.0, 0.85, 1.2, 1.9], [107, 7.6, 0.8, 1.15, 1.85], [116, 7.5, 0.85, 1.2, 1.9], [121.2, 7.5, 0.85, 1.2, 1.9], [122, 8.6, 0.8, 1.2, 1.9], [122, 11, 0.8, 1.3, 1.9]],
+  N: [[95, -3.4, 0.8, 1.15, 1.85], [99, -4.6, 0.8, 1.15, 1.85], [102, -7.4, 0.85, 1.2, 1.9], [107, -8.1, 0.8, 1.15, 1.85], [116, -8.0, 0.85, 1.2, 1.9], [117.5, -11.3, 0.8, 1.15, 1.85], [119, -15, 0.85, 1.2, 1.9], [125, -15.3, 0.8, 1.15, 1.85], [131, -14.8, 0.85, 1.2, 1.9], [137, -15.0, 0.8, 1.2, 1.9]],
+  S: [[95, 3.4, 0.8, 1.15, 1.85], [99, 4.6, 0.8, 1.15, 1.85], [102, 7.0, 0.85, 1.2, 1.9], [107, 7.9, 0.8, 1.15, 1.85], [116, 7.8, 0.85, 1.2, 1.9], [121.2, 7.8, 0.85, 1.2, 1.9], [122, 8.8, 0.8, 1.2, 1.9], [122, 11, 0.8, 1.3, 1.9]],
 };
 // Ломаные для лейнов толпы / проверки проходимости (x, z) — по осям туннелей.
 export const PATHS = {
@@ -56,6 +104,7 @@ export const PATHS = {
   C: TUNNELS.C.map((n) => [n[0], n[1]]),
   N: TUNNELS.N.map((n) => [n[0], n[1]]),
   S: TUNNELS.S.map((n) => [n[0], n[1]]),
+  CS: [[102, 7], [101.4, 10], [101.3, 28.3], [101.5, 31.2], [117, 31.4], [127, 31.8], [140, 31.8]],
 };
 
 // ---------------------------------------------------------------- B2: ниши ----
@@ -63,19 +112,58 @@ export const B2_ALCOVES = {
   north: [55, 61, 67, 79, 86, 92],       // z = -5.5 (под карнизом): лавки, мастерская
   south: [55, 61, 67, 74, 80, 86, 92],   // z = +5.5: ткацкие станки, водяная станция
 };
-export const SHELF_BAYS = [56, 62, 68, 82, 88, 94];   // спальные ниши на карнизе (дальняя стена, z = ±8)
+export const SHELF_BAYS = [56, 62, 68, 82, 88, 94];   // спальные комнаты-эркеры на карнизе (дальняя стена, z = ±9): 5×6 м, потолок до 10 м над нижним полом
+export const BAY = { rx: 2.5, ry: 2.3, rz: 2.8, cy: 7.9, cz: 8.8, floor: 6.0 };
 
-// ---------------------------------------------------------------- B3: ниши ----
-/** Жилые боковые пещерки: side −1 север / +1 юг; kind 'open' — святилище, 'funeral' — поминальная. */
-export const NICHES = [];
-[108, 114, 121, 127, 133, 139, 145].forEach((x, i) => NICHES.push({ id: `Nn${i}`, xc: x, side: -1, rx: 1.5, curtain: i % 3 }));
-[114, 126, 132, 138, 144].forEach((x, i) => NICHES.push({ id: `Ns${i}`, xc: x, side: 1, rx: 1.5, curtain: (i + 1) % 3 }));
-NICHES.push({ id: 'Shrine', xc: 108, side: 1, rx: 1.9, curtain: 0, open: true });
-export const NICHE_Z = 2.6; // центр жилой ниши от оси прохода
+// ---------------------------------------------------------------- B3: жилые комнаты семей ----
+/**
+ * Жилые комнаты (раньше — «ниши»): эллипсоид rx × rz (в плане) + короткий проход-вестибюль от оси прохода (там висит занавесь, подвязанная к краям).
+ * side −1 север / +1 юг; zc — центр комнаты по z (локально); mouth — |z| занавеси; open — без занавеси (святилище, «открытые» комнаты).
+ * Площадь пола ≈ π·rx·rz: 21–45 м² (4×5 м и больше), потолок до 3.3 м.
+ */
+export const NICHES = [
+  { id: 'Nn0', xc: 111, side: -1, zc: -3.9, rx: 3.0, rz: 2.0, curtain: 0, kind: 'family' },
+  { id: 'Nn1', xc: 126, side: -1, zc: -5.6, rx: 3.4, rz: 3.6, curtain: 1, kind: 'family', open: true },
+  { id: 'Nn2', xc: 141, side: -1, zc: -6.0, rx: 3.4, rz: 4.0, curtain: 2, kind: 'family' },
+  { id: 'Shrine', xc: 107, side: 1, zc: 3.6, rx: 2.6, rz: 2.0, curtain: 0, open: true, kind: 'shrine' },
+  { id: 'Ns0', xc: 117, side: 1, zc: 3.9, rx: 3.1, rz: 1.9, curtain: 1, kind: 'family' },
+  { id: 'Ns1', xc: 131, side: 1, zc: 4.8, rx: 3.4, rz: 2.8, curtain: 2, kind: 'family', open: true },
+  { id: 'Ns2', xc: 142, side: 1, zc: 6.4, rx: 3.4, rz: 4.4, curtain: 0, kind: 'family' },
+];
+for (const n of NICHES) { n.mouth = n.side * 2.0; n.ry = 2.1; n.cy = 1.1; }
+export const NICHE_Z = 2.6; // (устар.) центр жилой ниши от оси прохода
 export const FUNERAL = { x: 138.0, z: -15.0, r: [2.4, 2.0, 2.3] };
 
 // ---------------------------------------------------------------- B4: цистерна ----
 export const CISTERN = { cx: 125, cz: 18, ellC: [125, 2.4, 18], ellR: [16, 6.0, 10.2], basinHX: 12.3, basinHZ: 7.4, basinY: -3.0, waterY: -1.2, pillars: [[118, 13.5], [125, 13.5], [132, 13.5], [118, 22.5], [125, 22.5], [132, 22.5]] };
+
+
+// ---------------------------------------------------------------- B6: водяной погреб (нижний уровень, пол −9 м) ----
+/**
+ * Священное хранилище воды под южной частью B3: широкая лестница (50 ступеней, подъём 0.18 м) вниз от южной ветки → тамбур → уплотнитель →
+ * сводчатый зал-«нефа» с тёмным неподвижным бассейном, колоннами и нишами-кладовыми под большие запечатанные сосуды; в восточном торце — станция измерения.
+ * Все объёмы — «подуровневые» (cave/field.js: subPrims): у каждого свой пол, глобальный пол B3 (y=0) на них не действует.
+ */
+export const CELLAR = {
+  floorY: -9.0,
+  stairs: { x: 101.3, z0: 9.8, riser: 0.18, tread: 0.37, n: 50 },
+  landing: { c: [101.6, -7.3, 31.2], r: [3.2, 2.3, 3.2] },
+  passage: { x0: 103, x1: 118, z: 31.4 },
+  nave: { c: [127, -7.4, 37], r: [17.5, 3.4, 7.4] },
+  pool: { c: [127, 37], r: [8.4, 2.6], dip: 0.85, water: -9.3 },
+  bayX: [115.5, 121.5, 127.5, 133.5, 139.5], bayZ: { n: 29.9, s: 44.1 },
+  station: { c: [146.5, -7.5, 37], r: [3.7, 2.2, 3.3] },
+  pillars: [[115, 33.4], [123, 33.4], [131, 33.4], [139, 33.4], [115, 40.6], [123, 40.6], [131, 40.6], [139, 40.6]],
+};
+const _ST = CELLAR.stairs;
+/** Высота ступенчатого пола лестницы погреба (жёсткие ступени) по z; затем плоский пол. */
+export function cellarStairY(z) { const k = Math.floor((z - _ST.z0) / _ST.tread) + 1; return -_ST.riser * Math.min(_ST.n, Math.max(0, k)); }
+/** То же, но со сглаженными кромками (для SDF — без разрывов). */
+export function cellarStairYSmooth(z) {
+  const u = (z - _ST.z0) / _ST.tread, k = Math.floor(u), f = u - k;
+  const t = Math.min(1, Math.max(0, (f - 0.82) / 0.18)), tt = t * t * (3 - 2 * t);
+  return -_ST.riser * Math.min(_ST.n, Math.max(0, k + 1 + tt));
+}
 
 // ---------------------------------------------------------------- световые колодцы ----
 export const WELLS = [
@@ -100,11 +188,11 @@ export function planGlobePositions() {
   for (const x of B2_ALCOVES.north) add('B2', x, -5.1, 2.6, 0.9);
   for (const x of B2_ALCOVES.south) add('B2', x, 5.1, 2.6, 0.9);
   for (let i = 0; i < 8; i++) { const x = 53 + i * 6; add('B2', x, i % 2 ? -6.3 : 6.3, 9.2, 0.9); }
-  for (const x of SHELF_BAYS) { add('B2', x, -7.3, 8.3, 0.65); add('B2', x + 1, 7.3, 8.3, 0.65); }
+  for (const x of SHELF_BAYS) { add('B2', x, -BAY.cz + 0.6, 9.4, 0.8); add('B2', x + 1, BAY.cz - 0.6, 9.4, 0.8); }
   add('B2', 44, 0, 3.3, 0.85); add('B2', 45, 6, 4.5, 0.7); add('B2', 45, -6, 4.5, 0.7);
   // B3: у ниш и по проходам.
   for (let x = 102; x < 150; x += 6) add('B3', x, (Math.round(x) % 2 ? -0.4 : 0.4), 2.25, 1.0);
-  for (const n of NICHES) add('B3', n.xc, n.side * 3.0, 1.9, n.open ? 0.9 : 0.55, { niche: n.id });
+  for (const n of NICHES) { add('B3', n.xc, n.zc, 2.6, n.open ? 1.0 : 0.8, { niche: n.id }); if (n.rz > 3) add('B3', n.xc + 0.5, n.zc + n.side * 2.4, 2.4, 0.6, { niche: n.id }); }
   for (let x = 104; x < 120; x += 6) { add('B3', x + 2, -7.5, 2.2, 0.65); add('B3', x + 2, 7.5, 2.2, 0.65); }
   add('B3', 118, -12, 2.2, 0.65); add('B3', 121, -15.2, 2.2, 0.65); add('B3', 128, -15, 2.2, 0.65); add('B3', 134, -14.8, 2.2, 0.65);
   add('B3', 140, -15, 1.9, 0.5);
@@ -117,7 +205,14 @@ export function planGlobePositions() {
   add('B5', 153, -1.7, 2.4, 0.8); add('B5', 153, 1.7, 2.4, 0.8);
   for (const z of [-2.8, 0, 2.8]) add('B5', 193.5, z, 5.8 + (z === 0 ? 0.6 : 0), 1.2);
   add('B5', 197, -4, 5.0, 1.0); add('B5', 197, 4, 5.0, 1.0);
-  EXIT.nodes.forEach((n, i) => { if (i % 2 === 1 && i < 13) add('B5', n[0], n[1], EXIT.floorAt(EXIT.cum[i]) + 2.3, 0.85); });
+  { let nextS = 6; EXIT.nodes.forEach((n, i) => { if (EXIT.cum[i] >= nextS && EXIT.cum[i] < EXIT.length - EXIT.tail - 1) { add('B5', n[0], n[1], EXIT.ys[i] + 2.5, 0.8, { exit: 1 }); nextS += 9.5; } }); }
+  // B6: водяной погреб — холодные тусклые шары: лестница, тамбур, неф, ниши-кладовые, станция измерения.
+  for (const [z, y] of [[13.5, 0.3], [19.5, -2.6], [25.5, -5.5]]) add('B6', CELLAR.stairs.x, z, y, 0.5);
+  add('B6', 101.6, 31.2, -5.6, 0.6); add('B6', 111, 31.4, -6.5, 0.5);
+  for (const x of [113, 121, 129, 137, 143]) { add('B6', x, 32.4, -5.2, 0.7); add('B6', x, 41.6, -5.2, 0.7); }
+  for (const x of [118, 127, 136]) add('B6', x, 37, -4.8, 0.9, { chain: 1 });
+  for (const x of CELLAR.bayX) { add('B6', x, CELLAR.bayZ.n, -6.4, 0.4); add('B6', x, CELLAR.bayZ.s, -6.4, 0.4); }
+  add('B6', 146.5, 37, -6.2, 0.8);
   for (const x of [-1.5, 3]) add('B1', x, x < 0 ? 5 : 0.2, 2.3, 0.45);
   return G;
 }
@@ -140,4 +235,4 @@ export const ANCHORS = {
 
 for (const x of [58, 64, 70, 76.5, 83, 89, 95]) for (const sg of [-1, 1]) ANCHORS[`vent_${x}_${sg}`] = { o: [x, 2.95, 0], d: [0, 0, sg], maxT: 10 };
 
-export const REGION_BY_X = (x) => (x < 40.5 ? 'B1' : x < 99 ? 'B2' : x < 150 ? 'B3' : 'B5');
+export const REGION_BY_X = (x, z = 0, y = 0) => (y < -3.5 && z > 8 && x > 96 && x < 152 ? 'B6' : x < 40.5 ? 'B1' : x < 99 ? 'B2' : x < 150 ? 'B3' : 'B5');

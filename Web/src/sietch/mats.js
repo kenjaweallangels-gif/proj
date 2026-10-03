@@ -24,6 +24,7 @@ float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
 float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
   return mix(mix(h21(i),h21(i+vec2(1,0)),f.x), mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x), f.y); }
 float fbm3(vec2 p){ float a=.5,s=0.; for(int i=0;i<3;i++){ s+=a*vnoise(p); p=p*2.03+17.; a*=.5;} return s; }
+float fbm2(vec2 p){ return 0.62*vnoise(p) + 0.38*vnoise(p*2.03+17.); }
 vec3 perturbMy(vec3 sp, vec3 sn, vec2 dH, float fd){
   vec3 sx = normalize(dFdx(sp)); vec3 sy = normalize(dFdy(sp));
   vec3 r1 = cross(sy, sn); vec3 r2 = cross(sn, sx);
@@ -109,6 +110,9 @@ for (int pi = 0; pi < ${MAXP}; pi++) {
   vec3 pB = uCapB[pi].xyz; vec3 ab = pB - pA.xyz; float tt = clamp(dot(transformed - pA.xyz, ab) / max(dot(ab, ab), 1e-4), 0.0, 1.0);
   vec3 cc = pA.xyz + ab * tt; vec3 dd = transformed - cc; float ll = length(dd); float RR = pA.w + 0.05;
   if (ll < RR) { transformed = cc + (ll > 1e-4 ? dd / ll : vec3(0.0, 0.0, 1.0)) * RR; }
+  // занавесь раздвигается: ткань скользит по горизонтали от оси тела (радиус ~1 м), чтобы не закрывать обзор и не липнуть
+  vec2 dxz = transformed.xz - cc.xz; float lxz = length(dxz); float RP = 1.05;
+  if (lxz < RP && sw > 0.0 && transformed.y < pB.y + 0.9) { transformed.xz += (lxz > 1e-3 ? dxz / lxz : vec2(1.0, 0.0)) * (RP - lxz) * 0.92 * smoothstep(0.0, 0.45, sw); }
 }` : ''}`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
@@ -138,9 +142,9 @@ const ROCK_FRAG = /* glsl */`
   float floorW = smoothstep(0.5, 0.8, vLNr.y);
   float ceilW = smoothstep(0.5, 0.8, -vLNr.y);
   float wallW = 1.0 - floorW - ceilW;
-  float tf0 = tw.x * fbm3(vLPr.zy * 0.33) + tw.y * fbm3(vLPr.xz * 0.33) + tw.z * fbm3(vLPr.xy * 0.33);
-  float tf1 = tw.x * fbm3(vLPr.zy * 1.5) + tw.y * fbm3(vLPr.xz * 1.5) + tw.z * fbm3(vLPr.xy * 1.5);
-  float tf2 = tw.x * fbm3(vLPr.zy * 6.0) + tw.y * fbm3(vLPr.xz * 6.0) + tw.z * fbm3(vLPr.xy * 6.0);
+  float tf0 = tw.x * vnoise(vLPr.zy * 0.33) + tw.y * vnoise(vLPr.xz * 0.33) + tw.z * vnoise(vLPr.xy * 0.33);
+  float tf1 = tw.x * fbm2(vLPr.zy * 1.5) + tw.y * fbm2(vLPr.xz * 1.5) + tw.z * fbm2(vLPr.xy * 1.5);
+  float tf2 = tw.x * vnoise(vLPr.zy * 6.0) + tw.y * vnoise(vLPr.xz * 6.0) + tw.z * vnoise(vLPr.xy * 6.0);
   // слои осадочной породы: волнистые полосы по высоте
   float sy = vLPr.y * 1.45 + (tf0 - 0.5) * 2.2 + 0.5 * vnoise(vLPr.xz * 0.09);
   float band = floor(sy), bf = fract(sy);
@@ -164,7 +168,7 @@ const ROCK_FRAG = /* glsl */`
   rock = mix(rock, sandC, smoothstep(0.05, 0.9, sandv));
   rockH = mix(rockH, rip * 0.55 + tf2 * 0.2, smoothstep(0.3, 1.0, sandv));
   // копоть, полировка ладонями, влага
-  float sootN = 0.55 + 0.9 * fbm3(suv * 2.2 + 11.0);
+  float sootN = 0.55 + 0.9 * (0.62 * vnoise(suv * 2.2 + 11.0) + 0.38 * vnoise(suv * 4.5 + 3.0));
   rock *= 1.0 - clamp(vParR.x * sootN, 0.0, 1.0) * 0.74;
   rock *= mix(vec3(1.0), vec3(1.14, 1.02, 0.88), pol);
   rock *= mix(vec3(1.0), vec3(0.5, 0.56, 0.6), wetv);
@@ -204,7 +208,7 @@ roughnessFactor = clamp(0.94 - pol * 0.5 - wetv * 0.5 - sandv * 0.05, 0.18, 1.0)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
 normal = perturbMy(-vViewPosition, normal, vec2(dFdx(rockH), dFdy(rockH)) * (0.9 + 0.5 * wallW) * uBump * (1.0 - 0.65 * pol), faceDirection);
 #ifdef ROCK_TEX
-  { vec3 nx = texture2D(uWallN, vLPr.zy * uWallS).xyz * 2.0 - 1.0, ny = texture2D(uWallN, vLPr.xz * uWallS).xyz * 2.0 - 1.0, nz = texture2D(uWallN, vLPr.xy * uWallS).xyz * 2.0 - 1.0;
+  if (length(vViewPosition) < 26.0) { vec3 nx = texture2D(uWallN, vLPr.zy * uWallS).xyz * 2.0 - 1.0, ny = texture2D(uWallN, vLPr.xz * uWallS).xyz * 2.0 - 1.0, nz = texture2D(uWallN, vLPr.xy * uWallS).xyz * 2.0 - 1.0;
     vec3 fx = texture2D(uFloorN, vLPr.zy * uFloorS).xyz * 2.0 - 1.0, fy = texture2D(uFloorN, vLPr.xz * uFloorS).xyz * 2.0 - 1.0, fz = texture2D(uFloorN, vLPr.xy * uFloorS).xyz * 2.0 - 1.0;
     nx = mix(nx, fx, floorW); ny = mix(ny, fy, floorW); nz = mix(nz, fz, floorW);
     vec3 sn = normalize(vLNr);
@@ -252,7 +256,7 @@ export function makeMaterials() {
     M[`cloth:${name}`] = patch(std({ map: t, color: '#ffffff', roughness: 1, side: THREE.DoubleSide }), { sway: true });
     M[`carpet:${name}`] = patch(std({ map: t, color: '#ffffff', roughness: 1, side: THREE.DoubleSide }));
   }
-  for (const name of ['carving', 'carvingB', 'sigil', 'mural', 'chalk', 'embroidery', 'hands']) {
+  for (const name of ['carving', 'carvingB', 'sigil', 'mural', 'chalk', 'embroidery', 'hands', 'tally']) {
     const d = T[name];
     M[`decal:${name}`] = patch(new THREE.MeshStandardMaterial({
       map: d.map, bumpMap: d.bump, bumpScale: name === 'mural' ? 0.4 : 2.2, transparent: true, vertexColors: true, roughness: name === 'mural' ? 0.8 : 0.55,

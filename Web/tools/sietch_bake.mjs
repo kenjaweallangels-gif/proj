@@ -10,7 +10,7 @@ import { pack, toBase64 } from '../src/sietch/cave/pack.js';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`))?.split('=')[1] ?? d);
 const out = resolve(root, arg('out', 'src/assets/sietch_cave.js'));
-const cell = Number(arg('cell', 0.34));
+const cell = Number(arg('cell', 0.37));
 const caveDir = join(root, 'src', 'sietch', 'cave');
 
 function sourceHash() {

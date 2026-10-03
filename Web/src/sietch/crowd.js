@@ -83,12 +83,13 @@ export function createCrowd(ctx) {
       pose: 'stand', mode: 'act', timer: R() * 5, path: null, pi: 0, spot, home: { x: spot.x, z: spot.z, yaw: spot.yaw ?? 0 }, lod: 'off', imp: -1, talk: false, group: o.group ?? -1,
       barkT: 1 + R() * 10, stranger: false, silent: 0, walkAnim: 0, irregular: 0, special: !!o.special, role: spot.role || '', phase: R() * 10, after: null, sitH: 0, speedNow: 0, dwell: 0,
     };
-    n.y = ground(n.x, n.z);
+    n.layer = spot.level ? 6.5 : 0; n.bedY = spot.y;
+    n.y = ground(n.x, n.z, n.layer);
     n.fig.group.position.set(n.x, n.y, n.z); n.fig.group.rotation.y = n.yaw;
     npcs.push(n);
     return n;
   }
-  const ground = (x, z) => heightAtLocal(x, z, 0);
+  const ground = (x, z, yf = 0) => heightAtLocal(x, z, yf);
 
   // ------------------------------------------------------------------ состав ----
   const full = q !== 'low';
@@ -110,6 +111,22 @@ export function createCrowd(ctx) {
   S.funeral.forEach((s, i) => place(i ? 'Elder' : 'Pilgrim', 'funeral', s, { look: { cloth: '#2c3e57', accent: '#1f2d46', hood: true, mask: false } }));
   S.hooks.forEach((s) => place('Guard', 'hooks', s));
   S.guard.forEach((s) => place('Guard', s.role === 'check' ? 'guardCheck' : s.role === 'grate' ? 'guardGrate' : 'guardPost', s, { look: { mask: true } }));
+  // Спящие в комнатах и эркерах, семьи за столом, дети в уголках, повара, музыкант с публикой, погреб (стража, писец, водоносы у бассейна).
+  S.sleep.forEach((sp, i) => place(['Elder', 'Child', 'Weaver', 'Pilgrim'][i % 4], 'sleep', { x: sp.x, z: sp.z, yaw: sp.yaw, y: sp.y, level: sp.level, role: 'sleep' }, { look: { hood: false, mask: false } }));
+  S.family.forEach((sp, i) => place(['Weaver', 'Elder', 'Trader', 'Child'][i % 4], 'family', sp, { look: { hood: false, mask: false } }));
+  S.kidroom.forEach((sp, i) => { const n = place('Child', 'play', { x: sp.x + 0.3, z: sp.z, yaw: R() * TAU, role: i % 2 ? 'stomp' : 'rider' }); n.arena = { x: sp.x, z: sp.z, r: 0.9 }; });
+  S.cook.forEach((sp) => place('Weaver', 'cook', sp, { look: { hood: false, mask: false } }));
+  S.musician.forEach((sp) => { out.musician = place('Elder', 'musician', sp, { look: { hood: false, mask: false } }); });
+  S.audience.forEach((sp) => place(['Pilgrim', 'Child'][Math.floor(R() * 2)], 'audience', sp));
+  S.cellarGuard.forEach((sp) => place('Guard', 'cellarGuard', sp, { look: { mask: true } }));
+  S.scribe.forEach((sp) => place('Elder', 'scribe', sp, { look: { hood: false, mask: false } }));
+  S.pool.forEach((sp) => place('WaterCarrier', 'poolWatch', sp));
+  // Дети в проходах B3: догонялки по коридору.
+  {
+    const mk = (x) => { const n = place('Child', 'play', { x, z: pathZ(PATHS.C, x), yaw: R() * TAU, role: 'chase' }); n.arena = { line: true, x0: 100, x1: 148 }; return n; };
+    const a = mk(116), b = mk(121); a.buddy = b; b.buddy = a; b.role = 'chased';
+    if (q !== 'low') { const c = mk(134); c.role = 'rider'; }
+  }
   // Блуждающие по галерее.
   const wanderArchs = ['Trader', 'Pilgrim', 'WaterCarrier', 'WaterCarrier', 'Artisan', 'Weaver', 'Pilgrim', 'Elder', 'Trader', 'Child'];
   const nWander = q === 'low' ? 5 : q === 'high' ? 24 : 16;
@@ -121,6 +138,22 @@ export function createCrowd(ctx) {
   const jarGeo = new THREE.LatheGeometry([[0, 0], [0.13, 0], [0.16, 0.08], [0.16, 0.22], [0.1, 0.34], [0.07, 0.4], [0, 0.4]].map((p) => new THREE.Vector2(p[0], p[1])), 12);
   const jarMat = new THREE.MeshStandardMaterial({ color: '#8a5c3c', roughness: 0.8 });
   for (const n of npcs) if (n.arch === 'WaterCarrier' && n.kind !== 'water') { const j = new THREE.Mesh(jarGeo, jarMat); j.position.set(0.2, 0.62, 0.02); j.rotation.z = -0.12; n.fig.parts.spine.add(j); n.jar = true; }
+
+  // Музыкант: уд (лютня) на груди; повар: ложка в правой руке.
+  for (const n of npcs) {
+    if (n.kind === 'musician') {
+      const g = new THREE.Group();
+      const bodyM = new THREE.MeshStandardMaterial({ color: '#7a4a28', roughness: 0.55 }), neckM = new THREE.MeshStandardMaterial({ color: '#4a3020', roughness: 0.6 });
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 10), bodyM); body.scale.set(1, 0.42, 1.25); g.add(body);
+      const hole = new THREE.Mesh(new THREE.CircleGeometry(0.05, 10), new THREE.MeshBasicMaterial({ color: 0x120a06 })); hole.rotation.x = -Math.PI / 2; hole.position.set(0, 0.085, 0.02); g.add(hole);
+      const neck = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 0.55), neckM); neck.position.set(0, 0.0, 0.42); g.add(neck);
+      const peg = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.04, 0.16), neckM); peg.position.set(0, 0.0, 0.74); peg.rotation.x = 0.35; g.add(peg);
+      g.position.set(0.02, -0.12, 0.2); g.rotation.set(-0.5, 0, -0.0);
+      n.fig.parts.chest.add(g);
+    } else if (n.kind === 'cook') {
+      const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.5, 6), new THREE.MeshStandardMaterial({ color: '#6a4a2c' })); sp.position.set(0, -0.1, 0.1); n.fig.parts.limbs.R.hand.add(sp);
+    }
+  }
 
   // ------------------------------------------------------------------ спец-персонажи зала ----
   const cx = HALL.cx, cz = HALL.cz;
@@ -232,25 +265,62 @@ export function createCrowd(ctx) {
       case 'hooks': n.pose = n.role === 'sharpen' ? 'sharpen' : 'inspect'; break;
       case 'guardPost': case 'guardGrate': n.pose = 'stand'; break;
       case 'play': playThink(n, dt, t); break;
+      case 'sleep': n.pose = 'sleep'; n.talk = false; break;
+      case 'family': n.pose = 'sitFloor'; n.talk = (n.id % 3 === 0) && !n.silent; break;
+      case 'cook': n.pose = 'stir'; n.talk = false; break;
+      case 'musician': n.pose = 'play'; n.talk = false; break;
+      case 'audience': n.pose = 'sitFloor'; n.talk = false; break;
+      case 'scribe': n.pose = 'scribe'; break;
+      case 'poolWatch': n.pose = 'measure'; break;
+      case 'cellarGuard': cellarGuardThink(n, dt); break;
       case 'guardCheck': guardThink(n, dt, t); break;
       case 'wander': case 'wanderB3': if (n.mode === 'act' && n.timer <= 0) pickWander(n); break;
       default: break;
     }
   }
 
-  // дети: нерегулярный бег по площадке
-  function playThink(n, dt) {
-    if (n.mode === 'act') {
-      n.pose = n.role === 'stomp' ? 'stomp' : n.role === 'worm' ? 'crouch' : 'stand';
-      if (n.timer <= 0) {
-        const a = R() * TAU, r = 0.6 + R() * 2.6;
-        let tx = 47 + Math.cos(a) * r, tz = -0.3 + Math.sin(a) * r * 0.9;
-        if (R() < 0.12) { tx = 52 + R() * 6; tz = (R() - 0.5) * 5; }
-        n.path = [[tx, tz]]; n.pi = 0; n.mode = 'walk'; n.irregular = 1; n.after = () => { n.irregular = 0; actAt(n, 'act', 'stand', 0.3 + R() * 1.6); };
-        n.speedBoost = n.role === 'worm' ? 0.35 : 1.9 + R() * 0.8;
-      }
-    }
+  // дети: нерегулярный бег по площадке / в комнате / по коридору, догонялки
+  function arenaPoint(n) {
+    const A = n.arena;
+    if (A && A.line) { const x = A.x0 + R() * (A.x1 - A.x0); return [x, pathZ(PATHS.C, x) + (R() - 0.5) * 0.9]; }
+    const cx = A ? A.x : 47, cz = A ? A.z : -0.3, rr = A ? A.r : 2.6;
+    const a = R() * TAU, r = (0.25 + 0.75 * R()) * rr;
+    return [cx + Math.cos(a) * r, cz + Math.sin(a) * r * 0.9];
   }
+  function playThink(n, dt) {
+    if (n.mode !== 'act') return;
+    n.pose = n.role === 'stomp' ? 'stomp' : n.role === 'worm' ? 'crouch' : 'stand';
+    if (n.timer > 0) return;
+    let tgt;
+    if ((n.role === 'chase' || n.role === 'chased') && n.buddy) {
+      const bd = n.buddy;
+      if (n.role === 'chase') { tgt = [bd.x + (R() - 0.5) * 0.4, bd.z + (R() - 0.5) * 0.3]; if (Math.hypot(bd.x - n.x, bd.z - n.z) < 0.9) { n.role = 'chased'; bd.role = 'chase'; n.timer = 0.4; bd.timer = 0.2; n.talk = true; return; } n.speedBoost = 2.3; }
+      else { tgt = arenaPoint(n); n.speedBoost = 2.5; }
+    } else {
+      tgt = arenaPoint(n);
+      if (!n.arena && R() < 0.12) tgt = [52 + R() * 6, (R() - 0.5) * 5];
+      n.speedBoost = n.role === 'worm' ? 0.35 : 1.9 + R() * 0.8;
+    }
+    n.path = [tgt]; n.pi = 0; n.mode = 'walk'; n.irregular = 1;
+    n.after = () => { n.irregular = 0; actAt(n, 'act', 'stand', (n.role === 'chase' || n.role === 'chased') ? 0.05 : 0.3 + R() * 1.6); };
+  }
+
+  // стража погреба: у входа — стоит/сидит, патруль — ходит вдоль нефа
+  function cellarGuardThink(n, dt) {
+    if (n.role === 'sit') { n.pose = 'sitBench'; return; }
+    if (n.role === 'patrol') {
+      if (n.mode === 'act' && n.timer <= 0) {
+        n.patI = ((n.patI ?? 0) + 1) % 4;
+        const pts = [[116, 32.0], [126, 32.0], [138, 32.0], [126, 32.0]];
+        n.path = [pts[n.patI]]; n.pi = 0; n.mode = 'walk'; n.speedBoost = 0.7;
+        n.after = () => { actAt(n, 'act', 'stand', 4 + R() * 6); n.goalYaw = faceYaw(0, 1); };
+      }
+      return;
+    }
+    n.pose = 'stand';
+    if (dtPlayerClose(n) < 6) n.goalYaw = Math.atan2(plL.x - n.x, plL.z - n.z);
+  }
+  const dtPlayerClose = (n) => Math.hypot(plL.x - n.x, plL.z - n.z);
 
   // страж: проверяет маски, уступает дорогу после реплики
   let guardTalkT = -1;
@@ -352,6 +422,16 @@ export function createCrowd(ctx) {
       case 'mourn': { P.spine.rotation.x = 0.28; arms(-0.35, -0.35, -1.1); P.headPivot.rotation.x = 0.4; break; }
       case 'sharpen': { P.spine.rotation.x = 0.35; arms(-0.9 + Math.sin(tt * 9) * 0.2, -0.8, -1.0); P.headPivot.rotation.x = 0.4; break; }
       case 'inspect': { P.spine.rotation.x = 0.2; arms(-1.1, -0.6, -1.0 + Math.sin(tt * 0.9) * 0.2); break; }
+      case 'sleep': { P.spine.rotation.x = 0; arms(-0.15, 0.05, -0.5); P.chest.scale.y = 1 + Math.sin(tt * 1.1) * 0.012; break; }
+      case 'stir': { P.spine.rotation.x = 0.18; arms(-0.5, -1.05 + Math.sin(tt * 2.4) * 0.12, -1.2 + Math.sin(tt * 2.4 + 1) * 0.15); P.headPivot.rotation.x = 0.35; P.spine.rotation.y = Math.sin(tt * 2.4) * 0.05; break; }
+      case 'play': { // музыкант: сидит по-турецки, левая рука на грифе, правая перебирает струны
+        P.pelvis.position.y = 0.16 / s; L.L.hip.rotation.x = L.R.hip.rotation.x = -1.4; L.L.hip.rotation.z = 0.5; L.R.hip.rotation.z = -0.5; L.L.kn.rotation.x = L.R.kn.rotation.x = 2.3;
+        const beat = Math.sin(tt * 6.2), dn = Math.max(0, beat);
+        P.spine.rotation.x = 0.12 + Math.sin(tt * 1.55) * 0.03; P.spine.rotation.z = Math.sin(tt * 1.55) * 0.05;
+        arms(-1.55, -1.0 + dn * 0.28, -0.9 - dn * 0.22);
+        P.headPivot.rotation.x = 0.25 + Math.sin(tt * 1.55) * 0.08; P.headPivot.rotation.z = Math.sin(tt * 0.8) * 0.08; break;
+      }
+      case 'scribe': { P.spine.rotation.x = 0.4; arms(-1.1, -1.2 + Math.sin(tt * 4.6) * 0.07, -1.0 + Math.sin(tt * 4.6) * 0.08); P.headPivot.rotation.x = 0.55; break; }
       case 'stomp': { const k = Math.abs(Math.sin(tt * 4.2)); P.pelvis.position.y = (0.92 - 0.1 * k) ; L.L.hip.rotation.x = -k * 0.6; L.R.hip.rotation.x = -(1 - k) * 0.4; arms(-1.3 + k * 0.6, -1.3 + (1 - k) * 0.6, -0.4); break; }
       case 'crouch': { P.pelvis.position.y = 0.55; L.L.kn.rotation.x = L.R.kn.rotation.x = 1.4; L.L.hip.rotation.x = L.R.hip.rotation.x = -1.0; P.spine.rotation.x = 0.7; arms(-1.2, -1.2, -0.4); break; }
       default: break;
@@ -359,7 +439,7 @@ export function createCrowd(ctx) {
   }
 
   // ------------------------------------------------------------------ обновление ----
-  let lodT = 0, glowT = 0, ctxTime = 0;
+  let lodT = 0, glowT = 0, ctxTime = 0, capT = 0;
   const upA = new THREE.Vector3(0, 1, 0);
   function glowAt(x, y, z) {
     const p = ctx.probes.sample(x, y, z);
@@ -388,8 +468,11 @@ export function createCrowd(ctx) {
         else if (n.lod !== 'full' && inScene) root.remove(n.fig.group);
       }
     }
+    capT -= dt;
+    const capAll = capT <= 0; if (capAll) capT = 0.4;
     for (const c of capsules) {
-      const n = c.n, sitting = n.pose === 'sitFloor' || n.mode === 'seat' || n.pose === 'pray' || n.pose === 'crouch', h = n.lk.height * (sitting ? 0.6 : 1);
+      if (!capAll && c.n.d2 > 900) continue;
+      const n = c.n, sitting = n.pose === 'sitFloor' || n.mode === 'seat' || n.pose === 'pray' || n.pose === 'crouch' || n.pose === 'play' || n.pose === 'sleep', h = n.lk.height * (n.pose === 'sleep' ? 0.35 : sitting ? 0.6 : 1);
       ctx.toWorld(n.x, n.y + 0.3, n.z, c.a); ctx.toWorld(n.x, n.y + Math.max(0.5, h - 0.2), n.z, c.b);
     }
     const dyn = glowT <= 0; if (dyn) glowT = 0.4;
@@ -398,7 +481,7 @@ export function createCrowd(ctx) {
       // редкий тик для дальних
       n.acc = (n.acc || 0) + dt;
       const far = n.lod !== 'full';
-      if (far && n.acc < 0.12) { writeImpostor(n, i, t, dyn); continue; }
+      if (far && n.acc < (n.d2 > 4900 ? 0.6 : n.d2 > 1600 ? 0.3 : 0.12)) { if (n.mode === 'walk' || dyn) writeImpostor(n, i, t, dyn); continue; }
       const sdt = n.acc; n.acc = 0;
       n.timer -= sdt; n.barkT -= sdt;
       const dxp = plL.x - n.x, dzp = plL.z - n.z, dp = Math.hypot(dxp, dzp);
@@ -414,7 +497,7 @@ export function createCrowd(ctx) {
       if (nearTalk && n.mode !== 'walk' && !n.special) n.goalYaw = Math.atan2(dxp, dzp);
       n.yaw = dampAngle(n.yaw, n.mode === 'walk' ? n.walkYaw : n.goalYaw, n.mode === 'walk' ? 6 : 3.5, sdt);
       // барки
-      if (dp < 6.5 && n.mode !== 'wait' && !n.special) {
+      if (dp < 6.5 && n.mode !== 'wait' && !n.special && n.kind !== 'sleep' && n.kind !== 'musician') {
         if (!n.stranger && dp < 4.5) { if (R() < 0.5) n.stranger = true; else if (say(n, 'Stranger')) n.stranger = true; }
         else if (n.barkT <= 0) {
           const c = out.ritualState !== 'idle' ? 'Ritual' : n.kind === 'stall' ? 'Market' : (n.kind === 'water' || n.arch === 'WaterCarrier') ? 'Water' : n.kind === 'whisper' || n.kind === 'shrine' ? 'Shiana' : n.kind === 'quarrel' ? 'Kin' : n.kind === 'loom' ? 'Market' : 'Idle';
@@ -422,24 +505,33 @@ export function createCrowd(ctx) {
         }
       }
       // уступить дорогу
-      if (dp < 1.15 && !n.special && n.mode !== 'seat') { const k = (1.15 - dp) / 1.15; n.x -= (dxp / (dp + 1e-3)) * k * sdt * 1.6; n.z -= (dzp / (dp + 1e-3)) * k * sdt * 1.6; }
+      if (dp < 1.15 && !n.special && n.mode !== 'seat' && n.kind !== 'sleep' && n.kind !== 'musician' && n.kind !== 'cook') { const k = (1.15 - dp) / 1.15; n.x -= (dxp / (dp + 1e-3)) * k * sdt * 1.6; n.z -= (dzp / (dp + 1e-3)) * k * sdt * 1.6; }
       if (n.lod === 'full' && n.mode === 'act' && (n.pose === 'weave' || n.pose === 'measure' || n.pose === 'repair') && dp < 12) {
         n.sfxT = (n.sfxT ?? R() * 2) - sdt;
         if (n.sfxT <= 0) { n.sfxT = n.pose === 'weave' ? 1.1 + R() * 0.6 : 5 + R() * 4; game.audio?.event?.(n.pose === 'weave' ? 'Loom.Clack' : n.pose === 'measure' ? 'Water.Measure' : 'Stillsuit.Repair', ctx.toWorld(n.x, n.y + 1.0, n.z)); }
       }
       if (n.lod === 'full') {
-        n.y = n.special && n.kind === 'priestess' ? rimY : ground(n.x, n.z);
+        n.y = n.special && n.kind === 'priestess' ? rimY : ground(n.x, n.z, n.layer || 0);
         const g = n.fig.group;
         g.position.set(n.x, n.y, n.z); g.rotation.y = n.yaw;
+        if (n.kind === 'sleep') layDown(n);
         n.fig.setTalking?.(n.talk && !n.silent);
         if (n.special) specialPose(n, sdt, t); else applyPose(n, sdt, t);
-        if (dp < 7 && !n.special) n.fig.lookAt(game.camera.position, 0.85);
-      } else { n.y = n.special ? n.y : ground(n.x, n.z); if (n.kind === 'dancer') specialMove(n, sdt, t); }
+        if (dp < 7 && !n.special && n.kind !== 'sleep') n.fig.lookAt(game.camera.position, n.kind === 'musician' ? 0.3 : 0.85);
+      } else { n.y = n.special ? n.y : ground(n.x, n.z, n.layer || 0); if (n.kind === 'dancer') specialMove(n, sdt, t); }
       writeImpostor(n, i, t, dyn);
     }
     impBody.instanceMatrix.needsUpdate = impHead.instanceMatrix.needsUpdate = impSash.instanceMatrix.needsUpdate = true;
     if (dyn) { impBody.geometry.attributes.aGlow.needsUpdate = impHead.geometry.attributes.aGlow.needsUpdate = impSash.geometry.attributes.aGlow.needsUpdate = true; }
   };
+
+  const _e2 = new THREE.Euler();
+  /** Спящий: лежит на спине головой по направлению n.yaw (фигура поворачивается вокруг стоп, стопы смещены назад на полдлины тела). */
+  function layDown(n) {
+    const g = n.fig.group, hx = Math.sin(n.yaw), hz = Math.cos(n.yaw), len = 0.85 * n.scale;
+    g.rotation.order = 'YXZ'; g.rotation.set(-Math.PI / 2, n.yaw + Math.PI, 0);
+    g.position.set(n.x - hx * len, (n.bedY ?? n.y) + 0.1, n.z - hz * len);
+  }
 
   function walk(n, dt) {
     const p = n.path[n.pi];
@@ -516,6 +608,14 @@ export function createCrowd(ctx) {
     if (n.mode === 'walk') { yoff = Math.abs(Math.sin(t * 6 * (n.speed) + n.phase)) * 0.035; lean = 0.06; }
     else if (n.mode !== 'seat') lean = Math.sin(t * 0.6 + n.phase) * 0.012;
     const yy = n.special && n.kind === 'priestess' ? rimY : n.y;
+    if (n.kind === 'sleep') {
+      const hx = Math.sin(n.yaw), hz = Math.cos(n.yaw), len = 0.85 * s;
+      _e.set(-Math.PI / 2, n.yaw + Math.PI, 0, 'YXZ'); _q.setFromEuler(_e);
+      _p.set(n.x - hx * len, (n.bedY ?? n.y) + 0.1, n.z - hz * len); _s.set(bulk * s, s, bulk * s);
+      _m.compose(_p, _q, _s); impBody.setMatrixAt(i, _m); impSash.setMatrixAt(i, _m); impHead.setMatrixAt(i, _m);
+      if (dyn) { const g = glowAt(n.x, n.y + 0.4, n.z); impGlow[i * 3] = g[0]; impGlow[i * 3 + 1] = g[1]; impGlow[i * 3 + 2] = g[2]; }
+      return;
+    }
     _e.set(lean, n.yaw, n.mode === 'seat' && out.ritualState !== 'idle' ? Math.sin(t * 0.7 + (n.sway || 0)) * 0.06 : 0, 'YXZ'); _q.setFromEuler(_e);
     _p.set(n.x, yy + yoff, n.z); _s.set(bulk * s, sy, bulk * s);
     _m.compose(_p, _q, _s); impBody.setMatrixAt(i, _m); impSash.setMatrixAt(i, _m);
@@ -534,7 +634,7 @@ export function createCrowd(ctx) {
   // тестовый хук: мгновенно рассадить толпу по местам
   out.debugSeatAll = () => {
     out.startRitual();
-    for (const n of npcs) if (n.rit) { n.mode = 'seat'; n.pose = 'sitFloor'; n.x = n.rit.seat.x; n.z = n.rit.seat.z; n.y = ground(n.x, n.z); n.yaw = n.goalYaw = Math.atan2(cx - n.x, cz - n.z); n.sway = R() * 6; out.seated++; }
+    for (const n of npcs) if (n.rit) { n.mode = 'seat'; n.pose = 'sitFloor'; n.x = n.rit.seat.x; n.z = n.rit.seat.z; n.y = ground(n.x, n.z, n.layer || 0); n.yaw = n.goalYaw = Math.atan2(cx - n.x, cz - n.z); n.sway = R() * 6; out.seated++; }
   };
   return out;
 }

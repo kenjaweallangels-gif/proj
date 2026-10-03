@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { clamp, smoothstep, rng } from '../core/util.js';
 import { HALL, zoneAtLocal } from './plan.js';
+import { CELLAR } from './cave/layout.js';
 import { U } from './mats.js';
 const SHAFT_R = HALL.shaftR, VAULT_TOP = HALL.shaftTop - 0.6;
 
@@ -19,7 +20,7 @@ function addMat(o) {
   });
 }
 
-const regionOfZone = (z) => ({ B1_Airlock: 'B1', B2_Gallery: 'B2', B3_Passages: 'B3', B4_Cistern: 'B4', B5_Hall: 'B5' }[z] || 'B2');
+const regionOfZone = (z) => ({ B1_Airlock: 'B1', B2_Gallery: 'B2', B3_Passages: 'B3', B4_Cistern: 'B4', B5_Hall: 'B5', B6_Cellar: 'B6' }[z] || 'B2');
 
 export function createLighting(ctx) {
   const { root, globes, wells, game } = ctx;
@@ -29,7 +30,7 @@ export function createLighting(ctx) {
   const out = {};
   const N = globes.length;
   const R = rng(77);
-  globes.forEach((g, i) => { g.phase = R() * 6.28; g.bx = g.x; g.by = g.y; g.bz = g.z; g.i = i; });
+  globes.forEach((g, i) => { g.phase = R() * 6.28; g.bx = g.x; g.by = g.y; g.bz = g.z; g.i = i; if (g.exit) g.region = 'EX'; });
 
   // ---- Светошары: инстансы-сферы.
   const gGeo = new THREE.SphereGeometry(0.15, 14, 10);
@@ -54,7 +55,7 @@ export function createLighting(ctx) {
       #include <fog_pars_vertex>
       void main(){ vec4 mvPosition = modelViewMatrix * vec4(position,1.0); gl_Position = projectionMatrix * mvPosition;
         float fl = 0.88 + 0.12*sin(uTime*(3.0+aPh*0.3)+aPh*5.0) * sin(uTime*1.7+aPh);
-        vA = fl; gl_PointSize = clamp(aSize * uScale / max(0.5, -mvPosition.z), 2.0, 380.0);
+        vA = fl; gl_PointSize = -mvPosition.z > 62.0 ? 0.0 : clamp(aSize * uScale / max(0.5, -mvPosition.z), 2.0, 240.0);
         #include <fog_vertex>
       }`,
     fragmentShader: /* glsl */`
@@ -72,7 +73,7 @@ export function createLighting(ctx) {
   root.add(halos);
 
   // ---- Пул реальных источников.
-  const K = q === 'low' ? 6 : q === 'high' ? 14 : 10;
+  const K = q === 'low' ? 3 : q === 'high' ? 8 : 5;
   const lights = [];
   for (let i = 0; i < K; i++) {
     const L = new THREE.PointLight(0xffa850, 0, 16, 2);
@@ -81,8 +82,9 @@ export function createLighting(ctx) {
   }
   let poolT = 0;
   const camL = new THREE.Vector3();
+  const regionAtCam = () => (camL.z < -19.5 && camL.x > 158 ? 'EX' : regionOfZone(zoneAtLocal(camL.x, camL.z, camL.y)));
   function repool() {
-    const reg = regionOfZone(zoneAtLocal(camL.x, camL.z));
+    const reg = regionAtCam();
     const cand = [];
     for (const g of globes) {
       if (g.region !== reg) continue;
@@ -256,7 +258,7 @@ export function createLighting(ctx) {
   for (const w of wells) coneMats.push(coneMotes(w.x, w.z, 0.1, w.y1 - 0.5, w.r, w.rBottom, Math.round(NC * 0.35), [1.0, 1.3, 1.9], 0.05));
 
   // ---- Пар/конденсат у шлюзов.
-  const NS = 90;
+  const NS = 220;
   const sGeo = new THREE.BufferGeometry();
   const sp = new Float32Array(NS * 3), sa = new Float32Array(NS), ss = new Float32Array(NS), sc = new Float32Array(NS * 3);
   sGeo.setAttribute('position', new THREE.BufferAttribute(sp, 3)); sGeo.setAttribute('aA', new THREE.BufferAttribute(sa, 1)); sGeo.setAttribute('aS', new THREE.BufferAttribute(ss, 1)); sGeo.setAttribute('aC', new THREE.BufferAttribute(sc, 3));
@@ -349,6 +351,62 @@ export function createLighting(ctx) {
   water.geometry.rotateX(-Math.PI / 2); water.geometry.translate((B4.x0 + B4.x1) / 2, B4.y, (B4.z0 + B4.z1) / 2);
   water.renderOrder = 2;
   root.add(water);
+  // ---- Вода погреба B6: тёмный неподвижный бассейн с отражениями светошаров и редкой рябью от капель.
+  {
+    const PL = CELLAR.pool;
+    const pg = globes.filter((g) => g.region === 'B6').map((g) => ({ g, d: Math.hypot(g.x - PL.c[0], g.z - PL.c[1]) })).sort((a, b) => a.d - b.d).slice(0, 8).map((o) => o.g);
+    const pArr = []; for (let i = 0; i < 8; i++) pArr.push(pg[i] ? new THREE.Vector3(pg[i].x, pg[i].y, pg[i].z) : new THREE.Vector3(0, -99, 0));
+    const rips = Array.from({ length: 6 }, () => new THREE.Vector4(0, 0, 0, -100));
+    const pMat = new THREE.ShaderMaterial({
+      transparent: true, fog: true, depthWrite: false,
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: U.uTime, uG: { value: pArr }, uRip: { value: rips }, uCamL: { value: new THREE.Vector3() }, uC: { value: new THREE.Vector4(PL.c[0], PL.c[1], PL.r[0] * 1.0, PL.r[1] * 1.0) } }]),
+      vertexShader: /* glsl */`
+        varying vec3 vW;
+#include <fog_pars_vertex>
+        void main(){ vW = position; vec4 mvPosition = modelViewMatrix*vec4(position,1.0); gl_Position = projectionMatrix*mvPosition;
+          #include <fog_vertex>
+        }`,
+      fragmentShader: /* glsl */`
+        uniform float uTime; uniform vec3 uG[8]; uniform vec4 uRip[6]; uniform vec3 uCamL; uniform vec4 uC; varying vec3 vW;
+        #include <fog_pars_fragment>
+        float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+        float vn(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(h21(i),h21(i+vec2(1,0)),f.x), mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x), f.y); }
+        void main(){
+          vec2 e = (vW.xz - uC.xy) / uC.zw; float r = length(e);
+          if (r > 0.995) discard;
+          vec2 q = vW.xz;
+          vec2 rip = vec2(vn(q*2.2+uTime*0.05)-0.5, vn(q*2.2+7.3-uTime*0.04)-0.5) * 0.006;
+          for (int i=0;i<6;i++){
+            float age = uTime - uRip[i].w; vec2 d = q - uRip[i].xy; float rr = length(d);
+            if (age > 0.0 && age < 6.0) { float ring = sin((rr - age*0.38)*30.0) * exp(-abs(rr - age*0.38)*7.0) * exp(-age*0.7); rip += normalize(d+1e-4) * ring * 0.05; }
+          }
+          vec3 N = normalize(vec3(rip.x*8.0, 1.0, rip.y*8.0));
+          vec3 V = normalize(vW - uCamL);
+          vec3 Rf = reflect(V, N);
+          float fres = 0.05 + 0.95*pow(1.0 - clamp(dot(-V, N),0.0,1.0), 4.0);
+          vec3 col = vec3(0.002,0.006,0.009);
+          for (int i=0;i<8;i++){
+            vec3 toG = uG[i] - vW;
+            float t = dot(toG, Rf); if (t > 0.0) { float dist = length(toG - Rf*t); col += vec3(1.0,0.64,0.32) * (7.0 / (1.0 + dist*dist*12.0)) * (0.25+0.75*fres) / (1.0 + 0.006*t*t); }
+          }
+          col += vec3(0.02,0.035,0.045) * (0.4 + 0.6*fres) * (0.5 + 0.5*Rf.y);
+          float edge = smoothstep(1.0, 0.86, r);
+          gl_FragColor = vec4(col, 0.96 * edge);
+          #ifdef USE_FOG
+            float ffd = 1.0 - exp(-fogDensity*fogDensity*vFogDepth*vFogDepth); gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, ffd);
+          #endif
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`,
+    });
+    const pw = new THREE.Mesh(new THREE.PlaneGeometry(PL.r[0] * 2.04, PL.r[1] * 2.04, 1, 1), pMat);
+    pw.geometry.rotateX(-Math.PI / 2); pw.geometry.translate(PL.c[0], PL.water, PL.c[1]);
+    pw.renderOrder = 2; root.add(pw);
+    out.pool = pw; let ri = 0;
+    out.ripple = (x, z) => { rips[ri++ % 6].set(x, z, 0, U.uTime.value); };
+    out.poolMat = pMat;
+    pMat.uniforms.uCamL = pMat.uniforms.uCamL;
+  }
   // капли: маленькие светящиеся точки
   const dropGeo = new THREE.BufferGeometry(); dropGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9), 3));
   const dropMat = new THREE.PointsMaterial({ size: 0.05, color: 0xd8e8ff, transparent: true, opacity: 0.8, depthWrite: false, fog: true });
@@ -361,6 +419,7 @@ export function createLighting(ctx) {
   out.update = (dt, t) => {
     root.worldToLocal(camL.copy(game.camera.position));
     wMat.uniforms.uCamL.value.copy(camL);
+    out.poolMat.uniforms.uCamL.value.copy(camL);
     // шары: покачивание, мерцание
     for (let i = 0; i < N; i++) {
       const g = globes[i];
@@ -415,7 +474,7 @@ export function createLighting(ctx) {
       if (ph >= 0.58 && ph < 0.6 + dt * 2 && (drips[i].w < t - 3)) { drips[i].w = t; out.onDrip?.(i, d.x, d.y); }
     }
     dropGeo.attributes.position.needsUpdate = true;
-    rayLight.intensity = regionOfZone(zoneAtLocal(camL.x, camL.z)) === 'B5' ? 90 + 8 * Math.sin(t * 0.7) : 0;
+    rayLight.intensity = regionAtCam() === 'B5' ? 90 + 8 * Math.sin(t * 0.7) : 0;
     // луч зала: лёгкая «дыхание» интенсивности
     rayMat.uniforms.uK.value = 0.32 + 0.04 * Math.sin(t * 0.6);
   };

@@ -42,9 +42,27 @@ const VIEWS = [
   ['17_hall_vault', [160, 0, 0], [175, 19, 0], 84],
   ['18_godray', [169, -1.0, 3.5], [175, 8, 0], 74],
   ['19_ledge', [176, -0.5, 0], [192, 3.8, 0], 70],
-  ['20_exit_tunnel', [206, -5.7, -27], [208, -7.2, -32], 74],
-  ['21_exit_portal', [181, -20.9, -44], [195, -23.6, -46.2], 76],
-  ['22_exit_start', [184, 0.0, -18.5], [195, -3.1, -23], 74],
+  // выход в сад: точки задаются через EXIT (см. EXITV ниже) — здесь только зал → стена
+  ['22_exit_start', [184, 1.4, -8], [184, -0.3, -22], 74],
+  // комнаты семей
+  ['40_room_open_Nn1', [126, 1.6, -0.3], [126, 1.0, -9.5], 78],
+  ['41_room_Nn1_inside', [126, 1.7, -3.0], [126.5, 0.9, -9.0], 82],
+  ['42_room_Nn0_curtain', [111, 1.6, 1.4], [111, 1.3, -4.5], 74],
+  ['43_room_Ns2_inside', [142, 1.7, 2.6], [142, 0.8, 9.5], 82],
+  ['44_room_Ns2_kids', [140.5, 1.5, 4.0], [139.2, 0.3, 7.6], 76],
+  ['45_corridor_doors', [118, 1.6, 0.3], [140, 1.5, 0.0], 78],
+  ['46_bay_on_shelf', [62, 7.7, 5.6], [62.5, 7.2, 10.5], 80],
+  // водяной погреб
+  ['50_cellar_stairs', [101.3, -0.4, 11.5], [101.3, -4.6, 26.0], 76],
+  ['51_cellar_landing', [101.6, -7.4, 29.0], [108.5, -7.6, 31.4], 76],
+  ['52_cellar_nave', [112.5, -7.4, 31.4], [136, -7.4, 37], 82],
+  ['53_cellar_pool', [127, -7.5, 32.0], [127, -9.3, 38.5], 74],
+  ['54_cellar_station', [139, -7.4, 37], [147, -7.6, 37], 76],
+  ['55_cellar_vessels', [121.5, -7.3, 33.2], [121.5, -7.5, 29.6], 70],
+  // атмосфера
+  ['60_kitchen', [88.6, 1.6, -1.0], [91.4, 0.8, -6.3], 72],
+  ['61_musician', [62.5, 1.6, -2.0], [66.4, 0.8, -0.8], 66],
+  ['62_gallery_life', [48, 2.0, 3.0], [66, 1.5, -1.0], 82],
 ];
 
 const browser = await chromium.launch({
@@ -82,6 +100,17 @@ for (const [name, pos, tgt, fov, w] of VIEWS) {
   await shoot(name, pos, tgt, fov, w);
 }
 
+// Выходной туннель: кадры вдоль оси (по api.exitPath): середина, последний прямой участок, устье.
+if (!only.length || only.some((o) => o.startsWith('2') || o === 'exit')) {
+  const pts = await page.evaluate(() => window.__rakis.sietch.exitPath.map((p) => { const l = window.__rakis.sietch.toLocal(p); return [l.x, l.y, l.z]; }));
+  const at = (k) => pts[Math.max(0, Math.min(pts.length - 1, k))];
+  const n = pts.length;
+  const mk = (name, i0, i1, dy = 1.5, fov = 76) => { const a = at(i0), b = at(i1); return [name, [a[0], a[1] + dy, a[2]], [b[0], b[1] + dy - 0.2, b[2]], fov]; };
+  for (const [name, pos, tgt, fov] of [mk('20_exit_mid', 28, 34), mk('21_exit_leg_a', 14, 22), mk('23_exit_final_in', n - 14, n - 1), mk('24_exit_mouth_close', n - 3, n - 1, 1.6, 70), mk('25_exit_turn', 44, 50)]) {
+    if (only.length && !only.some((o) => name.includes(o) || o === 'exit')) continue;
+    await shoot(name, pos, tgt, fov);
+  }
+}
 // Зал с толпой на ярусах (после рассадки).
 if (!only.length || only.some((o) => o.startsWith('30'))) {
   await page.evaluate(() => window.__rakis.sietch.crowd.debugSeatAll?.());
