@@ -287,5 +287,7 @@ export function create(game) {
   game.bus.on('ritual', () => { api.startRitual(); });
   game.bus.on('zone', (e) => { if (e?.to === 'B5_Hall') api.startRitual(); });
   console.info(`[sietch] build ${(performance.now() - T0).toFixed(0)} ms, static meshes ${staticMeshes.length}, npcs ${crowd.count}`);
+  // Путь выходного туннеля в мировых координатах (для ботов/навигации): от зала к устью сада.
+  api.exitPath = EXIT.nodes.map((n) => toWorld(n[0], EXIT.drop, n[1]));
   return game.add('sietch', api);
 }
