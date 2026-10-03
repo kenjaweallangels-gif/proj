@@ -67,3 +67,15 @@ describe('голос КМ-2: команды', () => {
     expect(P('принеси ключ на десять')).toBeNull();
   });
 });
+
+describe('голос: имитация и очки', () => {
+  it('команды имитации, центрирования и выбора очков', async () => {
+    const { parseGalley } = await import('../src/galley/voice_cmd.js');
+    expect(parseGalley('сборка запусти сборку')).toEqual({ cmd: 'auto_start', arg: null });
+    expect(parseGalley('сборка пауза')).toEqual({ cmd: 'auto_pause', arg: null });
+    expect(parseGalley('сборка стоп имитация')).toEqual({ cmd: 'auto_stop', arg: null });
+    expect(parseGalley('сборка стоп')).toEqual({ cmd: 'stop', arg: null });
+    expect(parseGalley('сборка по центру')).toEqual({ cmd: 'recenter', arg: null });
+    expect(parseGalley('сборка очки иксреал аура')).toEqual({ cmd: 'device', arg: 'иксреал аура' });
+  });
+});

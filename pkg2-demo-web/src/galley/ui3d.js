@@ -98,8 +98,10 @@ export class Panel {
   get px() { return this.canvas.width; }
   get py() { return this.canvas.height; }
 
+  /** Поставить окно в точку мира pos лицом к lookAt (с учётом системы окон: стапель или «вокруг головы» в 3DoF). */
   placeAt(pos, lookAt) {
-    this.group.position.copy(pos);
+    const par = this.group.parent;
+    if (par) { par.updateMatrixWorld(); this.group.position.copy(par.worldToLocal(pos.clone())); } else this.group.position.copy(pos);
     this.group.lookAt(lookAt.x, pos.y, lookAt.z);
     this.dirty = true;
   }
@@ -183,6 +185,30 @@ export class PanelManager {
     this.focus = null;          // {panel, id, text, onEnter}
     this.enabled = false;       // окна видны после включения очков
     this.dragging = null;
+    // трекинг очков: 6DoF — окна закреплены в цеху (СК стапеля); 3DoF — только повороты головы: вся система окон
+    // переносится вместе с сборщиком, ориентация медленно «уплывает» (дрейф гироскопа), R — пересадка по центру
+    this.tracking = '6dof';
+    this.rig = { origin: new THREE.Vector3(), yaw0: 0, theta: 0, drift: 0, driftRate: 0 };
+  }
+
+  camYaw() { const d = new THREE.Vector3(); this.camera.getWorldDirection(d); return Math.atan2(-d.x, -d.z); }
+
+  /** origin, yaw0 — точка и курс взгляда, для которых раскладка окон задана (место сборщика у стапеля). */
+  setTracking(mode, driftDegMin = 0, origin = this.camera.position, yaw0 = this.camYaw()) {
+    this.tracking = mode;
+    this.rig.driftRate = driftDegMin;
+    if (mode === '3dof') {
+      Object.assign(this.rig, { theta: 0, drift: 0, yaw0 });
+      this.rig.origin.copy(origin);
+    } else { this.root.position.set(0, 0, 0); this.root.quaternion.identity(); }
+    this.root.updateMatrixWorld(true);
+  }
+
+  /** 3DoF: развернуть систему окон к текущему направлению взгляда (кнопка/жест «по центру»). */
+  recenter() {
+    if (this.tracking !== '3dof') return false;
+    this.rig.theta = this.camYaw() - this.rig.yaw0; this.rig.drift = 0;
+    return true;
   }
 
   add(panel) { this.panels.push(panel); this.root.add(panel.group); return panel; }
@@ -281,16 +307,25 @@ export class PanelManager {
 
   update(dt, now) {
     const cam = this.camera;
+    if (this.tracking === '3dof') {
+      const r = this.rig;
+      r.drift += dt * THREE.MathUtils.degToRad(r.driftRate / 60) * (0.6 + 0.4 * Math.sin(now * 0.05));
+      const th = r.theta + r.drift;
+      this.root.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), th);
+      this.root.position.copy(cam.position).sub(r.origin.clone().applyQuaternion(this.root.quaternion));
+      this.root.updateMatrixWorld(true);
+    }
     for (const p of this.panels) {
       if (!p.group.visible) continue;
       if (p.mode === 'follow') {
         const dir = new THREE.Vector3(); cam.getWorldDirection(dir); dir.y = Math.max(-0.4, Math.min(0.2, dir.y)); dir.normalize();
-        const target = cam.position.clone().addScaledVector(dir, 1.0).add(new THREE.Vector3(0, -0.12, 0));
+        const target = this.root.worldToLocal(cam.position.clone().addScaledVector(dir, 1.0).add(new THREE.Vector3(0, -0.12, 0)));
         if (p.group.position.distanceTo(target) > 0.35 || p._following) {
           p._following = p.group.position.distanceTo(target) > 0.05;
           p.group.position.lerp(target, 1 - Math.exp(-dt * 3));
         }
-        const look = cam.position.clone(); p.group.lookAt(look.x, p.group.position.y, look.z);
+        const wp = p.group.getWorldPosition(new THREE.Vector3());
+        p.group.lookAt(cam.position.x, wp.y, cam.position.z);
       }
       if (p.dirty || (p.animated && now - (p._lastDraw || 0) > 0.25) || (this.focus?.panel === p && now - (p._lastDraw || 0) > 0.25)) {
         p.redraw(); p._lastDraw = now;

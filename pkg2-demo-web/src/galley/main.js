@@ -1,7 +1,10 @@
 // Симулятор участка: сборщик приходит на участок, надевает AR-очки, подходит к стапелю и собирает модуль
 // кухонный КМ-2 по ТП: окна КД, задания с чатом и системы сборщика закреплены в пространстве, переходы
 // показываются голограммами, выдержки — таймерами; F — осмотр точки узла с локальным алгоритмом.
-// Параметры адреса: ?intro=0 (без вступления) &vision=norm|presby|myopia|… &step=080.04 &speed=60 &debug=orbit
+// I — автоматическая имитация сборки по ТП (переходы, установка деталей со стеллажа, замеры, выдержки ускоренно).
+// Профили очков (glasses.js): VITURE Luma Ultra/Pro, The Beast, XREAL Air 2 Pro/Ultra, One, One Pro, Aura — K.
+// Параметры адреса: ?intro=0 (без вступления) &vision=norm|presby|myopia|… &step=080.04 &speed=60 &glasses=aura &auto=1 &debug=orbit
+// В hash (встроенный просмотр): #nointro-aura-auto, #onepro, #s090010 …
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { HOLO, LAYER_HOLO, LAYER_REAL, markerFrame } from '../engine/holo.js';
@@ -19,6 +22,7 @@ import { createLink, trimText } from './link.js';
 import { PHRASES, createRecognizer, parseGalley, speak } from './voice_cmd.js';
 import { OPERATIONS } from './process.js';
 import { searchDocs } from './catalog.js';
+import { DEFAULT_DEVICE, DEVICES, deviceById, deviceSummary, dimLevelOfStep, dimStepOf, fitDistance, matchDevice, transmitAt, weightFatigue, windowDeg } from './glasses.js';
 import '../style.css';
 import './galley.css';
 
@@ -27,6 +31,8 @@ for (const t of location.hash.slice(1).split(/[-_.~]/).filter(Boolean)) {      /
   if (t === 'nointro') q.set('intro', '0');
   else if (PRESETS[t]) q.set('vision', t);
   else if (/^s\d{6}$/.test(t)) q.set('step', `${t.slice(1, 4)}.${t.slice(4, 6)}`);
+  else if (deviceById.has(t)) q.set('glasses', t);
+  else if (t === 'auto') q.set('auto', '1');
 }
 const $ = (id) => document.getElementById(id);
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -163,9 +169,31 @@ async function main() {
   const params = { light: 1, ...(PRESETS[q.get('vision')] || PRESETS.norm) };
   const eye = new Eye(params);
   const vision = new VisionRenderer(renderer, scene, cam);
-  const sim = { glasses: 0, display: 0, boot: 0, dimLevel: params.dim, dimMode: q.get('vision') === 'dimmed' ? 'manual' : 'auto', bright: 1, occlusion: false, tts: true };
+  const sim = { glasses: 0, display: 0, boot: 0, dimLevel: params.dim, dimMode: q.get('vision') === 'dimmed' ? 'manual' : 'auto', bright: 1, occlusion: false, tts: true,
+    device: deviceById.get(q.get('glasses')) || deviceById.get(DEFAULT_DEVICE), wearMin: 0 };
+  const STAND = V(0, 1.68, 3.4);            // место сборщика у стапеля: для него задана раскладка окон
   let lumCd = 150;
-  vision.beforeHolo = (hc) => placeHud(panels.hud, hc, vision.win);
+  vision.beforeHolo = (hc) => placeHud(panels.hud, hc, vision.win, vision.u.disp.value.y);
+  /** Выбрать очки: окно дисплея, яркость, линзы, оптика, трекинг, задержка, расстояние экрана, коррекция. */
+  function setDevice(id, { quiet = false } = {}) {
+    const d = deviceById.get(id) || sim.device;
+    sim.device = d;
+    vision.setDevice(d);
+    eye.distM = d.distM;
+    params.dial = Math.max(d.dial, params.dial);                  // у XREAL колеса диоптрий нет (dial 0) — только вставки
+    if (!d.dimLevels) { sim.dimLevel = 0; }
+    mgr.setTracking(d.tracking, d.driftDegMin, STAND, 0);
+    viz.setAnchored(d.tracking === '6dof');
+    markerFrames?.forEach((f) => { f.visible = false; });
+    q.set('glasses', d.short);
+    if (!quiet) {
+      const w = windowDeg(d);
+      app.notify(`${d.brand} ${d.name}: ${d.fovDiag}° (${w.h.toFixed(0)}×${w.v.toFixed(0)}°), ${d.nits} нит, ${d.tracking === '6dof' ? '6DoF — окна и голограммы на стапеле' : '3DoF — окна вокруг головы, голограмм на изделии нет (R — по центру)'}`, 6);
+    }
+    $('bar') && updateBar();
+    if (!$('card').hidden && $('card').dataset.kind === 'vision') { toggleCard('x'); toggleCard('vision'); }
+    pushState(true);
+  }
   const glasses = glassesModel();
   const [dx, dy, dz] = PLACES.workplace.dock;
   glasses.position.set(dx, dy + 0.06, dz);
@@ -201,9 +229,11 @@ async function main() {
     <canvas class="map" id="map" width="440" height="300"></canvas>
     <div class="card pe" id="card" hidden></div>
     <div class="start pe" id="start"><div><b>Участок сборки монументов · КМ-2</b>
-      Сборщик приходит на участок, надевает AR-очки и подходит к стапелю.<br>
-      Щёлкните, чтобы управлять: <b style="display:inline;font-size:14px">WASD</b> — ходьба, мышь — обзор, <b style="display:inline;font-size:14px">Enter</b> — пропустить вступление,
-      <b style="display:inline;font-size:14px">H</b> — все клавиши.</div></div>`;
+      Сборщик приходит на участок, надевает AR-очки и подходит к стапелю.
+      <span class="start-dev">Очки: <select id="sdev" aria-label="Модель очков">${DEVICES.map((d) => `<option value="${d.id}">${d.brand} ${d.name} — ${d.fovDiag}°, ${d.tracking === '6dof' ? '6DoF' : '3DoF'}</option>`).join('')}</select></span>
+      <span class="start-btns"><button id="sauto" class="primary">▶ Имитация сборки (автоматически)</button><button id="sself">Управлять самому</button></span>
+      <small><b style="display:inline;font-size:13px">WASD</b> — ходьба, мышь — обзор, <b style="display:inline;font-size:13px">I</b> — имитация / пауза, <b style="display:inline;font-size:13px">K</b> — другие очки,
+      <b style="display:inline;font-size:13px">Enter</b> — пропустить вступление, <b style="display:inline;font-size:13px">H</b> — все клавиши.</small></div></div>`;
   const say = (t) => { $('subs').textContent = t; };
   const prompt = (t) => { $('prompt').textContent = t; };
   const scen = { state: 'intro', t: 0 };
@@ -260,6 +290,11 @@ async function main() {
       sim.boot = Math.min(1, scen.t / 2);
       if (scen.t > 2.5) walkToJig();
     }
+    if (scen.state === 'align' && sim.device.tracking === '3dof') {
+      say(`${sim.device.brand} ${sim.device.name}: трекинг 3DoF — очки не видят стапель, привязки к меткам нет. Окна выставлены вокруг головы.`);
+      if (scen.t > 2.2) { app.aligned = true; mgr.setEnabled(true); scen.state = 'free'; setTimeout(() => say(''), 7000); }
+      return;
+    }
     if (scen.state === 'align') {
       const n = Math.min(markerFrames.length, Math.floor(scen.t / 0.5));
       markerFrames.forEach((f, i) => { f.visible = true; f.material.color.copy(i < n ? HOLO.ok : HOLO.marker); });
@@ -286,6 +321,10 @@ async function main() {
   function isVisible(o) { while (o) { if (!o.visible) return false; o = o.parent; } return true; }
 
   if (navigator.webdriver || q.has('shot')) $('start').hidden = true;
+  $('sdev').value = sim.device.id;
+  $('sdev').onclick = (e) => e.stopPropagation();
+  $('sdev').onchange = (e) => setDevice(e.target.value);
+  $('sauto').onclick = (e) => { e.stopPropagation(); $('start').hidden = true; auto.start(); };
   $('start').addEventListener('click', () => { $('start').hidden = true; canvas.requestPointerLock?.(); });
   canvas.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
@@ -311,7 +350,7 @@ async function main() {
     }
     if (k === 'KeyF') inspectAtGaze();
     if (k === 'Escape' || k === 'KeyQ') { if (player.mode === 'inspect') { player.exitInspect(); mgr.toggle(panels.local, false); showStep(); } }
-    if (k === 'KeyN') app.next();
+    if (k === 'KeyN') { auto.pause(); app.next(); }
     if (k === 'KeyB') app.prev();
     if (k === 'KeyP') app.photo();
     if (k === 'KeyG') { const h = mgr.pick(pointerNdc()); if (h) mgr.pinHere(h.panel); }
@@ -319,15 +358,18 @@ async function main() {
     if (k === 'Digit2') mgr.toggle(panels.step);
     if (k === 'Digit3') mgr.toggle(panels.sys);
     if (k === 'Digit4') mgr.toggle(panels.task);
-    if (k === 'KeyT') { app.speed = { 1: 60, 60: 600, 600: 1 }[app.speed] || 60; app.notify(`Время участка ×${app.speed}`); }
+    if (k === 'KeyT') { app.speed = { 1: 60, 60: 600, 600: 1 }[app.speed] || 60; app.notify(`Время участка ×${app.speed}`); updateBar(); }
     if (k === 'KeyO') toggleCard('vision');
     if (k === 'KeyH') toggleCard('help');
     if (k === 'KeyV') { sim.glasses = sim.glasses ? 0 : 1; sim.display = sim.glasses; mgr.setEnabled(!!sim.glasses && app.aligned); app.notify(sim.glasses ? 'Очки надеты' : 'Очки сняты'); }
-    if (k === 'KeyL') { if (sim.dimMode === 'auto') act('dim_set', 0); else if (sim.dimLevel >= 0.75) act('dim_auto'); else act('dim_more'); }
+    if (k === 'KeyL') act('dim_cycle');
     if (k === 'KeyZ') act('pull');
     if (k === 'KeyY' || k === 'Backquote') { e.preventDefault(); $('vline').focus(); }
     if (k === 'KeyM') voiceUi.toggle();
     if (k === 'KeyJ') toggleTablet();
+    if (k === 'KeyI') act(e.shiftKey ? 'auto_stop' : 'auto_toggle');
+    if (k === 'KeyK') act('device', e.shiftKey ? -1 : 1);
+    if (k === 'KeyR') act('recenter');
   });
   function featureOf(o) { while (o) { if (o.userData?.featureId) return o.userData.featureId; o = o.parent; } return null; }
 
@@ -351,6 +393,7 @@ async function main() {
     mgr.toggle(panels.local, true);
     panels.local.state.scroll = 0; panels.local.dirty = true;
     viz.show(null, { features: near.slice(0, 6).map((x) => x.f.id), focus: pm.toArray() });
+    if (sim.device.tracking === '3dof') app.notify(`${sim.device.name} (3DoF): список элементов есть, но голограммы на узле не показать — очки не знают, где узел`, 5);
   }
 
   // ---------- единый диспетчер: клавиатура, голос, планшет ----------
@@ -360,8 +403,8 @@ async function main() {
   function act(cmd, arg = null, src = 'клавиатура') {
     const voice = src === 'голос';
     switch (cmd) {
-      case 'next': app.next(); break;
-      case 'prev': app.prev(); break;
+      case 'next': auto.pause(); app.next(); break;
+      case 'prev': auto.pause(); app.prev(); break;
       case 'repeat': { const s = run.step; showStep(); say2(`${s.id}. ${s.title}. ${s.text[0] || ''}`, voice); break; }
       case 'photo': app.photo(); break;
       case 'value': app.value(arg); break;
@@ -393,22 +436,43 @@ async function main() {
       }
       case 'open_doc': app.openKD(arg.code, arg.sheet || 1, arg.zone || null); break;
       case 'preview': app.setPreview(arg); break;
-      case 'goto': if (stepById.has(arg)) { run.goto(arg); } break;
+      case 'goto': if (stepById.has(arg)) { auto.pause(); run.goto(arg); } break;
       case 'inspect': inspectAtGaze(); break;
       case 'exit': if (player.mode === 'inspect') { player.exitInspect(); mgr.toggle(panels.local, false); showStep(); } break;
-      case 'dim_more': sim.dimMode = 'manual'; sim.dimLevel = Math.min(0.9, sim.dimLevel + 0.2); app.notify(`Затемнение ${Math.round(sim.dimLevel * 100)} %`); break;
-      case 'dim_less': sim.dimMode = 'manual'; sim.dimLevel = Math.max(0, sim.dimLevel - 0.2); app.notify(`Затемнение ${Math.round(sim.dimLevel * 100)} %`); break;
-      case 'dim_auto': sim.dimMode = 'auto'; app.notify('Затемнение: авто по освещённости'); break;
-      case 'dim_set': sim.dimMode = 'manual'; sim.dimLevel = THREE.MathUtils.clamp(Number(arg) || 0, 0, 0.95); break;
-      case 'bright_up': sim.bright = Math.min(1, sim.bright + 0.15); app.notify(`Яркость дисплея ${Math.round(sim.bright * 100)} %`); break;
-      case 'bright_down': sim.bright = Math.max(0.2, sim.bright - 0.15); app.notify(`Яркость дисплея ${Math.round(sim.bright * 100)} %`); break;
+      // затемнение — ступенями устройства (VITURE: 40 → 20 → 8 → 0,5 %, XREAL One: 3 режима; Air 2 Ultra — нет)
+      case 'dim_more': case 'dim_less': case 'dim_cycle': {
+        const d = sim.device;
+        if (!d.dimLevels) { app.notify(`${d.name}: электрохромного затемнения нет (${d.dimNote})`); break; }
+        const cur = sim.dimMode === 'auto' ? -1 : dimStepOf(d, sim.dimLevel);
+        const n = d.dimLevels.length;
+        let i = cmd === 'dim_more' ? Math.min(n - 1, cur + 1) : cmd === 'dim_less' ? Math.max(0, cur - 1) : cur + 1;
+        if (cmd === 'dim_cycle' && i >= n) { act('dim_auto'); break; }
+        sim.dimMode = 'manual'; sim.dimLevel = dimLevelOfStep(d, Math.max(0, i));
+        app.notify(`Затемнение: ступень ${Math.max(0, i) + 1}/${n}, пропускание ${(transmitAt(d, sim.dimLevel) * 100).toFixed(1).replace('.0', '')} %`);
+        break;
+      }
+      case 'dim_auto': if (sim.device.dimLevels) { sim.dimMode = 'auto'; app.notify('Затемнение: авто по освещённости'); } else app.notify('Затемнения нет у этих очков'); break;
+      case 'dim_set': sim.dimMode = 'manual'; sim.dimLevel = sim.device.dimLevels ? THREE.MathUtils.clamp(Number(arg) || 0, 0, 1) : 0; break;
+      case 'auto_start': auto.start(); break;
+      case 'auto_pause': auto.pause(true); break;
+      case 'auto_stop': auto.stop(); break;
+      case 'auto_toggle': if (auto.on && !auto.paused) auto.pause(true); else auto.start(); break;
+      case 'recenter': app.notify(mgr.recenter() ? 'Окна — по центру взгляда' : 'Окна закреплены у стапеля (6DoF) — центрировать не нужно'); break;
+      case 'device': {
+        const i = DEVICES.indexOf(sim.device);
+        const id = typeof arg === 'number' ? DEVICES[(i + arg + DEVICES.length) % DEVICES.length].id : deviceById.has(arg) ? arg : matchDevice(arg);
+        if (id) setDevice(id); else app.notify(`Нет профиля очков: ${arg}`);
+        break;
+      }
+      case 'bright_up': sim.bright = Math.min(1, sim.bright + 0.15); app.notify(`Яркость дисплея ${Math.round(sim.bright * sim.device.nits)} нит`); break;
+      case 'bright_down': sim.bright = Math.max(0.2, sim.bright - 0.15); app.notify(`Яркость дисплея ${Math.round(sim.bright * sim.device.nits)} нит`); break;
       case 'bright_set': sim.bright = THREE.MathUtils.clamp(Number(arg) || 1, 0.2, 1); break;
       case 'pin': { const h = mgr.pick(center); if (h) mgr.pinHere(h.panel); break; }
       case 'pull': { const h = (arg && PANEL_OF[arg] && { panel: PANEL_OF[arg] }) || mgr.pick(center); if (h?.panel) app.notify(mgr.pull(h.panel) ? 'Окно ближе — для чтения' : 'Окно на месте'); break; }
       case 'follow': { const h = mgr.pick(center); if (h) { h.panel.mode = h.panel.mode === 'follow' ? 'world' : 'follow'; h.panel.dirty = true; } break; }
       case 'call': app.sendChat(`Прошу подойти к стапелю СТ-3: переход ${run.step.id}`); app.notify('Мастер вызван'); break;
       case 'message': if (arg) { app.sendChat(String(arg)); app.notify('Сообщение отправлено'); } break;
-      case 'preset': if (PRESETS[arg]) { Object.assign(params, { light: 1 }, PRESETS[arg]); sim.dimLevel = params.dim; } break;
+      case 'preset': if (PRESETS[arg]) { Object.assign(params, { light: 1 }, PRESETS[arg]); params.dial = Math.max(sim.device.dial, params.dial); sim.dimLevel = sim.device.dimLevels ? params.dim : 0; } break;
       case 'light': params.light = THREE.MathUtils.clamp(Number(arg) || 1, 0.3, 3); break;
       case 'glasses': sim.glasses = sim.glasses ? 0 : 1; sim.display = sim.glasses; mgr.setEnabled(!!sim.glasses && app.aligned); break;
       case 'speed': app.speed = Number(arg) || 60; break;
@@ -475,7 +539,8 @@ async function main() {
       chat: app.chat.slice(-4).map((m) => ({ from: m.from, text: trimText(m.text, 140), time: m.time, mine: !!m.mine })),
       kd: { code: app.kd.code, sheet: app.kd.sheet, zone: app.kd.zone, zoom: Math.round(app.kd.zoom * 10) / 10 },
       panels: Object.fromEntries(Object.entries(PANEL_OF).map(([k, p]) => [k, !!p.visible])),
-      dim: { mode: sim.dimMode, level: Math.round(sim.dimLevel * 100) / 100 }, bright: sim.bright, light: params.light, lux: Math.round(lumCd * 5),
+      dim: { mode: sim.dimMode, level: Math.round(sim.dimLevel * 100) / 100, t: Math.round(transmitAt(sim.device, sim.dimLevel) * 1000) / 1000 }, bright: sim.bright, light: params.light, lux: Math.round(lumCd * 5),
+      device: sim.device.id, auto: { on: auto.on, paused: auto.paused },
       inspect: app.local && player.mode === 'inspect' ? app.local.features.slice(0, 4).map(({ f }) => trimText(`${f.designation || f.id} — ${f.name || ''}`, 70)) : null,
       heard: voiceUi.last,
     };
@@ -522,42 +587,197 @@ async function main() {
         ['WASD / стрелки', 'ходьба; Shift — быстрее; C — присесть'], ['мышь', 'обзор (щелчок — захват; ПКМ — без захвата)'], ['щелчок по окну', 'кнопки, поля, листы КД'],
         ['колесо над КД', 'зум к точке; перетаскивание — сдвиг листа'], ['F', 'осмотр точки узла + локальный алгоритм; Esc/Q — назад'], ['E', 'взаимодействие: очки, дверцы'],
         ['N / B', 'переход вперёд / назад'], ['P', 'фото в журнал'], ['G', 'закрепить окно перед глазами'], ['1–4', 'окна КД / переход / система / задание'],
-        ['T', 'ускорение времени участка ×1 / ×60 / ×600'], ['L', 'затемнение линз'], ['V', 'снять / надеть очки'], ['O', 'модель зрения'], ['Enter', 'пропустить вступление'],
+        ['I', 'имитация сборки: запуск / пауза; Shift+I — стоп'], ['K', 'другие очки (Shift+K — назад)'], ['R', '3DoF: окна по центру взгляда'],
+        ['T', 'ускорение времени участка ×1 / ×60 / ×600'], ['L', 'затемнение линз по ступеням очков → авто'], ['V', 'снять / надеть очки'], ['O', 'модель зрения'], ['Enter', 'пропустить вступление'],
       ].map(([a, b]) => `<tr><td><kbd>${a}</kbd></td><td>${b}</td></tr>`).join('')}</table>`;
       return;
     }
     const sl = (key, label, min, max, step, fmt = (v) => v) => `<label>${label}<b id="v_${key}">${fmt(params[key] ?? sim[key])}</b><input type="range" id="r_${key}" min="${min}" max="${max}" step="${step}" value="${params[key] ?? sim[key]}"></label>`;
-    c.innerHTML = `<h3>Модель зрения в очках</h3>
+    const dv = sim.device, wd = windowDeg(dv);
+    c.innerHTML = `<h3>Очки</h3>
+      <div class="presets devs">${DEVICES.map((d) => `<button data-dev="${d.id}" aria-pressed="${d === dv}">${d.brand} ${d.name}<small>${d.fovDiag}° · ${d.nits} нит · ${d.tracking === '6dof' ? '6DoF' : '3DoF'}</small></button>`).join('')}</div>
+      <div class="note dev"><b>${dv.brand} ${dv.name}</b> — ${deviceSummary(dv)}.<br>Оптика: ${dv.optics}. Затемнение: ${dv.dimNote}. Камеры: ${dv.cameras}.
+      ${dv.dial ? `Колесо диоптрий до ${dv.dial} дптр.` : 'Колеса диоптрий нет — близоруким нужны линзы-вставки.'} Экран ≈ ${dv.distM} м.<br>
+      Окно КД 1,2 × 0,86 м видно целиком с ${fitDistance(dv, 1.2, 0.864).toFixed(2).replace('.', ',')} м (окно ${wd.h.toFixed(0)}×${wd.v.toFixed(0)}°). ${dv.note}
+      ${dv.estimates.length ? `<br><i>Оценка (не опубликовано): ${dv.estimates.join(', ')}.</i>` : ''}
+      <br>Источники: ${dv.sources.map((u, i) => `<a href="${u}" target="_blank" rel="noopener">[${i + 1}]</a>`).join(' ')}</div>
+      <h3>Модель зрения в очках</h3>
       <div class="presets">${Object.entries(PRESETS).map(([k, p]) => `<button data-p="${k}" aria-pressed="${q.get('vision') === k}">${p.label}</button>`).join('')}</div>
       ${sl('age', 'Возраст, лет', 18, 65, 1)}${sl('refraction', 'Рефракция глаза, дптр', -4, 2, 0.25)}
       <label>Оптические вставки (коррекция мира)<input type="checkbox" id="r_inserts" ${params.inserts ? 'checked' : ''}></label>
-      ${sl('dial', 'Колесо диоптрий дисплея, дптр', -4, 0, 0.25)}${sl('dim', 'Затемнение линз', 0, 0.95, 0.05)}
+      ${dv.dial ? sl('dial', 'Колесо диоптрий дисплея, дптр', dv.dial, 0, 0.25) : ''}${dv.dimLevels ? sl('dim', `Затемнение линз (${dv.dimNote})`, 0, 1, 0.05) : ''}
       ${sl('bright', 'Яркость дисплея', 0.2, 1.5, 0.05)}${sl('dirt', 'Загрязнение линз', 0, 1, 0.05)}${sl('fatigue', 'Усталость', 0, 1, 0.05)}
       ${sl('ipdErr', 'Ошибка межзрачкового, мм', 0, 8, 0.5)}${sl('light', 'Освещённость участка', 0.3, 2.5, 0.05)}
       <label>Окклюзия голограмм по датчику глубины<input type="checkbox" id="r_occ" ${sim.occlusion ? 'checked' : ''}></label>
       <div class="note">Фокус глаза: <b id="v_focus"></b> · зрачок <b id="v_pupil"></b> · диапазон аккомодации <b id="v_amp"></b>.
-      Дисплей виден на ≈ ${DISPLAY.distM} м: при работе вблизи голограммы теряют резкость (конфликт вергенции и аккомодации).</div>`;
-    c.querySelectorAll('[data-p]').forEach((b) => b.onclick = () => { Object.assign(params, { light: 1 }, PRESETS[b.dataset.p]); sim.dimLevel = params.dim; q.set('vision', b.dataset.p); toggleCard('x'); toggleCard('vision'); });
+      Дисплей виден на ≈ ${dv.distM} м: при работе вблизи голограммы теряют резкость (конфликт вергенции и аккомодации).
+      Вес ${dv.weightG} г: усталость за смену <b id="v_wear"></b>.</div>`;
+    c.querySelectorAll('[data-dev]').forEach((b) => b.onclick = () => setDevice(b.dataset.dev));
+    c.querySelectorAll('[data-p]').forEach((b) => b.onclick = () => { act('preset', b.dataset.p); q.set('vision', b.dataset.p); toggleCard('x'); toggleCard('vision'); });
     c.querySelectorAll('input[type=range]').forEach((r) => r.oninput = () => {
       const key = r.id.slice(2); const v = Number(r.value);
       if (key in sim) sim[key] = v; else params[key] = v;
-      if (key === 'dim') sim.dimLevel = v;
+      if (key === 'dim') { sim.dimLevel = v; sim.dimMode = 'manual'; }
       $(`v_${key}`).textContent = v;
     });
     $('r_inserts').onchange = (e) => { params.inserts = e.target.checked; };
     $('r_occ').onchange = (e) => { sim.occlusion = e.target.checked; };
   }
-  $('bar').innerHTML = ['Клавиши (H)', 'Зрение (O)', 'Окна 1–4', 'Время ×60 (T)', 'Очки (V)', 'Планшет (J)', 'Голосовые команды'].map((t, i) => `<button data-b="${i}">${t}</button>`).join('');
-  $('bar').querySelectorAll('button').forEach((b) => b.onclick = (e) => {
-    e.stopPropagation();
-    const i = Number(b.dataset.b);
-    if (i === 0) toggleCard('help'); if (i === 1) toggleCard('vision');
-    if (i === 2) for (const p of [panels.kd, panels.step, panels.sys, panels.task]) mgr.toggle(p, true);
-    if (i === 3) { app.speed = { 1: 60, 60: 600, 600: 1 }[app.speed] || 60; b.textContent = `Время ×${app.speed} (T)`; }
-    if (i === 4) dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyV' }));
-    if (i === 5) toggleTablet();
-    if (i === 6) toggleCard('voice');
-  });
+  function updateBar() {
+    const a = auto.on && !auto.paused;
+    $('bar').innerHTML = [
+      [a ? '⏸ Пауза имитации (I)' : auto.on ? '▶ Продолжить имитацию (I)' : '▶ Имитация сборки (I)', 'auto', a ? 'on' : 'primary'],
+      ...(auto.on ? [['⏹', 'stop', '']] : []),
+      [`👓 ${sim.device.brand} ${sim.device.name} (K)`, 'dev', ''], ['Клавиши (H)', 'help', ''], ['Зрение (O)', 'vision', ''], ['Окна 1–4', 'win', ''],
+      [`Время ×${app.speed} (T)`, 'time', ''], ['Очки (V)', 'glasses', ''], ['Планшет (J)', 'tablet', ''], ['Голос', 'voice', ''],
+    ].map(([t, k, c]) => `<button data-b="${k}" class="${c}">${t}</button>`).join('');
+    $('bar').querySelectorAll('button').forEach((b) => b.onclick = (e) => {
+      e.stopPropagation();
+      const k = b.dataset.b;
+      if (k === 'auto') act('auto_toggle'); if (k === 'stop') act('auto_stop');
+      if (k === 'dev') toggleCard('vision');
+      if (k === 'help') toggleCard('help'); if (k === 'vision') toggleCard('vision');
+      if (k === 'win') for (const p of [panels.kd, panels.step, panels.sys, panels.task]) mgr.toggle(p, true);
+      if (k === 'time') { app.speed = { 1: 60, 60: 600, 600: 1 }[app.speed] || 60; updateBar(); }
+      if (k === 'glasses') dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyV' }));
+      if (k === 'tablet') toggleTablet();
+      if (k === 'voice') toggleCard('voice');
+    });
+  }
+
+  // ---------- имитация сборки: сборщик сам выполняет переходы ТП ----------
+  // Каждый переход: голограмма перехода (≈ 3 с) → взгляд на место → действие: деталь со стеллажа/тележки
+  // переносится на место по дуге, замер вводится (норма ± доля допуска), фото в журнал, выдержка клея —
+  // ускоренно (часы участка «проматываются», таймер виден) → «выполнено» и следующий переход.
+  const FLY_KINDS = new Set(['panel', 'bracket', 'fitting', 'equipment', 'trim', 'decor', 'door', 'hinge', 'latch', 'plumbing', 'sheet', 'sink', 'faucet', 'siphon', 'valve', 'light', 'handle', 'placard', 'retainer', 'stdunit', 'trolley', 'turnbutton']);
+  const auto = {
+    on: false, paused: false, phase: 'show', t: 0, fly: null, ff: false, rate: 1,
+    phaseLabel() { return { show: `переход ${run.step.id} — голограмма`, move: 'подход к месту', act: `переход ${run.step.id} — выполнение`, fly: `установка ${this.fly?.ids?.join(', ') || ''}`, wait: 'выдержка (ускорено)' }[this.phase] || ''; },
+    start() {
+      if (!this.on) { this.phase = 'show'; this.t = 0; }
+      this.on = true; this.paused = false;
+      if (scen.state === 'free') this.begin();
+      else app.notify('Имитация сборки начнётся после вступления (Enter — пропустить)', 4);
+      updateBar(); pushState(true);
+    },
+    begin() {
+      if (player.mode === 'inspect') { player.exitInspect(); mgr.toggle(panels.local, false); }
+      mgr.toggle(panels.step, true);
+      app.preview = null; showStep();
+      app.notify(`Имитация сборки: с перехода ${run.step.id}. I — пауза, N/B — вручную`, 4);
+      this.begun = true;
+    },
+    pause(byUser = false) {
+      if (!this.on || this.paused) return;
+      this.paused = true;
+      if (this.fly) this.finishFly();
+      if (byUser) app.notify('Имитация на паузе — I продолжить');
+      updateBar(); pushState(true);
+    },
+    stop() {
+      if (!this.on) return;
+      if (this.fly) this.finishFly();
+      this.on = false; this.paused = false; this.begun = false;
+      app.notify('Имитация остановлена'); updateBar(); pushState(true);
+    },
+    /** Точка внимания перехода (мир): центр деталей / соединений / крепежа. */
+    focusOf(s) {
+      const ids = [...s.parts, ...s.joints, ...s.fasteners].filter((id) => S.featureById.has(id));
+      const c = V();
+      if (!ids.length) c.set(0, s.kind === 'paint' || s.kind === 'film' ? 1200 : 1000, 400);
+      else { for (const id of ids) c.add(V(...S.featureCenter(S.featureById.get(id)))); c.divideScalar(ids.length); }
+      return world.galley.root.localToWorld(c);
+    },
+    startFly(s) {
+      const st = stateFrom(run.index, run.done);
+      const ids = s.parts.filter((id) => { const f = S.featureById.get(id); return f && FLY_KINDS.has(f.kind) && world.galley.items.has(id) && !st.installed.has(id); }).slice(0, 4);
+      if (!ids.length) return false;
+      const groot = world.galley.root;
+      this.fly = { ids, t: 0, its: ids.map((id) => {
+        const o = world.galley.items.get(id);
+        const src = viz.sourceOf(id);
+        const kit = world.kit.get(id);
+        if (kit) kit.visible = false;
+        const f = S.featureById.get(id);
+        const c = S.featureCenter(f);
+        const off = groot.worldToLocal(src.clone()).sub(V(...c));
+        o.visible = true;
+        return { o, p0: o.position.clone(), off };
+      }) };
+      return true;
+    },
+    /** restore — вернуть изделие к состоянию по ТП (пауза посреди переноса); иначе деталь остаётся на месте. */
+    finishFly(restore = true) {
+      for (const it of this.fly.its) it.o.position.copy(it.p0);
+      this.fly = null;
+      if (restore) applyState();
+    },
+    next() {
+      const i = run.index;
+      const r = run.next();
+      if (r) return;
+      this.phase = 'show'; this.t = 0;
+      if (run.index === i) { this.on = false; this.begun = false; app.notify('Имитация: все переходы задания выполнены — предъявить ОТК', 8); updateBar(); }
+    },
+    update(dt) {
+      if (!this.on || this.paused || scen.state !== 'free') return;
+      if (!this.begun) this.begin();
+      const s = run.step;
+      if (!s) return;
+      this.t += dt * this.rate;
+      const focus = this.fly ? new THREE.Box3().setFromObject(this.fly.its[0].o).getCenter(V()) : this.focusOf(s);
+      // сначала взгляд на окно перехода (прочитать), затем — на место работы
+      const look = this.phase === 'show' && this.t < 1.6 && panels.step.group.visible ? panels.step.group.getWorldPosition(V()) : focus;
+      if (player.mode === 'walk' && !player.keys.size) player.turnTo([look.x, look.y, look.z], dt, 2.4);
+      if (this.phase === 'show') {
+        // подойти к месту работы, если сборщик далеко или место сбоку модуля
+        if (this.t < dt * 1.5 && player.mode === 'walk') {
+          const want = V(THREE.MathUtils.clamp(focus.x, -1.3, 1.3), 0, 3.0);
+          if (Math.hypot(player.pos.x - want.x, player.pos.z - want.z) > 0.6) {
+            this.phase = 'move';
+            player.walkPath([[want.x, want.z]], { speed: 1.1, lookAt: [focus.x, focus.y, focus.z], onDone: () => { if (this.phase === 'move') { this.phase = 'show'; this.t = dt * 2; } } });
+            return;
+          }
+        }
+        if (this.t > 4.2) { this.phase = 'act'; this.t = 0; }
+        return;
+      }
+      if (this.phase === 'move') return;
+      if (this.phase === 'fly') {
+        const F = this.fly;
+        F.t += dt;
+        const k = Math.min(1, F.t / 1.5), e = k * k * (3 - 2 * k);
+        for (const it of F.its) {
+          it.o.position.copy(it.p0).addScaledVector(it.off, 1 - e);
+          it.o.position.y += Math.sin(Math.PI * e) * 260;
+        }
+        if (k >= 1) { this.finishFly(false); this.phase = 'act'; this.t = 0; this.flown = true; }
+        return;
+      }
+      if (this.phase === 'wait') {
+        const tm = run.blockingTimer();
+        if (!tm) { this.phase = 'act'; this.t = 0; return; }
+        run.tick(Math.max(run.remaining(tm) * Math.min(1, dt * 1.2), (dt * app.speed) / 60) + 1e-3);
+        return;
+      }
+      // act: одно действие в ≈ 0,9 с
+      if (this.t < 0.9) return;
+      this.t = 0;
+      const need = run.needs();
+      if (need === 'timer') { const tm = run.blockingTimer(); app.notify(`Выдержка «${tm.label}»: ${fmtLeft(run.remaining(tm))} — ускорено в имитации`, 3); this.phase = 'wait'; return; }
+      if (!this.flown && ['install', 'fasten', 'wire'].includes(s.kind) && this.startFly(s)) { this.phase = 'fly'; return; }
+      if (need === 'value') {
+        const c = s.check;
+        const v = c.min != null || c.max != null ? ((c.min ?? c.max) + (c.max ?? c.min)) / 2 : c.nominal + (Math.random() * 0.8 - 0.4) * (c.tol || 0);
+        app.value(Math.round(v * 100) / 100);
+        return;
+      }
+      if (need === 'photo') { app.photo(); return; }
+      this.next();
+    },
+  };
+  run.on((e) => { if (e.event === 'step') auto.flown = false; });
+  app.autoInfo = () => (auto.on ? (auto.paused ? 'ИМИТАЦИЯ: пауза' : `▶ ИМИТАЦИЯ · ${auto.phaseLabel()}`) : null);
 
   // ---------- мини-карта ----------
   const map = $('map').getContext('2d');
@@ -610,10 +830,15 @@ async function main() {
     }
     lights.forEach((l, i) => { l.intensity = baseI[i] * params.light; });
     // электрохромное затемнение «авто»: по освещённости, отклик ≈ 0,1 с (как у плёнки очков)
-    if (sim.dimMode === 'auto') {
+    if (sim.dimMode === 'auto' && sim.device.dimLevels) {
       const want = THREE.MathUtils.clamp((lumCd - 60) / 260, 0, 0.7);
       sim.dimLevel += (want - sim.dimLevel) * (1 - Math.exp(-dt / 0.1));
     }
+    // вес на переносице и сухость глаз: усталость копится за время в очках (минуты участка), снятые — отдых
+    const dMin = (dt * app.speed) / 60;
+    sim.wearMin = sim.glasses ? sim.wearMin + dMin : Math.max(0, sim.wearMin - dMin * 3);
+    eye.wear = Math.min(0.5, (sim.wearMin / 480) * 0.35 * weightFatigue(sim.device));
+    auto.update(dt);
     pushState();
     // взгляд: окно (голограмма) или предмет
     const ndc = pointerNdc();
@@ -633,24 +858,28 @@ async function main() {
     vision.render(dt, t, {
       focusD: eye.focusD, pupilMM: eye.pupil, dispD: eye.displayD,
       glassesOn: sim.glasses, dispOn: sim.display, bootFade: sim.boot,
-      transmit: 0.88 * (1 - sim.dimLevel * 0.95), dispBright: sim.bright,
+      transmit: transmitAt(sim.device, sim.dimLevel), dispBright: sim.bright,
       blink: eye.lid, angVel: player.angVel, age: params.age, dirt: params.dirt,
-      fatigueBlur: params.fatigue * Math.min(1, Math.max(0, (eye.sinceBlink - 2) / 6)) * 1.5, ipdPx: params.ipdErr * 1.2,
+      fatigueBlur: eye.fat * Math.min(1, Math.max(0, (eye.sinceBlink - 2) / 6)) * 1.5, ipdPx: params.ipdErr * 1.2,
       exposureBias: 1.15,
     });
     vision.u.flash.value = Math.max(0, vision.u.flash.value - dt * 2.5);
     if (frame % 10 === 0) {
-      $('status').textContent = `${app.plantClock()} ×${app.speed} · ${run.step.id} · фокус ${eye.focusDist > 20 ? '∞' : `${eye.focusDist.toFixed(2)} м`} · зрачок ${eye.pupil.toFixed(1)} мм · ${sim.glasses ? `очки, затемнение ${Math.round(sim.dimLevel * 100)} %` : 'без очков'}${player.mode === 'inspect' ? ' · осмотр (Esc)' : ''}`;
+      $('status').textContent = `${app.plantClock()} ×${app.speed} · ${run.step.id} · фокус ${eye.focusDist > 20 ? '∞' : `${eye.focusDist.toFixed(2)} м`} · зрачок ${eye.pupil.toFixed(1)} мм · ${sim.glasses ? `${sim.device.name} ${sim.device.tracking === '6dof' ? '6DoF' : '3DoF'}, пропускание ${(transmitAt(sim.device, sim.dimLevel) * 100).toFixed(0)} %${sim.dimMode === 'auto' && sim.device.dimLevels ? ' (авто)' : ''}` : 'без очков'}${player.mode === 'inspect' ? ' · осмотр (Esc)' : ''}${auto.on ? (auto.paused ? ' · имитация: пауза (I)' : ` · имитация: ${auto.phaseLabel()}`) : ''}`;
       const c = $('card');
       if (!c.hidden && c.dataset.kind === 'vision' && $('v_focus')) {
         $('v_focus').textContent = eye.focusDist > 20 ? '∞' : `${eye.focusDist.toFixed(2)} м`;
         $('v_pupil').textContent = `${eye.pupil.toFixed(1)} мм`;
         $('v_amp').textContent = `${eye.amp.toFixed(1)} дптр`;
+        $('v_wear').textContent = `+${Math.round(eye.wear * 100)} % (${Math.floor(sim.wearMin / 60)} ч ${Math.round(sim.wearMin % 60)} мин в очках)`;
       }
     }
   });
+  setDevice(sim.device.id, { quiet: true });
+  updateBar();
+  if (q.get('auto') === '1') { $('start').hidden = true; auto.start(); }
   window.__demo = {
-    ready: true, scene, world, run, cam, player, eye, vision, app, mgr, panels, viz, finishIntro, inspectAtGaze, sim, params,
+    ready: true, scene, world, run, cam, player, eye, vision, app, mgr, panels, viz, finishIntro, inspectAtGaze, sim, params, auto, setDevice, act,
     // для проверок: перескочить к этапу сценария
     jump(state) {
       if (state === 'desk') { player.path = null; player.mode = 'walk'; player.place(-7.2, -3.3, Math.atan2(-(dx + 7.2), -(dz + 3.3)), -0.5); startPutOn(); }

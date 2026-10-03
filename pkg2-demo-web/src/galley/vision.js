@@ -8,9 +8,10 @@
 //  • зрачок по яркости (Мун — Спенсер) и возрасту, световая адаптация с разной скоростью к свету и к темноте;
 //  • периферия: падение остроты и цветового зрения, сумеречный сдвиг (Пуркинье) при слабом свете;
 //  • рассеяние в глазу и на линзах (ореолы ламп растут с возрастом и грязью на линзах), блик-«призрак» от линзы;
-//  • очки: оправа и корпус (вблизи — не в фокусе), нос, затемнение линз, окно дисплея 52° с виньетированием и
+//  • очки: оправа и корпус (вблизи — не в фокусе), нос, затемнение линз, окно дисплея с виньетированием и
 //    хроматизмом по краю, двоение при неверном межзрачковом расстоянии, задержка отрисовки голограмм при
 //    поворотах головы, смаз при быстрых поворотах; моргание, усталость (слёзная плёнка), вспышка фото.
+// Параметры дисплея и линз берутся из профиля устройства (glasses.js): VITURE Luma/Beast, XREAL Air 2/One/Aura.
 import * as THREE from 'three';
 import { LAYER_HOLO, LAYER_LABEL, LAYER_REAL } from '../engine/holo.js';
 import { fbm, normalize } from '../scene/textures.js';
@@ -60,18 +61,20 @@ export class Eye {
   }
 
   get rEff() { return this.p.inserts ? 0 : this.p.refraction; }
-  get amp() { return accommodationAmplitude(this.p.age, this.p.fatigue); }
+  get amp() { return accommodationAmplitude(this.p.age, this.fat); }
   /** Объект в фокусе, дптр. */
   get focusD() { return this.acc - this.rEff; }
   /** Где для глаза находится изображение дисплея, дптр (колесо диоптрий сдвигает его ближе для близоруких). */
-  get displayD() { return 1 / DISPLAY.distM - this.p.dial; }
+  get displayD() { return 1 / (this.distM || DISPLAY.distM) - this.p.dial; }
+  /** Усталость: из параметров + накопленная за смену (вес очков на переносице, сухость глаз). */
+  get fat() { return Math.min(1, this.p.fatigue + (this.wear || 0)); }
 
   update(dt, { gazeDist, gazeHolo, lumCd }) {
     const objD = 1 / Math.max(0.12, gazeDist);
     // при взгляде на голограмму аккомодацию тянут и вергенция (расстояние до окна), и резкость (плоскость дисплея)
     const wantD = gazeHolo ? THREE.MathUtils.lerp(objD, this.displayD, 0.6) : objD;
     const target = THREE.MathUtils.clamp(wantD + this.rEff, 0, this.amp);
-    const tau = 0.28 + this.p.age * 0.004 + this.p.fatigue * 0.25;
+    const tau = 0.28 + this.p.age * 0.004 + this.fat * 0.25;
     this.acc += (target - this.acc) * (1 - Math.exp(-dt / tau));
     const pd = pupilDiameter(lumCd, this.p.age);
     this.pupil += (pd - this.pupil) * (1 - Math.exp(-dt / (pd < this.pupil ? 0.35 : 1.4)));
@@ -82,7 +85,7 @@ export class Eye {
     if (this.blinkT < 0) {
       const t = -this.blinkT;
       this.lid = Math.max(0, 1 - Math.abs(t - 0.075) / 0.075);
-      if (t > 0.15) { this.blinkT = THREE.MathUtils.lerp(4.5, 2.0, this.p.fatigue) * (0.6 + Math.random() * 0.8); this.lid = 0; this.sinceBlink = 0; }
+      if (t > 0.15) { this.blinkT = THREE.MathUtils.lerp(4.5, 2.0, this.fat) * (0.6 + Math.random() * 0.8); this.lid = 0; this.sinceBlink = 0; }
     }
   }
 }
@@ -131,6 +134,7 @@ uniform float focusD; uniform float pupilMM; uniform float dispD; uniform float 
 uniform float transmit; uniform float dispBright; uniform float blink; uniform float flash; uniform vec2 angVel;
 uniform float fatigueBlur; uniform float age; uniform float dirt; uniform float ipdPx; uniform vec4 disp; uniform float maxLod;
 uniform float exposureBias; uniform float bootFade; uniform float dbg; uniform float dispNits; uniform float sharpen; uniform float cdPerUnit;
+uniform float ghostK; uniform float edgeSoft; uniform float housingDeg;
 in vec2 vUv;
 
 const vec2 P[12] = vec2[12](vec2(-0.326,-0.406),vec2(-0.840,-0.074),vec2(-0.696,0.457),vec2(-0.203,0.621),vec2(0.962,-0.195),vec2(0.473,-0.480),vec2(0.519,0.767),vec2(0.185,-0.893),vec2(0.507,0.064),vec2(0.896,0.412),vec2(-0.322,-0.933),vec2(-0.792,-0.598));
@@ -204,28 +208,29 @@ void main(){
   // ---- голограммы: окно дисплея, фокус дисплея, двоение (МЗР), хроматизм у края, задержка (в позе камеры) ----
   vec2 ac = a - disp.xy;
   float wsd = sdBox(ac, disp.zw, 1.2);
-  float wm = dispOn * glassesOn * (1.0 - smoothstep(-0.4, 0.4, wsd));
+  float wm = dispOn * glassesOn * (1.0 - smoothstep(-0.2 - edgeSoft, 0.2 + edgeSoft, wsd));
   if (wm > 0.0) {
     float rH = pupilMM * 1e-3 * max(0.0, abs(dispD - focusD) - 0.25) * pxPerRad + fatigueBlur;
     float edge = smoothstep(0.55, 1.0, length(ac / disp.zw));
-    vec2 ca = (vUv - 0.5) * edge * 0.004;
+    vec2 ca = (vUv - 0.5) * edge * 0.009 * edgeSoft;
     vec3 h;
     h.r = blurHolo(vUv + ca, rH).r; h.g = blurHolo(vUv, rH).g; h.b = blurHolo(vUv - ca, rH).b;
     h += blurHolo(vUv + vec2(ipdPx, 0.0) / res, rH) * (ipdPx > 0.5 ? 0.45 : 0.0);
-    h += blurHolo(vUv + vec2(0.0, 3.0) / res, rH + 1.0) * 0.05;                    // вторичное отражение призмы
+    h += blurHolo(vUv + vec2(0.0, 3.0) / res, rH + 1.0) * ghostK;                  // вторичное отражение призмы (birdbath)
+    h += blurHolo(vec2(vUv.x, 2.0 * (0.5 + disp.y / 90.0) - vUv.y), rH + 4.0) * ghostK * 0.35;  // зеркальный «призрак» окна
     // резкость дисплея: лёгкое нерезкое маскирование (micro-OLED + обработка изображения в очках)
     vec3 hb = blurHolo(vUv, rH + 1.4);
     h = max(h + sharpen * (h - hb), 0.0);
     // яркость дисплея в нитах в тех же единицах, что и мир (калибровка cdPerUnit): свет дисплея не проходит
     // через затемняющую плёнку и складывается со светом цеха до тональной компрессии — как на сетчатке
-    h *= dispNits / cdPerUnit * dispBright * (1.0 - 0.25 * edge) * bootFade;
+    h *= dispNits / cdPerUnit * dispBright * (1.0 - 0.55 * edgeSoft * edge) * bootFade;
     lin += h * expo * wm;
   }
   vec3 c = toSRGB(aces(lin));
   c += glassesOn * dispOn * vec3(0.25, 0.85, 0.75) * (1.0 - smoothstep(0.0, 0.3, abs(wsd))) * 0.03;
   // ---- оправа и корпус очков (в 2–3 см от глаза — всегда не в фокусе), нос, щёки ----
-  float housing = glassesOn * smoothstep(15.0, 24.0, a.y) * (1.0 - smoothstep(55.0, 70.0, abs(a.x)));
-  c = mix(c, vec3(0.012, 0.013, 0.016) + vec3(0.03) * (1.0 - smoothstep(19.0, 32.0, a.y)), housing * 0.97);
+  float housing = glassesOn * smoothstep(housingDeg, housingDeg + 9.0, a.y) * (1.0 - smoothstep(55.0, 70.0, abs(a.x)));
+  c = mix(c, vec3(0.012, 0.013, 0.016) + vec3(0.03) * (1.0 - smoothstep(housingDeg + 4.0, housingDeg + 17.0, a.y)), housing * 0.97);
   float rim = glassesOn * (1.0 - smoothstep(0.5, 8.0, abs(lensSD)));
   c = mix(c, vec3(0.015, 0.016, 0.02), rim * 0.8 * (1.0 - housing));
   float w = max(0.0, -20.0 - a.y) * 0.7 + 1.0;
@@ -271,7 +276,7 @@ export class VisionRenderer {
         tReal: null, tDepth: null, tHolo: null, tLum: null, tDirt: dirtTexture(), res: new THREE.Vector2(1, 1), tanV: 1, aspect: 1, cNear: 0.05, cFar: 80,
         time: 0, focusD: 0.5, pupilMM: 4, dispD: 0.25, glassesOn: 0, dispOn: 0, transmit: 0.9, dispBright: 1, blink: 0, flash: 0,
         angVel: new THREE.Vector2(), fatigueBlur: 0, age: 30, dirt: 0.1, ipdPx: 0, disp: new THREE.Vector4(0, -2, 22, 12), maxLod: 7,
-        exposureBias: 1, bootFade: 1, dbg: 0, dispNits: DISPLAY.nits, sharpen: 0.45, cdPerUnit: CD_PER_UNIT,
+        exposureBias: 1, bootFade: 1, dbg: 0, dispNits: DISPLAY.nits, sharpen: 0.45, cdPerUnit: CD_PER_UNIT, ghostK: 0.05, edgeSoft: 0.45, housingDeg: 15,
       }).map(([k, v]) => [k, { value: v }])) });
     this.u = this.finalMat.uniforms;
     this.u.disp.value.set(DISPLAY.centerDeg[0], DISPLAY.centerDeg[1], this.win.h / 2, this.win.v / 2);
@@ -279,6 +284,20 @@ export class VisionRenderer {
     this.occluder = new THREE.MeshBasicMaterial({ colorWrite: false });
     this.occlusion = false;
     this.latencyMs = DISPLAY.latencyMs;
+  }
+
+  /** Профиль очков: окно дисплея, яркость, оптика (блики, мягкость края), корпус, задержка. */
+  setDevice(d) {
+    this.device = d;
+    this.win = displayWindow(d.fovDiag, d.aspect);
+    this.u.disp.value.set(0, d.centerDeg, this.win.h / 2, this.win.v / 2);
+    Object.assign(this, { latencyMs: d.latencyMs });
+    this.u.dispNits.value = d.nits;
+    this.u.ghostK.value = d.ghost;
+    this.u.edgeSoft.value = d.edgeSoft;
+    this.u.housingDeg.value = d.housing;
+    // одинаковые 1920 пикс на более широкое поле — мельче детали: меньше подъём резкости
+    this.u.sharpen.value = 0.45 * Math.min(1.2, (d.res[0] / this.win.h) / 42);
   }
 
   setSize(w, h, pr) {

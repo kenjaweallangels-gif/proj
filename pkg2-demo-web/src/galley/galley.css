@@ -47,3 +47,16 @@ body.galley #view { position: fixed; inset: 0; width: 100vw; height: 100vh; disp
 .tablet-frame iframe { width: 100%; height: 100%; border: 0; display: block; }
 .tablet-drawer p { margin: 0; font: 11px var(--mono); color: var(--g-mute); background: var(--g-bg); padding: 4px 8px; border-radius: 6px; word-break: break-all; }
 @media (max-width: 900px) { .voice { width: calc(100vw - 24px); bottom: 50px; } .tablet-drawer { width: calc(100vw - 24px); } }
+/* имитация сборки и выбор очков */
+.bar button.primary { border-color: var(--g-acc); color: #04161c; background: var(--g-acc); font-weight: 600; }
+.bar button.on { border-color: #ffc845; color: #ffe39a; background: #3a3210; }
+.start .start-dev { display: block; margin: 12px 0 6px; font-size: 14px; }
+.start select { background: #0b1216; color: var(--g-ink); border: 1px solid var(--g-line); border-radius: 6px; padding: 6px 8px; font: 14px var(--sans); max-width: 100%; }
+.start .start-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin: 12px 0 10px; }
+.start .start-btns button { border-radius: 8px; padding: 10px 16px; font: 600 15px var(--sans); cursor: pointer; border: 1px solid var(--g-acc); background: transparent; color: var(--g-acc); }
+.start .start-btns button.primary { background: var(--g-acc); color: #04161c; }
+.start small { display: block; color: var(--g-mute, #8fa9b5); line-height: 1.6; }
+.card .devs button { display: flex; flex-direction: column; align-items: flex-start; text-align: left; }
+.card .devs button small { font-size: 11px; opacity: .75; }
+.card .note.dev { font-size: 12.5px; line-height: 1.45; margin: 6px 0 12px; }
+.card .note.dev a { color: var(--g-acc); }

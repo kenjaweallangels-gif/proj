@@ -252,14 +252,17 @@ export function buildPanels(mgr, app) {
 
   // ---------- строка состояния очков (привязана к голове) ----------
   const hud = mgr.add(new Panel(mgr, {
-    id: 'hud', title: '', w: 0.62, h: 0.04, ppm: 1700, chrome: false,
+    id: 'hud', title: '', w: 0.62, h: 0.11, ppm: 1700, chrome: false,
     draw(ui, p) {
       const W = p.px, H = p.py;
       const s = app.run.step;
       const tm = app.run.activeTimers().find((t) => t.blocking) || app.run.activeTimers()[0];
-      ui.text(`${app.plantClock()}  ·  ${app.aligned ? `совмещено ${app.alignErr} мм` : 'поиск меток…'}  ·  ${s.id} ${s.title}`, 14, H * 0.66, { size: 30, color: C.text, max: W * 0.72 });
-      ui.text(tm ? `⏱ ${fmtMin(app.run.remaining(tm))}` : `🔋 87 %  Wi-Fi цеха`, W - 14, H * 0.66, { size: 30, color: tm ? C.warn : C.dim, align: 'right', mono: !!tm });
-      if (app.toast && performance.now() < app.toast.until) ui.text(app.toast.text, W / 2, H * 0.66 - 64, { size: 30, color: C.ok, align: 'center' });
+      const y = H - 18;
+      ui.text(`${app.plantClock()}  ·  ${app.aligned ? `совмещено ${app.alignErr} мм` : 'поиск меток…'}  ·  ${s.id} ${s.title}`, 14, y, { size: 30, color: C.text, max: W * 0.72 });
+      ui.text(tm ? `⏱ ${fmtMin(app.run.remaining(tm))}` : `🔋 87 %  Wi-Fi цеха`, W - 14, y, { size: 30, color: tm ? C.warn : C.dim, align: 'right', mono: !!tm });
+      const ai = app.autoInfo?.();
+      if (ai) ui.text(ai, 14, y - 48, { size: 28, color: C.warn, max: W * 0.6 });
+      if (app.toast && performance.now() < app.toast.until) ui.text(app.toast.text, W - 14, y - (ai ? 96 : 48), { size: 30, color: C.ok, align: 'right', max: W - 28 });
     },
   }));
   hud.mode = 'head';
@@ -268,13 +271,20 @@ export function buildPanels(mgr, app) {
 }
 
 /** Строка состояния: держать у нижнего края окна дисплея (привязка к голове, с задержкой дисплея). */
-export function placeHud(hud, camera, win) {
+export function placeHud(hud, camera, win, centerDeg = -2) {
   const d = 1.6;
-  const up = Math.tan(THREE.MathUtils.degToRad(win.v / 2 - 4)) * d;
-  hud.group.position.copy(camera.position);
-  hud.group.quaternion.copy(camera.quaternion);
-  hud.group.translateZ(-d);
-  hud.group.translateY(-up - 0.07);              // у нижнего края окна дисплея — не перекрывает окна КД и перехода
+  // нижний край строки — в 1,2° над нижним краем окна дисплея (у каждых очков своё окно и смещение)
+  const bottom = Math.tan(THREE.MathUtils.degToRad(centerDeg - win.v / 2 + 1.2)) * d;
+  const g = hud.group;
+  g.position.copy(camera.position);
+  g.quaternion.copy(camera.quaternion);
+  g.translateZ(-d);
+  g.translateY(bottom + hud.h / 2);      // у нижнего края окна дисплея — не перекрывает окна КД и перехода
+  if (g.parent) {                        // система окон может быть повёрнута (3DoF) — перевести позу в её СК
+    g.parent.updateMatrixWorld();
+    const m = new THREE.Matrix4().compose(g.position, g.quaternion, g.scale).premultiply(g.parent.matrixWorld.clone().invert());
+    m.decompose(g.position, g.quaternion, g.scale);
+  }
 }
 
 export { STEPS };

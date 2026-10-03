@@ -5,6 +5,7 @@ import { DOCUMENTS, searchDocs } from './catalog.js';
 import { createLink } from './link.js';
 import { OPERATIONS } from './process.js';
 import { PRESETS } from './vision.js';
+import { DEVICES, deviceById, deviceSummary } from './glasses.js';
 import { PHRASES, createRecognizer } from './voice_cmd.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -103,7 +104,10 @@ export function mountTablet() {
       <div>норма ${num(s.check.nominal)}${s.check.tol ? ` ± ${num(s.check.tol)}` : ''} ${esc(s.check.unit)}${s.value != null ? ` · <b style="color:var(--ok)">✓ ${num(s.value)}</b>` : ''}</div>
       <div class="val"><span>${esc(value || '—')}</span><small>${esc(s.check.unit)}</small></div>
       <div class="keypad">${['7', '8', '9', '⌫', '4', '5', '6', '−', '1', '2', '3', ',', '0', '00', 'C', 'OK'].map((k) => `<button class="btn ${k === 'OK' ? 'ok' : ''}" data-k="${k}">${k}</button>`).join('')}</div></div>` : '';
-    return `<div class="card"><span class="id">${esc(s.id)} · ${S.index + 1}/${S.total}</span>${s.critical ? '<span class="tag">критичный</span>' : ''}
+    const au = S.auto || {};
+    const autoRow = `<div class="card"><div class="row">${au.on && !au.paused ? '<button class="btn warn" data-c="auto_pause">⏸ Пауза имитации</button>'
+      : `<button class="btn ok" data-c="auto_start">▶ ${au.on ? 'Продолжить имитацию' : 'Имитация сборки'}</button>`}${au.on ? '<button class="btn bad" data-c="auto_stop">⏹ Стоп</button>' : ''}</div></div>`;
+    return `${autoRow}<div class="card"><span class="id">${esc(s.id)} · ${S.index + 1}/${S.total}</span>${s.critical ? '<span class="tag">критичный</span>' : ''}
       <h2>${esc(s.title)}</h2>${S.preview ? `<div class="tag">в очках просмотр: ${esc(S.preview.id)}</div>` : ''}
       <ul class="txt">${s.text.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>${timers}
       <div class="row" style="margin-top:12px">
@@ -151,13 +155,20 @@ export function mountTablet() {
   function glassesView() {
     const p = S?.panels || {};
     const d = S?.dim || { mode: 'auto', level: 0 };
-    return `<div class="card"><div class="id">Окна в очках</div><div class="row" style="margin-top:8px">
+    const dev = deviceById.get(S?.device) || DEVICES[0];
+    return `<div class="card"><div class="id">Модель очков</div><div class="row" style="margin-top:8px">
+      ${DEVICES.map((x) => `<button class="btn" style="flex:1 1 45%;font-size:14px" aria-pressed="${x === dev}" data-c="device" data-a="${x.id}">${esc(x.brand)} ${esc(x.name)}<br><small>${x.fovDiag}° · ${x.nits} нит · ${x.tracking === '6dof' ? '6DoF' : '3DoF'}</small></button>`).join('')}</div>
+      <p style="font-size:14px;color:var(--mute)">${esc(deviceSummary(dev))}. ${esc(dev.note)}</p>
+      ${dev.tracking === '3dof' ? '<div class="row"><button class="btn acc" data-c="recenter">Окна по центру взгляда</button></div>' : ''}</div>
+      <div class="card"><div class="id">Окна в очках</div><div class="row" style="margin-top:8px">
       ${[['kd', 'КД'], ['step', 'Переход'], ['system', 'Система'], ['task', 'Задание и чат']].map(([k, t]) => `<button class="btn" aria-pressed="${!!p[k]}" data-c="toggle" data-a="${k}">${t}</button>`).join('')}
       <button class="btn" data-c="pull" data-a="step">Переход ближе</button><button class="btn" data-c="glasses">${S?.glasses ? 'Снять очки' : 'Надеть очки'}</button></div></div>
       <div class="card"><div class="id">Затемнение линз и яркость дисплея</div>
-      <div class="row" style="margin-top:8px"><button class="btn" aria-pressed="${d.mode === 'auto'}" data-c="dim_auto">Авто по свету</button></div>
-      <label class="sl">Затемнение <b>${Math.round(d.level * 100)} %</b><input type="range" min="0" max="0.95" step="0.05" value="${d.level}" data-set="dim_set"></label>
-      <label class="sl">Яркость дисплея <b>${Math.round((S?.bright ?? 1) * 1250)} нит</b><input type="range" min="0.2" max="1" step="0.05" value="${S?.bright ?? 1}" data-set="bright_set"></label>
+      ${dev.dimLevels ? `<div class="row" style="margin-top:8px"><button class="btn" aria-pressed="${d.mode === 'auto'}" data-c="dim_auto">Авто по свету</button>
+        <button class="btn" data-c="dim_less">Светлее</button><button class="btn" data-c="dim_more">Темнее</button></div>
+      <label class="sl">Пропускание линз <b>${((d.t ?? dev.transmit) * 100).toFixed(1).replace('.0', '')} %</b><input type="range" min="0" max="1" step="0.05" value="${d.level}" data-set="dim_set"></label>`
+    : `<p class="off">${esc(dev.dimNote)}</p>`}
+      <label class="sl">Яркость дисплея <b>${Math.round((S?.bright ?? 1) * dev.nits)} нит</b><input type="range" min="0.2" max="1" step="0.05" value="${S?.bright ?? 1}" data-set="bright_set"></label>
       <label class="sl">Освещённость участка (модель) <b>≈ ${S?.lux ?? '—'} лк</b><input type="range" min="0.3" max="3" step="0.1" value="${S?.light ?? 1}" data-set="light"></label></div>
       <div class="card"><div class="id">Зрение (модель)</div><div class="row" style="margin-top:8px">
       ${Object.entries(PRESETS).map(([k, v]) => `<button class="btn" style="flex:1 1 45%;font-size:14px" data-c="preset" data-a="${k}">${esc(v.label)}</button>`).join('')}</div></div>

@@ -234,6 +234,13 @@ export class StepViz {
     this.galley.root.add(this.overlay);
   }
 
+  /** Привязка голограмм к изделию: только у очков с 6DoF и камерами (3DoF не знает, где стапель). */
+  setAnchored(on) {
+    this.anchored = on;
+    this.root.visible = on; this.labels.visible = on;
+    if (this.overlay) this.overlay.visible = on;
+  }
+
   update(dt, run) {
     this.t += dt;
     const t = this.t;

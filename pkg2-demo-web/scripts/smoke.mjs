@@ -32,6 +32,10 @@ const cases = [
   ['galley_step_090', 'galley.html?step=090.02'],
   ['galley_myopia', 'galley.html?intro=0&vision=myopia'],
   ['tablet', 'tablet.html'],
+  // профили очков и имитация сборки: Aura 70° 6DoF с автоимитацией, One Pro 3DoF, Air 2 Pro 46° на переходе с голограммами
+  ['galley_auto_aura', 'galley.html?intro=0&auto=1&glasses=aura'],
+  ['galley_onepro_3dof', 'galley.html?intro=0&glasses=onepro'],
+  ['galley_air2pro_090', 'galley.html?step=090.02&glasses=air2pro'],
 ];
 let failed = 0;
 for (const [name, qs] of cases) {
