@@ -66,7 +66,7 @@ export const PRESETS = {
     style: { nervous: 1, stride: 0.82, tempo: 1.15, hunch: 0.05, shoulders: 1, armSwing: 0.7 }, seed: 31,
   },
   Ossana: {
-    name: 'Ossana', age: 0.45, height: 1.72, build: 'a', skin: '#5a3e28', suit: '#3b302a', cloth: '#4a3b2c', cloth2: '#6b4f36', accent: '#2c3e57', leather: '#4a3222',
+    name: 'Ossana', age: 0.45, gender: 0.1, height: 1.72, build: 'a', skin: '#5a3e28', suit: '#3b302a', cloth: '#4a3b2c', cloth2: '#6b4f36', accent: '#2c3e57', leather: '#4a3222',
     robe: true, robeStyle: 'tunic', layers: [{ style: 'cape', fold: 0.04, tear: 0.5, scale: 0.97 }], hood: true, mask: 'down', pouches: 3, kris: true, armPads: true, harness: true, hooks: 2, hair: 'short', hairColor: '#1a1410',
     eyesIbad: true, wear: 0.7, dust: 0.6, style: { stride: 1.08, armSwing: 1.1, stance: 1, sway: 1.1 }, seed: 41, scarf: false,
   },
@@ -222,7 +222,7 @@ export function makeFigure(opts = {}) {
 
   // --- скелет ---
   const mkBone = (name, parent, x, y, z) => { const b = new THREE.Bone(); b.name = name; b.position.set(x, y, z); parent.add(b); return b; };
-  const sw = 0.19 * ({ m: 1, f: 0.9, c: 0.85, a: 1.08, e: 1.06 }[o.build] || 1);
+  const sw = 0.19 * (BUILDS[o.build] || BUILDS.m).sh;
   const pelvis = mkBone('pelvis', root, 0, 0.92, 0);
   const spine = mkBone('spine', pelvis, 0, 0, 0);
   const chest = mkBone('chest', spine, 0, 0.3, 0);

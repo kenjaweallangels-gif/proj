@@ -137,8 +137,8 @@ if (rg == 0) {
   float fade = 1.0 - smoothstep(0.35, 1.1, fwidth(ph));
   float tri = abs(fract(ph) - 0.5) * 2.0;
   float hump = 1.0 - tri * tri;
-  rh = hump * vAux.y * fade;
-  float rs = mix(0.74, 1.05, hump);
+  rh = hump * vAux.y * fade * 0.7;
+  float rs = mix(0.84, 1.04, hump);
   base = uSuit * mix(1.0, rs, vAux.y * fade);
   base *= 1.0 + (nz * 0.22 + nz2 * 0.1) * (0.4 + uWear);
   float crack = smoothstep(0.55, 0.8, nz + nz2 * 0.4) * uWear;
