@@ -3,7 +3,9 @@
 import * as THREE from 'three';
 import { clamp, lerp, smoothstep, rng } from '../core/util.js';
 import { Parts } from './parts.js';
-import { createHullMaterial, createGlowMaterial, createDecalTexture, createDecalMaterial, buildDecals } from './material.js';
+import { createHullMaterial, createGlowMaterial, createDecalTexture, createDecalMaterial, buildDecals, createSandMaterial } from './material.js';
+import { SINK } from './layout.js';
+import { createBerm } from './berm.js';
 import { buildHarvester, SCOOP_PIVOT, AUGER_POS, TOWERS, FANS, STACKS, KLAXON, BEACONS, BELT, CONSOLE_POS, SPILL, FLOODS, DIM, C } from './hull.js';
 import { createTracks, TRK, UNITS } from './tracks.js';
 import { createParticles, createBeams, P_SPICE, P_SAND, P_SMOKE, P_HEAT } from './fx.js';
@@ -52,6 +54,10 @@ export function create(game) {
   const decalMesh = new THREE.Mesh(buildDecals(G.decals), decalMat);
   decalMesh.frustumCulled = false; decalMesh.renderOrder = 2; near.add(decalMesh);
   const farMesh = mk(G.far, hullMat, far, false);
+  const sandMesh = mk(G.sand, hullMat, root, false);   // наносы на кровлях (видны и издали)
+  sandMesh.receiveShadow = shadows;
+  const berm = createBerm(createSandMaterial(quality));
+  root.add(berm.mesh);
 
   // гусеницы
   const tracks = createTracks(game, hullMat, quality);
@@ -195,7 +201,7 @@ export function create(game) {
 
   // Твёрдые тела в общем реестре (core/colliders.js): корпус и ковш — повёрнутые боксы (owner 'harvester'); обновляются по ходу движения.
   const COL_DEFS = [
-    { name: 'hull', x0: BOXES[0][0], z0: BOXES[0][1], x1: BOXES[0][2], z1: BOXES[0][3], h: 35 },
+    { name: 'hull', x0: BOXES[0][0], z0: BOXES[0][1], x1: BOXES[0][2], z1: BOXES[0][3], h: 38 },
     { name: 'scoop', x0: BOXES[1][0], z0: BOXES[1][1], x1: BOXES[1][2], z1: BOXES[1][3], h: 22 },
   ];
   const cols = COL_DEFS.map((d) => {
@@ -222,7 +228,7 @@ export function create(game) {
     for (let k = 0; k <= 5; k++) {
       const c = Math.cos(h), s = Math.sin(h);
       for (const lx of WORM_PROBE_X) {
-        probe.c.set(x + lx * c, H.y + 6, z + lx * s);
+        probe.c.set(x + lx * c, H.y + SINK + 6, z + lx * s);
         if (colliders.overlaps(probe, { ignore: 'harvester' }).some((o) => o.entry.owner === 'worm')) return true;
       }
       for (let i = 0; i < 10; i++) { h -= om * 0.1; x += Math.cos(h) * v * 0.1; z += Math.sin(h) * v * 0.1; }
@@ -255,7 +261,7 @@ export function create(game) {
     }
     const g = sampleGround();
     const k = first ? 1 : 1 - Math.exp(-dt * 3);
-    H.y += (g.y - 0.25 - H.y) * k; H.pitch += (g.pitch - H.pitch) * k; H.roll += (g.roll - H.roll) * k;
+    H.y += (g.y - SINK + 0.1 - H.y) * k; H.pitch += (g.pitch - H.pitch) * k; H.roll += (g.roll - H.roll) * k;
     root.position.set(H.x, H.y + H.lift, H.z);
     root.rotation.set(H.roll, -H.h, H.pitch, 'YZX');
     root.updateMatrixWorld(true);
@@ -284,7 +290,7 @@ export function create(game) {
       while (acc.sand >= 1) {
         acc.sand -= 1;
         const u = UNITS[Math.floor(rnd() * 4)], rear = rnd() < 0.55;
-        toWorld(u.x + (rear ? -TRK.sprocketDX - 3 : TRK.sprocketDX + 3.5) + (rnd() - 0.5) * 3, 0.4, u.z + (rnd() - 0.5) * 6.5, pw);
+        toWorld(u.x + (rear ? -TRK.sprocketDX - 3 : TRK.sprocketDX + 3.5) + (rnd() - 0.5) * 3, SINK + 0.4, u.z + (rnd() - 0.5) * 6.5, pw);
         dirWorld(rear ? -(2 + rnd() * 5) : (1 + rnd() * 3), 2 + rnd() * 5, (rnd() - 0.5) * 5, vw);
         particles.emit(P_SAND, pw.x, pw.y, pw.z, vw.x, vw.y, vw.z, 1.6 + rnd() * 1.8, 1.6 + rnd() * 1.6, 0.4, 3, { wind: 0.7, buoy: 0, drag: 0.9 });
       }
@@ -293,7 +299,7 @@ export function create(game) {
       acc.lip += dt * 28 * qf * S.belt;
       while (acc.lip >= 1) {
         acc.lip -= 1;
-        toWorld(55 + rnd() * 3, 0.4, (rnd() - 0.5) * 38, pw);
+        toWorld(55 + rnd() * 3, SINK + 0.4, (rnd() - 0.5) * 38, pw);
         dirWorld(3 + rnd() * 7, 3 + rnd() * 6, (rnd() - 0.5) * 4, vw);
         particles.emit(P_SAND, pw.x, pw.y, pw.z, vw.x, vw.y, vw.z, 1.8 + rnd() * 1.8, 2.2 + rnd() * 2, 0.4, 2.8, { wind: 0.7, buoy: 0, drag: 0.8 });
       }
@@ -421,7 +427,7 @@ export function create(game) {
     root.visible = false;
     particles.mesh.visible = inDesert;
     particles.flush(time);
-    carryall.update(dt, time, { x: H.x, y: H.y, z: H.z, h: H.h, running: false, eng: 0, night: lastNight });
+    carryall.update(dt, time, { x: H.x, y: H.y + SINK, z: H.z, h: H.h, running: false, eng: 0, night: lastNight });
     carryall.group.visible = inDesert && carryall.script.on && !carryall.script.hidden;
     carryall.cabMesh.visible = carryall.group.visible;
     carryallFx(dt, inDesert);
@@ -434,6 +440,7 @@ export function create(game) {
   const frustum = new THREE.Frustum(), pm = new THREE.Matrix4(), sph = new THREE.Sphere(new THREE.Vector3(), 78);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), yAx = new THREE.Vector3(0, 1, 0), xAx = new THREE.Vector3(1, 0, 0);
   let lastNight = 0;
+  const bermAt = { x: 1e9, z: 0, h: 0 };
 
   function stageValues(dt) {
     S.t += dt;
@@ -474,6 +481,13 @@ export function create(game) {
     }
     applyTransform(dt, false);
     syncColliders();
+    // вал песка вокруг корпуса: привязка к рельефу порциями; при подвесе/сценарной позе — убирается
+    if (!scriptPose && (berm.busy || !berm.ready || Math.hypot(H.x - bermAt.x, H.z - bermAt.z) > 7 || Math.abs(H.h - bermAt.h) > 0.25)) {
+      if (!berm.busy) { bermAt.x = H.x; bermAt.z = H.z; bermAt.h = H.h; }
+      berm.conform(ground, root, 600);
+    }
+    const bermK = scriptPose ? 0 : 1 - smoothstep(0.3, 2.5, H.lift);
+    berm.mesh.scale.y = Math.max(bermK, 0.001); berm.mesh.position.y = SINK * (1 - Math.max(bermK, 0.001));
     const camD = game.camera.position.distanceTo(root.position);
 
     // видимость и LOD
@@ -559,7 +573,7 @@ export function create(game) {
         bus.emit('noise', { x: H.x, z: H.z, loudness: clamp(0.35 + 0.65 * S.eng, 0, 1), source: 'Harvester' });
       }
     }
-    carryall.update(dt, time, { x: H.x, y: H.y, z: H.z, h: H.h, running: S.state !== 'off', eng: S.eng, night });
+    carryall.update(dt, time, { x: H.x, y: H.y + SINK, z: H.z, h: H.h, running: S.state !== 'off', eng: S.eng, night });
     carryallFx(dt, inDesert);
     wreck.update(dt);
     harvester.rpm = S.eng;
@@ -637,8 +651,9 @@ export function create(game) {
   // Коллизия — через game.colliders (боксы выше); game.collide() выталкивает персонажей автоматически, обёртка world.collide не нужна.
 
   applyTransform(0, true);
-  H.y = sampleGround().y - 0.25;
+  H.y = sampleGround().y - SINK + 0.1;
   applyTransform(0, true);
+  berm.conform(ground, root, 1e9); bermAt.x = H.x; bermAt.z = H.z; bermAt.h = H.h;
   syncColliders();
   updateInteractable();
   emitState('off');
