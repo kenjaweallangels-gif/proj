@@ -7,6 +7,7 @@ import * as desert from './desert/index.js';
 import * as sietch from './sietch/index.js';
 import * as worm from './worm/index.js';
 import * as harvester from './harvester/index.js';
+import * as level from './level/all.js';
 import * as player from './player/index.js';
 import * as companions from './player/companions.js';
 import * as dialogue from './story/dialogue.js';
@@ -34,6 +35,7 @@ const steps = [
   ['sietch', () => sietch.create(game)],
   ['worm', () => worm.create(game)],
   ['harvester', () => harvester.create(game)],
+  ['level', () => level.create(game)],
   ['player', () => player.create(game)],
   ['companions', () => companions.create(game)],
   ['zones', () => game.add('zones', zones.create(game))],
