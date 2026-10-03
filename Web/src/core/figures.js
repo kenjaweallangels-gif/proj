@@ -350,7 +350,7 @@ export function makeFigure(opts = {}) {
     if (fa.ext !== null) tm = fa.ext;
     else if (fa.talk) tm = Math.abs(Math.sin(fa.t * 6.3)) * (0.55 + 0.45 * Math.sin(fa.t * 2.1 + 1.0)) * (0.6 + 0.4 * Math.sin(fa.t * 11.7)) * 0.9;
     fa.mouth += (tm - fa.mouth) * (1 - Math.exp(-dt * (tm > fa.mouth ? 30 : 18)));
-    U.uBlink.value = fa.blink; U.uEyeRot.value.set(fa.yaw, fa.pitch); U.uMouth.value = fa.mouth;
+    U.uBlink.value = fa.blink; U.uEyeRot.value.set(fa.yaw, fa.pitch); U.uMouth.value = fa.mouth * (o.maskState === "up" ? 0.55 : 1);
   }
 
   // --- вторичная анимация ткани (CPU: пружина «отставания»; GPU: вершинный шейдер) ---

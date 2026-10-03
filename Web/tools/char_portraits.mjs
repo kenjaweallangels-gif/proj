@@ -1,7 +1,7 @@
 // Портреты и сцены персонажей: node tools/char_portraits.mjs [--set=portraits,full,wind,light,talk,tris] [--only=Kair,Ilva] [--file=char.html] [--size=720]
 // Студия: небо/песок как карта окружения (PMREM), «пустынный» или «тёплый интерьерный» свет. Выводит PNG в dist/shots/char/p_*.png.
 import { chromium } from 'playwright';
-import { mkdirSync, readdirSync, existsSync } from 'node:fs';
+import { mkdirSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,6 +11,9 @@ const sets = arg('set', 'portraits,full,wind,light,talk,tris').split(',');
 const only = arg('only', '').split(',').filter(Boolean);
 const SZ = Number(arg('size', 720));
 const outDir = join(root, 'dist', 'shots', 'char');
+// Режим докачки: --resume=1 пропускает кадры, уже снятые после последней сборки студии (браузер под нагрузкой иногда падает).
+const studioM = existsSync(join(root, 'dist', 'char_studio.html')) ? statSync(join(root, 'dist', 'char_studio.html')).mtimeMs : 0;
+const need = (n) => arg('resume', '0') !== '1' || !existsSync(join(outDir, `p_${n}.png`)) || statSync(join(outDir, `p_${n}.png`)).mtimeMs < studioM;
 mkdirSync(outDir, { recursive: true });
 function findChromium() {
   const base = '/opt/pw-browsers';
@@ -89,6 +92,7 @@ const list = CAST.filter(([n]) => !only.length || only.includes(n));
 if (sets.includes('portraits')) {
   for (const [name, opts] of list) {
     for (const [vname, yaw, off] of [['front', 0.04, 0], ['34', 0.62, 0], ['prof', 1.45, 0]]) {
+      if (!need(`${name}_${vname}`)) continue;
       await page.evaluate(([opts, yaw]) => {
         const S = window.__S; S.clear(); S.light('desert');
         const f = S.add(opts, 0, 0, yaw); const H = f.height;
@@ -102,6 +106,7 @@ if (sets.includes('portraits')) {
 }
 if (sets.includes('full')) {
   for (const [name, opts] of list) {
+    if (!need(`${name}_full`)) continue;
     await page.evaluate((opts) => {
       const S = window.__S; S.clear(); S.light('desert');
       const f = S.add(opts, 0, 0, 0.5); const H = f.height; S.cam([0, 0.62 * H, 2.1 * H + 0.7], [0, 0.5 * H, 0], 34);

@@ -646,25 +646,25 @@ function sleeves(b, o, lod, B, N) {
     const ys = []; const n = [12, 7, 4][lod]; for (let k = 0; k < n; k++) ys.push(lerp(1.465, to, k / (n - 1)));
     const prof = (y) => (y > 1.2 ? 0.066 + (1.465 - y) * 0.12 * 0 + 0.012 * sstep(1.46, 1.3, y) * 0 : lerp(0.07, 0.1, sstep(1.2, to, y)));
     const rings = ys.map((y) => { const r = (y > 1.2 ? 0.07 : lerp(0.07, jub === 'wide' ? 0.098 : 0.08, sstep(1.2, to, y))) * B.limb; const nn = Math.max(6, [12, 8, 5][lod]); return ringY(y, cx + s * 0.006, 0.0, r, r * 1.04, nn, (a) => 1 + 0.06 * Math.sin(a * 3 + y * 11) * sstep(1.3, to, y)); });
-    b.loft(rings, (j, i, p) => ({ reg: p[1] < to + 0.04 && o.cuffTrim ? REG.ACCENT : REG.CLOTH2, aux: [0.25 * sstep(1.25, to, p[1]) ** 2, 0, 0.55 + 0.4 * Math.sin(i * 1.7 + p[1] * 9), i * 0.7], sk: skY(p[1], stops) }), { capStart: false });
+    b.loft(rings, (j, i, p) => ({ reg: p[1] < to + 0.04 && o.cuffTrim ? REG.ACCENT : REG.CLOTH2, aux: [0.25 * sstep(1.25, to, p[1]) ** 2, 0, 0.55 + 0.4 * Math.sin(i * 1.7 + p[1] * 9), i * 0.7], face: [2, 0, 0, 0], sk: skY(p[1], stops) }), { capStart: false });
   }
 }
 
 /** Капюшон (ткань): над и вокруг головы, спереди открыт; хвост назад. */
 function clothHood(b, o, lod, B) {
   const hs = B.head, N = [22, 12, 7][lod];
-  const ys = lod === 0 ? [-0.2, -0.16, -0.11, -0.06, -0.01, 0.04, 0.09, 0.13, 0.165, 0.195, 0.21, 0.216] : [-0.2, -0.1, 0.0, 0.09, 0.165, 0.205, 0.216];
+  const ys = lod === 0 ? [-0.2, -0.16, -0.11, -0.06, -0.01, 0.04, 0.09, 0.13, 0.152, 0.17, 0.18, 0.186] : [-0.2, -0.1, 0.0, 0.09, 0.158, 0.18, 0.186];
   const th = (y) => (y < -0.14 ? 0 : y < -0.05 ? 1.2 * sstep(-0.14, -0.05, y) + 0.2 : y < 0.12 ? 1.18 - (y + 0.05) * 1.5 : Math.max(0, 0.9 - (y - 0.12) * 8));
   const rings = ys.map((y) => {
     const t = Math.max(0, th(y)), yy = clamp(y, -0.12, 0.141), [rx, rz, cz] = headRow(yy);
-    const u = y > 0.141 ? (y - 0.141) / 0.077 : 0;
+    const u = y > 0.141 ? (y - 0.141) / 0.045 : 0;
     const sz = y > 0.141 ? Math.sqrt(Math.max(0, 1 - u * u)) * 0.96 + 0.04 : 1;
-    const off = 0.03 + (y < -0.03 ? 0.06 * sstep(-0.03, -0.18, y) : 0) + (y > 0.08 ? 0.012 : 0);
-    return ringY(HEAD_Y + y * hs, 0, cz * hs - 0.015 - Math.max(0, y) * 0.25, (rx + off) * hs * sz, (rz + off + 0.02) * hs * sz, N, (a) => 1 + 0.03 * Math.sin(a * 6 + y * 20), t, Math.PI * 2 - t, true);
+    const off = 0.017 + (y < -0.03 ? 0.05 * sstep(-0.03, -0.18, y) : 0) + (y > 0.08 ? 0.008 : 0);
+    return ringY(HEAD_Y + y * hs, 0, cz * hs - 0.008 - Math.max(0, y) * 0.12, (rx + off) * hs * sz, (rz + off + 0.02) * hs * sz, N, (a) => 1 + 0.03 * Math.sin(a * 6 + y * 20), t, Math.PI * 2 - t, true);
   });
   b.loft(rings, (j, i, p) => {
     const y = p[1] - HEAD_Y, back = clamp(Math.abs(i / N - 0.5) * 2, 0, 1);
-    return { reg: REG.CLOTH, aux: [0.18 * (y < -0.1 ? 1 : 0.4) * back + (y > 0.1 ? 0.12 * back : 0), 0, 0.5 + 0.4 * Math.sin(i * 1.3 + y * 20), i * 0.3], sk: y < -0.15 ? skY(p[1], [[1.5, BI.head], [1.43, BI.chest]]) : HSK };
+    return { reg: REG.CLOTH, aux: [0.18 * (y < -0.1 ? 1 : 0.4) * back + (y > 0.1 ? 0.12 * back : 0), 0, 0.5 + 0.4 * Math.sin(i * 1.3 + y * 20), i * 0.3], face: [1, 0, 0, 0], sk: y < -0.15 ? skY(p[1], [[1.5, BI.head], [1.43, BI.chest]]) : HSK };
   }, { closed: false, capEnd: true });
   // обод капюшона (скатанная кромка)
   if (lod < 2) {
@@ -677,7 +677,7 @@ function clothHood(b, o, lod, B) {
 function hoodDrape(b, o, lod, B, N) {
   const ys = lod === 0 ? [1.5, 1.46, 1.4, 1.33, 1.26, 1.18, 1.1] : [1.5, 1.4, 1.26, 1.1];
   const rings = ys.map((y) => { const t = (1.5 - y) / 0.4; return ringY(y, 0, -0.04 - t * 0.04, 0.12 + t * 0.07, 0.1 + t * 0.03, N, (a) => 1 + 0.04 * Math.sin(a * 5 + y * 8), Math.PI * 0.55, Math.PI * 1.45, true); });
-  b.loft(rings, (j, i, p) => ({ reg: REG.CLOTH, aux: [clamp((1.5 - p[1]) / 0.4, 0, 1) ** 1.5, 0, 0.5 + 0.45 * Math.sin(i * 1.9 + p[1] * 6), i * 0.4], sk: skY(p[1], [[1.52, BI.neck], [1.43, BI.chest], [1.15, BI.chest]]) }), { closed: false });
+  b.loft(rings, (j, i, p) => ({ reg: REG.CLOTH, aux: [clamp((1.5 - p[1]) / 0.4, 0, 1) ** 1.5, 0, 0.5 + 0.45 * Math.sin(i * 1.9 + p[1] * 6), i * 0.4], face: [1, 0, 0, 0], sk: skY(p[1], [[1.52, BI.neck], [1.43, BI.chest], [1.15, BI.chest]]) }), { closed: false });
 }
 
 /** Шарф: длинный хвост на спине (flex сильный). */

@@ -127,7 +127,7 @@ const FRAG_COLOR = /* glsl */`
 #include <color_fragment>
 int rg = int(vRegion + 0.5);
 vec3 base = uCloth; float rough = 0.9; float metal = 0.0; float rh = 0.0; float dustK = 0.0; float bumpAmt = 0.0;
-float aoK = 1.0; float sheenK = 0.0;
+float aoK = 1.0; float sheenK = 0.0; float irisMask = 0.0;
 float nz = vnoise(vBind * 13.0), nz2 = vnoise(vBind * 52.0);
 vec3 hp = vec3(vBind.x, vBind.y - 1.63, vBind.z) / uHs;   // координаты головы (единичный масштаб)
 float hax = abs(hp.x);
@@ -230,6 +230,8 @@ if (rg == 0) {
   vec3 cc = rg == 12 ? uCloth2 : uCloth;
   float wf = fadeAt(520.0);
   float wu = vAux.w * 150.0, wv = vBind.y * 620.0;
+  if (vFace.x > 0.5 && vFace.x < 1.5) { wu = atan(vBind.x, vBind.z) * 75.0; }
+  else if (vFace.x > 1.5) { wu = atan(vBind.x - sign(vBind.x) * 0.19, vBind.z) * 44.0; }
   float thr = sin(wu * 6.2832) * 0.5 + 0.5, thv = sin(wv * 6.2832) * 0.5 + 0.5;
   float chk = mix(thr, thv, step(0.5, fract((floor(wu) + floor(wv)) * 0.5)));
   float weave = chk * wf;
@@ -314,6 +316,7 @@ if (rg == 0) {
   ir *= mix(0.3, 1.0, smoothstep(1.0, 0.8, r));            // лимбальное затемнение
   float inIris = 1.0 - smoothstep(0.96, 1.0, r);
   float inPupil = 1.0 - smoothstep(pupilR / 1.0 * 0.95, pupilR * 1.12 + 0.02, r);
+  irisMask = max(inIris, inPupil);
   base = mix(scl, ir, inIris);
   base = mix(base, vec3(0.005), inPupil);
   rough = mix(0.14, 0.08, inIris);
@@ -364,7 +367,7 @@ if (bumpAmt > 0.0) {
 
 const FRAG_EMISSIVE = /* glsl */`
 #include <emissivemap_fragment>
-if (rg == 7) totalEmissiveRadiance += uEye * uEyeGlow;
+if (rg == 7) totalEmissiveRadiance += uEye * uEyeGlow * (1.0 - irisMask);
 `;
 
 /** Модифицированный RE_Direct_Physical: «обёрнутое» освещение и красноватая кромка терминатора для кожи (аппроксимация SSS). */
