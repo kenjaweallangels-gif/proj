@@ -16,13 +16,15 @@
 //    они полупрозрачны (их видит только один глаз); вне зоны слияния Panum предметы ближе или дальше точки
 //    фиксации двоятся — и окно дисплея на 4 м, когда смотришь на деталь в руках; ведущий глаз весомее;
 //  • апертура очков по размерам рамки конкретной модели: сквозь линзу — затемнение и окно дисплея, вокруг —
-//    открытая периферия без затемнения; режим «полное поле ≈ 200°» — равнопромежуточная проекция развёртки
-//    пяти граней куба (то, что видит человек целиком), режим «центр 72°» — как на мониторе.
+//    открытая периферия без затемнения; режим «полное поле ≈ 200°» — проекция «как воспринимает человек»:
+//    центр крупно, периферия плавно сжата до ±100° (по образцу коркового увеличения; центр — отдельная чёткая
+//    камера ±35°, периферия — развёртка граней куба), режим «центр 72°» — перспектива, как на мониторе.
+//    Изображение одно (как воспринимает мозг): физиологическое двоение — только как демонстрация, выключено.
 // Параметры дисплея и линз берутся из профиля устройства (glasses.js): VITURE Luma/Beast, XREAL Air 2/One/Aura.
 import * as THREE from 'three';
 import { LAYER_HOLO, LAYER_LABEL, LAYER_REAL } from '../engine/holo.js';
 import { fbm, normalize } from '../scene/textures.js';
-import { CUBE_FACES, FIELD, IPD_MM, eyeAperture } from './binocular.js';
+import { CORTICAL_C, CUBE_FACES, FIELD, IPD_MM, corticalFit, eyeAperture } from './binocular.js';
 import { DESIGN } from './glasses_model.js';
 
 export const PRESETS = {
@@ -140,7 +142,8 @@ void main(){
 const FINAL_FS = /* glsl */`
 precision highp float;
 uniform sampler2D tReal; uniform sampler2D tDepth; uniform sampler2D tHolo; uniform sampler2D tLum; uniform sampler2D tDirt;
-uniform sampler2D tAtlas; uniform sampler2D tAtlasDepth;
+uniform sampler2D tAtlas; uniform sampler2D tAtlasDepth; uniform sampler2D tFront; uniform sampler2D tFrontDepth;
+uniform float frontTan; uniform float frontN; uniform float cortS0; uniform float cortC;
 uniform vec2 res; uniform float tanV; uniform float aspect; uniform float cNear; uniform float cFar; uniform float time;
 uniform float fieldMode; uniform vec2 fieldSpan; uniform float atlasFace; uniform float aNear; uniform float aFar;
 uniform float focusD; uniform float pupilMM; uniform float dispD; uniform float glassesOn; uniform float dispOn;
@@ -166,9 +169,11 @@ vec2 angOf(vec3 d){ return degrees(vec2(atan(d.x, d.z), atan(d.y, length(d.xz)))
 vec2 uvPersp(vec2 a){ float tx = tan(a.x * D2R); return vec2(tx / (tanV * aspect), tan(a.y * D2R) * sqrt(1.0 + tx * tx) / tanV) * 0.5 + 0.5; }
 vec2 angOfScreen(vec2 uv){
   if (fieldMode < 0.5) { vec2 tn = (uv * 2.0 - 1.0) * vec2(tanV * aspect, tanV); return degrees(vec2(atan(tn.x), atan(tn.y / sqrt(1.0 + tn.x * tn.x)))); }
-  vec2 t = (uv - 0.5) * fieldSpan; float r = length(t);                // равнопромежуточная проекция: угол от центра сохраняется
-  if (r < 1e-4) return vec2(0.0);
-  return angOf(vec3(t / r * sin(r * D2R), cos(r * D2R)));
+  // «как воспринимает человек»: центр крупно, к периферии масштаб падает (по образцу коркового увеличения)
+  vec2 t = (uv - 0.5) * res; float r = length(t);
+  if (r < 1e-3) return vec2(0.0);
+  float th = cortC * (exp(r / (cortS0 * cortC)) - 1.0) * D2R;
+  return angOf(vec3(t / r * sin(th), cos(th)));
 }
 // развёртка 5 граней куба (3×2): вперёд, вправо, влево, вверх, вниз
 vec2 atlasUV(vec3 d, float lod, out float cosF){
@@ -182,22 +187,33 @@ vec2 atlasUV(vec3 d, float lod, out float cosF){
   float col = mod(i, 3.0), row = floor(i / 3.0);
   return vec2((col + uv.x) / 3.0, (row + uv.y) / 2.0);
 }
-float outPPD(){ return fieldMode < 0.5 ? res.y / degrees(2.0 * atan(tanV)) : res.x / fieldSpan.x; }
-float texPPD(){ return fieldMode < 0.5 ? outPPD() : atlasFace / 90.0; }
-vec3 sceneAt(vec2 a, float lod){
-  if (fieldMode < 0.5) return textureLod(tReal, uvPersp(a), lod).rgb;
-  float c; return textureLod(tAtlas, atlasUV(dirOf(a), lod, c), lod).rgb;
+float outPPDat(float ecc){ return fieldMode < 0.5 ? res.y / degrees(2.0 * atan(tanV)) : cortS0 / (1.0 + ecc / cortC); }
+float gEccG;
+float outPPD(){ return outPPDat(gEccG); }
+// источник «мира»: перспектива (центр 72°) / в полном поле — чёткая центральная камера ±35° и развёртка куба вокруг
+bool inFront(vec3 d){ return d.z > 0.0 && abs(d.x) < frontTan * d.z * 0.995 && abs(d.y) < frontTan * d.z * 0.995; }
+vec2 frontUV(vec3 d){ return vec2(d.x, d.y) / (d.z * frontTan) * 0.5 + 0.5; }
+float frontPPD(){ return frontN * 0.5 / frontTan / 57.2958; }
+// мир в направлении a с пятном размытия rDeg (уровень mip — по разрешению своего источника)
+vec3 sceneR(vec2 a, float rDeg){
+  if (fieldMode < 0.5) { float lod = clamp(log2(max(rDeg * outPPDat(0.0), 1e-3)), 0.0, maxLod); return textureLod(tReal, uvPersp(a), lod).rgb; }
+  vec3 d = dirOf(a);
+  if (inFront(d)) { float lod = clamp(log2(max(rDeg * frontPPD(), 1e-3)), 0.0, maxLod); return textureLod(tFront, frontUV(d), lod).rgb; }
+  float lod = clamp(log2(max(rDeg * atlasFace / 90.0, 1e-3)), 0.0, maxLod); float c; return textureLod(tAtlas, atlasUV(d, lod, c), lod).rgb;
 }
+vec3 sceneAt(vec2 a, float lod){ return sceneR(a, exp2(lod) / (fieldMode < 0.5 ? outPPDat(0.0) : atlasFace / 90.0)); }
 float distAt(vec2 a){
   if (fieldMode < 0.5) { vec2 uv = uvPersp(a); vec2 tn = (uv * 2.0 - 1.0) * vec2(tanV * aspect, tanV); return linZ(texture(tDepth, uv).r, cNear, cFar) * sqrt(1.0 + dot(tn, tn)); }
-  float c; vec2 uv = atlasUV(dirOf(a), 0.0, c); return linZ(texture(tAtlasDepth, uv).r, aNear, aFar) / c;
+  vec3 d = dirOf(a);
+  if (inFront(d)) { vec2 tn = vec2(d.x, d.y) / d.z; return linZ(texture(tFrontDepth, frontUV(d)).r, aNear, aFar) * sqrt(1.0 + dot(tn, tn)); }
+  float c; vec2 uv = atlasUV(d, 0.0, c); return linZ(texture(tAtlasDepth, uv).r, aNear, aFar) / c;
 }
 vec3 blurScene(vec2 a, float rDeg){
-  float rpx = rDeg * texPPD();
-  if (rpx < 0.6) return sceneAt(a, 0.0);
-  float lod = clamp(log2(rpx) - 0.6, 0.0, maxLod);
-  vec3 acc = sceneAt(a, lod);
-  for (int i = 0; i < 12; i++) acc += sceneAt(a + P[i] * rDeg, lod);
+  float foot = 0.7 / outPPD();                                          // не мельче пикселя экрана (без ряби на сжатой периферии)
+  if (rDeg < foot) return sceneR(a, foot);
+  float r2 = rDeg * 0.6;
+  vec3 acc = sceneR(a, r2);
+  for (int i = 0; i < 12; i++) acc += sceneR(a + P[i] * rDeg, r2);
   return acc / 13.0;
 }
 float holoPPD(){ return 2.0 * res.y / degrees(2.0 * atan(tanV)); }
@@ -223,6 +239,7 @@ float sdLens(vec2 e){                                                   // ли�
 }
 
 // общие для обоих глаз величины (вычисляются в main)
+float gNF;
 vec2 gA; float gEcc; float gR; vec2 gSm; float gH; float gHH; float gExpo; vec3 gScat; vec3 gGhost; float gDesat; float gMeso; float gRH; float gOcc;
 
 vec4 eyeView(float s){
@@ -233,8 +250,7 @@ vec4 eyeView(float s){
   vec2 aS = gA + vec2(s * gH, 0.0);
   vec3 col = blurScene(aS, gR);
   if (length(gSm) > 0.15) {
-    float lod = clamp(log2(max(1.0, gR * texPPD())), 0.0, maxLod);
-    vec3 m = col; for (int i = 1; i <= 6; i++) m += sceneAt(aS + gSm * (float(i) / 6.0 - 0.5), lod);
+    vec3 m = col; for (int i = 1; i <= 6; i++) m += sceneR(aS + gSm * (float(i) / 6.0 - 0.5), max(gR, 0.7 / outPPD()));
     col = m / 7.0;
   }
   vec3 lin = col * gExpo + gScat;
@@ -287,12 +303,13 @@ vec4 eyeView(float s){
 
 void main(){
   if (dbg > 0.5) {
-    gl_FragColor = vec4(toSRGB(aces(fieldMode < 0.5 ? texture(tReal, vUv).rgb : texture(tAtlas, vUv).rgb)), 1.0);
+    gl_FragColor = vec4(toSRGB(aces(fieldMode < 0.5 ? texture(tReal, vUv).rgb : dbg < 1.5 ? texture(tFront, vUv).rgb : texture(tAtlas, vUv).rgb)), 1.0);
     return;
   }
   gA = angOfScreen(vUv);
   vec3 dir = dirOf(gA);
   gEcc = degrees(acos(clamp(dir.z, -1.0, 1.0)));
+  gEccG = gEcc;
   // ---- общее: расстояние, расфокусировка, острота периферии (MAR растёт линейно), смаз, диспаратность ----
   float d = max(distAt(gA), 0.05);
   float dD = max(0.0, abs(1.0 / d - focusD) - 0.25);                   // глубина резкости глаза ≈ ±0,25 дптр
@@ -302,10 +319,13 @@ void main(){
   gR = sqrt(rDef * rDef + rPer * rPer) + fat;
   gSm = vec2(-angVel.x, angVel.y) * degrees(0.012);                     // ≈ 12 мс «выдержки» сетчатки
   float panum = 0.12 + 0.065 * gEcc;                                    // зона слияния Panum, град
+  // физиологическое двоение (только для демонстрации, по умолчанию выключено): мозг подавляет второе
+  // изображение — несливаемое берётся почти целиком от ведущего глаза, второе — бледный «призрак»
   float h = 0.5 * degrees(ipdM * (1.0 / d - vergD));
-  gH = h * smoothstep(0.5 * panum, panum, abs(2.0 * h)) * diplo;
-  float hh = 0.5 * degrees(ipdM * (dispDistD - vergD));
-  gHH = hh * smoothstep(0.5 * panum, panum, abs(2.0 * hh)) * diplo;
+  float nf = smoothstep(0.5 * panum, panum, abs(2.0 * h)) * diplo;
+  gH = h * nf;
+  gHH = 0.0;                                                            // окна стапеля рисуются стерео на своей глубине — сливаются
+  gNF = nf;
   gRH = degrees(pupilMM * 1e-3 * max(0.0, abs(dispD - focusD) - 0.25)) + fat;
   // ---- адаптация: глаз видит мир через линзы (в режиме полного поля часть поля — мимо линз) ----
   float adapted = texture(tLum, vec2(0.5)).r * mix(1.0, transmit, glassesOn * lensFrac);
@@ -323,7 +343,8 @@ void main(){
   // переносица и нос видны лишь «призраком»
   gOcc = 0.0; vec4 cl = eyeOn.x > 0.0 ? eyeView(-1.0) : vec4(0.0); float ol = gOcc;
   gOcc = 0.0; vec4 cr = eyeOn.y > 0.0 ? eyeView(1.0) : vec4(0.0); float orr = gOcc;
-  float wl = cl.a * eyeOn.x * (1.0 - domR) * (1.0 - 0.8 * ol), wr = cr.a * eyeOn.y * domR * (1.0 - 0.8 * orr);
+  float dom = mix(domR, domR >= 0.5 ? 0.88 : 0.12, gNF);
+  float wl = cl.a * eyeOn.x * (1.0 - dom) * (1.0 - 0.8 * ol), wr = cr.a * eyeOn.y * dom * (1.0 - 0.8 * orr);
   vec3 c = (cl.rgb * wl + cr.rgb * wr) / max(wl + wr, 1e-4);
   float vis = max(cl.a * eyeOn.x, cr.a * eyeOn.y);
   c *= vis;
@@ -380,8 +401,9 @@ export class VisionRenderer {
         time: 0, focusD: 0.5, pupilMM: 4, dispD: 0.25, glassesOn: 0, dispOn: 0, transmit: 0.9, dispBright: 1, blink: 0, flash: 0,
         angVel: new THREE.Vector2(), fatigueBlur: 0, age: 30, dirt: 0.1, ipdErr: 0, disp: new THREE.Vector4(0, -2, 22, 12), maxLod: 7,
         exposureBias: 1, bootFade: 1, dbg: 0, dispNits: DISPLAY.nits, sharpen: 0.45, cdPerUnit: CD_PER_UNIT, ghostK: 0.05, edgeSoft: 0.45,
-        tAtlas: null, tAtlasDepth: null, fieldMode: 0, fieldSpan: new THREE.Vector2(220, 140), atlasFace: 512, aNear: 0.03, aFar: 80,
-        vergD: 0.5, ipdM: IPD_MM / 1000, domR: 0.55, eyeOn: new THREE.Vector2(1, 1), diplo: 1, overlay: 0,
+        tAtlas: null, tAtlasDepth: null, tFront: null, tFrontDepth: null, frontTan: Math.tan(Math.PI * 35 / 180), frontN: 1024, cortS0: 20, cortC: CORTICAL_C,
+        fieldMode: 0, fieldSpan: new THREE.Vector2(220, 140), atlasFace: 512, aNear: 0.03, aFar: 80,
+        vergD: 0.5, ipdM: IPD_MM / 1000, domR: 0.55, eyeOn: new THREE.Vector2(1, 1), diplo: 0, overlay: 0,
         lensA: new THREE.Vector4(48, 58, 20, 55), frameA: new THREE.Vector4(12, 64, -6, 10), fieldA: new THREE.Vector4(FIELD.temporal, FIELD.nasal, FIELD.up, FIELD.down),
         lensFrac: 1, dispDistD: 1 / DISPLAY.distM,
       }).map(([k, v]) => [k, { value: v }])) });
@@ -406,14 +428,31 @@ export class VisionRenderer {
     this.fieldMode = !!on;
     this.u.fieldMode.value = on ? 1 : 0;
     this.u.lensFrac.value = on ? 0.75 : 1;
-    this.lumMat.uniforms.uvScale.value.set(on ? 1 / 3 : 1, on ? 1 / 2 : 1);
+    this.lumMat.uniforms.uvScale.value.set(1, 1);
     if (on) this.ensureAtlas();
   }
 
+  /** Качество полного поля (0,3…1): доля разрешения центральной камеры и граней куба — для слабых видеокарт. */
+  setQuality(qv) {
+    const v = Math.max(0.3, Math.min(1, qv));
+    if (Math.abs(v - (this.quality ?? 1)) < 0.02) return;
+    this.quality = v;
+    if (this.fieldMode) this.ensureAtlas();
+  }
+
   ensureAtlas() {
-    const H = this.size?.H || 900;
-    // пикселей на грань 90°: как у экрана в равнопромежуточной проекции (с запасом 15 %)
-    const face = Math.min(1280, Math.max(320, Math.round(((H / this.u.fieldSpan.value.y) * 90 * 1.15) / 16) * 16));
+    const s0 = this.u.cortS0.value * (this.quality ?? 1);
+    // центральная камера ±35°: пикселей столько, чтобы в центре было ≥ 1 пикс. текстуры на пиксель экрана
+    const N = Math.min(2048, Math.max(512, Math.round((s0 * 57.2958 * 2 * this.u.frontTan.value) / 16) * 16));
+    if (!this.front || this.frontN !== N) {
+      this.front?.dispose();
+      this.front = new THREE.WebGLRenderTarget(N, N, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
+      this.front.depthTexture = new THREE.DepthTexture(N, N);
+      this.front.depthTexture.type = THREE.UnsignedIntType;
+      this.frontN = N; this.u.frontN.value = N;
+    }
+    // грани куба — для периферии: там масштаб экрана ≤ s0 / (1 + 35/25)
+    const face = Math.min(1024, Math.max(320, Math.round(((s0 / (1 + 35 / CORTICAL_C)) * 90 * 1.15) / 16) * 16));
     if (this.atlas && this.atlasFace === face) return;
     this.atlas?.dispose();
     this.atlas = new THREE.WebGLRenderTarget(face * 3, face * 2, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
@@ -427,10 +466,16 @@ export class VisionRenderer {
   renderAtlas() {
     const { renderer, scene, camera, atlas } = this;
     const fc = this.faceCam, F = this.atlasFace;
-    fc.near = camera.near; fc.far = camera.far; fc.updateProjectionMatrix();
-    fc.position.copy(camera.position);
-    fc.layers.set(LAYER_REAL); fc.layers.enable(LAYER_LABEL);
     const shadowAuto = renderer.shadowMap.autoUpdate;
+    // центр ±35° — отдельной чёткой камерой (квадрат, 70°)
+    fc.fov = 2 * THREE.MathUtils.radToDeg(Math.atan(this.u.frontTan.value)); fc.aspect = 1;
+    fc.near = camera.near; fc.far = camera.far; fc.updateProjectionMatrix();
+    fc.position.copy(camera.position); fc.quaternion.copy(camera.quaternion); fc.updateMatrixWorld();
+    fc.layers.set(LAYER_REAL); fc.layers.enable(LAYER_LABEL);
+    renderer.setRenderTarget(this.front);
+    renderer.render(scene, fc);
+    renderer.shadowMap.autoUpdate = false;
+    fc.fov = 90; fc.updateProjectionMatrix();
     renderer.setRenderTarget(atlas);
     atlas.scissorTest = true;
     this.faceQ.forEach((q, i) => {
@@ -439,7 +484,6 @@ export class VisionRenderer {
       fc.quaternion.copy(camera.quaternion).multiply(q);
       fc.updateMatrixWorld();
       renderer.setRenderTarget(atlas);
-      if (i === 1) renderer.shadowMap.autoUpdate = false;            // тени считаем один раз за кадр
       renderer.render(scene, fc);
     });
     renderer.shadowMap.autoUpdate = shadowAuto;
@@ -454,11 +498,12 @@ export class VisionRenderer {
    */
   screenToCamNdc(ndc) {
     if (!this.fieldMode) return ndc;
-    const span = this.u.fieldSpan.value;
-    const tx = ndc.x * 0.5 * span.x, ty = ndc.y * 0.5 * span.y, r = Math.hypot(tx, ty);
+    const { W, H } = this.size;
+    const px = ndc.x * 0.5 * W, py = ndc.y * 0.5 * H, r = Math.hypot(px, py);
     if (r < 1e-6) return new THREE.Vector2(0, 0);
-    const k = Math.PI / 180, sr = Math.sin(r * k) / r;
-    const v = new THREE.Vector3(tx * sr, ty * sr, -Math.cos(r * k));     // СК камеры three: вперёд — −Z
+    const s0 = this.u.cortS0.value, c = this.u.cortC.value;
+    const th = c * (Math.exp(r / (s0 * c)) - 1) * (Math.PI / 180);
+    const v = new THREE.Vector3((px / r) * Math.sin(th), (py / r) * Math.sin(th), -Math.cos(th));   // СК камеры three: вперёд — −Z
     if (v.z >= -0.05) return null;
     v.applyMatrix4(this.camera.projectionMatrix);
     return new THREE.Vector2(v.x, v.y);
@@ -486,9 +531,8 @@ export class VisionRenderer {
   setSize(w, h, pr) {
     const W = Math.floor(w * pr), H = Math.floor(h * pr);
     this.size = { W, H };
-    // полное поле: по вертикали ±70°, по горизонтали — сколько поместится (не меньше 220°)
-    const dpp = Math.max(220 / W, 140 / H);
-    this.u.fieldSpan.value.set(W * dpp, H * dpp);
+    // полное поле: ±100° по горизонтали точно в ширину экрана, центр — крупно (≈ W/80 пикс/°)
+    this.u.cortS0.value = corticalFit(W, 100);
     if (this.fieldMode) this.ensureAtlas();
     this.rtReal.setSize(W, H);
     this.rtHolo.setSize(Math.min(4096, W * 2), Math.min(4096, H * 2));      // голограммы — с суперсэмплингом ×2: чётче текст окон
@@ -549,8 +593,8 @@ export class VisionRenderer {
     scene.background = bg; scene.environment = env;
     // 3) адаптация к яркости
     const prev = this.lum[this.lumIdx], next = this.lum[1 - this.lumIdx];
-    this.lumMat.uniforms.tReal.value = this.fieldMode ? this.atlas.texture : this.rtReal.texture;
-    this.lumMat.uniforms.lod.value = this.fieldMode ? Math.max(0, Math.floor(Math.log2(this.atlasFace * 3)) - 4) : this.lodReal;
+    this.lumMat.uniforms.tReal.value = this.fieldMode ? this.front.texture : this.rtReal.texture;
+    this.lumMat.uniforms.lod.value = this.fieldMode ? Math.max(0, Math.floor(Math.log2(this.frontN)) - 4) : this.lodReal;
     this.lumMat.uniforms.tPrev.value = prev.texture;
     this.lumMat.uniforms.dt.value = dt;
     this.lumMat.uniforms.first.value = this.first;
@@ -562,8 +606,8 @@ export class VisionRenderer {
     // 4) итог: глаз + очки
     Object.assign(u.tReal, { value: this.rtReal.texture });
     u.tDepth.value = this.rtReal.depthTexture;
-    if (this.fieldMode) { u.tAtlas.value = this.atlas.texture; u.tAtlasDepth.value = this.atlas.depthTexture; }
-    u.maxLod.value = this.fieldMode ? Math.floor(Math.log2(this.atlasFace * 3)) - 1 : this.maxLodReal;
+    if (this.fieldMode) { u.tAtlas.value = this.atlas.texture; u.tAtlasDepth.value = this.atlas.depthTexture; u.tFront.value = this.front.texture; u.tFrontDepth.value = this.front.depthTexture; }
+    u.maxLod.value = this.fieldMode ? Math.floor(Math.log2(Math.max(this.frontN, this.atlasFace * 3))) - 1 : this.maxLodReal;
     u.tHolo.value = this.rtHolo.texture;
     u.tLum.value = next.texture;
     u.tanV.value = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));

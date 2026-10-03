@@ -53,3 +53,14 @@ describe('развёртка куба', () => {
     const c = equidistantToAngles(100, 0); expect(c.az).toBeCloseTo(100);
   });
 });
+
+describe('проекция «как воспринимает человек»', async () => {
+  const { corticalFit, corticalR, corticalTheta } = await import('../src/galley/binocular.js');
+  it('центр крупнее, чем в равнопромежуточной, ±100° помещается по ширине', () => {
+    const s0 = corticalFit(1600);
+    expect(corticalR(100, s0)).toBeCloseTo(800, 3);
+    expect(s0).toBeGreaterThan(18);                                   // ≈ 20 пикс/° в центре против ≈ 6 в равнопромежуточной
+    expect(1600 / 249).toBeLessThan(s0 / 3);
+    expect(corticalTheta(corticalR(37, s0), s0)).toBeCloseTo(37, 6);
+  });
+});

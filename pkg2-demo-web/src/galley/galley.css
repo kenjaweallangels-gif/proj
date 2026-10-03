@@ -60,3 +60,4 @@ body.galley #view { position: fixed; inset: 0; width: 100vw; height: 100vh; disp
 .card .devs button small { font-size: 11px; opacity: .75; }
 .card .note.dev { font-size: 12.5px; line-height: 1.45; margin: 6px 0 12px; }
 .card .note.dev a { color: var(--g-acc); }
+.start .start-btns.small { margin-top: 0; } .start .start-btns.small button { font: 500 13px var(--sans); padding: 7px 12px; }

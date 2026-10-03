@@ -40,20 +40,23 @@ const cases = [
   // поле зрения: центр 72° (перспектива) и один глаз
   ['galley_narrow_072', 'galley.html?step=090.02&field=0'],
   ['galley_mono_right', 'galley.html?intro=0&vision=monoR'],
+  // выбор режима на старте: ручной — стоит у входа, управление с первого шага
+  ['galley_manual', 'galley.html#manual'],
 ];
 let failed = 0;
-for (const [name, qs] of cases) {
+const only = process.env.SMOKE_ONLY?.split(',');            // SMOKE_ONLY=galley_manual,tablet — только эти сценарии
+for (const [name, qs] of cases.filter(([n]) => !only || only.includes(n))) {
   const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
   const errors = [];
   // шрифты Google в закрытой сети цеха не грузятся — это не ошибка демо (есть системный запасной шрифт)
   const external = (u) => /fonts\.(googleapis|gstatic)\.com/.test(u || '');
   page.on('console', (m) => { if (m.type() === 'error' && !external(m.location()?.url)) errors.push(`${m.text()} ${m.location()?.url ?? ''}`); });
   page.on('pageerror', (e) => errors.push(String(e)));
-  await page.goto(`http://localhost:${PORT}/${qs}`);
+  await page.goto(`http://localhost:${PORT}/${qs}`, { timeout: 120000 });   // без GPU полное поле грузится долго
   await page.waitForFunction(() => window.__demo && 'ready' in window.__demo, null, { timeout: 180000 });
   await page.waitForTimeout(2500);
   const st = await page.evaluate(() => ({ ready: window.__demo.ready, step: window.__demo.player?.index ?? window.__demo.run?.index, err: window.__demo.error }));
-  await page.screenshot({ path: `test-results/${name}.png` });
+  await page.screenshot({ path: `test-results/${name}.png`, timeout: 120000 });
   const ok = st.ready && !errors.length;
   if (!ok) failed++;
   console.log(`${ok ? 'OK  ' : 'FAIL'} ${name} шаг=${(st.step ?? -1) + 1} ${st.err ?? ''} ${errors.slice(0, 3).join(' | ')}`);

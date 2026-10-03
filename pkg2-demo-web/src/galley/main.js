@@ -37,6 +37,8 @@ for (const t of location.hash.slice(1).split(/[-_.~]/).filter(Boolean)) {      /
   else if (t === 'free') { q.set('auto', '1'); q.set('autocam', 'free'); }
   else if (t === 'corner') q.set('corner', '1');
   else if (t === 'narrow') q.set('field', '0');
+  else if (t === 'autonomous') q.set('mode', 'auto');
+  else if (t === 'manual') q.set('mode', 'manual');
 }
 const $ = (id) => document.getElementById(id);
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -157,12 +159,15 @@ async function main() {
   // ---------- сборщик, глаз, очки ----------
   const player = new Player(cam, canvas, world.colliders);
   // зрение: два глаза (оба / только левый / только правый), ведущий глаз, межзрачковое расстояние, двоение
-  const BINO = { eyes: 'both', domEye: 'R', ipd: 64, diplo: 1 };
+  const BINO = { eyes: 'both', domEye: 'R', ipd: 64, diplo: 0 };      // двоение — только как демонстрация
   const params = { light: 1, ...BINO, ...(PRESETS[q.get('vision')] || PRESETS.norm) };
   const eye = new Eye(params);
   const vision = new VisionRenderer(renderer, scene, cam);
   vision.ipdMM = params.ipd;
+  vision.quality = Number(q.get('q')) || (navigator.webdriver ? 0.35 : 1);   // в проверках без GPU — сразу пониже
   vision.setFieldMode(q.get('field') !== '0');                     // по умолчанию — полное поле ≈ 200°
+  // адаптивное качество полного поля: долгий кадр (> 90 мс) несколько секунд подряд — разрешение ниже
+  const perf = { ema: 0.016, slow: 0 };
   const sim = { glasses: 0, display: 0, boot: 0, dimLevel: params.dim, dimMode: q.get('vision') === 'dimmed' ? 'manual' : 'auto', bright: 1, occlusion: false, tts: true,
     device: deviceById.get(q.get('glasses')) || deviceById.get(DEFAULT_DEVICE), wearMin: 0 };
   const STAND = V(0, 1.68, 3.4);            // место сборщика у стапеля: для него задана раскладка окон
@@ -236,12 +241,17 @@ async function main() {
     <div class="start pe" id="start"><div><b>Участок сборки монументов · КМ-2</b>
       Сборщик приходит на участок, надевает AR-очки и подходит к стапелю.
       <span class="start-dev">Очки: <select id="sdev" aria-label="Модель очков">${DEVICES.map((d) => `<option value="${d.id}">${d.brand} ${d.name} — ${d.fovDiag}°, ${d.tracking === '6dof' ? '6DoF' : '3DoF'}</option>`).join('')}</select></span>
-      <span class="start-btns"><button id="sauto" class="primary">▶ Имитация: камера ведёт</button><button id="sfree" class="primary">▶ Имитация: хожу сам</button><button id="sself">Управлять самому</button></span>
+      <span class="start-btns"><button id="sauto" class="primary">▶ Автономно: от входа до конца сборки</button><button id="sman" class="primary">🎮 Ручной режим сразу</button></span>
+      <span class="start-btns small"><button id="sfree">Сразу к стапелю: сборка идёт сама, хожу сам</button><button id="sself">Сразу к стапелю, вручную</button></span>
       <small><b style="display:inline;font-size:13px">WASD</b> — ходьба, мышь — обзор, <b style="display:inline;font-size:13px">I</b> — имитация / пауза, <b style="display:inline;font-size:13px">K</b> — другие очки,
       <b style="display:inline;font-size:13px">Enter</b> — пропустить вступление, <b style="display:inline;font-size:13px">H</b> — все клавиши.</small></div></div>`;
   const say = (t) => { $('subs').textContent = t; };
+  // захват мыши — только по жесту пользователя; отказ браузера не считается ошибкой
+  const lockPointer = () => { if (navigator.userActivation && !navigator.userActivation.isActive) return; try { canvas.requestPointerLock?.()?.catch?.(() => {}); } catch { /* нет жеста */ } };
   const prompt = (t) => { $('prompt').textContent = t; };
-  const scen = { state: 'intro', t: 0 };
+  // режим сборщика: auto — сам идёт от входа к рабочему месту, надевает очки, идёт к стапелю и собирает до конца;
+  // manual — управление с первого шага (WASD, E — очки, подойти к стапелю); выбор — до начала движения
+  const scen = { state: 'choose', t: 0, mode: null };
 
   function finishIntro() {
     scen.state = 'free';
@@ -263,19 +273,43 @@ async function main() {
     say('Очки включены. Сборщик идёт к стапелю СТ-3 — система ищет метки для привязки');
     player.walkPath([[-7.2, -2.4], [-5.6, 0.6], [-2.2, 3.5], [0, 3.4]], { lookAt: [0, 1.35, 0.6], onDone: () => { scen.state = 'align'; scen.t = 0; } });
   }
+  function deskReached() {
+    scen.state = 'desk'; scen.t = 0;
+    say('Рабочее место: терминал системы, инструмент, зарядная станция AR-очков');
+    prompt('E — взять и надеть AR-очки');
+  }
+  /** Начать смену: auto — автономно до конца сборки, manual — вручную с входа, intro — только вступление (проверки). */
+  function startScenario(mode) {
+    if (scen.state !== 'choose') return;
+    scen.mode = mode === 'manual' ? 'manual' : 'auto';
+    $('start').hidden = true;
+    say('07:28. Сборщик приходит на участок сборки монументов (цех 12)');
+    if (scen.mode === 'manual') {
+      scen.state = 'walkIn'; scen.t = 0;
+      player.mode = 'walk'; player.path = null;
+      prompt('Ручной режим: WASD — идти, мышь — смотреть. Рабочее место — впереди слева, у зарядной станции очков');
+      lockPointer();
+    } else {
+      scen.state = 'intro';
+      player.walkPath([[-15, 6.5], [-10, 6.2], [-7.6, 0.5], [-7.2, -3.3]], { speed: 1.3, lookAt: [dx, dy, dz], onDone: deskReached });
+      if (mode === 'auto') { auto.cam = 'guide'; auto.start(); }       // сборка начнётся сама после привязки к стапелю
+    }
+    pushState(true);
+  }
   if (q.get('intro') === '0' || q.has('step')) finishIntro();
   else {
     const [ex, ez] = PLACES.entrance.pos;
     player.place(ex, ez, -Math.PI / 2, -0.05);
-    say('07:28. Сборщик приходит на участок сборки монументов (цех 12)');
-    player.walkPath([[-15, 6.5], [-10, 6.2], [-7.6, 0.5], [-7.2, -3.3]], { speed: 1.3, lookAt: [dx, dy, dz], onDone: () => {
-      scen.state = 'desk'; scen.t = 0; say('Рабочее место: терминал системы, инструмент, зарядная станция AR-очков'); prompt('E — взять и надеть AR-очки');
-    } });
+    player.mode = 'auto';                                               // стоит у входа, пока не выбран режим
+    say('Выберите режим: автономно (от входа до конца сборки) или ручной');
   }
 
   function updateScenario(dt) {
     scen.t += dt;
-    if (scen.state === 'desk' && (scen.t > 3.5 && q.get('autoplay') !== '0')) startPutOn();
+    if (scen.state === 'walkIn') {                                       // вручную: дошёл до стола — можно брать очки
+      if (Math.hypot(player.pos.x - dx, player.pos.z - dz) < 1.7) deskReached();
+    }
+    if (scen.state === 'desk' && scen.mode !== 'manual' && (scen.t > 3.5 && q.get('autoplay') !== '0')) startPutOn();
     if (scen.state === 'putOn') {
       const k = Math.min(1, scen.t / 2.6), e = k * k * (3 - 2 * k);
       // очки поднимаются со станции к лицу и разворачиваются дужками к сборщику
@@ -293,8 +327,15 @@ async function main() {
     if (scen.state === 'boot') {
       sim.display = 1;
       sim.boot = Math.min(1, scen.t / 2);
-      if (scen.t > 2.5) walkToJig();
+      if (scen.t > 2.5) {
+        if (scen.mode === 'manual') {
+          scen.state = 'goJig'; scen.t = 0;
+          say('Очки включены. Подойдите к стапелю СТ-3 — система найдёт метки для привязки');
+          prompt('Стапель — прямо по проходу, ≈ 9 м');
+        } else walkToJig();
+      }
     }
+    if (scen.state === 'goJig' && Math.hypot(player.pos.x, player.pos.z) < 4.2) { scen.state = 'align'; scen.t = 0; prompt(''); }
     if (scen.state === 'align' && sim.device.tracking === '3dof') {
       say(`${sim.device.brand} ${sim.device.name}: трекинг 3DoF — очки не видят стапель, привязки к меткам нет. Окна выставлены вокруг головы.`);
       if (scen.t > 2.2) { app.aligned = true; mgr.setEnabled(true); scen.state = 'free'; setTimeout(() => say(''), 7000); }
@@ -330,18 +371,22 @@ async function main() {
   $('sdev').value = sim.device.id;
   $('sdev').onclick = (e) => e.stopPropagation();
   $('sdev').onchange = (e) => setDevice(e.target.value);
-  $('sauto').onclick = (e) => { e.stopPropagation(); $('start').hidden = true; auto.cam = 'guide'; auto.start(); };
-  // свободное движение: захват мыши для обзора, сборка идёт сама, алгоритм — в углу
-  $('sfree').onclick = (e) => { e.stopPropagation(); $('start').hidden = true; auto.setCam('free'); auto.start(); canvas.requestPointerLock?.(); };
-  $('start').addEventListener('click', () => { $('start').hidden = true; canvas.requestPointerLock?.(); });
+  $('sauto').onclick = (e) => { e.stopPropagation(); startScenario('auto'); };
+  $('sman').onclick = (e) => { e.stopPropagation(); startScenario('manual'); };
+  // сразу к стапелю: свободное движение, сборка идёт сама, алгоритм — в углу
+  $('sfree').onclick = (e) => { e.stopPropagation(); $('start').hidden = true; if (scen.state !== 'free') finishIntro(); auto.setCam('free'); auto.start(); lockPointer(); };
+  $('sself').onclick = (e) => { e.stopPropagation(); $('start').hidden = true; if (scen.state !== 'free') finishIntro(); lockPointer(); };
+  // щелчок мимо кнопок — ручной режим
+  $('start').addEventListener('click', () => { if (scen.state === 'choose') startScenario('manual'); else { $('start').hidden = true; lockPointer(); } });
   canvas.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
+    if (scen.state === 'choose') { startScenario('manual'); return; }
     $('start').hidden = true;
     const ndc = pointerNdc();
     if (mgr.startDrag(ndc)) { /* перетаскивание листа КД */ }
     const h = mgr.pointer(ndc, 'click');
     if (h?.used) return;
-    if (!h && !player.locked && q.get('debug') !== 'orbit') canvas.requestPointerLock?.();
+    if (!h && !player.locked && q.get('debug') !== 'orbit') lockPointer();
   });
   addEventListener('mouseup', () => mgr.endDrag());
   canvas.addEventListener('wheel', (e) => { if (mgr.wheel(pointerNdc(), e.deltaY)) e.preventDefault(); }, { passive: false });
@@ -349,7 +394,7 @@ async function main() {
     if (mgr.key(e)) { e.preventDefault(); player.keys.clear(); player.enabled = !mgr.focus; return; }
     player.enabled = true;
     const k = e.code;
-    if (scen.state !== 'free' && (k === 'Enter' || k === 'Space')) { finishIntro(); return; }
+    if (scen.state !== 'free' && (k === 'Enter' || k === 'Space')) { $('start').hidden = true; finishIntro(); return; }
     if (k === 'KeyE') {
       if (scen.state === 'desk') { startPutOn(); return; }
       const hit = pickReal(pointerNdc());
@@ -651,7 +696,7 @@ async function main() {
       <div class="presets">${[['both', 'Оба глаза'], ['L', 'Только левый'], ['R', 'Только правый']].map(([k, t]) => `<button data-eyes="${k}" aria-pressed="${params.eyes === k}">${t}</button>`).join('')}
         ${[['R', 'Ведущий правый'], ['L', 'Ведущий левый']].map(([k, t]) => `<button data-dom="${k}" aria-pressed="${params.domEye === k}">${t}</button>`).join('')}</div>
       ${sl('ipd', 'Межзрачковое расстояние, мм', 54, 74, 1)}
-      <label>Физиологическое двоение (вне зоны слияния Panum)<input type="checkbox" id="r_diplo" ${params.diplo ? 'checked' : ''}></label>
+      <label>Показать физиологическое двоение (мозг его подавляет — по умолчанию выкл.)<input type="checkbox" id="r_diplo" ${params.diplo ? 'checked' : ''}></label>
       <div class="note">Апертура ${dv.name} для каждого глаза: к носу ${vision.aperture.nasal.toFixed(0)}°, к виску ${vision.aperture.temporal.toFixed(0)}°,
         вверх ${vision.aperture.up.toFixed(0)}°, вниз ${vision.aperture.down.toFixed(0)}° (поле глаза: к носу 60°, к виску 100°, вверх 58°, вниз 72°).
         Вне линз — открытая периферия без затемнения, рамка и дужки — размытые, у самого глаза.</div>
@@ -731,6 +776,7 @@ async function main() {
     phaseLabel() {
       if (this.cam === 'free' && this.phase === 'show') return `переход ${run.step.id} — голограмма (свободно)`; return { show: `переход ${run.step.id} — голограмма`, move: 'подход к месту', act: `переход ${run.step.id} — выполнение`, fly: `установка ${this.fly?.ids?.join(', ') || ''}`, wait: 'выдержка (ускорено)' }[this.phase] || ''; },
     start() {
+      if (scen.state === 'choose') { startScenario('auto'); return; }
       if (!this.on) { this.phase = 'show'; this.t = 0; }
       this.on = true; this.paused = false;
       if (scen.state === 'free') this.begin();
@@ -896,7 +942,13 @@ async function main() {
   const lights = [world.hall.key, world.hall.task];
   const baseI = lights.map((l) => l.intensity);
   renderer.setAnimationLoop((now) => {
-    const dt = Math.min(0.1, Math.max(0, (now - last) / 1000)); last = now;
+    const rawDt = Math.max(0, (now - last) / 1000);
+    const dt = Math.min(0.1, rawDt); last = now;
+    perf.ema += (Math.min(rawDt, 1) - perf.ema) * 0.1;
+    if (vision.fieldMode && frame > 30) {
+      perf.slow = perf.ema > 0.09 ? perf.slow + rawDt : 0;
+      if (perf.slow > 3 && (vision.quality ?? 1) > 0.31) { vision.setQuality((vision.quality ?? 1) * 0.75); perf.slow = 0; app.notify(`Полное поле: качество снижено до ${Math.round(vision.quality * 100)} % (слабая видеокарта)`, 3); }
+    }
     const t = now / 1000;
     if (debug) orbit.update(); else player.update(dt);
     updateScenario(dt);
@@ -960,12 +1012,18 @@ async function main() {
   });
   setDevice(sim.device.id, { quiet: true });
   updateBar();
-  if (q.get('auto') === '1') { $('start').hidden = true; if (auto.cam === 'free') auto.setCam('free'); auto.start(); }
+  if (q.get('auto') === '1') { $('start').hidden = true; if (scen.state === 'choose') finishIntro(); if (auto.cam === 'free') auto.setCam('free'); auto.start(); }
+  // режим из адреса (#autonomous / #manual, ?mode=); в проверках браузера — вступление как раньше
+  if (scen.state === 'choose') {
+    if (q.get('mode') === 'auto' || q.get('mode') === 'manual') startScenario(q.get('mode'));
+    else if (navigator.webdriver || q.has('shot')) startScenario('intro');
+  }
   if (q.get('corner') === '1') cornerAlgo(true, true);
   window.__demo = {
     ready: true, scene, world, run, cam, player, eye, vision, app, mgr, panels, viz, finishIntro, inspectAtGaze, sim, params, auto, setDevice, act,
     // для проверок: перескочить к этапу сценария
     jump(state) {
+      if (scen.state === 'choose') { scen.state = 'intro'; scen.mode = 'auto'; }
       if (state === 'desk') { player.path = null; player.mode = 'walk'; player.place(-7.2, -3.3, Math.atan2(-(dx + 7.2), -(dz + 3.3)), -0.5); startPutOn(); }
       if (state === 'toJig') { glasses.visible = false; sim.glasses = 1; sim.display = 1; sim.boot = 1; walkToJig(); }
     },

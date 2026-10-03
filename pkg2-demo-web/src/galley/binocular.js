@@ -102,3 +102,15 @@ export function equidistantToAngles(tx, ty) {
   const d = [tx * s, ty * s, Math.cos(r * k)];
   return { az: (Math.atan2(d[0], d[2]) * 180) / Math.PI, el: (Math.atan2(d[1], Math.hypot(d[0], d[2])) * 180) / Math.PI };
 }
+
+/**
+ * Проекция «как воспринимает человек» для полного поля на мониторе: центр — в крупном натуральном масштабе
+ * (≈ как вид ~80–90° в игре), к периферии масштаб плавно падает, M(θ) = s0 / (1 + θ/θc) — по образцу коркового
+ * увеличения зрительной коры (там θc ≈ 0,75°; здесь смягчено до θc = 25°, иначе центр занял бы весь экран).
+ * Радиус на экране r(θ) = s0·θc·ln(1 + θ/θc). s0 подбирается так, чтобы ±maxDeg по горизонтали ровно
+ * помещались в ширину экрана.
+ */
+export const CORTICAL_C = 25;
+export function corticalFit(widthPx, maxDeg = 100, c = CORTICAL_C) { return widthPx / 2 / (c * Math.log(1 + maxDeg / c)); }
+export function corticalR(theta, s0, c = CORTICAL_C) { return s0 * c * Math.log(1 + theta / c); }
+export function corticalTheta(r, s0, c = CORTICAL_C) { return c * (Math.exp(r / (s0 * c)) - 1); }
