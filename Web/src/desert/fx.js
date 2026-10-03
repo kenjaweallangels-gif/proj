@@ -22,6 +22,47 @@ vec3 rkGN(vec2 p){
 }
 `;
 
+// ---------------------------------------------------------------- песок бури: полосы, летящие мимо камеры
+const SAND_VERT = /* glsl */`
+attribute vec4 aSeed;
+attribute vec4 aSeed2;
+uniform float uR;
+uniform float uK;
+varying vec2 vUv;
+varying float vA;
+varying vec3 vWP;
+varying vec3 vCol;
+${GLSL_COMMON}
+void main(){
+  vec2 w = normalize(uWind);
+  float spd = (0.7 + 0.6 * aSeed.w) * (uWindSpeed * 0.95 + 2.0);
+  vec3 dirW = normalize(vec3(w.x, -0.04, w.y));
+  vec3 base = aSeed.xyz * 1000.0 + dirW * uTime * spd;
+  base.y += sin(uTime * 0.8 + aSeed.x * 40.0) * 0.7;
+  vec3 rel = mod(base - cameraPosition + uR, 2.0 * uR) - uR;
+  rel.y *= 0.3;
+  vec3 center = cameraPosition + rel;
+  vec3 toCam = normalize(cameraPosition - center);
+  vec3 up = normalize(cross(toCam, dirW));
+  float len = (0.8 + 2.6 * aSeed2.x) * (0.6 + uWindSpeed * 0.04);
+  float hgt = 0.05 + 0.22 * aSeed2.y;
+  vec3 wp = center + dirW * position.x * len + up * position.y * hgt;
+  float dist = length(rel);
+  vA = uK * 0.7 * (0.2 + 0.8 * aSeed2.z) * smoothstep(0.8, 6.0, dist) * (1.0 - smoothstep(uR * 0.55, uR, dist));
+  float lit = rkClawShade(center);
+  vCol = vec3(0.9, 0.66, 0.4) * (uKeyColor * 0.14 * lit + uAmbient * 0.34) + uFogColor * 0.22;
+  vUv = position.xy; vWP = wp;
+  gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
+}`;
+const SAND_FRAG = /* glsl */`
+varying vec2 vUv; varying float vA; varying vec3 vWP; varying vec3 vCol;
+void main(){
+  float a = (1.0 - smoothstep(0.0, 1.0, abs(vUv.x))) * (1.0 - smoothstep(0.0, 1.0, abs(vUv.y)));
+  a = a * a * vA;
+  if (a < 0.004) discard;
+  gl_FragColor = vec4(vCol, a);
+}`;
+
 // ---------------------------------------------------------------- позёмка
 const DRIFT_VERT = /* glsl */`
 attribute vec4 aSeed;
@@ -50,16 +91,18 @@ void main(){
   vec3 toCam = normalize(cameraPosition - center);
   vec3 right = normalize(vec3(w.x, 0.0, w.y));
   vec3 up = normalize(cross(toCam, right));
-  float len = (1.2 + 3.2 * aSeed2.x) * (0.7 + uWindSpeed * 0.06);
+  float len = (1.0 + 2.6 * aSeed2.x) * (0.8 + uWindSpeed * 0.06);
   float hgt = (0.09 + 0.3 * aSeed2.y) * (0.7 + 0.8 * crest);
   vec3 wp = center + right * position.x * len + up * position.y * hgt;
   float dist = length(cameraPosition - center);
   float gust = 0.55 + 0.45 * sin(uTime * 0.7 + aSeed.x * 30.0);
-  float vis = smoothstep(2.0, 9.0, uWindSpeed + 3.0 * uStorm);
-  vAlpha = uIntensity * vis * (0.12 + 0.88 * crest) * gust * (0.5 + aSeed2.z * 0.6)
+  float vis = smoothstep(1.0, 6.5, uWindSpeed + 3.0 * uStorm);
+  vAlpha = uIntensity * vis * (0.14 + 0.86 * crest) * gust * (0.5 + aSeed2.z * 0.6) * 1.05
          * smoothstep(1.5, 8.0, dist) * (1.0 - smoothstep(uR * 0.6, uR * 0.98, length(rel)));
   float lit = rkClawShade(center);
-  vCol = vec3(0.78, 0.6, 0.38) * (uSunColor * (0.28 + 0.72 * smoothstep(0.0, 0.35, uSunDir.y)) * lit * 0.5 + uAmbient * 0.9);
+  vCol = vec3(0.86, 0.66, 0.42) * (uKeyColor * (0.28 + 0.72 * smoothstep(0.0, 0.35, uKeyDir.y)) * lit * 0.14 + uAmbient * 0.26);
+  // подсветка против солнца: струи горят на гребнях
+  vCol += uKeyColor * lit * 0.05 * pow(max(dot(-toCam, uKeyDir), 0.0), 3.0) * vec3(1.0, 0.8, 0.55);
   vUv = position.xy; vWP = wp;
   gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
 }`;
@@ -91,8 +134,9 @@ void main(){
   vec4 mv = viewMatrix * vec4(wp, 1.0);
   gl_Position = projectionMatrix * mv;
   vec3 v = normalize(wp - cameraPosition);
-  float mu = max(dot(v, uSunDir), 0.0);
-  float sunUp = smoothstep(0.0, 0.2, uSunDir.y);
+  float mu = max(dot(v, uKeyDir), 0.0);
+  float sunUp = smoothstep(0.0, 0.2, uKeyDir.y);
+  sunUp = max(sunUp, 0.55 * uNight);
   float d = length(rel);
   vA = (0.1 + 0.9 * (pow(mu, 3.0) * 0.8 + pow(mu, 30.0) * 2.0)) * sunUp * (0.35 + uDust * 1.6) * (1.0 - smoothstep(uR * 0.7, uR, d)) * smoothstep(0.6, 3.0, d);
   gl_PointSize = uPx * (0.6 + aSeed.w * 1.2) * clamp(7.0 / max(d, 1.0), 0.35, 1.6);
@@ -139,9 +183,9 @@ void main(){
   float prof = smoothstep(0.0, 0.05, y) * (1.0 - smoothstep(0.45, 1.0, y));
   float core = 0.35 + 0.65 * smoothstep(0.35, 0.8, n);
   float rim = abs(dot(normalize(cameraPosition - vWP), vN));
-  float al = prof * core * (0.18 + 0.55 * pow(rim, 0.7)) * uFade * (0.5 + 0.5 * (1.0 - y));
+  float al = prof * core * (0.24 + 0.6 * pow(rim, 0.7)) * uFade * (0.5 + 0.5 * (1.0 - y));
   if (al < 0.004) discard;
-  vec3 lit = uSunColor * (0.1 + 0.22 * max(dot(vN, uSunDir), 0.0)) + uAmbient * 0.55;
+  vec3 lit = uKeyColor * (0.1 + 0.22 * max(dot(vN, uKeyDir), 0.0)) + uAmbient * 0.55;
   vec3 col = vec3(0.7, 0.5, 0.3) * lit * (0.65 + 0.7 * n);
   col = rkApplyFog(col, vWP);
   gl_FragColor = vec4(col, al);
@@ -170,6 +214,7 @@ void main(){
   float a = atan(d.y, d.x);
   float da = mod(a - 2.3562 + 3.14159, 6.28318) - 3.14159;
   float arcF = 1.0 - smoothstep(0.62, 1.38, abs(da));
+  arcF = max(arcF, smoothstep(0.55, 0.95, uStorm));
   float h = vWP.y - uBase;
   float t = uTime;
   float s = uStorm;
@@ -189,13 +234,13 @@ void main(){
   float low = smoothstep(-0.01, 0.05, y);
   float al = body * low * (0.8 + 0.4 * (bands - 0.5) + 0.14 * (wisp - 0.5)) * k * arcF * uAlpha;
   al = clamp(al, 0.0, 0.95);
-  vec3 L = uSunDir;
+  vec3 L = uKeyDir;
   vec3 N = normalize(vec3(-d.x, 0.0, -d.y));
   float lit = 0.35 + 0.65 * max(dot(N, normalize(vec3(L.x, 0.2, L.z))), 0.0) + 0.5 * pow(max(dot(normalize(vWP - cameraPosition), L), 0.0), 3.0);
   vec3 dark = vec3(0.06, 0.032, 0.015);
   vec3 bright = vec3(0.6, 0.38, 0.2);
   vec3 col = mix(dark, bright, clamp(0.08 + 0.85 * pow(clamp(y, 0.0, 1.2), 1.4) + 0.5 * (bands - 0.45) + 0.25 * (small - 0.45), 0.0, 1.0));
-  col *= (uSunColor * 0.2 + uAmbient * 0.9 + 0.1) * lit * (0.5 + 0.7 * dens);
+  col *= (uKeyColor * 0.2 + uAmbient * 0.9 + 0.1) * lit * (0.5 + 0.7 * dens);
   col = mix(col, uFogColor, 0.04 + 0.14 * (1.0 - y));
   if (al < 0.005) discard;
   gl_FragColor = vec4(col, al);
@@ -227,6 +272,24 @@ export function createFx(game, world, terrain, weather) {
   const drift = new THREE.Mesh(driftGeo, driftMat);
   drift.frustumCulled = false; drift.renderOrder = 5;
   group.add(drift);
+
+  // ---------- песок бури ----------
+  const nSand = q === 'low' ? 500 : q === 'med' ? 2400 : 4200;
+  const sandGeo = new THREE.InstancedBufferGeometry();
+  sandGeo.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0], 3));
+  sandGeo.setIndex([0, 1, 2, 0, 2, 3]);
+  const q1 = new Float32Array(nSand * 4), q2 = new Float32Array(nSand * 4);
+  for (let i = 0; i < nSand * 4; i++) { q1[i] = R(); q2[i] = R(); }
+  sandGeo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(q1, 4));
+  sandGeo.setAttribute('aSeed2', new THREE.InstancedBufferAttribute(q2, 4));
+  sandGeo.instanceCount = nSand;
+  const sandMat = new THREE.ShaderMaterial({
+    vertexShader: SAND_VERT, fragmentShader: SAND_FRAG, transparent: true, depthWrite: false,
+    uniforms: Object.assign({}, ENV.uniforms, { uR: { value: 42 }, uK: { value: 0 } }),
+  });
+  const sandFly = new THREE.Mesh(sandGeo, sandMat);
+  sandFly.frustumCulled = false; sandFly.renderOrder = 9;
+  group.add(sandFly);
 
   // ---------- пылинки ----------
   const nMote = q === 'low' ? 150 : q === 'med' ? 700 : 1400;
@@ -273,8 +336,8 @@ export function createFx(game, world, terrain, weather) {
   const arcA0 = 135 * Math.PI / 180;
   const layers = [{ r: 4500, h: 2300, base: -150, seed: 1, alpha: 1 }, { r: 3900, h: 1500, base: -120, seed: 2.3, alpha: 0.55 }];
   layers.forEach((ly, i) => {
-    const arc = Math.PI * 0.95;
-    const g = new THREE.CylinderGeometry(ly.r, ly.r, ly.h, 72, 1, true, 0, arc);
+    const arc = Math.PI * 2;
+    const g = new THREE.CylinderGeometry(ly.r, ly.r, ly.h, 144, 1, true, 0, arc);
     // CylinderGeometry: угол theta от +z к +x по часовой; центрируем на SW (-x, +z)
     g.translate(0, ly.h / 2 + ly.base, 0);
     const mat = new THREE.ShaderMaterial({
@@ -285,7 +348,7 @@ export function createFx(game, world, terrain, weather) {
     // theta=0 → +z; θ растёт к +x. Центр дуги (θ=arc/2) нужно повернуть на направление SW: (-1,0,+1)
     // направление центра в плоскости XZ при θ: (sin θ, cos θ) → хотим (-0.707, 0.707) → θc = -45° ... поворот вокруг Y
     const thetaC = Math.atan2(-0.7071, 0.7071); // = -45°
-    m.rotation.y = thetaC - arc / 2;
+    m.rotation.y = 0;
     m.frustumCulled = false; m.renderOrder = -500 + i;
     group.add(m);
     stormMeshes.push(m);
@@ -330,7 +393,7 @@ export function createFx(game, world, terrain, weather) {
         float n = rkNoise(vUv * 2.0 + vSeed * 10.0 + uTime * 0.2) * 0.6 + 0.4;
         float a = smoothstep(1.0, 0.1, r) * n * vAl;
         if (a < 0.004) discard;
-        vec3 col = vec3(0.78, 0.6, 0.38) * (uSunColor * 0.32 + uAmbient * 0.95);
+        vec3 col = vec3(0.78, 0.6, 0.38) * (uKeyColor * 0.32 + uAmbient * 0.95);
         col = rkApplyFog(col, vWP);
         gl_FragColor = vec4(col, a);
       }`,
@@ -370,7 +433,8 @@ export function createFx(game, world, terrain, weather) {
       const wspd = w.windSpeed;
       driftMat.uniforms.uGT.value = L1.tex;
       driftMat.uniforms.uIntensity.value = 1;
-      moteMat.uniforms.uCol.value.copy(ENV.uniforms.uSunColor.value).multiplyScalar(0.35);
+      { const kc = ENV.uniforms.uKeyColor.value, am = ENV.uniforms.uAmbient.value, nk = 0.5 * ENV.uniforms.uNight.value;
+        moteMat.uniforms.uCol.value.setRGB(kc.r * 0.35 + am.r * nk, kc.g * 0.35 + am.g * nk, kc.b * 0.35 + am.b * nk); }
       // вихри
       for (const d of devils) {
         d.age += dt;
@@ -387,7 +451,12 @@ export function createFx(game, world, terrain, weather) {
         if (d.age > d.life || Math.hypot(d.x - cp.x, d.z - cp.z) > 1500) respawn(d, false);
       }
       // стена бури следует за камерой по XZ
-      for (const m of stormMeshes) { m.position.x = cp.x; m.position.z = cp.z; m.material.uniforms.uCenter.value.set(cp.x, cp.z); }
+      const wallK = 1 - 0.78 * smoothstep(0.4, 1.0, w.storm);   // стена надвигается: радиус кольца уменьшается
+      for (const m of stormMeshes) { m.position.x = cp.x; m.position.z = cp.z; m.scale.set(wallK, 1, wallK); m.material.uniforms.uCenter.value.set(cp.x, cp.z); }
+      // песок, летящий мимо камеры: буря и сильный ветер
+      const kStorm = smoothstep(0.12, 0.9, w.storm) * 0.75, kWind = smoothstep(7, 15, wspd) * 0.28;
+      sandMat.uniforms.uK.value = Math.max(kStorm, kWind) * (game.space === 'sietch' ? 0 : 1);
+      sandFly.visible = sandMat.uniforms.uK.value > 0.004;
     },
   };
   return fx;

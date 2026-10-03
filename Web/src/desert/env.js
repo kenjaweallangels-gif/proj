@@ -14,6 +14,10 @@ export const ENV = {
     uTime: { value: 0 },
     uSunDir: { value: new THREE.Vector3(0.6, 0.5, 0.2).normalize() },
     uSunColor: { value: new THREE.Color(1, 0.9, 0.8) },       // цвет*интенсивность света солнца (линейный)
+    uKeyDir: { value: new THREE.Vector3(0.6, 0.5, 0.2).normalize() },  // направление ключевого света: солнце днём, большая луна ночью
+    uKeyColor: { value: new THREE.Color(1, 0.9, 0.8) },                 // цвет*интенсивность ключевого света (линейный)
+    uNight: { value: 0 },                                               // 0 день … 1 глубокая ночь
+    uInvExp: { value: 1 },                                              // 1 / экспозиция (для эмиссии неба в «экранных» единицах)
     uAmbient: { value: new THREE.Color(0.3, 0.3, 0.3) },
     uZenith: { value: new THREE.Color('#4F6E9A') },
     uHorizon: { value: new THREE.Color('#C8B79A') },
@@ -37,6 +41,10 @@ uniform float uTime;
 uniform vec3 uSunDir;
 uniform vec3 uSunColor;
 uniform vec3 uAmbient;
+uniform vec3 uKeyDir;
+uniform vec3 uKeyColor;
+uniform float uNight;
+uniform float uInvExp;
 uniform vec3 uZenith;
 uniform vec3 uHorizon;
 uniform vec3 uFogColor;
@@ -81,8 +89,8 @@ float rkHG(float mu, float g){ float g2 = g*g; return (1.0 - g2) / (4.0*3.14159*
 
 // экспоненциальный туман с убыванием по высоте + приземная дымка; цвет — «небесный» + блик к солнцу
 vec3 rkFogColorDir(vec3 v){
-  float mu = max(dot(v, uSunDir), 0.0);
-  return uFogColor + uSunColor * (0.10 * uFogSun) * (pow(mu, 5.0) * 0.8 + pow(mu, 28.0) * 1.6) * (0.4 + uDust);
+  float mu = max(dot(v, uKeyDir), 0.0);
+  return uFogColor + uKeyColor * (0.05 * uFogSun) * (pow(mu, 5.0) * 0.8 + pow(mu, 28.0) * 1.6) * (0.4 + uDust);
 }
 float rkFogAmount(vec3 wp, out vec3 v){
   vec3 d = wp - cameraPosition;
@@ -106,7 +114,7 @@ vec3 rkApplyFog(vec3 col, vec3 wp){
 // тень «Когтя» (приближение цилиндрами вдоль оси) — луч к солнцу
 uniform vec4 uClaw[${NCLAW}];
 float rkClawShade(vec3 p){
-  vec3 L = uSunDir;
+  vec3 L = uKeyDir;
   float hl = length(L.xz);
   if (L.y < 0.02) return 0.0;
   vec2 sh = L.xz / max(hl, 1e-4);

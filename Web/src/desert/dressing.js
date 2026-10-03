@@ -1,4 +1,4 @@
-// Декор (инстансинг): валуны и галька у скалы, острова, плиты A3, остов харвестера, рёбра червя, стойка тамперов.
+// Декор (инстансинг): валуны и галька у скалы, острова, плиты A3, рёбра червя, стойка тамперов.
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { rng, noise2, smoothstep, clamp, lerp } from '../core/util.js';
@@ -133,17 +133,6 @@ export function createDressing(game, world) {
   pebMesh.frustumCulled = false; pebMesh.receiveShadow = shadows;
   group.add(pebMesh);
 
-  // ---------- остов харвестера ----------
-  const harvester = makeHarvester(R);
-  const hx = 249, hz = 40;
-  const hy = heightAt(hx, hz);
-  harvester.position.set(hx, hy + 0.2, hz);
-  harvester.rotation.set(0.07, 0.65, -0.16);
-  harvester.scale.setScalar(1.0);
-  harvester.traverse((o) => { if (o.isMesh) { o.castShadow = shadows; o.receiveShadow = shadows; if (o.material.userData?.baseYU) o.material.userData.baseYU.value = hy; } });
-  group.add(harvester);
-  for (let i = -4; i <= 4; i++) obstacles(hx + Math.cos(0.65) * i * 3.0, hz - Math.sin(0.65) * i * 3.0, 6.2);
-
   // ---------- рёбра мёртвого червя ----------
   const ribs = makeRibs(R);
   const rx = 432, rz = 118;
@@ -172,67 +161,8 @@ export function createDressing(game, world) {
 
   return {
     group, setVisible(b) { group.visible = b; },
-    harvester, ribs, rack,
+    ribs, rack,
   };
-}
-
-// ---------------- харвестер ----------------
-function makeHarvester(R) {
-  const g = new THREE.Group();
-  const mat = createPropMaterial({ vertexColors: true, roughness: 0.66, metalness: 0.3 });
-  const parts = [];
-  const add = (geo, x, y, z, rx = 0, ry = 0, rz = 0, color = '#a0653a') => {
-    const gg = geo.index ? geo.toNonIndexed() : geo.clone();
-    const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(1, 1, 1));
-    gg.applyMatrix4(m);
-    const c = new THREE.Color(color);
-    const n = gg.getAttribute('position').count;
-    const arr = new Float32Array(n * 3);
-    // пятнистая ржавчина: цвет варьируется по треугольникам
-    for (let i = 0; i < n; i += 3) { const k = 0.75 + R() * 0.45; for (let j = 0; j < 3; j++) { arr[(i + j) * 3] = c.r * k; arr[(i + j) * 3 + 1] = c.g * k; arr[(i + j) * 3 + 2] = c.b * k; } }
-    gg.setAttribute('color', new THREE.BufferAttribute(arr, 3));
-    if (gg.getAttribute('uv')) gg.deleteAttribute('uv');
-    if (gg.getAttribute('normal')) gg.deleteAttribute('normal');
-    parts.push(gg);
-  };
-  const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
-  const cyl = (r, h, s = 14) => new THREE.CylinderGeometry(r, r, h, s);
-  const RUST = '#a2623a', RUST2 = '#7d4a2b', STEEL = '#6b625a', DARK = '#2c241f', PALE = '#b5946a';
-  // корпус (длина по x, вперёд — +x)
-  add(box(20, 4.2, 10), 0, 4.6, 0, 0, 0, 0, RUST);
-  add(box(20.6, 0.7, 10.6), 0, 6.9, 0, 0, 0, 0, RUST2);
-  add(box(14, 2.4, 9.2), -1.5, 8.5, 0, 0, 0, 0, PALE);                 // верхняя надстройка
-  add(box(7, 3.4, 8), 5.5, 9.2, 0, 0, 0, 0.0, RUST);                  // кабина-мостик
-  add(box(0.4, 1.4, 7.2), 9.1, 9.7, 0, 0, 0, -0.18, DARK);             // лобовое стекло (тёмное)
-  add(box(6.5, 0.3, 8.4), 5.5, 11.0, 0, 0, 0, 0, STEEL);
-  // передний ковш-барабан с зубьями
-  add(cyl(2.6, 11, 18), 12.6, 2.6, 0, Math.PI / 2, 0, 0, STEEL);
-  for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; for (const zz of [-4, -2, 0, 2, 4]) add(box(1.4, 0.45, 0.45), 12.6 + Math.cos(a) * 3.1, 2.6 + Math.sin(a) * 3.1, zz, 0, 0, a, DARK); }
-  add(box(3.2, 3.8, 11.5), 10.4, 4.6, 0, 0, 0, 0, RUST2);
-  // гусеницы (по 2 с каждой стороны)
-  for (const s of [-1, 1]) for (const xx of [-5.5, 5.5]) {
-    add(box(8.4, 3.4, 3.2), xx, 1.7, s * 6.2, 0, 0, 0, DARK);
-    for (let k = -1; k <= 1; k++) add(cyl(1.5, 3.4, 12), xx + k * 2.8, 1.7, s * 6.2, Math.PI / 2, 0, 0, STEEL);
-  }
-  // выхлопы, антенны, вентиляционные короба
-  add(cyl(0.7, 6, 10), -7.5, 11.5, 3.2, 0, 0, 0.12, STEEL);
-  add(cyl(0.6, 5, 10), -6, 11, -3.4, 0, 0, -0.3, STEEL);
-  add(cyl(0.12, 9, 6), -9, 15, -4, 0, 0, 0.25, DARK);
-  add(box(3.5, 1.6, 3.5), -8.5, 8.6, 0, 0, 0.2, 0, RUST2);
-  // оторванные листы, свисающие балки
-  add(box(6.5, 0.2, 3.2), -12.5, 0.9, 5.4, 0.15, 0.5, 0.22, RUST);
-  add(box(4, 0.2, 2.5), 3.5, 0.7, 9.4, -0.12, -0.6, 0.15, PALE);
-  add(box(0.5, 6, 0.5), 2, 7, 5.6, 0.0, 0, 0.5, DARK);
-  // рёбра жёсткости, перила
-  for (let i = -4; i <= 4; i++) add(box(0.3, 0.3, 10), i * 2.2, 7.35, 0, 0, 0, 0, DARK);
-  for (let i = -3; i <= 3; i++) add(box(0.15, 1.1, 0.15), -1.5 + i * 2, 10.2, 4.4, 0, 0, 0, STEEL);
-  const merged = mergeGeometries(parts, false);
-  merged.computeVertexNormals();
-  const mesh = new THREE.Mesh(merged, mat);
-  g.add(mesh);
-  g.position.y = -1.2;
-  const wrap = new THREE.Group(); wrap.add(g);
-  return wrap;
 }
 
 // ---------------- рёбра червя ----------------

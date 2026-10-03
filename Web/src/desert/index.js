@@ -1,7 +1,7 @@
 // Пустыня Ракиса: ландшафт, песок, скала «Коготь Шайтана», небо, погода, атмосфера, пост-обработка.
 // Регистрирует game.world, game.weather, game.post.
 import * as THREE from 'three';
-import { heightAt, normalAt, surfaceAt, solidSdf, masks } from './field.js';
+import { heightAt, normalAt, surfaceAt, solidSdf, masks, FLAT_ZONE } from './field.js';
 import { ENV } from './env.js';
 import { createFootprints } from './footprints.js';
 import { createTerrain } from './terrain.js';
@@ -39,6 +39,8 @@ export function create(game) {
     addFootprint(x, z, yaw = 0, opts = {}) { foot.add(x, z, yaw, opts); },
     addObstacle(x, z, r) { obstacles.push({ x, z, r }); },
     setVisible(b) { setVisible(b); },
+    /** Плоская площадка для харвестера: {x,z,radius,blend,level}; heightAt там ≈ level (рельеф ≤ 0.12 м), дюн нет. */
+    flattenZone: FLAT_ZONE,
     _field: { masks, solidSdf },
   };
 
