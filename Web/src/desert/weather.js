@@ -50,8 +50,8 @@ const SKY_KEYS = [
   [-2.5, '#2a4a92', '#a67e9e', '#f0804a', 0.5],
   [0.5, '#2c4b8f', '#d49a88', '#f89a3e', 0.62],
   [4, '#2f5198', '#d8a38a', '#f6ac5a', 0.8],
-  [12, '#33589f', '#d3ad98', '#eebf86', 1.0],
-  [26, '#3a62a8', '#cfb89c', '#e2cca4', 1.5],
+  [12, '#33589f', '#d3a994', '#f0b878', 1.0],
+  [26, '#3a62a8', '#cfb496', '#e9c48e', 1.5],
   [55, '#2b58a6', '#c2b196', '#d0bea3', 2.05],
 ].map(([e, z, a, s, l]) => ({ e, z: hex(z), a: hex(a), s: hex(s), l }));
 function skyAt(el, out) {
@@ -276,9 +276,9 @@ export function createWeather(game, sky, world) {
     eff.clouds = ov('clouds', st.clouds);
     eff.wind = ov('wind', st.wind);
     // туман: 0..1 → плотность в единицах CSV
-    const fogFromCsv = clamp(Math.pow(Math.max(st.fogDensity - 0.0015, 0) / 0.05, 1 / 1.6), 0, 1);
+    const fogFromCsv = clamp(Math.pow(Math.max(st.fogDensity - 0.002, 0) / 0.9, 1 / 1.8), 0, 1);
     eff.fog = ov('fog', fogFromCsv);
-    eff.fogDensity = ovW.fog > 0 ? lerp(st.fogDensity, 0.0015 + 0.05 * Math.pow(Math.min(ovVal.fog, 1.2), 1.6), ovW.fog * ovW.fog * (3 - 2 * ovW.fog)) : st.fogDensity;
+    eff.fogDensity = ovW.fog > 0 ? lerp(st.fogDensity, 0.002 + 0.9 * Math.pow(Math.min(ovVal.fog, 1.2), 1.8), ovW.fog * ovW.fog * (3 - 2 * ovW.fog)) : st.fogDensity;
     // производные от бури
     const S = clamp(eff.storm, 0, 1.2);
     const sFull = smoothstep(0.5, 1.0, S);                    // «настоящая» буря сверх CSV-Storm_Horizon
@@ -288,7 +288,7 @@ export function createWeather(game, sky, world) {
     eff.sunLux *= 1 - 0.78 * sFull;
     eff.sky *= 1 - 0.3 * sFull;
     eff.haze *= 1 - 0.8 * smoothstep(0.2, 0.8, S);
-    eff.fogDensity += 0.0145 * Math.pow(sFull, 1.4) + 0.0016 * S;
+    eff.fogDensity += 0.55 * Math.pow(sFull, 1.4) + 0.05 * S;
     eff.sunColor.lerp(tmpH.setRGB(1, 0.66, 0.34), sFull * 0.8);
     eff.fogColor.lerp(tmpH.setRGB(0.82, 0.55, 0.28), clamp(sFull * 0.9 + (eff.dust - st.dust) * 0.4, 0, 0.92));
     // дымка из пыли без бури
@@ -341,7 +341,7 @@ export function createWeather(game, sky, world) {
       const up = smoothstep(-2, 9, m.elev);
       const lum = m.lit * up * m.bright * Math.pow(1 - smoothstep(-6, 8, el) , 1) ;
       m.light = lum;
-      moonKey += m.lit * up * m.bright * (m === moons[0] ? 0.24 : 0.09);
+      moonKey += m.lit * up * m.bright * (m === moons[0] ? 0.4 : 0.14);
       moonAmb += m.lit * up * m.bright * (m === moons[0] ? 1 : 0.35);
       const wl = m.lit * up * m.bright * (m === moons[0] ? 1 : 0.38);
       if (wl > bestLum) { bestLum = wl; bestMoon = m; }
@@ -357,7 +357,7 @@ export function createWeather(game, sky, world) {
 
     // --- ключевой свет: солнце днём, луна ночью ---
     const mc = tmpC.setRGB(moonCol.r, moonCol.g, moonCol.b);
-    if (bestMoon) mc.setRGB(bestMoon.tint[0] * 0.55 + 0.1, bestMoon.tint[1] * 0.62 + 0.12, bestMoon.tint[2] * 0.9 + 0.1);
+    if (bestMoon) mc.setRGB(bestMoon.tint[0] * 0.3 + 0.02, bestMoon.tint[1] * 0.5 + 0.04, bestMoon.tint[2] * 1.0);
     const wMoon = moonKey / (moonKey + sunLum + 1e-6);
     keyDir.copy(sunDirTrue).multiplyScalar(1 - wMoon);
     if (bestMoon) keyDir.addScaledVector(bestMoon.dir, wMoon);
@@ -429,8 +429,8 @@ export function createWeather(game, sky, world) {
     const cm = Math.max(dayHemi.r, dayHemi.g, dayHemi.b, 1e-4);
     const dayI = skyE * cm * 2.4;
     // ночной ambient: звёзды + лунное небо (синий), не ноль даже в новолуние
-    const nightI = night * (0.09 + 0.075 * clamp(moonAmb, 0, 1.4) ) * (1 - 0.5 * S);
-    const nr = 0.30, ng = 0.44, nb = 0.95;
+    const nightI = night * (0.15 + 0.09 * clamp(moonAmb, 0, 1.4) ) * (1 - 0.5 * S);
+    const nr = 0.26, ng = 0.40, nb = 1.0;
     const totI = dayI + nightI;
     sky.hemi.color.setRGB((dayHemi.r / cm * dayI + nr * nightI) / Math.max(totI, 1e-5), (dayHemi.g / cm * dayI + ng * nightI) / Math.max(totI, 1e-5), (dayHemi.b / cm * dayI + nb * nightI) / Math.max(totI, 1e-5));
     sky.hemi.intensity = totI;

@@ -79,7 +79,7 @@ for (const [name, hours, preset, ov, view] of list) {
     if (view === 'sun') { yaw = Math.atan2(sd.z, sd.x); pitch = Math.max(0.05, Math.asin(Math.max(sd.y, 0)) * 0.6 + 0.05); }
     else if (view === 'moon') { const m = w.moons?.[0]?.dir; if (m) { yaw = Math.atan2(m.z, m.x); pitch = Math.asin(Math.max(m.y, -0.2)) * 0.8 + 0.1; } else pitch = 0.3; }
     else if (view === 'sky') { yaw += 2.4; pitch = 0.75; }
-    else if (view === 'low') { yaw -= 0.6; pitch = 0.0; cam.position.y = g.world.heightAt(x, z) + 0.9; }
+    else if (view === 'low') { cam.position.set(60, g.world.heightAt(60, 25) + 1.4, 25); yaw -= 0.25; pitch = 0.02; }
     else if (view === 'back') { yaw += Math.PI; }
     const c = Math.cos(pitch);
     cam.lookAt(cam.position.x + Math.cos(yaw) * c, cam.position.y + Math.sin(pitch), cam.position.z + Math.sin(yaw) * c);

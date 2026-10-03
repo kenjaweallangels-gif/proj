@@ -40,7 +40,7 @@ weather.request(id, blendSec = 6, {keepTime?})  // плавный переход
 weather.setHours(h, instant = true, durSec = 3)  // 0..24; instant=false — плавно по кратчайшей дуге за durSec
 weather.getHours()             // текущее время, 0..24 (то же в weather.hours; weather.day — счётчик суток)
 weather.setTimeScale(v)        // игровых СЕКУНД за реальную: 0 — стоп (по умолчанию), 60 — сутки за 24 мин, 3600 — час в секунду. Свойство weather.timeScale читается/пишется напрямую
-weather.setOverride({wind, storm, dust, haze, clouds, fog}, blendSec = 3)  // частичные переопределения 0..1 (ключ: null → снять); wind — м/с (0..40), остальные 0..1; fog 0..1 → видимость от ≈ 8 км до ≈ 60 м
+weather.setOverride({wind, storm, dust, haze, clouds, fog}, blendSec = 3)  // частичные переопределения 0..1 (ключ: null → снять); wind — м/с (0..40), остальные 0..1; fog 0..1 → видимость от ≈ 8 км до ≈ 100 м
 weather.clearOverride(keys?, blendSec = 3)         // снять все или перечисленные ключи (массив)
 weather.getOverride()          // → {ключ: значение} только активные
 weather.setMoonPhase(a, b)     // 0 новая … 0.5 полная … 1; null — вернуть автоход; weather.moons[i] = {phase, lit, elev, dir}

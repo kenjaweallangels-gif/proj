@@ -144,7 +144,7 @@ const GradeShader = {
       vec3 hiTint = vec3(1.06, 1.0, 0.90);
       col *= mix(shadowTint, hiTint, sm);
       // ночь: Пуркинье — холодный сдвиг и мягкая десатурация
-      col = mix(col, vec3(lum) * vec3(0.66, 0.82, 1.12) + col * 0.25, 0.4 * uNight);
+      col = mix(col, vec3(lum) * vec3(0.72, 0.86, 1.1), 0.6 * uNight);
       col = mix(vec3(lum), col, uSat * (1.0 - 0.1 * uNight));
       // блики на грязной линзе: пятна проступают рядом с солнцем/яркими лучами
       if (uGlare > 0.002) {
@@ -252,7 +252,7 @@ export function createPost(game, weather) {
         const low = 1 - smoothstep(8, 48, el);                     // сильнее у горизонта
         const set = smoothstep(-5, 1.5, el);                       // исчезает под горизонтом
         const dustK = 0.55 + 0.9 * clamp(wp.dust, 0, 1);
-        rays = (0.12 + 0.4 * low) * set * dustK * smoothstep(-0.05, 0.4, facing) * (1 - 0.6 * clamp(wp.storm, 0, 1));
+        rays = (0.08 + 0.3 * low) * set * dustK * smoothstep(-0.05, 0.4, facing) * (1 - smoothstep(0.25, 0.7, wp.storm));
         sunU = clamp(sunU, -3, 4); sunVv = clamp(sunVv, -3, 4);
       }
       post.rays += (rays - post.rays) * Math.min(1, dt * 4);
