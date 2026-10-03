@@ -118,7 +118,22 @@ function draa(x, z, sp) {
 /** Плоская площадка под большой харвестер (модуль Web/src/harvester): центр (x,z) м, плоская часть радиусом radius, затем плавный спуск на blend м. */
 export const FLAT_ZONE = { x: 330, z: -60, radius: 70, blend: 80, level: 5.4 };
 
+// Локальные переопределения рельефа (котловина сада, уступы тропы): {x,z,radius,height:(x,z,baseH)=>y|null}
+export const groundPatches = [];
 export function heightAt(x, z, spacing = 0) {
+  let h = heightBase(x, z, spacing);
+  for (let i = 0; i < groundPatches.length; i++) {
+    const p = groundPatches[i];
+    const d = Math.hypot(x - p.x, z - p.z);
+    if (d >= p.radius) continue;
+    const y = p.height(x, z, h);
+    if (y == null) continue;
+    const k = p.blend ? 1 - smoothstep(p.radius - p.blend, p.radius, d) : 1;
+    h = h + (y - h) * k;
+  }
+  return h;
+}
+function heightBase(x, z, spacing = 0) {
   const h = heightRaw(x, z, spacing);
   const fd = Math.hypot(x - FLAT_ZONE.x, z - FLAT_ZONE.z);
   if (fd >= FLAT_ZONE.radius + FLAT_ZONE.blend) return h;

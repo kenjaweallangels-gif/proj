@@ -4,7 +4,8 @@ import { noise2, smoothstep, clamp, lerp } from '../core/util.js';
 import { clawCenter, clawHalfWidth, clawHeight } from '../core/layout.js';
 import { heightAt, CLEFT, FINS, FALSE_DOOR } from './field.js';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { createRockMaterial } from './rockMaterial.js';
+import { createRockMaterial, HOLES_GLSL } from './rockMaterial.js';
+import { ENV } from './env.js';
 
 // профиль сечения (запад → вершина → восток): [боковое смещение / w, высота / H]
 const PROFILE = [
@@ -185,6 +186,17 @@ export function createClaw(game, world) {
   const claw = new THREE.Mesh(buildClawGeometry(q), rockMat);
   claw.castShadow = q !== 'low'; claw.receiveShadow = q !== 'low';
   claw.frustumCulled = false;
+  // теневой проход с теми же отверстиями (иначе вход в скале отбрасывал бы сплошную тень)
+  const depthMat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  depthMat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, { uHoles: ENV.uniforms.uHoles, uHoleN: ENV.uniforms.uHoleN });
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWPd;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvWPd = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWPd;\n' + HOLES_GLSL)
+      .replace('void main() {', 'void main() {\n  if (rkHoleRim(vWPd) < 0.0) discard;');
+  };
+  depthMat.customProgramCacheKey = () => 'rk-claw-depth';
+  claw.customDepthMaterial = depthMat;
   group.add(claw);
 
   // плавники у входа в расщелину
@@ -196,6 +208,7 @@ export function createClaw(game, world) {
     m.position.set(f.cx, gy + f.h / 2 - 2.0, f.cz);
     m.rotation.y = 0;
     m.castShadow = q !== 'low'; m.receiveShadow = q !== 'low';
+    m.customDepthMaterial = depthMat;
     group.add(m);
   }
 

@@ -1,6 +1,6 @@
 // Материалы скальной породы и «реквизита»: страты, эрозионные желобки, песчаные наносы на уступах, песочная пыль.
 import * as THREE from 'three';
-import { patchMaterial } from './env.js';
+import { patchMaterial, ENV } from './env.js';
 import { triplanarKit } from '../core/triplanar.js';
 
 const VERT_PARS = /* glsl */`
@@ -21,9 +21,30 @@ vec3 transformed = vec3(position);
 }
 `;
 
+// Отверстия в скале (входы сиетча): sphere {x,y,z,r}; fragment discard + затемнённая кромка. Общие для материала и теневого прохода.
+export const MAX_HOLES = 8;
+ENV.uniforms.uHoles = { value: Array.from({ length: MAX_HOLES }, () => new THREE.Vector4(0, -1e5, 0, 0)) };
+ENV.uniforms.uHoleN = { value: 0 };
+export const HOLES_GLSL = /* glsl */`
+uniform vec4 uHoles[${MAX_HOLES}];
+uniform int uHoleN;
+// возвращает 0 внутри отверстия (discard), 0..1 — затемнение у кромки
+float rkHoleRim(vec3 P){
+  float rim = 1.0;
+  for (int i = 0; i < ${MAX_HOLES}; i++) {
+    if (i >= uHoleN) break;
+    float d = distance(P, uHoles[i].xyz);
+    if (d < uHoles[i].w) return -1.0;
+    rim = min(rim, smoothstep(uHoles[i].w, uHoles[i].w + 1.6, d));
+  }
+  return rim;
+}
+`;
+
 const ROCK_PARS = /* glsl */`
 varying vec3 vWP;
 varying vec3 vWN;
+${HOLES_GLSL}
 uniform float uBand;
 uniform float uSandAmt;
 uniform vec3 uRockA;
@@ -45,6 +66,8 @@ const ROCK_COLOR = /* glsl */`
 vec3 N = normalize(vWN);
 vec3 P = vWP;
 float dist = length(cameraPosition - P);
+float holeRim = rkHoleRim(P);
+if (holeRim < 0.0) discard;
 // страты
 float warp = (rkFbm3(P * vec3(0.012, 0.006, 0.012) / max(uBand / 5.5, 0.05)) - 0.5) * 70.0 * (uBand / 5.5) + (rkFbm3(P * vec3(0.05, 0.02, 0.05)) - 0.5) * 8.0 * (uBand / 5.5);
 float sy = (P.y + warp) / uBand;
@@ -107,6 +130,7 @@ base = mix(base, uSandC * (0.9 + 0.2 * rkNoise(P.xz * 3.0)), sandA);
 // расщелина A4: тёмная, затенённая
 float inCleft = (1.0 - smoothstep(2.0, 14.0, abs(P.z - 326.0))) * step(P.x, 654.0) * step(600.0, P.x) * (1.0 - smoothstep(30.0, 90.0, P.y));
 base *= 1.0 - 0.55 * inCleft;
+base *= mix(0.12, 1.0, holeRim);
 diffuseColor.rgb = base;
 #ifdef RK_ROCK_TEX
 gNW = normalize(mix(Npd, Np, sandA * 0.8));

@@ -445,6 +445,8 @@ export function createTerrain(game, foot) {
   return {
     levels, update, sandU,
     setVisible(b) { for (const L of levels) L.mesh.visible = b; },
+    /** Сбросить кэш высот (после изменения field.groundPatches) — кольца перезаливаются при следующем update. */
+    invalidate() { for (const L of levels) { L.cx = 1e9; L.cz = 1e9; L.colI.fill(NaN); L.rowJ.fill(NaN); } },
     /** принудительная первичная заливка */
     prime(x, z) { update({ x, z }); },
   };
