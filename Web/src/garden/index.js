@@ -89,7 +89,8 @@ export function create(game) {
   const holeC = { x: faceX(MOUTH.z, 7) + 0.4, y: MOUTH.y + 2.1, z: MOUTH.z, r: 3.1 };
   if (hasHole) { try { world.addRockHole(holeC); } catch (e) { console.warn('[garden] addRockHole', e); } }
   let plug = null;
-  {
+  // Бесшовный сиетч внутри скалы виден сквозь проём — заглушка нужна только без него.
+  if (typeof game.sietch?.contains !== 'function') {
     plug = new THREE.Mesh(new THREE.PlaneGeometry(7, 7), new THREE.MeshBasicMaterial({ color: 0x0a0604 }));
     plug.position.set(faceX(MOUTH.z, 7) - 1.0, MOUTH.y + 3, MOUTH.z); plug.rotation.y = Math.PI / 2; root.add(plug);
   }
