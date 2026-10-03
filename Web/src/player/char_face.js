@@ -31,6 +31,7 @@ export function faceParams(o) {
     chin: (0.75 + g * 0.35) * tri(J()) * (child ? 0.55 : 1), lips: (0.8 + fem * 0.45) * tri(J(0.18)), mouthW: tri(J()),
     eyeSize: (child ? 1.22 : 1 + fem * 0.06) * tri(J(0.1)), eyeSp: tri(J(0.1)) * (child ? 1.05 : 1), fat: clamp((child ? 0.9 : 0.3 + R() * 0.4) - age * 0.2, 0, 1),
     ears: (child ? 1.1 : 1) * tri(J(0.2)),
+    asXi: Math.round((R() - 0.5) * 6), asTi: Math.round((R() - 0.5) * 6),
   };
   P.fat = Math.round(P.fat * 3) / 3;
   return P;
@@ -48,13 +49,13 @@ export function faceSurface(P) {
 }
 
 function makeSurface(P) {
-  const ex = 0.0335 * P.eyeSp, ey = 0.014, Re = 0.0123 * P.eyeSize, ow = 0.0105 * P.eyeSize, ohU = 0.0047 * P.eyeSize, ohL = 0.0037 * P.eyeSize;
+  const ex = 0.0335 * P.eyeSp, ey = 0.014, Re = 0.0123 * P.eyeSize, ow = 0.0132 * P.eyeSize, ohU = 0.0058 * P.eyeSize, ohL = 0.0043 * P.eyeSize;
   const age = P.age;
   const PR = [[0.04, 0], [0.032, 0.0015], [0.024, 0.0045], [0.013, 0.0085], [0.002, 0.0135], [-0.008, 0.019], [-0.017, 0.0245], [-0.024, 0.0268], [-0.029, 0.0265], [-0.033, 0.0215], [-0.037, 0.011], [-0.042, 0.002], [-0.048, 0]];
   const WN = [[0.045, 0.0032], [0.02, 0.0052], [0.0, 0.0068], [-0.015, 0.0086], [-0.027, 0.0098], [-0.035, 0.0108], [-0.045, 0.009]];
   const nl = P.nlen;
   function disp(x, y, ca) {
-    const ax = Math.abs(x), fw = sstep(-0.05, 0.4, ca);
+    const ax = Math.abs(x), fw = sstep(-0.05, 0.4, ca), axm = Math.abs(x - P.asXi * 0.0005), ym = y + P.asTi * 0.02 * x;
     let v = 0, dark = 0;
     v += 0.004 * G(ax, y, 0, 0.092, 0.065, 0.035);                                             // лоб
     const yb = 0.04 + 0.009 * Math.min(1, ax / 0.055);
@@ -66,24 +67,24 @@ function makeSurface(P) {
     v += P.cheek * 0.0075 * G(ax, y, 0.054, -0.012, 0.019, 0.014);                            // скула
     v -= (0.0025 + 0.006 * age * (1.1 - P.fat)) * (1.15 - P.fat * 0.6) * G(ax, y, 0.052, -0.05, 0.02, 0.02); // впадина щеки
     // нос
-    const pr = tab(PR, y * (1 / nl) + (nl !== 1 ? 0.0 : 0)) * P.nprot * (0.78 + 0.22 * P.g), wn = tab(WN, y) * P.nwid;
-    v += pr * Math.exp(-((ax / wn) ** 2.3));
-    v += 0.0042 * P.nwid * G(ax, y, 0.0105 * P.nwid, -0.0305, 0.0048, 0.0065);                // крылья
-    const nost = G(ax, y, 0.0068 * P.nwid, -0.0385, 0.0033, 0.0036);
+    const pr = tab(PR, ym * (1 / nl) + (nl !== 1 ? 0.0 : 0)) * P.nprot * (0.78 + 0.22 * P.g), wn = tab(WN, ym) * P.nwid;
+    v += pr * Math.exp(-((axm / wn) ** 2.3));
+    v += 0.0042 * P.nwid * G(axm, ym, 0.0105 * P.nwid, -0.0305, 0.0048, 0.0065);                // крылья
+    const nost = G(axm, ym, 0.0068 * P.nwid, -0.0385, 0.0033, 0.0036);
     v -= 0.0085 * nost; dark = Math.max(dark, nost);
-    v -= 0.0022 * (0.5 + age) * (G(ax, y, 0.0150, -0.032, 0.0045, 0.006) + G(ax, y, 0.0215, -0.046, 0.0045, 0.008) + G(ax, y, 0.028, -0.062, 0.0045, 0.007)); // носогубная
+    v -= 0.0022 * (0.5 + age) * (G(axm, ym, 0.0150, -0.032, 0.0045, 0.006) + G(axm, ym, 0.0215, -0.046, 0.0045, 0.008) + G(axm, ym, 0.028, -0.062, 0.0045, 0.007)); // носогубная
     // рот
-    const mw = 0.0205 * P.mouthW, wf = 1 - sstep(mw * 0.72, mw * 1.12, ax);
-    v += 0.0035 * G(ax, y, 0, -0.066, 0.034, 0.03);                                             // «морда»
-    v += 0.0046 * P.lips * G(ax, y, 0, -0.0575, 0.0165, 0.0042) * (1 - 0.35 * age);           // верхняя губа
-    v += 0.0056 * P.lips * G(ax, y, 0, -0.0705, 0.0150, 0.0048) * (1 - 0.3 * age);            // нижняя губа
-    v -= 0.0012 * G(ax, y, 0.0045, -0.0485, 0.0022, 0.006);                                    // фильтр
-    const gy = Math.exp(-(((y - YM) / 0.0016) ** 2)) * wf;
+    const mw = 0.0235 * P.mouthW, wf = 1 - sstep(mw * 0.72, mw * 1.12, axm);
+    v += 0.0035 * G(axm, ym, 0, -0.066, 0.034, 0.03);                                             // «морда»
+    v += 0.0062 * P.lips * G(axm, ym, 0, -0.0572, 0.0185, 0.0046) * (1 - 0.35 * age);           // верхняя губа
+    v += 0.0078 * P.lips * G(axm, ym, 0, -0.0708, 0.0172, 0.0055) * (1 - 0.3 * age);            // нижняя губа
+    v -= 0.0012 * G(axm, ym, 0.0045, -0.0485, 0.0022, 0.006);                                    // фильтр
+    const gy = Math.exp(-(((ym - YM) / 0.0016) ** 2)) * wf;
     v -= 0.0045 * gy; dark = Math.max(dark, gy * 0.95);
-    v -= 0.0022 * G(ax, y, mw * 1.08, YM, 0.0045, 0.0045);
-    v -= 0.0035 * G(ax, y, 0, -0.084, 0.014, 0.0028);                                          // подбородочная борозда
-    v += P.chin * 0.016 * G(ax, y, 0, -0.108, 0.022, 0.014);
-    v += P.jaw * 0.004 * G(ax, y, 0.064, -0.082, 0.02, 0.022) + age * 0.003 * G(ax, y, 0.045, -0.092, 0.02, 0.014);
+    v -= 0.0022 * G(axm, ym, mw * 1.08, YM, 0.0045, 0.0045);
+    v -= 0.0035 * G(axm, ym, 0, -0.084, 0.014, 0.0028);                                          // подбородочная борозда
+    v += P.chin * 0.016 * G(axm, ym, 0, -0.108, 0.022, 0.014);
+    v += P.jaw * 0.004 * G(axm, ym, 0.064, -0.082, 0.02, 0.022) + age * 0.003 * G(axm, ym, 0.045, -0.092, 0.02, 0.014);
     return { v: v * fw, dark: dark * fw };
   }
   const zEdge = (y, x) => { const [rx, rz, cz] = headRow(clamp(y, -0.12, 0.141)); return cz + Math.sqrt(Math.max(0, 1 - (x / rx) ** 2)) * rz; };
@@ -205,15 +206,26 @@ function buildMouthInterior(b, S, hs, X, Y, Z) {
 }
 
 function buildEar(b, s, hs, P) {
-  const k = P.ears * hs, c = [0.083 * s * hs, -0.006 * hs + HEAD_Y, -0.012 * hs + 0.005];
-  // раковина: уплощённый эллипсоид, развёрнутый наружу
-  ellipsoid(b, [c[0] + s * 0.004, c[1], c[2]], [0.0042 * k, 0.029 * k, 0.0185 * k], REG.SKIN, HSK, { u: 10, v: 8, rot: [0, s * 0.42, s * 0.12], aux: [0, 0, 0.0, 0] });
-  // завиток по краю
-  const pts = [];
-  for (let i = 0; i <= 12; i++) { const t = 0.15 * Math.PI + (i / 12) * 1.7 * Math.PI, y = Math.cos(t) * 0.028 * k, z = -Math.sin(t) * 0.0175 * k; pts.push([c[0] + s * (0.0085 + 0.0015 * Math.sin(t)) * k, c[1] + y, c[2] + z - 0.002]); }
-  tube(b, pts, 0.0033 * k, REG.SKIN, () => HSK, { seg: 5, aux: [0, 0, 0, 0] });
-  // мочка
-  ellipsoid(b, [c[0] + s * 0.007 * k, c[1] - 0.027 * k, c[2] + 0.002], [0.0036 * k, 0.0065 * k, 0.0065 * k], REG.SKIN, HSK, { u: 6, v: 4, aux: [0, 0, 0, 0] });
+  // Ухо — «чаша» на поверхности головы: приподнятый завиток по краю, углубление раковины, мочка; задний край отстаёт от черепа.
+  const k = P.ears * hs, cy = -0.008, cz0 = -0.013, RY = 0.031 * k / hs, RZ = 0.019 * k / hs, NU = 16, NV = 6;
+  const sheet = (inset) => {
+    const rings = [];
+    for (let v = 0; v <= NV; v++) {
+      const rho = v / NV, ring = [];
+      for (let u = 0; u < NU; u++) {
+        const th = (u / NU) * Math.PI * 2, ey = Math.cos(th) * rho * RY, ez = Math.sin(th) * rho * RZ * (1 + 0.12 * Math.cos(th));
+        const y = cy + ey, rx = headRow(clamp(y, -0.12, 0.141))[0] * 0.989;
+        const back = clamp(0.5 - ez / RZ * 0.5, 0, 1), lobe = sstep(-0.25, -1.0, Math.cos(th) * rho) * 0.55;
+        const rimK = sstep(0.55, 0.85, rho) * (1 - sstep(0.93, 1.0, rho));
+        const xo = 0.0012 + 0.0052 * rimK * (1 - 0.7 * lobe) + 0.0032 * (1 - rho * rho) * (1 - 0.4 * back) + 0.014 * Math.pow(back, 1.5) * rho * (1 - lobe) - inset;
+        ring.push([s * (rx + xo) * hs, HEAD_Y + y * hs, (cz0 + ez) * hs + 0.005]);
+      }
+      rings.push(ring);
+    }
+    return rings;
+  };
+  b.loft(sheet(0), () => ({ reg: REG.SKIN, aux: [0, 0, 0, 0], sk: HSK }), { capStart: false, capEnd: false });
+  b.loft(sheet(0.0028), () => ({ reg: REG.SKIN, aux: [0, 0, 0, 0], sk: HSK }), { capStart: false, capEnd: false, flip: true });
 }
 
 // ------------------------------------------------------------------------------------------ волосы ----

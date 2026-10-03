@@ -166,8 +166,11 @@ if (rg == 0) {
   float sunK = 0.9 + 0.1 * nz2;
   vec3 sk = uSkin * (0.94 + 0.08 * nz2 + 0.06 * nz);
   float hd = step(1.495, vBind.y);                          // голова/шея
-  float redness = G2(hax, hp.y, 0.055, -0.02, 0.03, 0.03) + 0.8 * G2(hax, hp.y, 0.01, -0.025, 0.014, 0.022) + 0.5 * G2(hax, hp.y, 0.0, 0.0, 0.05, 0.02) * 0.0;
-  sk = mix(sk, sk * vec3(1.2, 0.84, 0.8), clamp(redness, 0.0, 1.0) * 0.55 * hd);
+  float redness = 0.55 * G2(hax, hp.y, 0.052, -0.026, 0.042, 0.034) + 0.9 * G2(hax, hp.y, 0.008, -0.026, 0.016, 0.02) + 0.6 * G2(hax, hp.y, 0.082, -0.012, 0.012, 0.03);
+  sk = mix(sk, sk * vec3(1.14, 0.88, 0.84), clamp(redness, 0.0, 1.0) * 0.5 * hd);
+  // крупные пятна тона (неравномерность кожи) и жёлтый оттенок лба
+  sk *= 1.0 + 0.045 * vnoise(vBind * 17.0) * hd + 0.03 * vnoise(vBind * 6.0);
+  sk = mix(sk, sk * vec3(1.04, 1.01, 0.9), G2(hax, hp.y, 0.0, 0.085, 0.07, 0.035) * 0.5 * hd);
   // солнечное загрубение: тёмная кожа лба/носа/скул, светлее под подбородком/на висках
   float sunExp = G2(hax, hp.y, 0.0, 0.07, 0.07, 0.04) + G2(hax, hp.y, 0.05, -0.01, 0.03, 0.03) + G2(hax, hp.y, 0.0, -0.02, 0.014, 0.03);
   sk *= 1.0 - 0.1 * clamp(sunExp, 0.0, 1.0) * (0.4 + uWear) * hd;
@@ -190,7 +193,7 @@ if (rg == 0) {
   float bm = (1.0 - smoothstep(bth * 0.35, bth, abs(hp.y - yc))) * smoothstep(0.011, 0.02, hax) * (1.0 - smoothstep(0.05, 0.067, hax));
   float strokes = 0.5 + 0.5 * vnoise(vec3(hp.x * 500.0, hp.y * 90.0, hp.z * 100.0));
   bm *= (0.35 + 0.65 * smoothstep(0.1, 0.6, strokes)) * uBrowK * step(0.0, hp.z - 0.04) * hd;
-  sk = mix(sk, uHair * 0.6, bm * 0.75);
+  sk = mix(sk, uHair * 0.75 + vec3(0.01), bm * 0.88);
   // щетина
   float stub = (1.0 - smoothstep(-0.045, -0.062, hp.y) * 0.0) * smoothstep(-0.052, -0.07, hp.y) * smoothstep(-0.123, -0.11, hp.y) * smoothstep(0.075, 0.05, hax) * step(0.0, hp.z - 0.0) + 0.7 * smoothstep(-0.032, -0.042, hp.y) * smoothstep(-0.052, -0.045, hp.y) * smoothstep(0.03, 0.014, hax) * step(hp.y, -0.037);
   stub += 0.55 * smoothstep(0.0, -0.03, hp.y) * smoothstep(0.052, 0.062, hax) * smoothstep(0.085, 0.07, hax) * smoothstep(-0.06, -0.02, hp.y);
@@ -198,8 +201,8 @@ if (rg == 0) {
   sk = mix(sk, mix(sk, uHair * 0.55, 0.78), clamp(stub, 0.0, 1.0) * uStubble * sdot * hd);
   sk = mix(sk, sk * 0.88 + uHair * 0.1, clamp(stub, 0.0, 1.0) * uStubble * 0.35 * hd);
   // губы
-  float lip = 1.0 - smoothstep(0.78, 1.0, length(vec2(hp.x / 0.0225, (hp.y + 0.0642) / 0.0125)));
-  vec3 lipC = uSkin * vec3(1.0, 0.55, 0.5) * 0.9;
+  float lip = 1.0 - smoothstep(0.8, 1.0, length(vec2(hp.x / 0.0262, (hp.y + 0.0648) / 0.0152)));
+  vec3 lipC = uSkin * mix(vec3(1.0, 0.56, 0.5), vec3(1.0, 0.64, 0.58), smoothstep(-0.06, -0.072, hp.y)) * 0.86;
   sk = mix(sk, lipC, lip * 0.9 * hd);
   // нос/рот: тёмные полости
   sk = mix(sk, vec3(0.05, 0.012, 0.012), clamp(vFace.z * 1.25, 0.0, 1.0));
@@ -311,6 +314,9 @@ if (rg == 0) {
   vec3 scl = uEye * (0.92 + 0.08 * nz2);
   scl = mix(scl, scl * vec3(1.0, 0.62, 0.6) + vec3(0.12, 0.0, 0.0) * (1.0 - uEyeGlow * 1.5), vein * 0.5);
   scl *= 1.0 - 0.45 * smoothstep(0.1, 0.6, dir.y) - 0.35 * smoothstep(0.55, 0.95, abs(dir.x));
+  float innerC = -sign(vBind.x) * dir.x;
+  scl = mix(scl, vec3(0.72, 0.3, 0.28) * (0.8 + 0.2 * nz2), smoothstep(0.6, 0.86, innerC) * 0.85);   // слёзное мясцо
+  scl = mix(scl, scl * vec3(1.0, 0.8, 0.78), smoothstep(0.55, 0.95, -innerC) * 0.5);
   vec3 ir = uIris * (0.65 + 0.9 * fib);
   ir = mix(ir, ir * vec3(1.9, 1.7, 1.2) + 0.02, smoothstep(0.55, 0.3, r) * smoothstep(0.2, 0.4, r) * 0.7);
   ir *= mix(0.3, 1.0, smoothstep(1.0, 0.8, r));            // лимбальное затемнение
