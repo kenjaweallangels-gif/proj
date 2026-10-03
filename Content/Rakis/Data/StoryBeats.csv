@@ -3,7 +3,7 @@ SB_A1_00_Weather,10,Start,SetWeather,"Dawn_Ridge,0",0
 SB_A1_01_Music,20,Start,SetMusic,DesertCalm,0.5
 SB_A1_02_Title,30,Start,TitleCard,Ракис. Гребень Шайтана. Рассвет|Rakis. Shaitan's Ridge. Dawn,2.0
 SB_A1_03_RaynStep,40,Beat:SB_A1_02_Title,PlayDialogue,DLG_A1_001,3.0
-SB_A1_04_Hint,50,Beat:SB_A1_03_RaynStep,Hint,Удерживайте Alt / LB — походка по песку. Сбивайте ритм: Пробел / A.|Hold Alt / LB to sand-walk. Break the rhythm: Space / A.,1.0
+SB_A1_04_Hint,50,Beat:SB_A1_03_RaynStep,Hint,"C / LB — шаг пустыни (тише, но медленнее). Пробел / A — сбить ритм ещё сильнее.|C / LB — desert step (quieter, slower). Space / A — break the rhythm further.",1.0
 SB_A1_05_Banter,60,Beat:SB_A1_04_Hint,PlayDialogue,DLG_A1_005,20.0
 SB_A1_06_EllipsisA2,65,Beat:SB_A1_04_Hint,Ellipsis,"Rakis.Ellipsis.A2,1.0,1.8333,window=15,pull=SB_A2_10_Tension@22|Два часа спустя|Two hours later",5.0
 SB_A2_00_Title,70,ZoneEnter:A2_Erg,TitleCard,Открытый эрг|The Open Erg,1.0
