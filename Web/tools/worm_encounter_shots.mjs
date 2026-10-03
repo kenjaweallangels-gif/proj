@@ -72,7 +72,7 @@ const glMode = arg('gl', 'swiftshader');
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || findChromium(), args: GL[glMode] });
 const page = await browser.newPage({ viewport: { width: Number(arg('w', 1280)), height: Number(arg('h', 720)) } });
 const errors = [];
-page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${m.type()}: ${m.text()}`); });
+page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !/AudioContext/.test(m.text())) errors.push(`${m.type()}: ${m.text()}`); });
 page.on('pageerror', (e) => errors.push(String(e)));
 await page.goto(`file://${join(root, 'dist', arg('file', 'worm.html'))}?autotest=1&q=${arg('q', 'med')}&lang=RU`);
 await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.5, null, { timeout: 900000 });

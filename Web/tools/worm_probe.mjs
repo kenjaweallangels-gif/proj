@@ -50,7 +50,7 @@ async function probe(name) {
 }
 let bad = 0;
 if (arg('only', 'pose') === 'pose') {
-  await page.evaluate(() => { const g = window.__rakis; g.cinematic.active = true; g.worm.debugPose({ x: 330, z: 120, yaw: 2.0, sigma: 175, open: 0 }); });
+  await page.evaluate(() => { const g = window.__rakis; g.cinematic.active = true; g.worm.debugEncounter({ stage: 'stop' }); g.worm.director.pt = -999; });
   const cams = {
     head_closed: 'const p=new T.Vector3(),d=new T.Vector3(); w.body.mouthWorld(p,d); g.camera.position.copy(p.clone().addScaledVector(d,70).add(new T.Vector3(0,6,0))); g.camera.fov=38; g.camera.updateProjectionMatrix(); g.camera.lookAt(p.clone().addScaledVector(d,6));',
     body_mid: 'const P=w.spine.P; g.camera.position.set(P[270]-70,8,P[272]-40); g.camera.lookAt(P[270],P[271],P[272]);',
@@ -61,7 +61,7 @@ if (arg('only', 'pose') === 'pose') {
     await page.waitForTimeout(800);
     const r = await probe(n); if (r.nan + r.inf) bad++;
   }
-  await page.evaluate(() => { window.__rakis.worm.body.setOpen(1); });
+  await page.evaluate(() => { window.__rakis.worm.body.setOpen(1); window.__rakis.worm.director.pt = -999; });
   await page.evaluate(`(() => { const g = window.__rakis, w = g.worm, T = g.THREE; ${cams.head_closed} })()`);
   await page.waitForTimeout(800);
   const r = await probe('head_open'); if (r.nan + r.inf) bad++;

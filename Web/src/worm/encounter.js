@@ -308,7 +308,7 @@ export class EncounterDirector {
     // где ближе всего к группе
     let best = 1e9, sBest = it.s;
     const P = this._v, N = this._n;
-    for (let s = 36; s <= 92; s += 2) {
+    for (let s = Math.max(30, it.s - 12); s <= it.s + 12; s += 2) {
       sp.surfacePoint(s, 0, P, N, 0);
       const d = Math.hypot(P.x - this.G.x, P.z - this.G.z);
       if (d < best) { best = d; sBest = s; }
@@ -349,7 +349,7 @@ export class EncounterDirector {
       }
       case 'rope': {                                              // закрепляет канат
         it.moving = false;
-        if (o.t > 1.6) { o.phase = 'down'; o.t = 0; o.a = 0; it.free = true; }
+        if (o.t > 1.0) { o.phase = 'down'; o.t = 0; o.a = 0; it.free = true; }
         break;
       }
       case 'down': {
@@ -534,7 +534,7 @@ export class EncounterDirector {
       } else if (this.phase === 'arrive' && u < uB) {
         // 2) низкий геройский ракурс: червь проходит мимо, камера у самой земли, взгляд ведёт голову, затем скользит по телу
         shot = 2;
-        path.local(28, -(path.o.R0 - 30), pos); pos.y = gG + 1.1;
+        path.local(28, -6, pos); pos.y = gG + 1.1;
         const pass = smoothstep(ap - 40, ap + 90, u);
         const sT = lerp(0, 150, smoothstep(ap - 10, ap + 110, u));
         this.spinePt(sT, this._w);
@@ -554,7 +554,7 @@ export class EncounterDirector {
         // 4) финал: широко над группой, червь ложится дугой, взгляд скользит от головы вдоль тела
         shot = 4;
         const k = smoothstep(0, 6, this.phase === 'stop' ? this.pt : 0);
-        path.local(0, 2.2 + 0.6 * k, pos); pos.y = gG + 2.4;
+        path.local(-10, 10, pos); pos.y = gG + 5 + 3 * k;
         this.spinePt(lerp(10, 130, k), this._w);
         goal.copy(head).setY(head.y + 10).lerp(this._w.setY(this._w.y + 8), k * 0.8);
         fov = lerp(52, 66, k); damp_ = 2.6;

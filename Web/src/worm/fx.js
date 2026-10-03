@@ -244,8 +244,8 @@ class Skirt {
           const off = half - 0.4 + (c === 0 ? 0 : c === 1 ? 4.2 * wid : 11 * wid);
           const px = x + lx * sg * off, pz = z + lz * sg * off;
           const o = i * 6 + side * 3 + c;
-          pos[o * 3] = px; pos[o * 3 + 1] = g(px, pz) + (c === 0 ? 0.55 : c === 1 ? 0.65 : 0.18); pos[o * 3 + 2] = pz;
-          const a = vis * (c === 0 ? 0.92 : c === 1 ? 0.55 : 0);
+          pos[o * 3] = px; pos[o * 3 + 1] = g(px, pz) + (c === 0 ? 0.9 : c === 1 ? 0.8 : 0.2); pos[o * 3 + 2] = pz;
+          const a = vis * (c === 0 ? 1.0 : c === 1 ? 0.75 : 0);
           const sh = c === 0 ? 0.82 : 1.0;
           col[o * 4] = sh; col[o * 4 + 1] = sh * 0.97; col[o * 4 + 2] = sh * 0.93; col[o * 4 + 3] = a;
         }
@@ -582,7 +582,7 @@ export class WormFX {
       if (l < 0.5) { dx = -L.x; dz = -L.z; l = Math.hypot(dx, dz) || 1; }
       dx /= l; dz /= l;
       const h = P[i * 3 + 1] - g(P[i * 3], P[i * 3 + 2]);
-      const vis = smoothstep(RADIUS * 0.1, RADIUS * 0.9, h);
+      const vis = ctx.tame ? smoothstep(-RADIUS * 0.85, -RADIUS * 0.25, h) : smoothstep(RADIUS * 0.1, RADIUS * 0.9, h);
       if (vis > 0.01) any = true;
       const w = RADIUS * 1.05;
       const al = 0.55 * vis;

@@ -15,8 +15,8 @@ export function createUniforms(spineTex) {
     uLen: { value: LENGTH },
     uR: { value: RADIUS },
     uBump: { value: 0.65 },       // сила микрорельефа пластин
-    uSandAmt: { value: 0.35 },    // 0..1 налёт песка/пыли (сверху гуще)
-    uDust: { value: 1.0 },        // множитель пылевого покрытия верха
+    uSandAmt: { value: 0.25 },    // 0..1 налёт песка/пыли (сверху гуще)
+    uDust: { value: 0.65 },        // множитель пылевого покрытия верха
     uRim: { value: 1.0 },         // сила контровой подсветки
     uSubs: { value: 1.0 },        // подкожный красноватый оттенок в бороздах
     uCrust: { value: 1.0 },       // «ракушечные» наросты у головы
@@ -55,7 +55,7 @@ float wblob(vec2 p, out float id){
   vec2 ip = floor(p), fp = fract(p); float best = 0.0; id = 0.0;
   for(int j=-1;j<=1;j++) for(int i=-1;i<=1;i++){
     vec2 g = vec2(float(i),float(j)); vec2 o = wh22(ip+g);
-    float rr = 0.20 + 0.24*wh21(ip+g+7.7);
+    float rr = 0.12 + 0.20*wh21(ip+g+7.7)*wh21(ip+g+1.9);
     float d = length(g + o*0.62 + 0.19 - fp);
     float h = 1.0 - wss(rr*0.30, rr, d);
     if(h > best){ best = h; id = wh21(ip+g+3.3); }
@@ -103,14 +103,14 @@ void wormSkin(float s, float a, vec3 wN, float pm, out vec3 alb, out float rgh, 
   scar = wss(0.90, 0.97, sc1) * wss(0.50, 0.75, wfbm(vec2(s*0.04+9.0, a*1.1))) * lodFine;
   float sc2 = wss(0.80, 0.93, wvn(vec2(s*0.09 + 21.0, a*2.6 + 4.0)));
   scar = max(scar, sc2*0.5);
-  if (crustM > 0.02) { crustH = wblob(vec2(s*0.62, a*12.0) + 3.0, crustId) * crustM * lodCrack; }
+  if (crustM > 0.02) { crustH = wblob(vec2(s*0.9, a*17.0) + 3.0, crustId) * crustM * lodCrack; }
   #endif
   vec3 rust  = wsrgb(vec3(0.45,0.34,0.25));
   vec3 grey  = wsrgb(vec3(0.41,0.38,0.34));
   vec3 ochre = wsrgb(vec3(0.55,0.45,0.32));
   vec3 base = mix(mix(rust,grey,wss(0.30,0.68,macro)), ochre, 0.15+0.4*meso*pid);
   alb = base*(0.78+0.4*micro)*(0.88+0.12*growth);
-  alb = mix(alb, alb*1.12+0.01, shelf*0.35);                    // кромки светлее
+  alb = mix(alb, alb*1.08+0.006, shelf*0.22);                    // кромки светлее
   alb *= (0.88+0.2*bx)*(1.0-0.32*groove)*(1.0-0.5*seam)*(1.0-0.55*under)*(1.0-0.65*cr)*(1.0-0.05*ridges);
   // шрамы — светлая зарубцевавшаяся ткань
   alb = mix(alb, wsrgb(vec3(0.62,0.55,0.46)), scar*0.65);
@@ -217,6 +217,7 @@ const FRAG_COLOR_BODY = /* glsl */`
     vec3 wAlbS, wAlbF; float wRS, wRF, wHS, wHF;
     wormSkin(vSA.x, vSA.y, wN, wPm, wAlbS, wRS, wHS, wCav);
     wormFlesh(vSA.x, vSA.y, wFpm, wAlbF, wRF, wHF);
+    wAlbF *= mix(0.22, 1.0, smoothstep(0.1, 0.5, uOpen));        // закрытая пасть: внутренность лепестков не светится красным в щелях
     if (gl_FrontFacing) { wAlb = wAlbS; wRough = wRS; wH = wHS; } else { wAlb = wAlbF; wRough = wRF; wH = wHF; wCav = 0.0; }
     // складки губ: гребни поперёк лепестка и валик вдоль шва
     float lipRib = pow(0.5 + 0.5*sin(vSA.x*1.9 + vPet.y*2.0), 2.0) * smoothstep(0.05, 0.35, vPet.x);
