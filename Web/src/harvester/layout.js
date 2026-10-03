@@ -20,7 +20,7 @@ export const BRIDGE = { x0: 24, x1: 38, z0: 7.6, z1: 18.4, y0: FC, y1: 27.6 };  
 
 // Входная дверь в борту +z нижнего корпуса и трап-пандус
 export const DOOR = { x0: 9.75, x1: 12.85, y0: FA, y1: FA + 3.7, z: 20.2 };
-export const GANG = { zc: 25.6, w: 2.8, xFoot: 36.5, xTop: 14.2, yFoot: SINK + 0.15, yTop: FA };
+export const GANG = { zc: 25.6, w: 2.8, xFoot: 36.5, xTop: 14.2, yFoot: SINK - 0.5, yTop: FA };
 export const LANDING = { x0: 7.0, x1: 14.2, z0: 19.9, z1: 27.0, y: FA };
 
 // Старт/стоп-пульт на земле у подножия трапа

@@ -224,8 +224,8 @@ export function dorm(plan, glow) {
   R.enclose({ s: [dz(-26), dz(-16)], e: [hole(11.0, 12.8, FA, FA + 3.0)], floorColor: PAL.FLOOR2 });
   const FAB = [PAL.FAB1, PAL.FAB2, PAL.FAB3, PAL.FAB4];
   for (let k = 0; k < 7; k++) bunk(R, -27.4 + k * 2.55, 18.65, FAB, 1, 1);
-  for (let k = 0; k < 7; k++) bunk(R, -27.4 + k * 2.55, 12.8, FAB, -1, -1);
-  for (let k = 0; k < 7; k++) bunk(R, -27.4 + k * 2.55, 6.4, FAB, 1, -1);
+  for (let k = 0; k < 7; k++) if (k !== 1 && k !== 5) bunk(R, -27.4 + k * 2.55, 12.8, FAB, -1, -1);   // проходы к двери и в торце
+  for (let k = 0; k < 7; k++) if (k !== 1 && k !== 5) bunk(R, -27.4 + k * 2.55, 6.4, FAB, 1, -1);
   // ковёр и стол в проходе, тумбы
   R.box(-18, FA + 0.02, 15.6, 12, 0.03, 2.4, '#6b3a30', 6);
   R.box(-18, FA + 0.78, 15.6, 8.0, 0.1, 0.9, PAL.WOOD, 0, { s: true });
