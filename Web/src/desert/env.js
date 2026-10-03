@@ -90,7 +90,7 @@ float rkHG(float mu, float g){ float g2 = g*g; return (1.0 - g2) / (4.0*3.14159*
 // экспоненциальный туман с убыванием по высоте + приземная дымка; цвет — «небесный» + блик к солнцу
 vec3 rkFogColorDir(vec3 v){
   float mu = max(dot(v, uKeyDir), 0.0);
-  return uFogColor + uKeyColor * (0.10 * uFogSun) * (pow(mu, 5.0) * 0.8 + pow(mu, 28.0) * 1.6) * (0.4 + uDust);
+  return uFogColor + uKeyColor * (0.05 * uFogSun) * (pow(mu, 5.0) * 0.8 + pow(mu, 28.0) * 1.6) * (0.4 + uDust);
 }
 float rkFogAmount(vec3 wp, out vec3 v){
   vec3 d = wp - cameraPosition;

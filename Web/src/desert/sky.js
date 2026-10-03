@@ -180,7 +180,7 @@ void main(){
       vec2 q = vec2(dot(cuv, w), dot(cuv, wp));
       float c = rkFbm(vec2(q.x * 0.9, q.y * 4.2) + 3.0) * 0.8 + rkFbm(q * vec2(2.0, 8.0) + 11.0) * 0.4;
       float cov = 0.22 + 0.7 * uClouds;
-      float cl = smoothstep(0.98 - cov * 0.62, 1.15 - cov * 0.25, c) * up * 0.62;
+      float cl = smoothstep(0.92 - cov * 0.6, 1.3 - cov * 0.25, c) * up * 0.5;
       vec3 cc = (keyL * (0.30 + 0.9 * pow(mup, 5.0)) + cAmb * 0.8) * 0.85;
       cc = mix(cc, dustTone * (cAmb + keyL * 0.15) , dustMix * 0.6);
       sky = mix(sky, cc, cl);

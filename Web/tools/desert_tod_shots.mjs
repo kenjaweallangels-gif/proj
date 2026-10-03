@@ -47,6 +47,7 @@ const SHOTS = [
   ['night_storm', 23, 'Storm_Horizon', { storm: 0.8 }, 'claw'],
 ];
 
+async function session(list) {
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM || findChromium(),
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
@@ -60,8 +61,7 @@ await page.goto(`file://${join(root, 'dist', arg('file', 'desert.html'))}?autote
 await page.waitForFunction(() => window.__rakis && window.__rakis.post && window.__rakis.audio, null, { timeout: 600000 });
 await page.evaluate(() => { window.__rakis.paused = true; });
 
-for (const [name, hours, preset, ov, view] of SHOTS) {
-  if (only.length && !only.some((o) => name.includes(o))) continue;
+for (const [name, hours, preset, ov, view] of list) {
   await page.evaluate(({ hours, preset, ov, view }) => {
     const g = window.__rakis, w = g.weather;
     w.clearOverride?.();
@@ -69,6 +69,7 @@ for (const [name, hours, preset, ov, view] of SHOTS) {
     if (w.setHours) w.setHours(hours, true); else { w.state.hours = hours; }
     w.timeScale = 0;
     if (ov && w.setOverride) w.setOverride(ov, 0);
+    w.snap();
     const cam = g.camera;
     const x = 0, z = 0;
     cam.position.set(x, g.world.heightAt(x, z) + 1.8, z);
@@ -97,3 +98,9 @@ for (const [name, hours, preset, ov, view] of SHOTS) {
 const uniq = [...new Set(errors)];
 console.log(uniq.length ? 'ERRORS:\n' + uniq.slice(0, 20).join('\n') : 'no console errors');
 await browser.close();
+}
+const todo = SHOTS.filter(([n]) => !only.length || only.some((o) => n.includes(o)));
+const chunk = Number(arg('chunk', 2));
+for (let i = 0; i < todo.length; i += chunk) {
+  for (let tries = 0; tries < 3; tries++) { try { await session(todo.slice(i, i + chunk)); break; } catch (e) { console.log('retry', String(e).slice(0, 120)); } }
+}

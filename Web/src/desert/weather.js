@@ -321,7 +321,7 @@ export function createWeather(game, sky, world) {
     ENV.uniforms.uSunDir.value.copy(sunDirTrue);
     ENV.uniforms.uSunColor.value.copy(sunColor);
     const sunLum = Math.max(sunColor.r, sunColor.g, sunColor.b, 1e-5);
-    weather.rayColor.setRGB(sunColor.r / sunLum, sunColor.g / sunLum, sunColor.b / sunLum).multiplyScalar(0.5 + 0.35 * Math.min(sunLum, 3));
+    weather.rayColor.setRGB(sunColor.r / sunLum, sunColor.g / sunLum, sunColor.b / sunLum).multiplyScalar(0.25 + 0.12 * Math.min(sunLum, 3));
 
     // --- луны ---
     const totalDays = clock.day + hours / 24;
@@ -350,7 +350,7 @@ export function createWeather(game, sky, world) {
     const nightK = 1 - smoothstep(-8, 1, el);              // 0 днём … 1 ночью (по солнцу)
     moonKey *= nightK;
     weather.moonLight = moonKey;
-    const night = 1 - smoothstep(-16, -3, el);              // звёзды/ночное небо
+    const night = 1 - smoothstep(-17, -4, el);              // звёзды/ночное небо
     weather.isNight = el < -6;
     ENV.uniforms.uNight.value = night;
     weather.phase = el < -10 ? 'night' : el < -0.8 ? (hourAngle(hours) < 0 ? 'dawn' : 'dusk') : el < 12 ? (hourAngle(hours) < 0 ? 'dawn' : 'dusk') : 'day';
@@ -429,7 +429,7 @@ export function createWeather(game, sky, world) {
     const cm = Math.max(dayHemi.r, dayHemi.g, dayHemi.b, 1e-4);
     const dayI = skyE * cm * 2.4;
     // ночной ambient: звёзды + лунное небо (синий), не ноль даже в новолуние
-    const nightI = night * (0.045 + 0.075 * clamp(moonAmb, 0, 1.4) ) * (1 - 0.5 * S);
+    const nightI = night * (0.09 + 0.075 * clamp(moonAmb, 0, 1.4) ) * (1 - 0.5 * S);
     const nr = 0.30, ng = 0.44, nb = 0.95;
     const totI = dayI + nightI;
     sky.hemi.color.setRGB((dayHemi.r / cm * dayI + nr * nightI) / Math.max(totI, 1e-5), (dayHemi.g / cm * dayI + ng * nightI) / Math.max(totI, 1e-5), (dayHemi.b / cm * dayI + nb * nightI) / Math.max(totI, 1e-5));
@@ -441,7 +441,7 @@ export function createWeather(game, sky, world) {
     // --- экспозиция (имитация адаптации глаза + ExposureBias) ---
     const Ecur = sunI * Math.max(sinE, 0.1) * dayK + sky.hemi.intensity + moonKey * 1.2;
     const Eref = 4 * 0.97 + 0.8;
-    const base = 0.74 * Math.pow(Eref / Math.max(Ecur, 0.5), 0.55);
+    const base = 0.74 * Math.pow(Eref / Math.max(Ecur, 0.5), 0.4);
     let target = base * Math.pow(2, (eff.exposure - 1) * 0.42);
     if (!Number.isFinite(target)) target = 1;
     target = clamp(target, 0.25, 4.5);

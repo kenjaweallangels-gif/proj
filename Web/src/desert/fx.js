@@ -91,18 +91,18 @@ void main(){
   vec3 toCam = normalize(cameraPosition - center);
   vec3 right = normalize(vec3(w.x, 0.0, w.y));
   vec3 up = normalize(cross(toCam, right));
-  float len = (1.2 + 3.6 * aSeed2.x) * (0.8 + uWindSpeed * 0.08);
+  float len = (1.0 + 2.6 * aSeed2.x) * (0.8 + uWindSpeed * 0.06);
   float hgt = (0.09 + 0.3 * aSeed2.y) * (0.7 + 0.8 * crest);
   vec3 wp = center + right * position.x * len + up * position.y * hgt;
   float dist = length(cameraPosition - center);
   float gust = 0.55 + 0.45 * sin(uTime * 0.7 + aSeed.x * 30.0);
   float vis = smoothstep(1.0, 6.5, uWindSpeed + 3.0 * uStorm);
-  vAlpha = uIntensity * vis * (0.14 + 0.86 * crest) * gust * (0.5 + aSeed2.z * 0.6) * 1.7
+  vAlpha = uIntensity * vis * (0.14 + 0.86 * crest) * gust * (0.5 + aSeed2.z * 0.6) * 1.05
          * smoothstep(1.5, 8.0, dist) * (1.0 - smoothstep(uR * 0.6, uR * 0.98, length(rel)));
   float lit = rkClawShade(center);
-  vCol = vec3(0.86, 0.66, 0.42) * (uKeyColor * (0.28 + 0.72 * smoothstep(0.0, 0.35, uKeyDir.y)) * lit * 0.62 + uAmbient * 0.9);
+  vCol = vec3(0.86, 0.66, 0.42) * (uKeyColor * (0.28 + 0.72 * smoothstep(0.0, 0.35, uKeyDir.y)) * lit * 0.42 + uAmbient * 0.8);
   // подсветка против солнца: струи горят на гребнях
-  vCol += uKeyColor * lit * 0.35 * pow(max(dot(-toCam, uKeyDir), 0.0), 3.0) * vec3(1.0, 0.8, 0.55);
+  vCol += uKeyColor * lit * 0.1 * pow(max(dot(-toCam, uKeyDir), 0.0), 3.0) * vec3(1.0, 0.8, 0.55);
   vUv = position.xy; vWP = wp;
   gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
 }`;

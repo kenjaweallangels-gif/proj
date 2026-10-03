@@ -252,7 +252,7 @@ export function createPost(game, weather) {
         const low = 1 - smoothstep(8, 48, el);                     // сильнее у горизонта
         const set = smoothstep(-5, 1.5, el);                       // исчезает под горизонтом
         const dustK = 0.55 + 0.9 * clamp(wp.dust, 0, 1);
-        rays = (0.22 + 0.5 * low) * set * dustK * smoothstep(-0.05, 0.4, facing) * (1 - 0.6 * clamp(wp.storm, 0, 1));
+        rays = (0.12 + 0.4 * low) * set * dustK * smoothstep(-0.05, 0.4, facing) * (1 - 0.6 * clamp(wp.storm, 0, 1));
         sunU = clamp(sunU, -3, 4); sunVv = clamp(sunVv, -3, 4);
       }
       post.rays += (rays - post.rays) * Math.min(1, dt * 4);

@@ -144,9 +144,9 @@ float f1 = 1.0 - smoothstep(6.0, 28.0, dist);
 float f2 = 1.0 - smoothstep(22.0, 110.0, dist);
 float f3 = 1.0 - smoothstep(90.0, 480.0, dist);
 float rOcc = 0.0;
-if (f1 > 0.001 && uQual > 0.5) { vec3 r = rkRipple(xz, 0.12, 1.6, 1.0, 0.7); g += r.yz * f1 * 0.7; rOcc += (1.0 - gRH) * f1 * 0.35; }
-if (f2 > 0.001) { vec3 r = rkRipple(xz, 0.62, 1.8, 5.0, 0.72); g += r.yz * f2 * 0.3; rOcc += (1.0 - gRH) * f2 * 0.65; }
-if (f3 > 0.001) { vec3 r = rkRipple(xz, 2.9, 2.5, 9.0, 0.75); g += r.yz * f3 * 0.1; rOcc += (1.0 - gRH) * f3 * 0.25; }
+if (f1 > 0.001 && uQual > 0.5) { vec3 r = rkRipple(xz, 0.12, 1.6, 1.0, 0.7); g += r.yz * f1 * 0.7; }
+if (f2 > 0.001) { vec3 r = rkRipple(xz, 0.62, 1.8, 5.0, 0.72); g += r.yz * f2 * 0.3; rOcc += (1.0 - gRH) * f2 * 0.55 * (1.0 - smoothstep(20.0, 70.0, dist)); }
+if (f3 > 0.001) { vec3 r = rkRipple(xz, 2.9, 2.5, 9.0, 0.75); g += r.yz * f3 * 0.1; rOcc += (1.0 - gRH) * f3 * 0.15 * (1.0 - smoothstep(60.0, 300.0, dist)); }
 g *= calmR;
 // лавинные полосы на подветренных склонах
 if (lee > 0.01) {
