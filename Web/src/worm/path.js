@@ -14,6 +14,51 @@ export const PATH_DEFAULTS = {
   tail: 1200,               // м прямого отхода
 };
 
+/**
+ * Сдвинуть точки пути из препятствий и сгладить смещение. clear(x, z, extra) → [x', z'] | null — позиция головы, вытолкнутая из тел с запасом
+ * radius+extra. Сначала итерации с большим запасом и размытием смещения (плавный обход), затем жёсткая проверка без запаса.
+ * Возвращает максимальное смещение, м.
+ */
+function relaxPath(X, Z, clear, iters = 16, W = 28, extra = 26) {
+  const m = X.length;
+  const dx = new Float32Array(m), dz = new Float32Array(m), tx = new Float32Array(m), tz = new Float32Array(m);
+  const blur = (w) => {
+    for (let pass = 0; pass < 2; pass++) {
+      let sx = 0, sz = 0, lo = 0, hi = -1;
+      for (let i = 0; i < m; i++) {
+        const nl = Math.max(0, i - w), nh = Math.min(m - 1, i + w);
+        while (hi < nh) { hi++; sx += dx[hi]; sz += dz[hi]; }
+        while (lo < nl) { sx -= dx[lo]; sz -= dz[lo]; lo++; }
+        tx[i] = sx / (nh - nl + 1); tz[i] = sz / (nh - nl + 1);
+      }
+      dx.set(tx); dz.set(tz);
+    }
+  };
+  for (let it = 0; it < iters; it++) {
+    let any = false;
+    for (let i = 0; i < m; i++) {
+      const x = X[i] + dx[i], z = Z[i] + dz[i];
+      const c = clear(x, z, extra);
+      if (c) { dx[i] += c[0] - x; dz[i] += c[1] - z; any = true; }
+    }
+    if (!any) break;
+    blur(W);
+  }
+  for (let it = 0; it < 4; it++) {                     // жёсткая проверка без запаса + лёгкое сглаживание стыков
+    let any = false;
+    for (let i = 0; i < m; i++) {
+      const x = X[i] + dx[i], z = Z[i] + dz[i];
+      const c = clear(x, z, 0);
+      if (c) { dx[i] += c[0] - x; dz[i] += c[1] - z; any = true; }
+    }
+    if (!any) break;
+    blur(5);
+  }
+  let maxD = 0;
+  for (let i = 0; i < m; i++) { X[i] += dx[i]; Z[i] += dz[i]; maxD = Math.max(maxD, Math.hypot(dx[i], dz[i])); }
+  return maxD;
+}
+
 export class EncounterPath {
   /** @param {{x:number,z:number}} G группа  @param {number} heading курс червя на подходе, рад (atan2(dz,dx)) */
   constructor(G, heading, opts = {}) {
@@ -54,6 +99,8 @@ export class EncounterPath {
       this.X[i] = raw[k * 2] + (raw[k * 2 + 2] - raw[k * 2]) * t;
       this.Z[i] = raw[k * 2 + 1] + (raw[k * 2 + 3] - raw[k * 2 + 1]) * t;
     }
+    // обход препятствий (харвестер, Коготь, валуны): clear(x, z) → [x', z'] — позиция головы, вытолкнутая из тел; смещение сглаживается
+    this.avoided = o.clear ? relaxPath(this.X, this.Z, o.clear) : 0;
     for (let i = 0; i < m; i++) {
       const a = Math.max(0, i - 2), b = Math.min(m - 1, i + 2);
       this.Y[i] = Math.atan2(this.Z[b] - this.Z[a], this.X[b] - this.X[a]);
@@ -108,6 +155,10 @@ export class EncounterPath {
 export function choosePath(G, preferred = -1.35, opts = {}) {
   const tries = [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05, 1.4, -1.4, 1.75, -1.75, 2.1, -2.1, 2.45, -2.45, 3.14];
   for (const d of tries) {
+    const p = new EncounterPath(G, preferred + d, opts);
+    if (p.valid() && p.avoided < (opts.maxAvoid ?? 70)) return p;
+  }
+  for (const d of tries) {                       // обход слишком велик — берём любой допустимый маршрут
     const p = new EncounterPath(G, preferred + d, opts);
     if (p.valid()) return p;
   }

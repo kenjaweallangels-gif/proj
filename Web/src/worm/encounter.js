@@ -1,50 +1,75 @@
-// Встреча с укрощённым червём (замена кат-сцены «выход-атака»). Червь, ведомый Оссаной и двумя наездниками, приходит из
-// глубокой пустыни, ползёт ПО поверхности (наполовину погружён), делает великую дугу вокруг группы, останавливается,
-// Оссана спускается по кольцам на канате, идёт к группе, говорит (диалог DLG_A2_RIDER_01), возвращается, поднимается,
-// наездники выбивают крючья, червь уползает и ныряет далеко в пустыне.
+// Встреча с укрощённым червём — всё в РЕАЛЬНОМ ВРЕМЕНИ, управление игроком не отбирается (нет кинокамеры, леттербокса, game.cinematic, блокировки ввода).
+// Внимание игрока привлекает сама мировая постановка: дрожь земли и песчаная волна на горизонте, камни-прыгуны, спутники поворачивают головы
+// и кричат, пыль, шаги по рингам.
 //
-// Фазы (шина 'worm:encounter' {phase}): arrive → stop → dismount → talk → mount → depart → gone.
-// Кинокамера — только на прибытии (arrive/stop) и отходе (depart); во время разговора игрок свободен.
+// Червь приходит из глубокой пустыни с 5 наездниками на спине: они цепляются за швы колец крючьями (шесты в швах, канаты туго, тела откинуты,
+// качаются в такт волне), передний рулит — вскрывает кольцо рычагом-крюком. Червь замедляется и в конце выбивается из сил: опускает голову,
+// тело оседает с долгим вздохом песка, сегменты расслабляются, дыхание замедляется. Он остаётся лежать (уходить некуда: сил нет, наездники
+// ждут, пока он оправится). Наездники спускаются по канатам; Оссана идёт туда, где стоит игрок, и говорит (DLG_A2_RIDER_01…10).
+// Остальные садятся у тела червя и ухаживают за ним.
+//
+// Фазы (шина 'worm:encounter' {phase}): omen → arrive → stop (+collapse) → dismount → talk → rest.
+// Promise playReveal() выполняется, когда закончилась цепочка диалога (после чего фаза 'rest', червь остаётся на месте).
 import * as THREE from 'three';
-import { clamp, lerp, smoothstep, damp } from '../core/util.js';
+import { clamp, lerp, smoothstep, rng } from '../core/util.js';
 import { GOLDEN_PATH } from '../core/layout.js';
+import { colliders } from '../core/colliders.js';
 import { choosePath } from './path.js';
-import { RADIUS, N_PTS } from './spine.js';
+import { RADIUS } from './spine.js';
 
 export const DIALOGUE_ID = 'DLG_A2_RIDER_01';
-const V_CRUISE = 38, A_ACC = 3.0, A_BRAKE = 2.6, V_DEPART = 32, A_DEPART = 2.2;
-const OSS_WALK = 3.0, OSS_CLIMB = 4.2, OSS_BACKWALK = 2.4, TALK_DIST = 4.0;
-const LEASH = 40;                       // м: дальше от места спуска игрока — Оссана ждёт и зовёт
-const TALK_FALLBACK = 6;                // с: если диалога нет — пауза
+
+/** Все числа сцены (метры, секунды, радианы). */
+export const ENCOUNTER_TUNING = {
+  vCruise: 36, aAcc: 3.0, aBrake: 2.2, tiredFrom: 0.55,    // к концу дуги голова еле ползёт (устал)
+  ossWalk: 3.0, ossRun: 4.6, ossClimb: 4.2, ossBackWalk: 2.4, talkDist: 4.0,
+  collapseTime: 9.5, sagBody: 3.2, sagHead: 2.6, spread: 0.045, restRate: 0.32, mouthRest: 0.1,
+  dismountDelay: { Ossana: 0.4, Rider3: 1.6, Rider4: 2.4, Rider5: 3.1, Rider1: 4.0 },
+  sitDistance: 5.5, avoidMargin: 12, talkFallback: 6, talkGuard: 180, callEvery: 9,
+};
+
+const T = ENCOUNTER_TUNING;
 const UP = new THREE.Vector3(0, 1, 0);
 
 export class EncounterDirector {
   constructor(api, worm) {
     this.api = api; this.worm = worm;
-    this._active = false; this.phase = 'none';
+    this._active = false; this.resting = false; this.phase = 'none';
     this.promise = null; this.resolve = null;
     this.path = null; this.G = new THREE.Vector3();
     this.t = 0; this.pt = 0; this.u = 0; this.v = 0;
-    this.cinematic = false; this.saved = null;
-    this.oss = { phase: 'none', t: 0, pos: new THREE.Vector3(), land: new THREE.Vector3(), a: 0, aLand: 0, side: 1, sDesc: 60, phaseC: 0, callT: 0, waitT: 0 };
-    this.camPos = new THREE.Vector3(); this.look = new THREE.Vector3(); this.goal = new THREE.Vector3(); this.fov = 50; this.shot = 0;
+    this.timeV = 0; this.rate = 1;
+    this.rand = rng(777);
+    this.tasks = [];
     this._v = new THREE.Vector3(); this._w = new THREE.Vector3(); this._n = new THREE.Vector3(); this._p = new THREE.Vector3(); this._q = new THREE.Vector3();
+    this._pt = {};
     this.sensingBefore = true;
-    this.footAcc = 0; this.surfaced = false; this.stopFired = false; this.crackT = 0; this.crackN = 0; this.departT = 0;
+    this.footAcc = 0; this.surfaced = false; this.blockT = 0;
     this.talkDone = false; this.log = [];
+    this.sched = [];
+    this.oss = { phase: 'none', t: 0, pos: new THREE.Vector3(), land: new THREE.Vector3() };   // совместимость со старым API (ossanaLanding)
   }
 
   get active() { return this._active; }
 
   // ---------------------------------------------------------------- старт
-  /** Построить маршрут относительно группы и поставить голову в начало (под песком, далеко). */
+  /** Построить маршрут относительно группы (с обходом препятствий) и поставить голову в начало (под песком, далеко). */
   prepare() {
     const { game, K, ground } = this.api;
     const pl = game.player?.position;
     const P4 = GOLDEN_PATH.find((p) => p.id === 'P4');
     const G = pl && game.space === 'desert' ? { x: pl.x, z: pl.z } : { x: P4.x, z: P4.z };
     this.G.set(G.x, ground(G.x, G.z), G.z);
-    this.path = choosePath(G, -1.35);
+    // курс: волна приходит со стороны, куда смотрит игрок (видна на горизонте), и проходит слева направо перед ним
+    const fwd = game.camera.getWorldDirection(this._w);
+    const camHead = Math.atan2(fwd.z, fwd.x);
+    const preferred = Number.isFinite(camHead) && (fwd.x * fwd.x + fwd.z * fwd.z) > 0.04 ? camHead + Math.PI - 0.55 : -1.35;
+    const tmp = new THREE.Vector3();
+    const clear = (x, z, extra = 0) => {
+      tmp.set(x, ground(x, z), z);
+      return game.collide(tmp, RADIUS + T.avoidMargin + extra, { ignore: 'worm', height: 3 }) ? [tmp.x, tmp.z] : null;
+    };
+    this.path = choosePath(G, preferred, { clear });
     const p0 = this.path.at(0);
     this.u = 0; this.v = 0;
     this.api.placeHead(p0.x, p0.z, p0.yaw, 55);
@@ -53,54 +78,41 @@ export class EncounterDirector {
   }
 
   play() {
-    if (this._active) return this.promise;
+    if (this._active) return this.resting ? Promise.resolve({ skipped: true, resting: true }) : this.promise;
     const { game, bus, K } = this.api;
     this.promise = new Promise((res) => { this.resolve = res; });
     this.prepare();
-    this._active = true;
-    this.t = 0; this.pt = 0; this.surfaced = false; this.stopFired = false; this.talkDone = false; this.log.length = 0;
+    this._active = true; this.resting = false;
+    this.t = 0; this.pt = 0; this.surfaced = false; this.talkDone = false; this.log.length = 0; this.blockT = 0;
+    this.timeV = game.time; this.rate = 1; this.sched.length = 0;
     this.sensingBefore = this.worm.sensing;
     this.worm.sensing = false;
     this.api.clearForced();
     this.api.setRidden(true);
     this.api.setTame(true);
     K.frozen = false;
-    const rd = this.worm.riders, gear = this.worm.gear;
-    rd.items.forEach((it) => { it.hidden = false; it.free = false; it.sNow = it.s; it.a = 0; it.moving = false; it.root.visible = true; it.fig.setTalking?.(false); });
-    gear.resetHooks(); gear.setLadder(null);
-    rd.aBase = 0;
-    this.oss.phase = 'none';
+    const rd = this.worm.riders, sp = this.worm.spine;
+    sp.sag = 0; sp.sagHead = 0; sp.spread = 1; sp.flare = 1;
+    rd.items.forEach((it) => {
+      it.hidden = false; it.free = false; it.sitting = false; it.sNow = it.s; it.a = 0; it.moving = false; it.root.visible = true; it.hookOn = true;
+      it.mode = it.role === 'steer' ? 'steer' : 'cling'; it.clingW = 1; it.face = 0; it.sitW = 0; it.ladderOn = false;
+      it.fig.setTalking?.(false);
+    });
+    rd.sway = 1; rd.aBase = 0;
+    this.worm.gear.resetHooks(); this.worm.gear.setLadder(null);
     this.worm.body.setOpen(0);
-    this.installCollider();
+    this.tasks = rd.items.map((it) => this.mkTask(it));
     this.offSub = bus.on('subtitle', (e) => this.onSubtitle(e));
-    // камера
-    const cam = game.camera;
-    this.saved = { pos: cam.position.clone(), quat: cam.quaternion.clone(), fov: cam.fov, near: cam.near };
-    this.beginCinematic();
+    this.watching = false;
+    this.setPhase('omen');
     this.setPhase('arrive');
     bus.emit('worm:reveal', { phase: 'start' });
+    this.stageOmen();
     return this.promise;
   }
 
-  beginCinematic() {
-    const { game, bus } = this.api;
-    if (this.cinematic) return;
-    this.cinematic = true;
-    game.cinematic.active = true; game.cinematic.owner = 'worm';
-    bus.emit('cinematic', { active: true, id: 'WormReveal' });
-    game.ui?.letterbox?.(true);
-    this.shot = 0;
-  }
-  /** force=true — восстановить режим безусловно (любой путь выхода: пропуск, отмена, ошибка): cinematic.active=false, letterbox(false), событие. */
-  endCinematic(force = false) {
-    const { game, bus } = this.api;
-    if (!this.cinematic && !force) return;
-    this.cinematic = false;
-    game.cinematic.active = false; game.cinematic.owner = null;
-    game.ui?.letterbox?.(false);
-    const cam = game.camera;
-    if (Math.abs(cam.fov - (this.saved?.fov ?? 62)) > 0.01) { cam.fov = this.saved?.fov ?? 62; cam.updateProjectionMatrix(); }
-    bus.emit('cinematic', { active: false, id: 'WormReveal' });
+  mkTask(it) {
+    return { it, ph: 'cling', t: 0, delay: T.dismountDelay[it.name] ?? 2, side: 1, sDesc: it.s, a: 0, aLand: 0, cp: 0, pos: new THREE.Vector3(), land: new THREE.Vector3(), spot: new THREE.Vector3(), face: new THREE.Vector3(0, 0, 1), sitT: 0, callT: 0, waitT: 0, touch: it.name === 'Rider5' ? 1 : 0 };
   }
 
   setPhase(ph) {
@@ -109,76 +121,116 @@ export class EncounterDirector {
     this.api.bus.emit('worm:encounter', { phase: ph });
   }
 
+  after(sec, fn) { this.sched.push({ at: this.t + sec, fn }); }
+
+  /** Внешняя отмена/уход червя (devour, тест): тихо убирает сцену. Безусловно восстанавливает всё состояние. */
   cancel() { if (this._active) this.finish(true, true); }
+  dismiss() { this.cancel(); }
 
   finish(skipped = false, silent = false) {
     if (!this._active) return;
-    const { game, bus, K } = this.api;
-    this._active = false;
-    this.endCinematic(true);
-    this.removeCollider();
+    const { bus, K } = this.api;
+    this._active = false; this.resting = false;
+    this.watch(false);
     this.offSub?.(); this.offSub = null;
-    const rd = this.worm.riders;
-    rd.items.forEach((it) => { it.free = false; it.hidden = true; it.root.visible = false; it.fig.setTalking?.(false); });
+    const rd = this.worm.riders, sp = this.worm.spine;
+    rd.items.forEach((it) => { it.free = false; it.hidden = true; it.sitting = false; it.root.visible = false; it.fig.setTalking?.(false); it.ladderOn = false; });
+    sp.sag = 0; sp.sagHead = 0; sp.spread = 1;
     this.worm.gear.setLadder(null);
     this.oss.phase = 'none';
     K.scripted = false;
     this.api.setTame(false);
     this.worm.sensing = this.sensingBefore;
     this.api.hardDormant(true);
-    if (!silent) { bus.emit('worm:reveal', { phase: 'end', skipped }); }
-    if (this.phase !== 'gone') { this.phase = 'gone'; bus.emit('worm:encounter', { phase: 'gone' }); }
+    if (!silent) bus.emit('worm:reveal', { phase: 'end', skipped });
+    bus.emit('worm:encounter', { phase: 'dismissed' });
+    this.phase = 'none';
     const res = this.resolve; this.resolve = null;
     res?.({ skipped });
   }
 
-  // ---------------------------------------------------------------- коллизия тела (игрок не проходит сквозь червя)
-  installCollider() {
+  // ---------------------------------------------------------------- мировая постановка (без камеры)
+  /** Спутники поворачивают головы к червю (перехват lookAt их фигур) и кричат; вдали — песчаная волна. */
+  watch(on) {
     const { game } = this.api;
-    const w = game.world; if (!w || w._wormWrapped) return;
-    const orig = w.collide?.bind(w); if (!orig) return;
-    const sp = this.worm.spine, ground = this.api.ground, self = this;
-    w._wormWrapped = orig;
-    w.collide = (pos, r) => {
-      let hit = orig(pos, r);
-      if (self._active && self.worm.exposed) {
-        const P = sp.P;
-        for (let i = 0; i < N_PTS; i++) {
-          const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2];
-          const R = RADIUS * sp.RS[i] - 0.5;
-          const hrel = y - ground(x, z);
-          if (hrel < -R + 0.5) continue;
-          const half = hrel > R ? R : Math.sqrt(Math.max(0, R * R - Math.min(hrel, R) * Math.min(hrel, R)));
-          const dx = pos.x - x, dz = pos.z - z, d = Math.hypot(dx, dz), need = half + r;
-          if (d < need) { const k = d > 1e-3 ? 1 : 0; pos.x = x + (k ? dx / d : 1) * need; pos.z = z + (k ? dz / d : 0) * need; hit = true; }
-        }
+    const list = game.companions?.list || [];
+    if (on && !this.watching) {
+      this.watching = true;
+      this._lookBackup = [];
+      for (const c of list) {
+        const fig = c.figure; if (!fig || fig.__orig) continue;
+        const orig = fig.lookAt.bind(fig);
+        fig.__orig = orig;
+        fig.lookAt = (pos, w) => { if (this.watching) orig(this.attention(), Math.max(0.9, w)); else orig(pos, w); };
+        this._lookBackup.push(fig);
       }
-      return hit;
-    };
+    } else if (!on && this.watching) {
+      this.watching = false;
+      for (const fig of this._lookBackup || []) { if (fig.__orig) { fig.lookAt = fig.__orig; delete fig.__orig; } }
+      this._lookBackup = [];
+    }
   }
-  removeCollider() {
-    const w = this.api.game.world;
-    if (w?._wormWrapped) { w.collide = w._wormWrapped; w._wormWrapped = null; }
+  attention() {
+    const K = this.api.K, o = this.tasks[1];
+    if (o && (this.phase === 'dismount' || this.phase === 'talk') && o.it.free) return this._p.set(o.pos.x, o.pos.y + 1.6, o.pos.z);
+    return this._p.set(K.pos.x, K.pos.y + 12, K.pos.z);
+  }
+
+  bark(speaker, name, ru, en, dur = 3.4) {
+    const { game, bus } = this.api;
+    const c = game.companions?.list?.find((q) => q.id === speaker);
+    const pos = c ? new THREE.Vector3(c.position.x, c.position.y + 1.7, c.position.z) : undefined;
+    bus.emit('subtitle', { speaker, name, text: game.t(ru, en), duration: dur, kind: 'bark', pos });
+  }
+
+  stageOmen() {
+    this.watch(true);
+    this.api.game.audio?.event?.('Worm.Heartbeat');
+    this.after(0.8, () => this.bark('Ilva', 'Илва', 'Слышите? Песок гудит под ногами.', 'Do you hear it? The sand is humming.'));
+    this.after(4.0, () => this.bark('Rayn', 'Райн', 'Там, на гребне! Вал идёт прямо на нас.', 'There, on the crest! A swell, coming straight at us.'));
+    this.after(9.0, () => this.bark('Ilva', 'Илва', 'Слишком ровно для дикого. Не бегите.', 'Too steady for a wild one. Do not run.'));
   }
 
   // ---------------------------------------------------------------- голова
-  baseLift(u) {
-    const p = this.path;
-    let l = -55 + 52 * smoothstep(40, 250, u);                      // всплытие вдали: волна → бугор → кольца
-    l -= 62 * smoothstep(p.uOut + 250, p.uOut + 470, u);            // нырок далеко в пустыне
-    return l;
-  }
+  baseLift(u) { return -55 + 52 * smoothstep(30, 200, u); }       // всплытие вдали: волна → бугор → кольца
 
   placeHeadAt(u) {
     const { K, ground } = this.api;
-    const p = this.path.at(u, this._pt || (this._pt = {}));
+    const p = this.path.at(u, this._pt);
     K.pos.set(p.x, ground(p.x, p.z) + this.baseLift(u), p.z);
     K.yaw = p.yaw; K.pitch = 0;
     this.worm.spine.push(K.pos);
   }
 
+  /** Тело не должно заходить в харвестер/скалу: смотрим вперёд по курсу (только выступающее над песком). */
+  blockedAhead() {
+    const { K } = this.api;
+    if (!this.surfaced) return false;
+    const cy = Math.cos(K.yaw), sy = Math.sin(K.yaw);
+    const a = this._v.set(K.pos.x + cy * 18, K.pos.y, K.pos.z + sy * 18);
+    const b = this._w.set(K.pos.x + cy * (30 + this.v * 3.5), K.pos.y, K.pos.z + sy * (30 + this.v * 3.5));
+    return !!colliders.segmentBlocked(a, b, RADIUS + 1.5, { ignore: 'worm' });
+  }
+
+  /** Игрок (или спутник) на пути головы: червь притормаживает и «ждёт», пока тот отойдёт (через 4 с ползёт 2 м/с — коллайдеры мягко отодвинут). */
+  personAhead() {
+    const { game, K } = this.api;
+    if (!this.surfaced) return false;
+    const cy = Math.cos(K.yaw), sy = Math.sin(K.yaw), reach = 34 + this.v * 3;
+    const list = [game.player?.position, ...(game.companions?.list || []).map((c) => c.position)];
+    for (const p of list) {
+      if (!p) continue;
+      const dx = p.x - K.pos.x, dz = p.z - K.pos.z;
+      const along = dx * cy + dz * sy, lat = Math.abs(-dx * sy + dz * cy);
+      if (along > 8 && along < reach && lat < RADIUS + 5) return true;
+    }
+    return false;
+  }
+
   moveHead(dt, vTarget, acc) {
     const { K } = this.api;
+    if (this.blockedAhead()) { vTarget = 0; acc = Math.max(acc, 6); this.blockT += dt; } else this.blockT = 0;
+    if (this.personAhead()) { this.stallT = (this.stallT || 0) + dt; vTarget = this.stallT > 4 ? Math.min(vTarget, 2) : 0; acc = Math.max(acc, 5); } else this.stallT = 0;
     this.v += clamp(vTarget - this.v, -acc * dt, acc * dt);
     if (this.v < 0) this.v = 0;
     this.u = Math.min(this.u + this.v * dt, this.path.len - 1);
@@ -188,7 +240,7 @@ export class EncounterDirector {
     if (this.footAcc > 16 && this.surfaced) { this.footAcc = 0; this.api.game.world?.addFootprint?.(K.pos.x, K.pos.z, K.yaw, { type: 'worm', size: 46 }); }
   }
 
-  /** Мгновенно довести голову до u (для пропуска): шаг 2 м, тело сворачивается по истории. */
+  /** Мгновенно довести голову до u (отладка): шаг 2 м, тело сворачивается по истории. */
   advanceTo(uT) {
     while (this.u < uT) { this.u = Math.min(uT, this.u + 2); this.placeHeadAt(this.u); }
     this.v = 0;
@@ -200,241 +252,287 @@ export class EncounterDirector {
   update(dt) {
     if (!this._active) return;
     const { game, K, bus } = this.api;
-    const sp = this.worm.spine, path = this.path;
+    const sp = this.worm.spine, path = this.path, rd = this.worm.riders;
     this.t += dt; this.pt += dt;
+    this.timeV += dt * this.rate;
+    for (let i = this.sched.length - 1; i >= 0; i--) if (this.t >= this.sched[i].at) { const f = this.sched[i].fn; this.sched.splice(i, 1); try { f(); } catch (e) { console.warn('[worm] sched', e); } }
     this.tickHold();
-    const skip = game.input?.pressed?.('Skip');
+    rd.sway = clamp(this.v / 28, 0.12, 1);
 
     switch (this.phase) {
       case 'arrive': {
         const left = path.uStop - this.u;
-        const vUp = Math.sqrt(2 * A_ACC * (this.u + 6));
-        const vDown = Math.sqrt(2 * A_BRAKE * Math.max(0, left)) + 0.6;
-        this.moveHead(dt, Math.min(V_CRUISE, vUp, vDown), 3);
+        const tired = 1 - T.tiredFrom * smoothstep(path.uSpiral - 80, path.uStop - 100, this.u);
+        const vUp = Math.sqrt(2 * T.aAcc * (this.u + 6));
+        const vDown = Math.sqrt(2 * T.aBrake * Math.max(0, left)) + 0.5;
+        this.moveHead(dt, Math.min(T.vCruise * tired, vUp, vDown), 3);
         if (!this.surfaced && this.u > 150) {
           this.surfaced = true;
           this.api.onBreach(0.55);
           bus.emit('worm:reveal', { phase: 'erupt' });
         }
-        sp.headLift = lerp(sp.headLift, this.headLiftFor(this.v), 1 - Math.exp(-1.5 * dt));
-        game.shake = Math.max(game.shake || 0, 0.06 + 0.3 * smoothstep(260, 90, this.distToG()) * smoothstep(5, 25, this.v));
-        if (this.pt > 1.5 && skip) { this.advanceTo(path.uStop); this.arriveDone(true); break; }
-        if (left < 0.4 && this.v < 0.9) { this.advanceTo(path.uStop); this.arriveDone(false); }
-        break;
-      }
-      case 'stop': {
-        this.v = Math.max(0, this.v - 2 * dt);
-        sp.headLift = lerp(sp.headLift, 1.2, 1 - Math.exp(-0.8 * dt));
-        if (this.pt > 5.5 || (skip && this.pt > 1)) { this.endCinematic(); this.startDismount(); }
-        break;
-      }
-      case 'dismount': case 'talk': case 'mount': {
-        if (this.stirT > 0) { this.stirT -= dt; sp.headLift = lerp(sp.headLift, 4 + 2 * Math.sin(this.t * 3), 1 - Math.exp(-3 * dt)); game.shake = Math.max(game.shake || 0, 0.18); }
-        else sp.headLift = lerp(sp.headLift, 1.2, 1 - Math.exp(-1 * dt));
-        this.updateOssana(dt);
-        break;
-      }
-      case 'depart': {
-        this.departT += dt;
-        if (this.crackN < this.worm.gear.hookCount) {
-          this.crackT += dt;
-          while (this.crackT > 0.12 && this.crackN < this.worm.gear.hookCount) { this.crackT -= 0.12; this.crackHook(this.crackN++); }
+        this.pryT = (this.pryT || 0) - dt;                       // передний наездник рычагом вскрывает шов кольца: из шва сыплется песок
+        if (this.pryT <= 0 && this.surfaced) {
+          this.pryT = 1.6 + this.rand() * 1.8;
+          const e = rd.items[0].hookPole.matrix.elements;
+          if (rd.items[0].hookPole.visible) this.api.fx.puff(e[12], e[13], e[14], 0.22);
         }
-        const go = this.crackN >= this.worm.gear.hookCount * 0.7 || this.departT > 3;
-        if (go) {
-          if (!this._departEmit) { this._departEmit = true; bus.emit('worm:encounter', { phase: 'depart' }); this.log.push(`${game.time.toFixed(1)} depart-go`); this.api.game.audio?.event?.('Worm.Pass', K.pos.clone()); }
-          this.moveHead(dt, V_DEPART, A_DEPART);
-          sp.headLift = lerp(sp.headLift, this.headLiftFor(Math.max(this.v, 9)), 1 - Math.exp(-1.2 * dt));
-          if (!this._dived && this.u > path.uOut + 300) { this._dived = true; bus.emit('worm:reveal', { phase: 'dive' }); }
-          game.shake = Math.max(game.shake || 0, 0.15 * smoothstep(300, 60, this.distToG()) * smoothstep(0, 12, this.v));
-        } else sp.headLift = lerp(sp.headLift, 5, 1 - Math.exp(-0.9 * dt));
-        // ожидание: камера до нырка, затем игроку возвращается управление, тело ещё уползает
-        if (this.cinematic && (this.pt > 16 || (this.distToG() > 520 && this._dived) || (skip && this.departT > 1.5))) this.endCinematic();
-        if (skip && this.departT > 1.5) { this.finish(true); return; }
-        if (this._dived && !this.worm.exposed) { this.goneT = (this.goneT || 0) + dt; if (this.goneT > 1.5) this.goneFinish(); }
-        if (this.u >= path.len - 2 && this.pt > 60) this.goneFinish();
+        if (!this._passFx && this.u > path.o.approach - 60) { this._passFx = true; game.audio?.event?.('Worm.Pass', K.pos.clone()); }
+        sp.headLift = lerp(sp.headLift, this.headLiftFor(this.v) * (0.55 + 0.45 * tired), 1 - Math.exp(-1.5 * dt));
+        game.shake = Math.max(game.shake || 0, 0.06 + 0.3 * smoothstep(300, 90, this.distToPlayer()) * smoothstep(5, 25, this.v));
+        if (left < 0.4 && this.v < 0.9) { this.advanceTo(path.uStop); this.startCollapse(); }
+        break;
+      }
+      case 'stop': this.updateCollapse(dt); break;
+      case 'dismount': case 'talk': case 'rest': {
+        if (this.stirT > 0) { this.stirT -= dt; sp.headLift = lerp(sp.headLift, 2.6 + 1.4 * Math.sin(this.t * 3), 1 - Math.exp(-3 * dt)); game.shake = Math.max(game.shake || 0, 0.12); }
+        else sp.headLift = lerp(sp.headLift, 0, 1 - Math.exp(-0.8 * dt));
+        this.restBreath(dt);
+        this.updateTasks(dt);
         break;
       }
       default: break;
     }
   }
 
-  arriveDone(skipped) {
+  distToPlayer() { const p = this.api.game.player?.position, K = this.api.K; return p ? Math.hypot(K.pos.x - p.x, K.pos.z - p.z) : 999; }
+  distToG() { const K = this.api.K; return Math.hypot(K.pos.x - this.G.x, K.pos.z - this.G.z); }
+
+  // ---------------------------------------------------------------- падение без сил
+  startCollapse() {
     const { game, K, bus } = this.api;
     this.v = 0; K.speed = 0;
     this.setPhase('stop');
-    this.worm.spine.headLift = 1.2;
+    bus.emit('worm:encounter', { phase: 'collapse' });
     this.api.settleFx();
     game.audio?.event?.('Worm.RingSandfall', K.pos.clone());
-    if (skipped) { this.endCinematic(); this.startDismount(); }
+    this.collapsePuff = 0;
+    this.riderHint = 0;
+    this.after(1.5, () => this.bark('Rayn', 'Райн', 'Он… ложится. Он выдохся.', 'He is... lying down. He is spent.'));
   }
 
-  goneFinish() {
-    this.setPhase('gone');
-    this.finish(false);
+  updateCollapse(dt) {
+    const { game, K } = this.api;
+    const sp = this.worm.spine, pt = this.pt;
+    const k1 = smoothstep(0, T.collapseTime - 1.5, pt);
+    sp.sag = T.sagBody * k1;
+    sp.sagHead = T.sagHead * smoothstep(0.4, 6.5, pt);
+    sp.headLift = lerp(sp.headLift, 0, 1 - Math.exp(-1.6 * dt));
+    sp.spread = 1 + T.spread * k1;
+    this.rate = lerp(1, T.restRate, smoothstep(1.5, T.collapseTime, pt));
+    this.worm.body.setOpen(T.mouthRest * smoothstep(1, 6, pt));
+    this.worm.riders.lean = lerp(0.34, 0.12, smoothstep(2, 8, pt));
+    // длинный вздох песка: пыль и песок стекают по бокам, вдоль всего тела
+    this.collapsePuff -= dt;
+    if (this.collapsePuff <= 0 && pt < T.collapseTime - 1) {
+      this.collapsePuff = 0.45 + this.rand() * 0.5;
+      const s = 10 + this.rand() * 230;
+      this.worm.spine.surfacePoint(s, (this.rand() < 0.5 ? -1 : 1) * (0.7 + this.rand() * 0.7), this._v, this._n, 0.1);
+      this.api.fx.puff(this._v.x, this._v.y, this._v.z, 0.7 + 0.5 * this.rand(), 'wide');
+      if (this.rand() < 0.35) game.audio?.event?.('Worm.RingSandfall', this._v.clone());
+    }
+    game.shake = Math.max(game.shake || 0, 0.12 * (1 - k1) * smoothstep(300, 60, this.distToPlayer()));
+    if (pt > T.collapseTime) this.startDismount();
+    void K;
   }
 
-  distToG() { const K = this.api.K; return Math.hypot(K.pos.x - this.G.x, K.pos.z - this.G.z); }
-
-  crackHook(i) {
-    const g = this.worm.gear;
-    g.crack(i);
-    const h = g.hooks[i];
-    this.api.fx.puff(h.root.matrix.elements[12], h.root.matrix.elements[13], h.root.matrix.elements[14], 0.35);
-    if (i % 4 === 0) this.api.game.audio?.event?.('Worm.RingSandfall', this._p.set(h.root.matrix.elements[12], h.root.matrix.elements[13], h.root.matrix.elements[14]).clone());
+  /** Дыхание в покое: медленная пульсация + редкий выдох из пасти. */
+  restBreath(dt) {
+    const { K } = this.api;
+    this.breathT = (this.breathT || 0) - dt;
+    if (this.breathT <= 0) {
+      this.breathT = 5.5 + this.rand() * 2;
+      this.worm.spine.surfacePoint(2, 0, this._v, this._n, 0);
+      this.api.fx.puff(K.pos.x + Math.cos(K.yaw) * 14, K.pos.y + 1, K.pos.z + Math.sin(K.yaw) * 14, 0.5, 'wide');
+    }
+    const br = 0.5 + 0.5 * Math.sin(this.timeV * 0.85);
+    this._mouthTick = (this._mouthTick || 0) - dt;
+    if (this._mouthTick <= 0) { this._mouthTick = 0.15; this.worm.body.setOpen(T.mouthRest * (0.55 + 0.45 * br)); }
   }
 
-  // ---------------------------------------------------------------- Оссана
+  // ---------------------------------------------------------------- наездники: спуск, ходьба, посадка
+  playerPos() { return this.api.game.player?.position || this.G; }
+
+  startDismount() {
+    const { game, ground } = this.api;
+    const sp = this.worm.spine, rd = this.worm.riders;
+    sp.compute(this.timeV, 1);
+    this.setPhase('dismount');
+    const P = this._v, N = this._n;
+    for (const tk of this.tasks) {
+      const it = tk.it;
+      // станция спуска: Оссана — ближайшая к игроку в ±12 м от своего места; остальные спускаются там, где стоят
+      let sBest = it.s, best = 1e9;
+      if (it.name === 'Ossana') {
+        const pl = this.playerPos();
+        for (let s = Math.max(30, it.s - 12); s <= it.s + 12; s += 2) {
+          sp.surfacePoint(s, 0, P, N, 0);
+          const d = Math.hypot(P.x - pl.x, P.z - pl.z);
+          if (d < best) { best = d; sBest = s; }
+        }
+      }
+      tk.sDesc = sBest;
+      sp.surfacePoint(sBest, 0, P, N, 0);
+      const Tn = sp._b, B = new THREE.Vector3().crossVectors(Tn, N);
+      const pl = this.playerPos();
+      const toG = new THREE.Vector3(pl.x - P.x, 0, pl.z - P.z).normalize();
+      tk.side = Math.sign(toG.dot(B)) || 1;
+      let aLand = tk.side * 1.6;
+      for (let a = 0; Math.abs(a) < 2.6; a += tk.side * 0.02) {
+        sp.surfacePoint(sBest, a, P, N, 0.2);
+        if (P.y - ground(P.x, P.z) < 0.5) { aLand = a; break; }
+      }
+      tk.aLand = aLand;
+      tk.ph = 'cling'; tk.t = 0;
+    }
+    void game; void rd;
+  }
+
+  /** Куда садится наездник: от места посадки наружу от тела, веером вдоль тела. */
+  planSpot(tk, idx) {
+    const { ground } = this.api;
+    const sp = this.worm.spine;
+    sp.surfacePoint(tk.sDesc, tk.aLand, this._v, this._n, 0.2);
+    const nx = this._n.x, nz = this._n.z, nl = Math.hypot(nx, nz) || 1;
+    const ox = nx / nl, oz = nz / nl;
+    const lat = (idx % 3 - 1) * 4.5;
+    tk.spot.set(this._v.x + ox * (T.sitDistance + (idx % 2) * 1.5) + -oz * lat, 0, this._v.z + oz * (T.sitDistance + (idx % 2) * 1.5) + ox * lat);
+    tk.spot.y = ground(tk.spot.x, tk.spot.z);
+    tk.face.set(-ox, 0, -oz);
+  }
+
   placeSurface(it, s, a, extra, sideSign, descend) {
     const sp = this.worm.spine, rd = this.worm.riders;
-    const P = this._v, N = this._n;
+    const P = this._v, N = this._n, P2 = this._w;
     sp.surfacePoint(s, a, P, N, extra);
-    const P2 = this._w;
     sp.surfacePoint(s, a + 0.03 * sideSign, P2, this._q, extra);
-    const down = P2.sub(P).normalize();                      // направление «вдоль борта» в сторону роста |a|
-    const w = smoothstep(0.62, 0.15, N.y);                   // у вертикальной стены — лицом к стене
+    const down = P2.sub(P).normalize();
+    const w = smoothstep(0.62, 0.15, N.y);                    // у вертикальной стены — лицом к стене
     const nh = this._q.set(-N.x, 0, -N.z); if (nh.lengthSq() > 1e-6) nh.normalize(); else nh.set(0, 0, 1);
     const face = new THREE.Vector3().copy(descend ? down : down.clone().negate()).lerp(nh, w);
-    // «верх» тела: вертикаль + отклон от стены (откидываемся на канате)
     const up = new THREE.Vector3(0, 1, 0).addScaledVector(N, 0.38 * (1 - N.y));
     rd.placeFree(it, P, up, face);
     return w;
   }
 
-  startDismount() {
-    const { game, K, ground } = this.api;
-    const sp = this.worm.spine, rd = this.worm.riders, o = this.oss, it = rd.ossana;
-    sp.compute(game.time, 1);
-    // где ближе всего к группе
-    let best = 1e9, sBest = it.s;
-    const P = this._v, N = this._n;
-    for (let s = Math.max(30, it.s - 12); s <= it.s + 12; s += 2) {
-      sp.surfacePoint(s, 0, P, N, 0);
-      const d = Math.hypot(P.x - this.G.x, P.z - this.G.z);
-      if (d < best) { best = d; sBest = s; }
-    }
-    o.sDesc = sBest;
-    sp.surfacePoint(sBest, 0, P, N, 0);
-    const T = sp._b, B = new THREE.Vector3().crossVectors(T, N);
-    const toG = new THREE.Vector3(this.G.x - P.x, 0, this.G.z - P.z).normalize();
-    o.side = Math.sign(toG.dot(B)) || 1;
-    // угол касания песка
-    let aLand = o.side * 1.6;
-    for (let a = 0; Math.abs(a) < 2.6; a += o.side * 0.02) {
-      sp.surfacePoint(sBest, a, P, N, 0.2);
-      if (P.y - ground(P.x, P.z) < 0.5) { aLand = a; break; }
-    }
-    o.aLand = aLand;
-    o.a = 0; o.phase = 'walkBack'; o.t = 0; o.climbPhase = 0;
-    this.setPhase('dismount');
-    // курс колец: наездники смотрят на группу
-    it.face = 0;
-    rd.items[0].face = 0.9 * o.side; rd.items[2].face = 0.7 * o.side;
-    this.api.game.worm.gear.setLadder({ s: sBest, a0: o.side * 0.22, a1: aLand });
+  walkTo(tk, goal, speed, dt, face) {
+    const { ground } = this.api;
+    const rd = this.worm.riders, it = tk.it;
+    const dx = goal.x - tk.pos.x, dz = goal.z - tk.pos.z, d = Math.hypot(dx, dz);
+    let sp = 0;
+    if (d > 0.05) { sp = Math.min(speed, d / Math.max(dt, 1e-3)); tk.pos.x += (dx / d) * sp * dt; tk.pos.z += (dz / d) * sp * dt; tk.dir = tk.dir || new THREE.Vector3(); tk.dir.set(dx / d, 0, dz / d); }
+    colliders.push(tk.pos, 0.5, { height: 1.8 });
+    tk.pos.y = ground(tk.pos.x, tk.pos.z);
+    it.fig.animate(sp, dt, 0.6);
+    const f = face || tk.dir || this._q.set(0, 0, 1);
+    rd.placeFree(it, tk.pos, UP, f);
+    return d;
   }
 
-  playerPos() { return this.api.game.player?.position || this.G; }
-
-  updateOssana(dt) {
-    const { game, ground, bus } = this.api;
-    const sp = this.worm.spine, rd = this.worm.riders, o = this.oss, it = rd.ossana, gear = this.worm.gear;
-    o.t += dt;
-    switch (o.phase) {
-      case 'walkBack': {                                          // идёт по спине к месту спуска
-        it.moving = true;
-        const ds = o.sDesc - it.sNow;
-        it.sNow += clamp(ds, -OSS_BACKWALK * dt, OSS_BACKWALK * dt);
-        if (Math.abs(ds) < 0.15) { it.moving = false; o.phase = 'rope'; o.t = 0; }
-        break;
-      }
-      case 'rope': {                                              // закрепляет канат
-        it.moving = false;
-        if (o.t > 1.0) { o.phase = 'down'; o.t = 0; o.a = 0; it.free = true; }
-        break;
-      }
-      case 'down': {
-        const r = RADIUS;
-        // спуск: на куполе — шаг, у стены — «боком по канату»
-        const w = smoothstep(0.62, 0.15, Math.cos(o.a));
-        const v = lerp(2.6, OSS_CLIMB, w);
-        o.a += o.side * (v / r) * dt;
-        o.climbPhase += dt * 4.2 * (0.3 + w);
-        const ww = this.placeSurface(it, o.sDesc, o.a, 0.12, o.side, true);
-        it.fig.animate(ww < 0.5 ? 1.8 : 0, dt);
-        rd.poseClimb(it, o.climbPhase, smoothstep(0.2, 0.7, ww));
-        if (Math.abs(o.a) >= Math.abs(o.aLand) - 0.01) {
-          sp.surfacePoint(o.sDesc, o.aLand, this._v, this._n, 0.2);
-          o.pos.set(this._v.x + this._n.x * 1.2, 0, this._v.z + this._n.z * 1.2); o.pos.y = ground(o.pos.x, o.pos.z);
-          o.land.copy(o.pos);
-          o.phase = 'walkTo'; o.t = 0; this.api.fx.puff(o.pos.x, o.pos.y, o.pos.z, 0.2);
+  updateTasks(dt) {
+    const { game, ground } = this.api;
+    const sp = this.worm.spine, rd = this.worm.riders;
+    this.tasks.forEach((tk, idx) => {
+      const it = tk.it;
+      tk.t += dt;
+      const oss = it.name === 'Ossana';
+      switch (tk.ph) {
+        case 'cling': {                                          // ждёт своей очереди, потом отцепляет шест
+          if (this.phase === 'dismount' && tk.t > tk.delay) { tk.ph = 'unhook'; tk.t = 0; it.mode = 'stand'; }
+          break;
         }
-        break;
-      }
-      case 'walkTo': {
-        const pl = this.playerPos();
-        const far = Math.hypot(pl.x - o.land.x, pl.z - o.land.z) > LEASH;
-        const dx = pl.x - o.pos.x, dz = pl.z - o.pos.z, d = Math.hypot(dx, dz);
-        let speed = 0;
-        if (!far && d > TALK_DIST) { speed = OSS_WALK * smoothstep(0, 0.6, o.t); o.pos.x += (dx / d) * speed * dt; o.pos.z += (dz / d) * speed * dt; }
-        o.pos.y = ground(o.pos.x, o.pos.z);
-        it.fig.animate(speed, dt);
-        const fx = speed > 0 || d > 0.1 ? dx / (d || 1) : 0, fz = d > 0.1 ? dz / (d || 1) : 1;
-        rd.placeFree(it, o.pos, UP, this._q.set(fx, 0, fz));
-        if (far) {                                                  // игрок ушёл слишком далеко: ждёт и зовёт
-          o.callT += dt;
-          if (o.callT > 9) { o.callT = 0; this.call(); }
-        } else o.callT = 6;
-        o.waitT += dt;
-        if (!far && d <= TALK_DIST + 0.05) { o.phase = 'talk'; o.t = 0; this.startTalk(); }
-        else if (o.waitT > 150) { o.phase = 'talk'; o.t = 0; this.startTalk(true); }
-        break;
-      }
-      case 'talk': {
-        const pl = this.playerPos();
-        const dx = pl.x - o.pos.x, dz = pl.z - o.pos.z, d = Math.hypot(dx, dz) || 1;
-        it.fig.animate(0, dt);
-        rd.placeFree(it, o.pos, UP, this._q.set(dx / d, 0, dz / d));
-        it.fig.lookAt?.(this._w.set(pl.x, pl.y + 1.5, pl.z));
-        if (this.talkDone || this.leaveNow) { it.fig.setTalking?.(false); it.fig.parts && (it.fig.parts.headPivot.rotation.y = 0); o.phase = 'walkBackTo'; o.t = 0; this.setPhase('mount'); }
-        break;
-      }
-      case 'walkBackTo': {
-        const dx = o.land.x - o.pos.x, dz = o.land.z - o.pos.z, d = Math.hypot(dx, dz);
-        const sp2 = d > 0.3 ? OSS_WALK * smoothstep(0, 0.5, o.t) : 0;
-        if (d > 0.3) { o.pos.x += (dx / d) * sp2 * dt; o.pos.z += (dz / d) * sp2 * dt; }
-        o.pos.y = ground(o.pos.x, o.pos.z);
-        it.fig.animate(sp2, dt);
-        rd.placeFree(it, o.pos, UP, this._q.set(dx / (d || 1), 0, dz / (d || 1)));
-        if (d <= 0.3) { o.phase = 'up'; o.t = 0; o.a = o.aLand; o.climbPhase = 0; }
-        break;
-      }
-      case 'up': {
-        const w = smoothstep(0.62, 0.15, Math.cos(o.a));
-        const v = lerp(2.6, OSS_CLIMB * 0.9, w);
-        o.a -= o.side * (v / RADIUS) * dt;
-        o.climbPhase += dt * 4.0 * (0.3 + w);
-        const ww = this.placeSurface(it, o.sDesc, o.a, 0.12, o.side, false);
-        it.fig.animate(ww < 0.5 ? 1.8 : 0, dt);
-        rd.poseClimb(it, o.climbPhase, smoothstep(0.2, 0.7, ww));
-        if (o.side * o.a <= 0.04) {
-          o.a = 0; it.free = false; it.a = 0; it.sNow = o.sDesc; it.moving = false;
-          o.phase = 'seat'; o.t = 0; gear.setLadder(null);
+        case 'unhook': {
+          if (tk.t > 0.9) {
+            it.hookOn = false; tk.ph = 'walkBack'; tk.t = 0; it.moving = true;
+            const h = it.hookPole.matrix.elements; this.api.fx.puff(h[12], h[13], h[14], 0.3);
+          }
+          break;
         }
-        break;
+        case 'walkBack': {                                       // по спине к месту спуска
+          it.moving = true;
+          const ds = tk.sDesc - it.sNow;
+          it.sNow += clamp(ds, -T.ossBackWalk * dt, T.ossBackWalk * dt);
+          if (Math.abs(ds) < 0.15) { it.moving = false; tk.ph = 'rope'; tk.t = 0; rd.setLadder(it, { s: tk.sDesc, a0: tk.side * 0.22, a1: tk.aLand }); }
+          break;
+        }
+        case 'rope': {
+          it.moving = false;
+          if (tk.t > 1.0) { tk.ph = 'down'; tk.t = 0; tk.a = 0; it.free = true; it.pole.visible = true; }
+          break;
+        }
+        case 'down': {
+          const w = smoothstep(0.62, 0.15, Math.cos(tk.a));
+          const v = lerp(2.6, T.ossClimb, w);
+          tk.a += tk.side * (v / RADIUS) * dt;
+          tk.cp += dt * 4.2 * (0.3 + w);
+          const ww = this.placeSurface(it, tk.sDesc, tk.a, 0.12, tk.side, true);
+          it.fig.animate(ww < 0.5 ? 1.8 : 0, dt);
+          rd.poseClimb(it, tk.cp, smoothstep(0.2, 0.7, ww));
+          if (Math.abs(tk.a) >= Math.abs(tk.aLand) - 0.01) {
+            sp.surfacePoint(tk.sDesc, tk.aLand, this._v, this._n, 0.2);
+            tk.pos.set(this._v.x + this._n.x * 1.2, 0, this._v.z + this._n.z * 1.2); tk.pos.y = ground(tk.pos.x, tk.pos.z);
+            tk.land.copy(tk.pos);
+            this.api.fx.puff(tk.pos.x, tk.pos.y, tk.pos.z, 0.2);
+            rd.setLadder(it, null);
+            this.planSpot(tk, idx);
+            tk.ph = oss ? 'walkTo' : 'toSpot'; tk.t = 0;
+            if (oss) { this.oss.land.copy(tk.land); this.oss.pos = tk.pos; this.oss.phase = 'walkTo'; }
+          }
+          break;
+        }
+        case 'walkTo': {                                         // Оссана идёт туда, где стоит игрок (куда бы он ни пошёл)
+          const pl = this.playerPos();
+          const d0 = Math.hypot(pl.x - tk.pos.x, pl.z - tk.pos.z);
+          const inDesert = game.space === 'desert';
+          const spd = (d0 > 30 ? T.ossRun : T.ossWalk) * smoothstep(0, 0.6, tk.t);
+          let d = d0;
+          if (inDesert && d0 > T.talkDist) d = this.walkTo(tk, { x: pl.x, z: pl.z }, spd, dt, this._q.set(pl.x - tk.pos.x, 0, pl.z - tk.pos.z));
+          else { it.fig.animate(0, dt); rd.placeFree(it, tk.pos, UP, this._q.set(pl.x - tk.pos.x, 0, pl.z - tk.pos.z)); }
+          if (d0 > 60) { tk.callT += dt; if (tk.callT > T.callEvery) { tk.callT = 0; this.call(tk); } }
+          tk.waitT += dt;
+          if (inDesert && d0 <= T.talkDist + 0.05) { tk.ph = 'talk'; tk.t = 0; this.oss.phase = 'talk'; this.startTalk(); }
+          else if (tk.waitT > 200) { tk.ph = 'talk'; tk.t = 0; this.startTalk(true); }
+          break;
+        }
+        case 'talk': {
+          const pl = this.playerPos();
+          const dx = pl.x - tk.pos.x, dz = pl.z - tk.pos.z;
+          it.fig.animate(0, dt);
+          rd.placeFree(it, tk.pos, UP, this._q.set(dx, 0, dz));
+          it.fig.lookAt?.(this._w.set(pl.x, pl.y + 1.5, pl.z));
+          if (this.talkDone || this.leaveNow) { it.fig.setTalking?.(false); tk.ph = 'home'; tk.t = 0; this.finishTalk(); }
+          break;
+        }
+        case 'home': {                                           // обратно к червю: стоит у его бока, присматривает
+          const d = this.walkTo(tk, tk.spot, T.ossWalk, dt, null);
+          if (d < 0.2) { tk.ph = 'stand'; tk.t = 0; }
+          break;
+        }
+        case 'stand': {
+          it.fig.animate(0, dt);
+          rd.placeFree(it, tk.pos, UP, tk.face);
+          break;
+        }
+        case 'toSpot': {
+          const d = this.walkTo(tk, tk.spot, T.ossWalk * 0.85, dt, null);
+          if (d < 0.2) { tk.ph = 'sit'; tk.t = 0; it.sitting = true; it.pole.visible = false; }
+          break;
+        }
+        case 'sit': {
+          it.sitting = true;
+          it.sitW += (1 - it.sitW) * (1 - Math.exp(-2.5 * dt));
+          it.fig.animate(0, dt);
+          rd.poseSit(it, it.sitW, game.time, tk.touch);
+          const lift = -0.0;
+          this._w.copy(tk.pos); this._w.y += lift;
+          rd.placeFree(it, this._w, UP, tk.face);
+          break;
+        }
+        default: break;
       }
-      case 'seat': {                                              // возвращается на своё место на спине
-        it.moving = true;
-        const ds = it.s - it.sNow;
-        it.sNow += clamp(ds, -OSS_BACKWALK * dt, OSS_BACKWALK * dt);
-        if (Math.abs(ds) < 0.15 && this.talkDone) {      // отход — только после конца цепочки RIDER_*
-          it.moving = false; o.phase = 'done'; o.t = 0; it.face = 0;
-          this.startDepart();
-        } else if (Math.abs(ds) < 0.15) it.moving = false;
-        break;
-      }
-      default: break;
-    }
-    void game; void bus;
+    });
+    // Оссана и остальные: старый API
+    this.oss.phase = this.tasks[1]?.ph || 'none';
   }
 
   /** Синхронизация с репликами: RIDER_09 — червь шевелится, RIDER_10 — Оссана уходит на ходу. */
@@ -444,27 +542,26 @@ export class EncounterDirector {
     if (e.id === 'DLG_A2_RIDER_10') this.leaveNow = true;
   }
 
-  call() {
+  call(tk) {
     const { game, bus } = this.api;
-    const o = this.oss;
     const lines = [
       ['Оссана', 'Рэйн! Сюда. Он не будет ждать вечно.', 'Rayn! Over here. He will not wait forever.'],
       ['Оссана', 'Подойдите ближе — разговор короткий.', 'Come closer. This will be short.'],
     ];
     const l = lines[(this.callN = ((this.callN || 0) + 1)) % lines.length];
-    bus.emit('subtitle', { speaker: 'Ossana', name: l[0], text: game.t(l[1], l[2]), duration: 3.2, kind: 'bark', pos: o.pos.clone() });
+    bus.emit('subtitle', { speaker: 'Ossana', name: l[0], text: game.t(l[1], l[2]), duration: 3.2, kind: 'bark', pos: tk.pos.clone() });
   }
 
   startTalk(timeout = false) {
     const { game } = this.api;
     this.setPhase('talk');
-    this.talkDone = false; this.leaveNow = false; this._holdCb = null; this._talkGuard = game.time + 180;
+    this.talkDone = false; this.leaveNow = false; this._holdCb = null; this._talkGuard = game.time + T.talkGuard;
     const it = this.worm.riders.ossana;
     it.fig.setTalking?.(true);
     const t0 = game.time;
     const fin = () => {
       if (!this._active || this.talkDone) return;
-      if (game.time - t0 < 1 && !timeout) { this._holdUntil = game.time + TALK_FALLBACK; this._holdCb = () => { this.talkDone = true; }; }   // диалога нет — пауза
+      if (game.time - t0 < 1 && !timeout) { this._holdUntil = game.time + T.talkFallback; this._holdCb = () => { this.talkDone = true; }; }   // диалога нет — пауза
       else this.talkDone = true;
     };
     let p = null;
@@ -472,12 +569,16 @@ export class EncounterDirector {
     if (p && typeof p.then === 'function') p.then(fin, fin); else fin();
   }
 
-  startDepart() {
-    this.setPhase('depart');
-    this._departEmit = false; this._dived = false; this.crackN = 0; this.crackT = 0; this.departT = 0; this.goneT = 0;
-    this.beginCinematic();
-    this.oss.phase = 'done';
-    this.worm.riders.items.forEach((it) => { it.face = 0; });
+  /** Цепочка закончилась: фаза 'rest', Promise выполняется, червь остаётся лежать. Оссана возвращается к телу. */
+  finishTalk() {
+    const { bus } = this.api;
+    if (this.resting) return;
+    this.resting = true;
+    this.setPhase('rest');
+    this.watch(false);
+    bus.emit('worm:reveal', { phase: 'end', skipped: false });
+    const res = this.resolve; this.resolve = null;
+    res?.({ skipped: false });
   }
 
   /** Каждый кадр: завершает «удержание» паузы, если диалога не было (по игровому времени), и страхует зависший диалог. */
@@ -487,114 +588,24 @@ export class EncounterDirector {
     if (this.phase === 'talk' && !this.talkDone && t > this._talkGuard) this.talkDone = true;
   }
 
-  // ---------------------------------------------------------------- камера
-  clearOfBody(pos, minGround = 0.9) {
-    const { ground } = this.api;
-    const sp = this.worm.spine, P = sp.P;
-    for (let i = 0; i < N_PTS; i++) {
-      const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2];
-      const R = RADIUS * sp.RS[i] + 2.5;
-      if (y + R < ground(x, z)) continue;
-      const dx = pos.x - x, dz = pos.z - z, d = Math.hypot(dx, dz);
-      const hy = pos.y - y;
-      if (d < R && Math.hypot(d, Math.max(hy, 0)) < R) {
-        const k = d > 1e-3 ? (R + 0.5) / d : 1;
-        pos.x = x + (d > 1e-3 ? dx * k : R + 0.5); pos.z = z + (d > 1e-3 ? dz * k : 0);
-      }
+  lateUpdate() { /* камера не трогается: игрок управляет ею всё время */ }
+
+  /** Для тестов/отладки: поставить сцену в стадию без ожидания. stage: 'arrive' (u) | 'stop' | 'dismount' | 'rest'. */
+  debugStage(stage = 'stop', u) {
+    this.cancel();
+    this.play();
+    const p = this.path;
+    this.api.fx.jobs.length = 0;
+    this.surfaced = true;
+    if (stage === 'arrive') { this.advanceTo(u ?? (p.o.approach - 150)); this.v = 30; this.api.K.speed = 30; return; }
+    this.advanceTo(p.uStop);
+    this.startCollapse();
+    if (stage === 'stop') return;
+    this.pt = T.collapseTime + 1; this.updateCollapse(0.01);
+    this.api.game.time += 0;
+    if (stage === 'dismount' || stage === 'rest') {
+      this.worm.spine.compute(this.timeV, 1);
+      this.startDismount();
     }
-    pos.y = Math.max(pos.y, ground(pos.x, pos.z) + minGround);
-    return pos;
-  }
-
-  spinePt(s, out) { const sp = this.worm.spine; sp.frameAt(s, out, this._q, this._n); return out; }
-
-  lateUpdate(dt) {
-    if (!this._active) return;
-    this.tickHold();
-    if (!this.cinematic) return;
-    const { game, K, ground } = this.api;
-    const cam = game.camera, path = this.path, G = this.G;
-    const gG = ground(G.x, G.z);
-    let pos = this._p, goal = this.goal, fov = this.fov, damp_ = 5, shot;
-    const head = K.pos;
-    const fx_ = path.f, rx_ = path.r;
-    const lf = (head.x - G.x) * fx_.x + (head.z - G.z) * fx_.z;
-    const lr = (head.x - G.x) * rx_.x + (head.z - G.z) * rx_.z;
-    const dG = Math.hypot(lf, lr);
-
-    if (this.phase === 'arrive' || this.phase === 'stop') {
-      const u = this.u, ap = path.o.approach;
-      const uA = Math.max(200, ap - 280), uB = ap + 110, uC = path.uStop - 95;
-      if (this.phase === 'arrive' && u < uA) {
-        // 1) широкий план: пустыня, пыльная гряда на горизонте, группа в кадре снизу
-        shot = 1;
-        path.local(-9, 7 + 0.25 * this.t, pos); pos.y = gG + 1.25;
-        goal.set(head.x, Math.max(gG + 6, head.y + 9), head.z);
-        fov = lerp(36, 30, smoothstep(0, 12, this.t)); damp_ = 2.2;
-      } else if (this.phase === 'arrive' && u < uB) {
-        // 2) низкий геройский ракурс: червь проходит мимо, камера у самой земли, взгляд ведёт голову, затем скользит по телу
-        shot = 2;
-        path.local(28, -6, pos); pos.y = gG + 1.1;
-        const pass = smoothstep(ap - 40, ap + 90, u);
-        const sT = lerp(0, 150, smoothstep(ap - 10, ap + 110, u));
-        this.spinePt(sT, this._w);
-        goal.set(head.x, head.y + lerp(14, 6, smoothstep(ap - 200, ap, u)), head.z).lerp(this._w.setY(this._w.y + 10), pass * 0.85);
-        fov = lerp(26, 52, smoothstep(ap - 220, ap + 20, u)); damp_ = 3.5;
-      } else if (this.phase === 'arrive' && u < uC) {
-        // 3) слежение: камера внутри дуги идёт чуть позади головы, в кадре голова и наездники
-        shot = 3;
-        const phi = Math.atan2(lf, -lr) - 0.42;
-        const Rc = Math.max(16, dG - 36);
-        pos.set(G.x + Rc * (-rx_.x * Math.cos(phi) + fx_.x * Math.sin(phi)), 0, G.z + Rc * (-rx_.z * Math.cos(phi) + fx_.z * Math.sin(phi)));
-        pos.y = ground(pos.x, pos.z) + 3.2;
-        this.spinePt(46, this._w);
-        goal.copy(head).lerp(this._w, 0.45).setY(head.y + 12);
-        fov = 44; damp_ = 4;
-      } else {
-        // 4) финал: широко над группой, червь ложится дугой, взгляд скользит от головы вдоль тела
-        shot = 4;
-        const k = smoothstep(0, 6, this.phase === 'stop' ? this.pt : 0);
-        path.local(-10, 10, pos); pos.y = gG + 5 + 3 * k;
-        this.spinePt(lerp(10, 130, k), this._w);
-        goal.copy(head).setY(head.y + 10).lerp(this._w.setY(this._w.y + 8), k * 0.8);
-        fov = lerp(52, 66, k); damp_ = 2.6;
-      }
-    } else {
-      // отход
-      const dt_ = this.departT;
-      if (dt_ < 4) {
-        shot = 5;
-        path.local(2, 3, pos); pos.y = gG + 1.6;
-        this.spinePt(52, this._w);
-        goal.copy(this._w).setY(this._w.y + 12);
-        fov = lerp(40, 34, smoothstep(0, 4, dt_)); damp_ = 3;
-      } else if (this.distToG() < 330 && !this._dived) {
-        shot = 6;
-        // сбоку и низко: тело скользит мимо, камера тянется за головой
-        const hx = Math.cos(K.yaw), hz = Math.sin(K.yaw);
-        pos.set(head.x - hx * 70 + hz * 70, 0, head.z - hz * 70 - hx * 70); pos.y = ground(pos.x, pos.z) + 2.2;
-        goal.set(head.x, head.y + 8, head.z);
-        fov = 38; damp_ = 3.5;
-      } else {
-        shot = 7;
-        path.local(0, 3, pos); pos.y = gG + 2.4;
-        goal.set(head.x, Math.max(head.y + 10, gG + 6), head.z);
-        fov = lerp(30, 20, smoothstep(250, 560, this.distToG())); damp_ = 2;
-      }
-    }
-    if (!(Number.isFinite(pos.x + pos.y + pos.z + goal.x + goal.y + goal.z))) return;   // защита от NaN в камере
-    this.clearOfBody(pos);
-    if (shot !== this.shot) { this.shot = shot; this.look.copy(goal); this.fov = fov; this.camPos.copy(pos); this.log.push(`${game.time.toFixed(1)} shot ${shot}`); }
-    this.fov = lerp(this.fov, fov, 1 - Math.exp(-2.5 * dt));
-    this.look.lerp(goal, 1 - Math.exp(-damp_ * dt));
-    this.camPos.lerp(pos, 1 - Math.exp(-(shot === 3 || shot === 6 ? 6 : 14) * dt));
-    cam.position.copy(this.camPos);
-    const sh = Math.min(1, game.shake || 0) * 0.14;
-    const tt = game.time;
-    cam.position.x += (Math.sin(tt * 41.3) + Math.sin(tt * 27.7 + 1.3)) * sh * 0.5;
-    cam.position.y += (Math.sin(tt * 37.1 + 2.1) + Math.sin(tt * 23.3)) * sh * 0.5;
-    cam.position.z += (Math.sin(tt * 33.7 + 0.4) + Math.sin(tt * 29.9 + 3.1)) * sh * 0.5;
-    cam.lookAt(this.look);
-    if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
   }
 }
