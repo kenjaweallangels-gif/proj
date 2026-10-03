@@ -247,7 +247,7 @@ export function create(game) {
 
   // заглушка у конца ниши, пока интерьер сиетча не подключён (в интеграции есть addPassage → интерьер сам открывает проём)
   let plug = null;
-  if (!nativePassage) {
+  {
     plug = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), new THREE.MeshBasicMaterial({ color: 0x0a0604 }));
     plug.position.set(NOTCH_X_MAX + 0.3, ENTRY.cleft.y + 2, nz); plug.rotation.y = -Math.PI / 2;
     root.add(plug);
