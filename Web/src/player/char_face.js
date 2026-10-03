@@ -48,7 +48,7 @@ export function faceSurface(P) {
 }
 
 function makeSurface(P) {
-  const ex = 0.0335 * P.eyeSp, ey = 0.014, Re = 0.0123 * P.eyeSize, ow = 0.0105 * P.eyeSize, ohU = 0.0058 * P.eyeSize, ohL = 0.0043 * P.eyeSize;
+  const ex = 0.0335 * P.eyeSp, ey = 0.014, Re = 0.0123 * P.eyeSize, ow = 0.0105 * P.eyeSize, ohU = 0.0047 * P.eyeSize, ohL = 0.0037 * P.eyeSize;
   const age = P.age;
   const PR = [[0.04, 0], [0.032, 0.0015], [0.024, 0.0045], [0.013, 0.0085], [0.002, 0.0135], [-0.008, 0.019], [-0.017, 0.0245], [-0.024, 0.0268], [-0.029, 0.0265], [-0.033, 0.0215], [-0.037, 0.011], [-0.042, 0.002], [-0.048, 0]];
   const WN = [[0.045, 0.0032], [0.02, 0.0052], [0.0, 0.0068], [-0.015, 0.0086], [-0.027, 0.0098], [-0.035, 0.0108], [-0.045, 0.009]];
@@ -114,7 +114,7 @@ function makeSurface(P) {
       const tuck = zc + Math.sqrt(Math.max(Re * Re - d2, 0)) - 0.0045;
       zz = lerp(zz, tuck, tm);
       p.z = zz;
-      margin = sstep(0.4, 0.95, q) * (1 - sstep(1.0, 2.4, q));
+      margin = sstep(0.6, 1.0, q) * (1 - sstep(1.05, 1.6, q));
       const hx = 1 - sstep(ow * 0.9, ow * 1.8, Math.abs(dx));
       lid = dy2 >= 0 ? hx * (1 - sstep(0.0045, 0.0105, dy2)) : -hx * (1 - sstep(0.0035, 0.0075, -dy2)) * 0.3;
     }

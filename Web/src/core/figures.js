@@ -8,6 +8,10 @@
 //     Ткань (плащ, подол, капюшон, шарф) реагирует на скорость/ускорение/поворот; ветер — глобальный (setFigureWind) или ctx.wind.
 //   • figure.onStep = ({foot:'L'|'R', side:0|1, intensity, mode:'walk'|'run'|'desert', speed}) — событие касания стопой земли (для звука/следов).
 //   • figure.gait: { env (множитель скорости для «рваного» ритма песка), desertness 0..1, stutter(), reset() }.
+//   • Лицо (LOD0): скульптурная голова (char_face.js), глаза с веками/радужкой; figure.blink(), figure.setMouth(0..1|null), setTalking(b).
+//     Автоматически: моргание, саккады (следуют за lookAt), слоговая анимация рта при setTalking.
+//   • Рука: figure.reachTo(worldPoint|null, 'L'|'R', weight, {sweep, palm, speed}) — IK плечо–локоть–кисть поверх анимации; figure.handWorld(side, out?) → Vector3.
+//   • Опции лица/кожи: age 0..1, gender 0..1, stubble, freckles, hair('short'|'crop'|'bun'|'long'|'none'), beard, beardLen, hairColor; всё детерминировано по seed.
 //   • parts: root, pelvis, spine, chest, neck, headPivot, limbs.L/R.{sh,el,hand,hip,kn,foot,toe} — Object3D-кости (скин-скелет).
 //   • Один скин-меш тела (+1 меш ткани), геометрия общая для фигур с одним «вариантом», 3 LOD (по расстоянию до setFigureView).
 // Глобально: setFigureWind(dir, speed) — ветер для всех (вызывает модуль игрока), setFigureView(camPos) — для LOD.

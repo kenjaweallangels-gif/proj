@@ -41974,7 +41974,7 @@ void main() {
     return S;
   }
   function makeSurface(P) {
-    const ex = 0.0335 * P.eyeSp, ey = 0.014, Re = 0.0123 * P.eyeSize, ow = 0.0105 * P.eyeSize, ohU = 58e-4 * P.eyeSize, ohL = 43e-4 * P.eyeSize;
+    const ex = 0.0335 * P.eyeSp, ey = 0.014, Re = 0.0123 * P.eyeSize, ow = 0.0105 * P.eyeSize, ohU = 47e-4 * P.eyeSize, ohL = 37e-4 * P.eyeSize;
     const age = P.age;
     const PR = [[0.04, 0], [0.032, 15e-4], [0.024, 45e-4], [0.013, 85e-4], [2e-3, 0.0135], [-8e-3, 0.019], [-0.017, 0.0245], [-0.024, 0.0268], [-0.029, 0.0265], [-0.033, 0.0215], [-0.037, 0.011], [-0.042, 2e-3], [-0.048, 0]];
     const WN = [[0.045, 32e-4], [0.02, 52e-4], [0, 68e-4], [-0.015, 86e-4], [-0.027, 98e-4], [-0.035, 0.0108], [-0.045, 9e-3]];
@@ -42044,7 +42044,7 @@ void main() {
         const tuck = zc + Math.sqrt(Math.max(Re * Re - d2, 0)) - 45e-4;
         zz = lerp3(zz, tuck, tm);
         p.z = zz;
-        margin = sstep(0.4, 0.95, q) * (1 - sstep(1, 2.4, q));
+        margin = sstep(0.6, 1, q) * (1 - sstep(1.05, 1.6, q));
         const hx = 1 - sstep(ow * 0.9, ow * 1.8, Math.abs(dx));
         lid = dy2 >= 0 ? hx * (1 - sstep(45e-4, 0.0105, dy2)) : -hx * (1 - sstep(35e-4, 75e-4, -dy2)) * 0.3;
       }
@@ -42826,13 +42826,16 @@ void main() {
   }
   function buildCowl(b, o, lod, B) {
     const hs = B.head, N = [20, 12, 8][lod], maskUp = o.maskState ? o.maskState === "up" : o.mask !== false;
-    const rowsY = lod === 0 ? [-0.2, -0.165, -0.13, -0.11, -0.09, -0.06, -0.035, -0.01, 0.02, 0.05, 0.08, 0.105, 0.128, 0.145] : [-0.2, -0.13, -0.09, -0.035, 0.02, 0.08, 0.128, 0.145];
+    const rowsY = lod === 0 ? [-0.2, -0.165, -0.13, -0.11, -0.09, -0.07, -0.06, -0.045, -0.03, -0.015, 0, 0.02, 0.04, 0.06, 0.08, 0.1, 0.115, 0.13, 0.145] : [-0.2, -0.13, -0.09, -0.06, -0.03, 0.02, 0.06, 0.1, 0.13, 0.145];
+    const TH_UP = [[-0.2, 0], [-0.065, 0], [-0.045, 0.34], [-0.03, 0.95], [0, 1.08], [0.03, 1.06], [0.06, 0.97], [0.085, 0.82], [0.105, 0.6], [0.125, 0.3], [0.145, 0]];
+    const TH_DN = [[-0.2, 0], [-0.13, 0], [-0.115, 0.32], [-0.09, 0.62], [-0.06, 0.88], [-0.03, 1.02], [0, 1.08], [0.03, 1.06], [0.06, 0.97], [0.085, 0.82], [0.105, 0.6], [0.125, 0.3], [0.145, 0]];
     const theta = (y) => {
-      if (y < -0.125) return 0;
-      if (y < -0.035) return maskUp ? 0 : y < -0.1 ? 0 : 1.15;
-      if (y < 0) return 0.95 + (0 - y) * 4;
-      if (y < 0.05) return 0.95 - y * 2;
-      return Math.max(0, 0.85 - (y - 0.05) * 19);
+      const T = maskUp ? TH_UP : TH_DN;
+      for (let i = 1; i < T.length; i++) if (y <= T[i][0]) {
+        const t = (y - T[i - 1][0]) / (T[i][0] - T[i - 1][0]);
+        return T[i - 1][1] + (T[i][1] - T[i - 1][1]) * t;
+      }
+      return 0;
     };
     const rings = rowsY.map((y) => {
       const yy = Math.max(y, -0.12), [rx, rz, cz] = headRow(yy);
@@ -42852,7 +42855,7 @@ void main() {
       return { reg: REG.SUIT, aux: [p[1] * 1, inMask ? 1.1 : 0.7, 0.3 + (inMask ? 0.2 : 0), 0], face: [0, 0, 0, lod === 0 ? jw : 0], sk: y < -0.14 ? [BI.neck, 1 - sstep2(-0.2, -0.14, y) * 0, BI.head, 0] : HSK2 };
     }, { closed: false, capStart: true });
     const rimPts = [];
-    const faceRows = [-0.03, 0, 0.03, 0.06, 0.09, 0.11];
+    const faceRows = maskUp ? [-0.045, -0.03, -0.015, 0, 0.02, 0.04, 0.06, 0.08, 0.1, 0.115, 0.13] : [-0.115, -0.09, -0.06, -0.03, 0, 0.02, 0.04, 0.06, 0.08, 0.1, 0.115, 0.13];
     const side = (s) => faceRows.map((y) => {
       const [rx, rz, cz] = headRow(y);
       const th = theta(y);
@@ -42863,7 +42866,7 @@ void main() {
     const L = side(-1), R = side(1);
     const topFront = [0, 0.128, 0.056];
     const rim = [...L, [0, HEAD_Y + 0.128 * hs, headRow(0.128)[1] * hs * 0.6 + 8e-3], ...R.slice().reverse()];
-    if (lod < 2) tube(b, rim, 85e-4, REG.ACCENT, () => HSK2, { seg: 6, aux: [0, 0, 0.2, 0] });
+    if (lod < 2) tube(b, rim, 62e-4, REG.ACCENT, () => HSK2, { seg: 6, aux: [0, 0, 0.2, 0] });
     if (maskUp && lod < 2) {
       for (const s of [-1, 1]) {
         const pts2 = [[0.012 * s, HEAD_Y - 0.034 * hs, 0.104 * hs], [0.026 * s, HEAD_Y - 0.04 * hs, 0.1 * hs], [0.056 * s, HEAD_Y - 0.052 * hs, 0.085 * hs], [0.082 * s, HEAD_Y - 0.085 * hs, 0.05 * hs], [0.078 * s, HEAD_Y - 0.14 * hs, 0.036 * hs], [0.07 * s, HEAD_Y - 0.19 * hs, 0.03 * hs], [0.09 * s, 1.43, 0.045]];
@@ -42939,9 +42942,9 @@ void main() {
     jubba: [[0.16, 0.34, 0.31, 0], [0.4, 0.3, 0.27, 0], [0.7, 0.265, 0.235, 0], [0.92, 0.225, 0.19, 0], [1.05, 0.2, 0.15, 4e-3], [1.2, 0.205, 0.15, 8e-3], [1.32, 0.225, 0.147, 4e-3], [1.41, 0.215, 0.12, -3e-3], [1.45, 0.14, 0.09, -4e-3], [1.485, 0.085, 0.07, -4e-3]],
     kaftan: [[0.42, 0.285, 0.255, 0], [0.7, 0.262, 0.232, 0], [0.92, 0.225, 0.19, 0], [1.05, 0.2, 0.15, 4e-3], [1.2, 0.205, 0.15, 8e-3], [1.32, 0.225, 0.147, 4e-3], [1.41, 0.215, 0.12, -3e-3], [1.45, 0.14, 0.09, -4e-3], [1.485, 0.085, 0.07, -4e-3]],
     tunic: [[0.74, 0.232, 0.2, 0], [0.92, 0.218, 0.178, 0], [1.05, 0.195, 0.15, 4e-3], [1.2, 0.2, 0.15, 8e-3], [1.32, 0.222, 0.147, 4e-3], [1.41, 0.212, 0.12, -3e-3], [1.45, 0.14, 0.09, -4e-3], [1.485, 0.085, 0.07, -4e-3]],
-    cape: [[0.7, 0.32, 0.27, -0.02], [0.92, 0.29, 0.24, -0.015], [1.05, 0.265, 0.21, -0.01], [1.2, 0.265, 0.19, -5e-3], [1.32, 0.265, 0.175, -5e-3], [1.4, 0.245, 0.175, -0.01], [1.44, 0.195, 0.14, -8e-3], [1.47, 0.125, 0.105, -6e-3], [1.495, 0.085, 0.085, -4e-3]],
+    cape: [[0.7, 0.32, 0.27, -0.02], [0.92, 0.29, 0.24, -0.015], [1.05, 0.265, 0.21, -0.01], [1.2, 0.262, 0.19, -5e-3], [1.32, 0.258, 0.175, -5e-3], [1.38, 0.24, 0.165, -8e-3], [1.43, 0.2, 0.14, -8e-3], [1.465, 0.13, 0.108, -6e-3], [1.495, 0.085, 0.085, -4e-3]],
     shawl: [[0.62, 0.34, 0.3, -0.03], [0.92, 0.31, 0.26, -0.02], [1.1, 0.29, 0.23, -0.01], [1.25, 0.28, 0.2, -5e-3], [1.36, 0.27, 0.17, -5e-3], [1.43, 0.25, 0.14, -4e-3], [1.46, 0.17, 0.11, -4e-3], [1.49, 0.092, 0.08, -4e-3]],
-    heavy: [[0.1, 0.46, 0.4, 0], [0.5, 0.39, 0.34, 0], [0.92, 0.31, 0.26, -0.01], [1.15, 0.285, 0.22, -5e-3], [1.3, 0.29, 0.2, 0], [1.4, 0.29, 0.16, -4e-3], [1.45, 0.2, 0.12, -4e-3], [1.49, 0.1, 0.09, -4e-3]]
+    heavy: [[0.1, 0.46, 0.4, 0], [0.5, 0.39, 0.34, 0], [0.92, 0.31, 0.26, -0.01], [1.15, 0.285, 0.22, -5e-3], [1.3, 0.285, 0.2, 0], [1.38, 0.265, 0.165, -4e-3], [1.43, 0.215, 0.135, -4e-3], [1.465, 0.15, 0.11, -4e-3], [1.49, 0.1, 0.09, -4e-3]]
   };
   function robeProfile(style) {
     const r = ROBE_ROWS[style] || ROBE_ROWS.jubba;
@@ -42976,7 +42979,7 @@ void main() {
     const hemPts = [];
     const rings = ys.map((y, j) => {
       const rx = interp(rows, y, 1) * sc, rz = interp(rows, y, 2) * sc, cz = interp(rows, y, 3);
-      const below = clamp4((1.12 - y) / 0.9, 0, 1), amp = fold * 2.9 * (0.12 + 0.88 * below * below) + 3e-3;
+      const below = clamp4((1.12 - y) / 0.9, 0, 1), amp = fold * 5.2 * (th0 > 0 ? 0.36 + 0.64 * below * below : 0.1 + 0.9 * below * below) + 4e-3;
       const cinch = beltable ? 1 - 0.04 * Math.exp(-(((y - 1) / 0.045) ** 2)) + 0.028 * Math.exp(-(((y - 1.1) / 0.06) ** 2)) : 1;
       const gather = beltable ? Math.exp(-(((y - 1.1) / 0.07) ** 2)) * 0.012 : 0;
       const pts = [];
@@ -43344,14 +43347,14 @@ if (rg == 0) {
   sk *= 1.0 - 0.33 * fre - 0.18 * spot;
   // \u043A\u0440\u043E\u043C\u043A\u0430 \u0432\u0435\u043A\u0430, \u0440\u0435\u0441\u043D\u0438\u0446\u044B
   float lash = vFace.y * smoothstep(eyeY - 0.001, eyeY + 0.003, hp.y);
-  sk = mix(sk, sk * vec3(0.78, 0.5, 0.5), vFace.y * 0.85 * hd);
-  sk *= 1.0 - 0.8 * lash * hd;
+  sk = mix(sk, sk * vec3(0.82, 0.55, 0.52), vFace.y * 0.6 * hd);
+  sk *= 1.0 - 0.7 * lash * hd;
   // \u0431\u0440\u043E\u0432\u0438 (\u0448\u0442\u0440\u0438\u0445\u0438)
   float yc = 0.0385 + 0.011 * min(1.0, hax / 0.055);
   float bth = 0.0042 * (1.0 - 0.45 * smoothstep(0.045, 0.068, hax)) + 0.0006;
-  float bm = (1.0 - smoothstep(bth * 0.45, bth, abs(hp.y - yc - 0.0008 * sin(hp.x * 700.0)))) * smoothstep(0.011, 0.02, hax) * (1.0 - smoothstep(0.05, 0.067, hax));
-  float strokes = 0.5 + 0.5 * vnoise(vec3(hp.x * 900.0, hp.y * 220.0, hp.z * 100.0));
-  bm *= smoothstep(0.05, 0.4, strokes) * uBrowK * step(0.0, hp.z - 0.04) * hd;
+  float bm = (1.0 - smoothstep(bth * 0.35, bth, abs(hp.y - yc))) * smoothstep(0.011, 0.02, hax) * (1.0 - smoothstep(0.05, 0.067, hax));
+  float strokes = 0.5 + 0.5 * vnoise(vec3(hp.x * 500.0, hp.y * 90.0, hp.z * 100.0));
+  bm *= (0.35 + 0.65 * smoothstep(0.1, 0.6, strokes)) * uBrowK * step(0.0, hp.z - 0.04) * hd;
   sk = mix(sk, uHair * 0.6, bm * 0.75);
   // \u0449\u0435\u0442\u0438\u043D\u0430
   float stub = (1.0 - smoothstep(-0.045, -0.062, hp.y) * 0.0) * smoothstep(-0.052, -0.07, hp.y) * smoothstep(-0.123, -0.11, hp.y) * smoothstep(0.075, 0.05, hax) * step(0.0, hp.z - 0.0) + 0.7 * smoothstep(-0.032, -0.042, hp.y) * smoothstep(-0.052, -0.045, hp.y) * smoothstep(0.03, 0.014, hax) * step(hp.y, -0.037);
@@ -43377,9 +43380,10 @@ if (rg == 0) {
   float foreh = smoothstep(0.06, 0.075, hp.y) * (1.0 - smoothstep(0.125, 0.14, hp.y)) * smoothstep(0.075, 0.04, hax);
   wr += foreh * (1.0 - smoothstep(0.0, 0.5, abs(sin(hp.y * 260.0 + vnoise(vec3(hp.x * 55.0, 0.0, 0.0)) * 2.2)))) * fa * (0.5 + 0.5 * vnoise(vec3(hp.x * 30.0, hp.y * 5.0, 1.0)));
   vec2 ec2 = vec2(hax - uEyeC.x / uHs, hp.y - eyeY);
-  float cf = smoothstep(0.012, 0.016, ec2.x) * (1.0 - smoothstep(0.03, 0.04, length(ec2))) * (1.0 - smoothstep(0.012, 0.02, abs(ec2.y)));
-  wr += cf * (1.0 - smoothstep(0.0, 0.5, abs(sin(atan(ec2.y, ec2.x) * 9.0 + vnoise(vBind * 60.0))))) * fa * fa * 0.6;
-  wr += (1.0 - smoothstep(0.0, 0.3, abs(sin(hp.y * 330.0 + hp.x * 20.0)))) * G2(hax, hp.y, uEyeC.x / uHs, eyeY - 0.019, 0.014, 0.0045) * fa * fa;
+  float agePast = smoothstep(0.45, 0.9, uAge);
+  float cf = exp(-pow(length((ec2 - vec2(0.022, 0.0)) * vec2(1.0, 1.7)) / 0.018, 2.0));
+  wr += cf * (1.0 - smoothstep(0.0, 0.5, abs(sin(atan(ec2.y, ec2.x) * 8.0 + vnoise(vBind * 60.0))))) * agePast * 0.7;
+  wr += (1.0 - smoothstep(0.0, 0.35, abs(sin(hp.y * 330.0 + hp.x * 20.0)))) * G2(hax, hp.y, uEyeC.x / uHs, eyeY - 0.02, 0.016, 0.005) * agePast;
   rh = pore * 0.45 - wr * 1.0;
   sk = base * (1.0 - 0.35 * wr * clamp(uAge + 0.2, 0.0, 1.0));
   base = sk;
@@ -43399,7 +43403,7 @@ if (rg == 0) {
   if (uTexOn.x > 0.5) { vec3 tx = triMap(uFabMap, vBind, normalize(vBindN), uTexM.x); float l = dot(tx, vec3(0.333)); base *= 0.55 + 0.95 * l; rh += (l - 0.5) * 0.7 * wf; }
   // \u0442\u0435\u043D\u044C \u0441\u043A\u043B\u0430\u0434\u043E\u043A (\u0433\u043B\u0443\u0431\u0438\u043D\u0430 \u0441\u043A\u043B\u0430\u0434\u043A\u0438 \u0438\u0437 \u0433\u0435\u043E\u043C\u0435\u0442\u0440\u0438\u0438)
   float fold = clamp(vAux.z, 0.0, 1.0);
-  aoK = mix(0.5, 1.0, fold);
+  aoK = mix(0.28, 1.0, pow(fold, 1.3));
   if (!gl_FrontFacing) { base = mix(uLining, cc * 0.7, 0.2) * (0.9 + 0.1 * nz); aoK *= 0.85; }
   rough = 0.9; dustK = 0.1 + vAux.x * 0.65 + uWear * 0.1;
   // \u0433\u0440\u044F\u0437\u044C/\u043F\u0435\u0441\u043E\u043A \u043A \u043F\u043E\u0434\u043E\u043B\u0443, \u0432\u044B\u0433\u043E\u0440\u0430\u043D\u0438\u0435 \u043D\u0430 \u043F\u043B\u0435\u0447\u0430\u0445
@@ -43427,8 +43431,9 @@ if (rg == 0) {
   rough = 0.95; dustK = 0.4;
 } else if (rg == 3) {
   float st = step(0.5, fract((vBind.x + vBind.z * 0.7) * 45.0 + vBind.y * 3.0));
-  base = uAccent * (0.8 + 0.3 * st) * (1.0 + 0.1 * nz);
-  rough = 0.85; dustK = 0.1 + vAux.x * 0.5; sheenK = 0.6;
+  base = uAccent * (0.62 + 0.22 * st) * (1.0 + 0.1 * nz);
+  base = mix(vec3(dot(base, vec3(0.3, 0.59, 0.11))), base, 0.72);
+  rough = 0.92; dustK = 0.1 + vAux.x * 0.5; sheenK = 0.6;
   float wf2 = fadeAt(520.0); rh += (st - 0.5) * 0.6 * wf2; bumpAmt = 0.0002 * wf2;
 } else if (rg == 4) {
   base = uLeather * (0.85 + 0.2 * nz + 0.12 * nz2) * (1.0 - 0.2 * smoothstep(0.5, 0.9, nz2));
@@ -43585,8 +43590,8 @@ if (rg == 7) totalEmissiveRadiance += uEye * uEyeGlow;
       uAccent: { value: C(o.accent || "#2c3e57") },
       uLeather: { value: C(o.leather || "#4a3828") },
       uHair: { value: C(o.hairColor || "#241a14") },
-      uEye: { value: C(o.eyesIbad ? "#1c46d8" : "#d6d0c4") },
-      uIris: { value: C(o.eyesIbad ? "#071a78" : o.eyeColor || "#4a3020") },
+      uEye: { value: C(o.eyesIbad ? "#2650d8" : "#d6d0c4") },
+      uIris: { value: C(o.eyesIbad ? "#0a1650" : o.eyeColor || "#4a3020") },
       uLining: { value: C(o.lining || "#6a5a44") },
       uDust: { value: o.dust ?? 0.55 },
       uWear: { value: o.wear ?? 0.4 },

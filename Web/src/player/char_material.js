@@ -182,14 +182,14 @@ if (rg == 0) {
   sk *= 1.0 - 0.33 * fre - 0.18 * spot;
   // кромка века, ресницы
   float lash = vFace.y * smoothstep(eyeY - 0.001, eyeY + 0.003, hp.y);
-  sk = mix(sk, sk * vec3(0.78, 0.5, 0.5), vFace.y * 0.85 * hd);
-  sk *= 1.0 - 0.8 * lash * hd;
+  sk = mix(sk, sk * vec3(0.82, 0.55, 0.52), vFace.y * 0.6 * hd);
+  sk *= 1.0 - 0.7 * lash * hd;
   // брови (штрихи)
   float yc = 0.0385 + 0.011 * min(1.0, hax / 0.055);
   float bth = 0.0042 * (1.0 - 0.45 * smoothstep(0.045, 0.068, hax)) + 0.0006;
-  float bm = (1.0 - smoothstep(bth * 0.45, bth, abs(hp.y - yc - 0.0008 * sin(hp.x * 700.0)))) * smoothstep(0.011, 0.02, hax) * (1.0 - smoothstep(0.05, 0.067, hax));
-  float strokes = 0.5 + 0.5 * vnoise(vec3(hp.x * 900.0, hp.y * 220.0, hp.z * 100.0));
-  bm *= smoothstep(0.05, 0.4, strokes) * uBrowK * step(0.0, hp.z - 0.04) * hd;
+  float bm = (1.0 - smoothstep(bth * 0.35, bth, abs(hp.y - yc))) * smoothstep(0.011, 0.02, hax) * (1.0 - smoothstep(0.05, 0.067, hax));
+  float strokes = 0.5 + 0.5 * vnoise(vec3(hp.x * 500.0, hp.y * 90.0, hp.z * 100.0));
+  bm *= (0.35 + 0.65 * smoothstep(0.1, 0.6, strokes)) * uBrowK * step(0.0, hp.z - 0.04) * hd;
   sk = mix(sk, uHair * 0.6, bm * 0.75);
   // щетина
   float stub = (1.0 - smoothstep(-0.045, -0.062, hp.y) * 0.0) * smoothstep(-0.052, -0.07, hp.y) * smoothstep(-0.123, -0.11, hp.y) * smoothstep(0.075, 0.05, hax) * step(0.0, hp.z - 0.0) + 0.7 * smoothstep(-0.032, -0.042, hp.y) * smoothstep(-0.052, -0.045, hp.y) * smoothstep(0.03, 0.014, hax) * step(hp.y, -0.037);
@@ -215,9 +215,10 @@ if (rg == 0) {
   float foreh = smoothstep(0.06, 0.075, hp.y) * (1.0 - smoothstep(0.125, 0.14, hp.y)) * smoothstep(0.075, 0.04, hax);
   wr += foreh * (1.0 - smoothstep(0.0, 0.5, abs(sin(hp.y * 260.0 + vnoise(vec3(hp.x * 55.0, 0.0, 0.0)) * 2.2)))) * fa * (0.5 + 0.5 * vnoise(vec3(hp.x * 30.0, hp.y * 5.0, 1.0)));
   vec2 ec2 = vec2(hax - uEyeC.x / uHs, hp.y - eyeY);
-  float cf = smoothstep(0.012, 0.016, ec2.x) * (1.0 - smoothstep(0.03, 0.04, length(ec2))) * (1.0 - smoothstep(0.012, 0.02, abs(ec2.y)));
-  wr += cf * (1.0 - smoothstep(0.0, 0.5, abs(sin(atan(ec2.y, ec2.x) * 9.0 + vnoise(vBind * 60.0))))) * fa * fa * 0.6;
-  wr += (1.0 - smoothstep(0.0, 0.3, abs(sin(hp.y * 330.0 + hp.x * 20.0)))) * G2(hax, hp.y, uEyeC.x / uHs, eyeY - 0.019, 0.014, 0.0045) * fa * fa;
+  float agePast = smoothstep(0.45, 0.9, uAge);
+  float cf = exp(-pow(length((ec2 - vec2(0.022, 0.0)) * vec2(1.0, 1.7)) / 0.018, 2.0));
+  wr += cf * (1.0 - smoothstep(0.0, 0.5, abs(sin(atan(ec2.y, ec2.x) * 8.0 + vnoise(vBind * 60.0))))) * agePast * 0.7;
+  wr += (1.0 - smoothstep(0.0, 0.35, abs(sin(hp.y * 330.0 + hp.x * 20.0)))) * G2(hax, hp.y, uEyeC.x / uHs, eyeY - 0.02, 0.016, 0.005) * agePast;
   rh = pore * 0.45 - wr * 1.0;
   sk = base * (1.0 - 0.35 * wr * clamp(uAge + 0.2, 0.0, 1.0));
   base = sk;
@@ -237,7 +238,7 @@ if (rg == 0) {
   if (uTexOn.x > 0.5) { vec3 tx = triMap(uFabMap, vBind, normalize(vBindN), uTexM.x); float l = dot(tx, vec3(0.333)); base *= 0.55 + 0.95 * l; rh += (l - 0.5) * 0.7 * wf; }
   // тень складок (глубина складки из геометрии)
   float fold = clamp(vAux.z, 0.0, 1.0);
-  aoK = mix(0.5, 1.0, fold);
+  aoK = mix(0.28, 1.0, pow(fold, 1.3));
   if (!gl_FrontFacing) { base = mix(uLining, cc * 0.7, 0.2) * (0.9 + 0.1 * nz); aoK *= 0.85; }
   rough = 0.9; dustK = 0.1 + vAux.x * 0.65 + uWear * 0.1;
   // грязь/песок к подолу, выгорание на плечах
@@ -265,8 +266,9 @@ if (rg == 0) {
   rough = 0.95; dustK = 0.4;
 } else if (rg == 3) {
   float st = step(0.5, fract((vBind.x + vBind.z * 0.7) * 45.0 + vBind.y * 3.0));
-  base = uAccent * (0.8 + 0.3 * st) * (1.0 + 0.1 * nz);
-  rough = 0.85; dustK = 0.1 + vAux.x * 0.5; sheenK = 0.6;
+  base = uAccent * (0.62 + 0.22 * st) * (1.0 + 0.1 * nz);
+  base = mix(vec3(dot(base, vec3(0.3, 0.59, 0.11))), base, 0.72);
+  rough = 0.92; dustK = 0.1 + vAux.x * 0.5; sheenK = 0.6;
   float wf2 = fadeAt(520.0); rh += (st - 0.5) * 0.6 * wf2; bumpAmt = 0.0002 * wf2;
 } else if (rg == 4) {
   base = uLeather * (0.85 + 0.2 * nz + 0.12 * nz2) * (1.0 - 0.2 * smoothstep(0.5, 0.9, nz2));
@@ -411,7 +413,7 @@ export function makeUniforms(o) {
   return {
     uSuit: { value: C(o.suit || '#4a4038') }, uSkin: { value: C(o.skin || '#9c7458') }, uCloth: { value: C(o.cloth || '#8a6a48') },
     uAccent: { value: C(o.accent || '#2c3e57') }, uLeather: { value: C(o.leather || '#4a3828') }, uHair: { value: C(o.hairColor || '#241a14') },
-    uEye: { value: C(o.eyesIbad ? '#1c46d8' : '#d6d0c4') }, uIris: { value: C(o.eyesIbad ? '#071a78' : o.eyeColor || '#4a3020') }, uLining: { value: C(o.lining || '#6a5a44') },
+    uEye: { value: C(o.eyesIbad ? '#2650d8' : '#d6d0c4') }, uIris: { value: C(o.eyesIbad ? '#0a1650' : o.eyeColor || '#4a3020') }, uLining: { value: C(o.lining || '#6a5a44') },
     uDust: { value: o.dust ?? 0.55 }, uWear: { value: o.wear ?? 0.4 }, uEyeGlow: { value: o.eyesIbad ? 0.38 : 0 },
     uAge: { value: age }, uStubble: { value: o.stubble ?? 0 }, uFreckle: { value: o.freckles ?? 0.35 }, uBrowK: { value: o.brows ?? 1 }, uHs: { value: o.hs ?? 1 }, uSunTone: { value: C('#d8b07a') },
     uEyeC: { value: new THREE.Vector4(...fs.eye) }, uBlink: { value: 0 }, uEyeRot: { value: new THREE.Vector2() }, uMouth: { value: 0 },
