@@ -4,7 +4,7 @@ export const CFG = {
   radius: 0.35,
   height: 1.76,
   eye: 1.62,
-  speed: { walk: 3.0, run: 6.0, sandWalk: 2.0 },
+  speed: { walk: 3.0, run: 6.0, sandWalk: 1.8, sandWalkBase: 2.45 }, // sandWalkBase × огибающая ритма (ср. ≈0.7) ≈ 1.8 м/с
   accelLambda: 7, decelLambda: 9, turnLambda: 10, groundLambda: 18,
   slope: { probe: 0.6, slowDeg: 25, slowFactor: 0.7, slideDeg: 38, slideMax: 5, slideLambda: 3 },
   // Шаги: таблица [скорость м/с, интервал с] — ходьба 0.5 с, бег 0.32 с (таймер-фоллбек из mechanics §1.5).

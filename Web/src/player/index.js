@@ -2,7 +2,7 @@
 // Курс (yaw) везде = atan2(dz, dx), как в core/layout.js (0 — на восток, +π/2 — на юг).
 // Фигура (makeFigure) смотрит в +Z, поэтому figure.group.rotation.y = π/2 − yaw.
 import * as THREE from 'three';
-import { makeFigure } from '../core/figures.js';
+import { makeFigure, setFigureWind, setFigureView, setFigureQuality, PRESETS, PALETTES } from '../core/figures.js';
 import { START, GOLDEN_PATH, ELLIPSIS } from '../core/layout.js';
 import { clamp, damp, dampAngle, smoothstep } from '../core/util.js';
 import { CFG, stepInterval } from './config.js';
@@ -38,20 +38,35 @@ export function create(game) {
   const position = new V3(start.x, game.heightAt(start.x, start.z), start.z);
   const velocity = new V3();
 
-  const figure = makeFigure({
-    name: 'Kair', height: CFG.height, cloth: '#8a6a44', suit: '#4a4038', accent: '#2c3e57', skin: '#6a4a32',
-  });
+  const figure = makeFigure({ preset: 'Kair', height: CFG.height });
   game.scene.add(figure.group);
+  setFigureQuality(game.settings?.quality);
+  game.figures = { makeFigure, PRESETS, PALETTES, setFigureWind, setFigureView, THREE };
 
   const p = {
     position, velocity, figure,
     yaw: start.yaw, speed: 0, gait: 'idle', slope: 0, firstPerson: false, inputLocked: false,
-    stepIntervalNow: 0.5,
+    stepIntervalNow: 0.5, moveMode: 'normal', sandWalking: false,
+  };
+  // Режим передвижения: C / LB — переключатель (обычный ⇄ походка по песку), Alt — «пока держишь». Shift (бег) отменяет песок.
+  let desertToggle = false, altHeld = false, padLB = false;
+  const onKey = (e) => {
+    if (e.code === 'KeyC' && e.type === 'keydown' && !e.repeat) { if (!(game.paused || game.cinematic.active || game.ui?.blocking || p.inputLocked)) desertToggle = !desertToggle; }
+    if (e.code === 'AltLeft' || e.code === 'AltRight') altHeld = e.type === 'keydown';
+  };
+  addEventListener('keydown', onKey); addEventListener('keyup', onKey);
+  addEventListener('blur', () => { altHeld = false; });
+  const pollPad = () => {
+    const pad = navigator.getGamepads?.()[0];
+    const lb = !!pad?.buttons?.[4]?.pressed;
+    if (lb && !padLB && !(game.paused || game.cinematic.active || game.ui?.blocking || p.inputLocked)) desertToggle = !desertToggle;
+    padLB = lb;
   };
   const fx = createPuffs(game);
   const rig = createCameraRig(game, p);
   rig.snap(start.yaw);
   const gaitMod = createNoise(game, p, fx);
+  figure.onStep = (e) => gaitMod.footPlant(game.time, e);
   const hydro = createHydration(game, p);
   const thumpers = createThumpers(game, p, fx);
   const interaction = createInteraction(game, p, rig);
@@ -88,7 +103,7 @@ export function create(game) {
       velocity.set(0, 0, 0); slide.set(0, 0, 0); p.speed = 0;
       lastY = position.y;
       rig.snap(p.yaw);
-      gaitMod.reset();
+      gaitMod.reset(); figure.gait.reset();
       figure.group.position.copy(position);
       figure.group.rotation.y = Math.PI / 2 - p.yaw;
       if (withCompanions) game.companions?.teleportBehind?.();
@@ -103,7 +118,9 @@ export function create(game) {
         if (inp.pressed('ToggleCamera')) rig.toggle();
         if (inp.pressed('Mask')) hydro.toggleMask();
         if (inp.pressed('Thumper')) thumpers.deploy();
-        if (inp.pressed('Stutter')) gaitMod.stutter(now, p.speed > CFG.step.minSpeed);
+        if (inp.pressed('Stutter')) { gaitMod.stutter(now, p.speed > CFG.step.minSpeed); figure.gait.stutter(); }
+        pollPad();
+        if (inp.pressed('Sprint') && desertToggle) desertToggle = false; // рывок отменяет походку по песку
       }
 
       // --- намерение движения (относительно камеры) ---
@@ -114,9 +131,11 @@ export function create(game) {
       wish.set(fxv * ax.y - Math.sin(cyaw) * ax.x, 0, fzv * ax.y + Math.cos(cyaw) * ax.x);
       if (wish.lengthSq() > 1e-6) wish.normalize();
 
-      const sandHeld = !frozen && inp.held('SandWalk');
-      const sprint = !frozen && !sandHeld && inp.held('Sprint') && mag > 0.1;
-      let base = sandHeld ? CFG.speed.sandWalk : sprint ? CFG.speed.run : CFG.speed.walk;
+      const sprint = !frozen && !altHeld && inp.held('Sprint') && mag > 0.1;
+      if (sprint) desertToggle = false;
+      const sandHeld = !frozen && (desertToggle || altHeld);
+      const envNow = sandHeld ? figure.gait.env : 1;
+      let base = sandHeld ? CFG.speed.sandWalkBase * envNow : sprint ? CFG.speed.run : CFG.speed.walk;
       if (sprint && p.moisture < CFG.hydration.lowThreshold) base *= CFG.hydration.lowSprintFactor;
       p.gait = mag < 0.1 ? 'idle' : sandHeld ? 'sandwalk' : sprint ? 'run' : 'walk';
 
@@ -126,6 +145,8 @@ export function create(game) {
       const slopeDeg = Math.atan(gl) / (Math.PI / 180);
       p.slope = slopeDeg;
       let slow = 1;
+      let slopeAlong = 0;
+      if (gl > 1e-4) slopeAlong = Math.atan((grad.x * Math.cos(p.yaw) + grad.z * Math.sin(p.yaw)));
       if (gl > 1e-4 && mag > 0.1) {
         const uphill = (wish.x * grad.x + wish.z * grad.z) / gl; // >0 — вверх по склону
         if (uphill > 0) slow = 1 - (1 - CFG.slope.slowFactor) * smoothstep(CFG.slope.slowDeg - 3, CFG.slope.slowDeg + 4, slopeDeg) * uphill;
@@ -174,12 +195,14 @@ export function create(game) {
       // --- фигура ---
       figure.group.position.copy(position);
       figure.group.rotation.y = Math.PI / 2 - p.yaw;
-      const irregular = (p.sandWalking ? 0.7 : 0) + (p.stutterPulse > 0 ? 1 : 0);
-      figure.animate(p.speed, dt, irregular);
+      p.moveMode = sandHeld ? 'desert' : 'normal';
+      const weather = game.weather;
+      setFigureWind(game.space === 'desert' && weather ? weather.windDir : null, weather ? weather.windSpeed : 0);
+      figure.animate(p.speed, dt, sandHeld ? 1 : 0, { slope: slopeAlong, sliding: clamp(slideSpeed / 4, 0, 1), allowPause: true, desert: sandHeld });
       figure.group.visible = rig.blend < 0.55;
       lastY = position.y;
     },
-    lateUpdate(dt, t) { rig.apply(dt, t); },
+    lateUpdate(dt, t) { rig.apply(dt, t); setFigureView(game.camera.position); },
   });
 
   game.add('player', p);

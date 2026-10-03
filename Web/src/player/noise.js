@@ -16,7 +16,7 @@ export function createNoise(game, p, fx) {
     return 1 - clamp(sd / mean / C.goodCV, 0, 1);
   }
 
-  function step(now, gait) {
+  function step(now, gait, sideSign = 0) {
     const { x, z } = p.position;
     const surface = game.surfaceAt(x, z);
     p.surface = surface;
@@ -29,7 +29,7 @@ export function createNoise(game, p, fx) {
     const base = gait === 'run' ? C.run : gait === 'sandwalk' ? C.sandWalk : C.walk;
     const mult = C.surface[surface] ?? 0;
     const loud = clamp(base * mult * (1 + C.rhythmPenalty * p.regularity), 0, 1);
-    side = -side;
+    side = sideSign || -side;
     const yaw = p.yaw;
     // Курс = atan2(dz, dx); вправо = (-sin, cos). Стопа смещена вбок.
     const fx_ = x - Math.sin(yaw) * 0.12 * side, fz_ = z + Math.cos(yaw) * 0.12 * side;
@@ -44,31 +44,24 @@ export function createNoise(game, p, fx) {
   }
 
   return {
+    /** Касание стопой земли из анимации фигуры (e: {side 0|1, mode:'walk'|'run'|'desert', intensity}). Ритм шагов = ритм анимации. */
+    footPlant(now, e) {
+      if (game.cinematic.active || p.speed < S.minSpeed * 0.6) return;
+      const gait = e.mode === 'run' ? 'run' : e.mode === 'desert' ? 'sandwalk' : 'walk';
+      p.stepIntervalNow = lastAt >= 0 ? now - lastAt : p.stepIntervalNow;
+      step(now - (e.ago || 0), gait, e.side === 0 ? 1 : -1);
+    },
     stutter(now, moving) {
       if (now - stutterAt < C.stutterCooldown) return;
       stutterAt = now;
       p.stutterCount++; p.stutterPulse = C.stutterAnim;
       game.bus.emit('stutter', {});
-      if (moving && lastAt >= 0) {
-        const r = Math.random() < 0.5 ? C.stutterLow : C.stutterHigh;
-        const mul = r[0] + Math.random() * (r[1] - r[0]);
-        nextAt = Math.max(now + 0.06, lastAt + curInterval * mul);
-      }
     },
     reset() { p.noise = 0; p.intervals.length = 0; p.regularity = 0.5; lastAt = -1; wasMoving = false; },
     update(dt, now, speed, gait, sandHeld) {
       if (sandHeld !== sandPrev) { sandPrev = sandHeld; p.sandWalking = sandHeld; game.bus.emit('sandwalk', { on: sandHeld }); }
       p.stutterPulse = Math.max(0, p.stutterPulse - dt);
-      const moving = speed > S.minSpeed;
-      if (moving) {
-        if (!wasMoving) nextAt = now + S.firstDelay;
-        else if (now >= nextAt) {
-          step(now, gait);
-          curInterval = stepInterval(speed) * (1 + (Math.random() * 2 - 1) * S.jitter);
-          nextAt = now + curInterval;
-        }
-      }
-      wasMoving = moving;
+      wasMoving = speed > S.minSpeed;
       if (lastAt >= 0 && now - lastAt > S.idleReset && p.intervals.length) { p.intervals.length = 0; p.regularity = 0.5; }
       const onSafe = (C.surface[p.surface] ?? 0) === 0;
       p.noise = Math.max(0, p.noise - (onSafe ? C.rockDecay : C.decay) * dt);
