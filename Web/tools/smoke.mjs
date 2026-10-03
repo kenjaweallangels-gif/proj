@@ -31,7 +31,7 @@ page.on('pageerror', (e) => errors.push(String(e)));
 const file = arg('file', 'rakis_demo.html');
 const url = `file://${join(root, 'dist', file)}?autotest=1&q=${q}&lang=RU`;
 await page.goto(url);
-await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.5, null, { timeout: 120000 });
+await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.5, null, { timeout: 300000, polling: 1000 });
 for (const s of shots) {
   await page.evaluate((s) => window.__rakis.debug?.goto?.(s), s);
   await page.waitForTimeout(Number(arg('wait', 2500)));

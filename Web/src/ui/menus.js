@@ -105,7 +105,7 @@ export function createMenus(game, root, ctx) {
     items = [
       { id: 'resume', label: tr('Продолжить', 'Resume'), act: () => ctx.actions.resume() },
       { id: 'photo', label: tr('Фоторежим', 'Photo mode'), act: () => ctx.actions.photo() },
-      { id: 'scenarios', label: tr('Сценарии / Scenarios', 'Scenarios / Сценарии'), act: () => { view = 'scenarios'; sel = 0; renderPause(); } },
+      { id: 'scenarios', label: tr('Сценарии / Scenarios', 'Scenarios / Сценарии'), act: () => { view = 'scenarios'; sel = 1; renderPause(); } },
       { id: 'lang', label: tr('Язык', 'Language'), val: () => (game.lang === 'RU' ? 'Русский' : 'English'), step: () => setLang(game, game.lang === 'RU' ? 'EN' : 'RU') },
       { id: 'subs', label: tr('Субтитры', 'Subtitles'), val: () => S.subSize + (S.subBg ? tr(' · подложка', ' · backing') : ''), step: (d) => cycleSubs(d) },
       { id: 'wx', label: tr('Погода и время', 'Weather & time'), act: () => ctx.actions.weather?.() },

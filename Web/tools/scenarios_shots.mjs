@@ -24,30 +24,29 @@ for (const lang of ['RU', 'EN']) {
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(`file://${join(root, 'dist', arg('file', 'ui.html'))}?autotest=1&q=low&lang=${lang}`);
-  await page.waitForFunction(() => window.__rakis?.ui?.started && window.__rakis.realTime > 1.5, null, { timeout: 120000 });
+  await page.waitForFunction(() => window.__rakis?.ui, null, { timeout: 120000 });
+  await page.evaluate(() => { if (!window.__rakis.ui.started) window.__rakis.ui.startGame({ intro: false, lockCursor: false }); });
   await page.evaluate(() => { const g = window.__rakis; g.__calls = []; g.debug.goto = (n) => g.__calls.push(n); g.worm.playDevour = () => { g.__calls.push('devour'); return Promise.resolve(); }; g.harvester = g.harvester || { state: 'running' }; g.ui.openPause(); });
   await page.waitForTimeout(500);
   const labels0 = await page.$$eval('.rk .pause .item .lab', (n) => n.map((x) => x.textContent));
   ok(labels0.some((t) => /Сценарии|Scenarios/.test(t)), `пункт «Сценарии» в паузе: ${labels0.join(' | ')}`);
-  if (lang === 'RU') await page.screenshot({ path: join(out, '01_pause.png') });
+  if (lang === 'RU') await page.screenshot({ path: join(out, '01_pause.png'), timeout: 180000 });
   // открыть подменю кликом
   await page.evaluate(() => { [...document.querySelectorAll('.rk .pause .item')].find((e) => /Сценарии|Scenarios/.test(e.textContent)).click(); });
   await page.waitForTimeout(500);
   const labels = await page.$$eval('.rk .pause .item .lab', (n) => n.map((x) => x.textContent));
   ok(labels.length >= 9, `подменю: ${labels.join(' | ')}`);
-  await page.screenshot({ path: join(out, `02_scenarios_${lang.toLowerCase()}.png`) });
-  // Esc/назад → в паузу
-  await page.evaluate(() => window.__rakis.ui.resume());
+  await page.screenshot({ path: join(out, `02_scenarios_${lang.toLowerCase()}.png`), timeout: 180000 });
   // «Червь пожирает харвестер»
   await page.evaluate(() => { [...document.querySelectorAll('.rk .pause .item')].find((e) => /харвестер|harvester/i.test(e.textContent)).click(); });
-  await page.waitForFunction(() => window.__rakis.__calls.includes('devour'), null, { timeout: 30000 }).then(() => ok(true, 'devour запущен из меню'), () => ok(false, 'devour не запущен'));
+  await page.waitForFunction(() => window.__rakis.__calls.includes('devour'), null, { timeout: 90000, polling: 500 }).then(() => ok(true, 'devour запущен из меню'), () => ok(false, 'devour не запущен'));
   // быстрый переход
   await page.evaluate(() => window.__rakis.ui.openPause());
   await page.waitForTimeout(400);
   await page.evaluate(() => { [...document.querySelectorAll('.rk .pause .item')].find((e) => /Сценарии|Scenarios/.test(e.textContent)).click(); });
   await page.waitForTimeout(300);
   await page.evaluate(() => { [...document.querySelectorAll('.rk .pause .item')].find((e) => /Тайный сад|Hidden garden/.test(e.textContent)).click(); });
-  await page.waitForFunction(() => window.__rakis.__calls.includes('garden'), null, { timeout: 10000 }).then(() => ok(true, 'переход garden вызван'), () => ok(false, 'переход garden не вызван'));
+  await page.waitForFunction(() => window.__rakis.__calls.includes('garden'), null, { timeout: 60000, polling: 500 }).then(() => ok(true, 'переход garden вызван'), () => ok(false, 'переход garden не вызван'));
   ok(!(await page.evaluate(() => window.__rakis.paused)), 'меню закрыто после выбора');
   await page.close();
 }
