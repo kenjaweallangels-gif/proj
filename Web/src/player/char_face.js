@@ -106,7 +106,7 @@ function makeSurface(P) {
     let lid = 0, margin = 0;
     const sg = p.x >= 0 ? 1 : -1, dx = p.x - sg * ex, dy = y - ey, d2 = dx * dx + dy * dy;
     if (d2 < 0.034 * 0.034 && p.ca > 0.2) {
-      const R2 = Re + lidT, hug = zc + Math.sqrt(Math.max(R2 * R2 - d2, 0));
+      const R2 = Re + lidT, hug = d2 < R2 * R2 ? zc + Math.sqrt(R2 * R2 - d2) : -1;
       let zz = Math.max(p.z, hug);
       const out = sg * dx, dy2 = dy - 0.0004 - 0.05 * out;
       const q = (dx / ow) ** 2 + (dy2 >= 0 ? (dy2 / ohU) ** 2 : (dy2 / ohL) ** 2);
@@ -134,11 +134,11 @@ function rowList(lod) {
     const out = [...Y].filter((y) => !keys.some((k) => Math.abs(k - y) < 0.0011));
     return [...new Set([...out, ...keys].map((v) => +v.toFixed(5)))].sort((a, b) => a - b);
   }
-  add(-0.1205, 0.141, 0.0115);
+  add(-0.1205, 0.141, 0.022);
   return [...Y, 0.141].sort((a, b) => a - b);
 }
 function colList(lod) {
-  const PI = Math.PI, fine = lod === 0 ? 0.022 : 0.095, coarse = lod === 0 ? 0.17 : 0.3, lim = lod === 0 ? 0.82 : 0.9;
+  const PI = Math.PI, fine = lod === 0 ? 0.026 : 0.15, coarse = lod === 0 ? 0.16 : 0.4, lim = lod === 0 ? 1.2 : 0.9;
   const pos = [];
   for (let a = 0; a < lim - 1e-6; a += fine) pos.push(a);
   const nC = Math.max(2, Math.round((PI - lim) / coarse)), st = (PI - lim) / (nC + 0.5);

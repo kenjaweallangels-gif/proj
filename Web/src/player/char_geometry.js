@@ -231,16 +231,18 @@ function band(b, cx, cz, y, rx, rz, h, reg, stops, N, ang) {
   ellipsoid(b, [x, y, z], [0.0085, h * 0.62, 0.0035], REG.METAL, skY(y, stops), { u: 6, v: 4, rot: [0, ang, 0], aux: [0, 0, 0.1, 0] });
 }
 /** Гофрированный шланг по сглаженной траектории; зажимы на концах. */
+let curLod = 0;
 export function hose(b, ctrl, r0, skFn, o = {}) {
   const curve = new THREE.CatmullRomCurve3(ctrl.map((p) => new THREE.Vector3(...p)), false, 'centripetal');
-  const L = curve.getLength(), n = Math.max(6, Math.round(L / (o.step ?? 0.0055)));
+  const L = curve.getLength(), n = Math.max(curLod ? 4 : 6, Math.round(L / (curLod ? 0.03 : (o.step ?? 0.0055))));
   const pts = curve.getSpacedPoints(n).map((v) => [v.x, v.y, v.z]);
   const period = o.period ?? 0.011;
-  tube(b, pts, (t) => r0 * (0.86 + 0.2 * Math.abs(Math.sin((t * L / period) * Math.PI))) * (t < 0.03 || t > 0.97 ? 0.92 : 1), o.reg ?? REG.HOSE, skFn, { seg: o.seg ?? 6, aux: [0, 0, 0.1, 0] });
-  if (o.clamps !== false) for (const t of [0.015, 0.985]) { const p = curve.getPoint(t), q = curve.getPoint(t < 0.5 ? t + 0.02 : t - 0.02); tube(b, [[p.x, p.y, p.z], [(p.x + q.x) / 2, (p.y + q.y) / 2, (p.z + q.z) / 2]], r0 * 1.32, REG.METAL, skFn, { seg: 6, aux: [0, 0, 0.1, 0] }); }
+  tube(b, pts, (t) => r0 * (0.86 + 0.2 * Math.abs(Math.sin((t * L / period) * Math.PI))) * (t < 0.03 || t > 0.97 ? 0.92 : 1), o.reg ?? REG.HOSE, skFn, { seg: curLod ? 4 : (o.seg ?? 6), aux: [0, 0, 0.1, 0] });
+  if (o.clamps !== false && !curLod) for (const t of [0.015, 0.985]) { const p = curve.getPoint(t), q = curve.getPoint(t < 0.5 ? t + 0.02 : t - 0.02); tube(b, [[p.x, p.y, p.z], [(p.x + q.x) / 2, (p.y + q.y) / 2, (p.z + q.z) / 2]], r0 * 1.32, REG.METAL, skFn, { seg: 6, aux: [0, 0, 0.1, 0] }); }
 }
 
 export function buildBody(o, lod) {
+  curLod = lod;
   const b = new GB();
   const B = BUILDS[o.build] || BUILDS.m;
   const N = [16, 10, 6][lod], hiRibs = lod === 0;
@@ -299,7 +301,7 @@ export function buildBody(o, lod) {
     });
     b.loft(rings, (j, i, p) => ({ reg: bodyReg, aux: [p[1], ribAmt * zLeg(p[1]), 0.15 + 0.5 * Math.exp(-(((p[1] - 0.49) / 0.05) ** 2)), i / N], sk: skY(p[1], stops) }), { capEnd: false });
     // ремни: бедро, голень над сапогом
-    if (lod < 2 && !bare) {
+    if (lod < 1 && !bare) {
       band(b, cx, 0.0, 0.69, 0.083 * B.limb, 0.088 * B.limb, 0.03, REG.LEATHER, stops, 14, s * 0.9);
       band(b, cx, 0.0, 0.39, 0.052 * B.limb, 0.057 * B.limb, 0.022, REG.LEATHER, stops, 12, s * 0.9);
     }
@@ -331,7 +333,7 @@ export function buildBody(o, lod) {
     // подошва
     const sole = [[-0.098, 0.016, 0.032], [-0.04, 0.012, 0.047], [0.08, 0.012, 0.05], [0.2, 0.012, 0.034], [0.238, 0.014, 0.022]];
     b.loft((lod === 2 ? [sole[0], sole[2], sole[4]] : sole).map(([z, cy, rx]) => ringZ(z, cx, cy, rx * B.limb, 0.014, [10, 6, 4][lod])), (j, i, p) => ({ reg: REG.SOLE, aux: [0, 0, 0.7, 0], sk: footSk(p[2]) }), { capStart: true, capEnd: true });
-    if (lod < 2) {
+    if (lod < 1) {
       // ремни голенища, мысок, каблук-ступень
       band(b, cx, 0.0, 0.25, 0.057 * B.limb, 0.062 * B.limb, 0.02, REG.LEATHER, shaftStops, 12, s * 0.8);
       band(b, cx, 0.0, 0.19, 0.053 * B.limb, 0.059 * B.limb, 0.018, REG.LEATHER, shaftStops, 12, s * 0.8);
@@ -359,7 +361,7 @@ export function buildBody(o, lod) {
     const useRows = lod === 2 ? [0, 3, 5, 8].map((i) => armRows[i]) : lod === 1 ? armRows.filter((_, i) => i % 2 === 0) : armRows;
     const rings = useRows.map(([y]) => { const rx = interp(armRows, y, 1) * B.limb, rz = interp(armRows, y, 2) * B.limb, cz = interp(armRows, y, 3); return ringY(y, cx, cz, rx, rz, [12, 8, 5][lod], hiRibs && !bare ? () => 1 + 0.006 * zArm(y) * Math.sin(y * 150) : null); });
     b.loft(rings, (j, i, p) => ({ reg: bodyReg, aux: [p[1], ribAmt * zArm(p[1]), 0.12 + 0.5 * Math.exp(-(((p[1] - 1.13) / 0.05) ** 2)), i / N], sk: skY(p[1], stops) }), { capEnd: false });
-    if (lod < 2 && !bare) {
+    if (lod < 1 && !bare) {
       band(b, cx, 0.0, 1.02, 0.037 * B.limb, 0.04 * B.limb, 0.02, REG.LEATHER, stops, 10, -s * 0.9);
       ellipsoid(b, [cx, 1.13, -0.036 * B.limb], [0.03, 0.036, 0.012], REG.LEATHER, [BI['el' + side], 1], { u: 8, v: 5, aux: [0, 0, 0.5, 0] });
     }
@@ -575,7 +577,7 @@ function clothLayer(b, layer, lod, B, N, seed = 1) {
   const R = rng(seed);
   const fold = layer.fold ?? (style === 'heavy' ? 0.045 : 0.05), nf = layer.folds ?? 9;
   const pleat = makePleat(R, nf), sc = layer.scale ?? 1;
-  const nRings = [30, 14, 7][lod];
+  const nRings = [30, 10, 6][lod];
   const ys = []; for (let k = 0; k < nRings; k++) ys.push(lerp(hemY, topY, k / (nRings - 1)));
   const sk = (y) => skY(y, [[1.52, BI.neck], [1.43, BI.chest], [1.18, BI.chest], [1.05, BI.spine], [0.93, BI.pelvis]]);
   const hemSkew = layer.asym ?? 0, tear = layer.tear ?? 0;
@@ -612,7 +614,7 @@ function clothLayer(b, layer, lod, B, N, seed = 1) {
     const trim = (hemBand && layer.hemTrim) || (layer.frontTrim && edge && y > 1.0);
     return { reg: trim ? REG.ACCENT : (layer.reg ?? REG.CLOTH), aux: [flex * flex, layer.lining ? 1 : 0, 0.5 + 0.5 * f, a], sk: sk(y) };
   }, { capStart: false, closed: closedRing });
-  if (lod < 2) {
+  if (lod < 1) {
     // закатанный подол (толщина ткани) и кромки раскрытых слоёв
     const hemReg = layer.hemTrim ? REG.ACCENT : (layer.reg ?? REG.CLOTH);
     const rr = 0.0075;
@@ -690,9 +692,10 @@ function scarf(b, o, lod, B) {
 }
 
 export function buildCloth(o, lod) {
+  curLod = lod;
   const b = new GB();
   const B = BUILDS[o.build] || BUILDS.m;
-  const N = [64, 30, 14][lod];
+  const N = [64, 22, 12][lod];
   const hasRobe = o.robe !== false;
   const layers = o.layers || [];
   if (hasRobe) clothLayer(b, { reg: REG.CLOTH2, style: o.robeStyle || 'jubba', hemTrim: o.hemTrim, frontTrim: o.frontTrim, asym: o.asym, tear: o.tear, lining: o.lining, collar: true, fold: o.fold, wear: o.wear }, lod, B, N, (o.seed | 0) + 3);

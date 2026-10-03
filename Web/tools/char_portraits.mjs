@@ -78,8 +78,8 @@ await page.evaluate(() => {
 });
 const shot = async (name, wait = 500) => { await page.waitForTimeout(wait); await page.screenshot({ path: join(outDir, `p_${name}.png`), timeout: 240000 }); console.log('shot', name); };
 const CAST = [
+  ['Child', { name: 'NPC_Child_1', height: 1.2, cloth: '#9a7b55', accent: '#b5462c', suit: '#5a4a3a', mask: false, hood: false, hair: 'short', hairColor: '#2a1c14', seed: 5 }],
   ['Kair', { preset: 'Kair' }], ['Ilva', { preset: 'Ilva' }], ['Rayn', { preset: 'Rayn' }], ['Ossana', { preset: 'Ossana' }], ['Harmat', { preset: 'Harmat' }], ['Priestess', { preset: 'Priestess' }],
-  ['Child', { name: 'NPC_Child_1', height: 1.2, cloth: '#9a7b55', accent: '#b5462c', suit: '#5a4a3a', mask: false, hood: false, hair: 'short', seed: 5 }],
   ['Elder', { name: 'NPC_Elder_1', height: 1.66, cloth: '#4e4438', accent: '#2c3e57', suit: '#3b342d', mask: false, hood: true, hair: 'short', beard: true, seed: 8, build: 'm', hairColor: '#b9b5ac', age: 0.9 }],
   ['Rider', { preset: 'Rider' }], ['Stillsuit', { preset: 'Stillsuit' }], ['Guard', { preset: 'Guard' }],
   ['KairBare', { preset: 'Kair', hood: false, mask: false }], ['IlvaBare', { preset: 'Ilva', hood: false, mask: false }], ['RaynBare', { preset: 'Rayn', hood: false, mask: false }], ['OssanaBare', { preset: 'Ossana', hood: false, mask: false }],
