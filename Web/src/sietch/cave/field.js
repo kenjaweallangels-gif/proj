@@ -17,7 +17,7 @@ function rnd(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>>
 
 /** Стойка стен/потолка зала: радиус по эллипсу (с лёгким «дрожанием»). */
 const wobble = (x, y, z) => 1 + 0.035 * vn3(x * 0.11, 3.1, z * 0.11) + 0.02 * vn3(x * 0.3, y * 0.2, z * 0.3);
-function roofY(re) { const r = Math.min(re, 1); return HALL.wallTop + (HALL.vaultTop - HALL.wallTop) * Math.pow(Math.max(0, 1 - Math.pow(r, 1.7)), 0.55); }
+const roofY = L.vaultRoof;
 function hallD(x, y, z) {
   const dx = x - HALL.cx, dz = z, rx = HALL.hx, rz = HALL.hz;
   const w = wobble(x, y, z);

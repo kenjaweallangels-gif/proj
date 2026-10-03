@@ -36,6 +36,8 @@ export function createProbes(P) {
       const dk = opts.dim ?? 1;
       glow[i * 3] = s.r * dk; glow[i * 3 + 1] = s.g * dk; glow[i * 3 + 2] = s.b * dk; ao[i] = s.ao;
     }
+    const col = geo.attributes.color;
+    if (col && !opts.noAO) for (let i = 0; i < n; i++) { const k = 0.4 + 0.6 * ao[i]; col.setXYZ(i, col.getX(i) * k, col.getY(i) * k, col.getZ(i) * k); }
     geo.setAttribute('aGlow', new THREE.BufferAttribute(glow, 3));
     geo.setAttribute('aAO', new THREE.BufferAttribute(ao, 1));
     return geo;

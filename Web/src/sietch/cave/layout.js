@@ -6,6 +6,8 @@
 export const HALL = {
   cx: 175, cz: 0, hx: 25, hz: 17.5, bowlY: -2.7, bowlR: 6, tierW: 1.9, tierH: 0.45, tiers: 6, wallTop: 9, vaultTop: 25, shaftR: 2.1, shaftTop: 33,
 };
+/** Высота свода зала над точкой с нормированным радиусом re (0 — шахта, 1 — стена). */
+export function vaultRoof(re) { const r = Math.min(Math.max(re, 0), 1); return HALL.wallTop + (HALL.vaultTop - HALL.wallTop) * Math.pow(Math.max(0, 1 - Math.pow(r, 1.7)), 0.55); }
 export const GALLERY = { balconyY: 6, stairX0: 42.0, riser: 0.25, tread: 0.35, nSteps: 24 };
 export const LEDGE = { x0: 188.6, y: 2.8, hz: 4.6, stairX0: 192.2, stairX1: 195.4 };
 

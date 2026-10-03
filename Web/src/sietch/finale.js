@@ -2,6 +2,7 @@
 // который оборачивается к камере. Камера ставится в render-обёртке и lateUpdate (в обход игрока).
 import * as THREE from 'three';
 import { HALL } from './plan.js';
+import { vaultRoof } from './cave/layout.js';
 import { clamp, smoothstep, lerp } from '../core/util.js';
 
 export function createFinale(ctx, crowd) {
@@ -38,6 +39,8 @@ export function createFinale(ctx, crowd) {
       // неравномерная скорость: медленный вход, чуть быстрее в середине
       const e = u < 0.5 ? 0.5 * Math.pow(u * 2, 1.25) : 1 - 0.5 * Math.pow((1 - u) * 2, 1.25);
       curvePos.getPoint(e, pos); curveLook.getPoint(e, look);
+      // камера не заходит в рёбра свода: потолок над точкой минус запас
+      pos.y = Math.min(pos.y, vaultRoof(Math.hypot((pos.x - cx) / HALL.hx, (pos.z - cz) / HALL.hz)) - 2.3);
       // в конце части 2 цель плавно уходит на танцовщицу
       const dn = crowd.dancer;
       const w = smoothstep(9.5, 13, t);
