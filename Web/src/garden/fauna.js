@@ -11,12 +11,14 @@ const TAU = Math.PI * 2;
 
 // ---------------------------------------------------------------- геометрические помощники
 function paint(g, c) {
+  // цвета заданы «на глаз» (sRGB), вершинные цвета three читает как линейные
   const n = g.attributes.position.count, a = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) { a[i * 3] = c[0]; a[i * 3 + 1] = c[1]; a[i * 3 + 2] = c[2]; }
+  const r = Math.pow(c[0], 2.2), gg = Math.pow(c[1], 2.2), b = Math.pow(c[2], 2.2);
+  for (let i = 0; i < n; i++) { a[i * 3] = r; a[i * 3 + 1] = gg; a[i * 3 + 2] = b; }
   g.setAttribute('color', new THREE.BufferAttribute(a, 3));
   return g;
 }
-const hex = (h) => { const c = new THREE.Color(h); return [c.r, c.g, c.b]; };
+const hex = (c) => c;
 /** Эллипсоид (rx,ry,rz) в точке (x,y,z) цвета c; rot — эйлер (x,y,z). */
 function ell(rx, ry, rz, x, y, z, c, rot) {
   const g = new THREE.SphereGeometry(1, 10, 8); g.scale(rx, ry, rz);

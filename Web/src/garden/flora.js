@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { rng, clamp, smoothstep } from '../core/util.js';
 import { createLevelRockMaterial } from '../level/rockmat.js';
 import { buildGrass, buildShrub, buildTree, buildPalm, buildFlower, InstGroup, makePlantMaterial } from './plants.js';
-import { grassTexture, foliageTexture, palmFrondTexture, flowerTexture } from './textures.js';
+import { grassTexture, foliageTexture, palmFrondTexture, flowerTexture, barkTexture } from './textures.js';
 import { C, FLOOR_Y, MOUTH, CHANNELS, BEDS, PLAZA, POND, BASIN, ringIn, nearChannel, inBed, ang, radius } from './layout.js';
 
 const V3 = THREE.Vector3;
@@ -25,6 +25,8 @@ export function createFlora(game, { ground, faceAt, root, quality, towerSites = 
   const palmMat = makePlantMaterial({ map: palmFrondTexture(), key: 'gd-palm', alphaTest: 0.4 });
   const flowMat = makePlantMaterial({ map: flowerTexture(), key: 'gd-flow', alphaTest: 0.4 });
   const woodMat = makePlantMaterial({ map: null, key: 'gd-wood', roughness: 0.95, side: THREE.FrontSide });
+  const barkTex = barkTexture(); barkTex.repeat.set(3, 6);
+  const barkMat = makePlantMaterial({ map: barkTex, alphaTest: 0, key: 'gd-bark', roughness: 0.95, side: THREE.FrontSide });
   const rockMat = createLevelRockMaterial({ band: 3.0, sand: 0.5 });
 
   const mkGroup = (parts, range, shadow, cell, name) => { const g = new InstGroup(root, parts, { range: range * (quality === 'low' ? 0.7 : 1), shadow, cell, name }); out.groups.push(g); return g; };
@@ -45,7 +47,7 @@ export function createFlora(game, { ground, faceAt, root, quality, towerSites = 
   const salt = saltG.map((g) => mkGroup([{ geo: g.leaf, mat: saltMat }, { geo: g.wood, mat: woodMat }], 95, true, 20, 'saltbush'));
   const tama = tamaG.map((g) => mkGroup([{ geo: g.leaf, mat: tamaMat }, { geo: g.wood, mat: woodMat }], 170, true, 28, 'tamarisk'));
   const aca = acaG.map((g) => mkGroup([{ geo: g.leaf, mat: acaMat }, { geo: g.wood, mat: woodMat }], 170, true, 28, 'acacia'));
-  const palms = palmG.map((g) => mkGroup([{ geo: g.trunk, mat: woodMat }, { geo: g.fronds, mat: palmMat }], 260, true, 40, 'palm'));
+  const palms = palmG.map((g) => mkGroup([{ geo: g.trunk, mat: barkMat }, { geo: g.fronds, mat: palmMat }], 260, true, 40, 'palm'));
   const flow = flowG.map((g) => mkGroup([{ geo: g, mat: flowMat }], 46, false, 12, 'flowers'));
 
   // ---------------- допуски ----------------
@@ -59,7 +61,7 @@ export function createFlora(game, { ground, faceAt, root, quality, towerSites = 
     if (plazaK(x, z) && Math.hypot(x - PLAZA.x, (z - PLAZA.z) / 0.85) < PLAZA.r + 0.6) return false;
     if (Math.hypot(x - POND.x, (z - POND.z) * 1.3) < POND.rx + 1.2) return false;
     if (Math.abs(x - BASIN.x) < BASIN.w / 2 + 1.5 && Math.abs(z - BASIN.z) < BASIN.d / 2 + 1.5) return false;
-    if (x < 806 && Math.abs(z - 399.5) < 2.8) return false;                     // чаша перелива у стены
+    if (x < 810.5 && Math.abs(z - 399.5) < 3.0) return false;                    // чаша перелива у стены
     return true;
   };
   const colorVar = (k = 0.2, tint = [1, 1, 1]) => [clamp(tint[0] * (1 - k / 2 + R() * k), 0, 1.4), clamp(tint[1] * (1 - k / 2 + R() * k), 0, 1.4), clamp(tint[2] * (1 - k / 2 + R() * k), 0, 1.4)];
@@ -67,7 +69,7 @@ export function createFlora(game, { ground, faceAt, root, quality, towerSites = 
   const pick = (arr) => arr[(R() * arr.length) | 0];
 
   // ---------------- пальмы у перелива ----------------
-  const palmSpots = [[803.2, 405.5], [809, 410.5], [813.5, 403.6], [806.5, 388.2], [813, 391.2], [802.2, 410.8], [818, 409.2]];
+  const palmSpots = [[811, 405.8], [815.5, 411.5], [819, 404.4], [810.5, 388.6], [817.5, 391.5], [821.5, 412.5], [823, 405.5]];
   palmSpots.forEach(([x, z], i) => {
     const y = yAt(x, z), s = 0.85 + R() * 0.3, g = palmG[i % 2];
     palms[i % 2].add(x, y, z, R() * 6.28, s, s, colorVar(0.14));
@@ -160,7 +162,7 @@ export function createFlora(game, { ground, faceAt, root, quality, towerSites = 
     const s = 0.8 + R() * 0.7; pick(dune).add(x, yAt(x, z), z, R() * 6.28, s, s * (0.9 + R() * 0.4), colorVar(0.25)); i++;
   }
   // цветы после полива: вдоль каналов, у чаши и пруда
-  const nFl = Math.round(520 * qf);
+  const nFl = Math.round(900 * qf);
   for (let i = 0, tries = 0; i < nFl && tries < nFl * 12; tries++) {
     const ch = CHANNELS[(R() * CHANNELS.length) | 0], si = (R() * (ch.pts.length - 1)) | 0;
     const [ax, az] = ch.pts[si], [bx, bz] = ch.pts[si + 1], t = R();

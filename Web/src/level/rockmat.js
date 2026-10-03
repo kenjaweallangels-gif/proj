@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { createRockMaterial } from '../desert/rockMaterial.js';
 
 export function createLevelRockMaterial(opts = {}) {
-  const mat = createRockMaterial({ band: opts.band ?? 4.2, sand: opts.sand ?? 0.35 });
+  const mat = createRockMaterial({ band: opts.band ?? 5.5, sand: opts.sand ?? 0.35 });
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (shader, renderer) => {
     prev(shader, renderer);

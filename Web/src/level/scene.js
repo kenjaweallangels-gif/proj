@@ -10,7 +10,7 @@ export const ZONE = { x0: 580, x1: 664, z0: 230, z1: 318, y0: 1.5, y1: 57.5, h: 
 const CLEFT = ENTRY.cleft;
 
 // Плавник параллелен стене; щель (слот) между ним и стеной: gap — ширина на уровне пола.
-export const FIN = { z0: 240, z1: 270, T: 3.6, gap: 2.1, top: 52 };
+export const FIN = { z0: 240, z1: 266, T: 3.6, gap: 3.0, top: 52 };
 export const NOTCH = { z: CLEFT.z, y: CLEFT.y, hw: 1.25, h: 3.9, depth: 8.5 };
 
 export function createApproachScene({ base, wallX, quality = 'med', h = ZONE.h }) {
@@ -27,14 +27,14 @@ export function createApproachScene({ base, wallX, quality = 'med', h = ZONE.h }
     { id: 'z1', ground: true, R: 22, w: 1.45, flare: 1.0, batter: 0.9, pts: [[632, 303], [636, 299], [628, 297], [616, 296], [604, 293]] },
     { id: 'z2', ground: true, R: 20, w: 1.4, flare: 1.0, batter: 0.9, pts: [[604, 293], [601, 289], [610, 287], [622, 286], [636, 283]] },
     { id: 'z3', ground: true, R: 15, w: 1.3, flare: 0.8, batter: 0.9, pts: [[636, 283], [638, 279], [630, 278], [618, 277], [607, 274]] },
-    { id: 'shelf', R: 4, w: 1.0, flare: 0.2, rail: 99, pts: [[607, 274], [606, 271], [614, 271], [626, 270], [636, 269.5]] },
+    { id: 'shelf', R: 4, w: 1.0, flare: 0.2, rail: 99, pts: [[607, 274], [606, 271], [614, 271], [626, 270], [639, 269.5]] },
   ];
   const slotPts = [];
   {
     const zs = [268.5, 266, 262, 257, 253, 251, 246];
     const ys = [24.6, 25.6, 26.6, 27.8, 29.0, 30.0, 30.1];
     slotPts.push([wxs(270) - 6.5, 269.5]);
-    zs.forEach((z, i) => slotPts.push([wxFloor(z) - (FIN.gap * 0.5 + 0.1), z, ys[i]]));
+    zs.forEach((z, i) => slotPts.push([wxFloor(z) - (FIN.gap * 0.5 + 0.3), z, ys[i]]));
   }
   LEGS.push({ id: 'slot', R: 3, w: 0.95, flare: 0.1, steps: { h: 0.3 }, rail: 7, pts: slotPts, slot: true });
 

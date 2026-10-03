@@ -8,7 +8,7 @@ export const GWIND = { value: new THREE.Vector4(0.5, 0.87, 0.06, 0) };
 
 export function makePlantMaterial({ map = null, alphaTest = 0.42, roughness = 0.88, key = 'gd-plant', side = THREE.DoubleSide, vertexColors = true, color = 0xffffff, emissive = 0x000000 } = {}) {
   const m = new THREE.MeshStandardMaterial({ map, alphaTest: map ? alphaTest : 0, side, roughness, metalness: 0, vertexColors, color, emissive });
-  m.alphaToCoverage = !!map;
+  m.alphaToCoverage = !!map && alphaTest > 0;
   patchMaterial(m, key, {
     uniforms: { uGWind: GWIND },
     vertexPars: 'varying vec3 vWP;\nattribute float aSway;\nuniform vec4 uGWind;\n',
@@ -122,7 +122,7 @@ function tube(b, pts, r0, r1, radial, col, swK = 0, ringBands = false, baseSway 
 export function buildGrass(kind, variant = 0) {
   const R = rng(500 + variant * 17 + (kind === 'dune' ? 99 : 0));
   const b = new GB();
-  const H = kind === 'dune' ? 0.9 + R() * 0.45 : 0.28 + R() * 0.2, W = kind === 'dune' ? 0.75 : 0.5;
+  const H = kind === 'dune' ? 0.9 + R() * 0.45 : 0.4 + R() * 0.3, W = kind === 'dune' ? 0.75 : 0.6;
   const n = kind === 'dune' ? 4 : 3;
   for (let k = 0; k < n; k++) {
     const a = (k / n) * Math.PI + R() * 0.4;
@@ -187,9 +187,9 @@ export function buildTree(kind, variant = 0) {
     }
   }
   if (kind === 'tamarisk') {
-    for (const p of crownPts) for (let k = 0; k < 3; k++) {
+    for (const p of crownPts) for (let k = 0; k < 5; k++) {
       const yaw = R() * Math.PI * 2, rx = Math.cos(yaw), rz = Math.sin(yaw);
-      const hh = 0.55 + R() * 0.35, hw = 0.5 + R() * 0.25;
+      const hh = 0.8 + R() * 0.45, hw = 0.75 + R() * 0.3;
       const nrm = [Math.sin(yaw) * 0.3, 0.7, Math.cos(yaw) * 0.3];
       const col = [0.85 + R() * 0.3, 0.9 + R() * 0.25, 0.85 + R() * 0.3];
       card(leaf, [p[0] + rx * 0.2, p[1] - hh * 0.55, p[2] + rz * 0.2], rx, 0, rz, 0, 1, 0, hw, hh, nrm, col, 0.5, 1.0, 0.1);

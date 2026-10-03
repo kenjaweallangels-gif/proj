@@ -43,7 +43,7 @@ const collide = makeCollide(vol, prevCollide, { passagePts, nativePassage: false
 
 // путь бота: звенья тропы
 const trail = [];
-for (const L of S.LEGS) for (let i = 0; i < L.line.length; i++) trail.push({ x: L.line[i][0], z: L.line[i][1], y: L.ys[i], leg: L.id });
+for (const L of S.LEGS) for (let i = 0; i < L.line.length; i++) { if (L.slot && L.line[i][1] < 251.0) continue; trail.push({ x: L.line[i][0], z: L.line[i][1], y: L.ys[i], leg: L.id }); }
 const cleft = { x: ENTRY.cleft.x, y: ENTRY.cleft.y, z: ENTRY.cleft.z };
 
 const pos = { x: ENTRY.trailStart.x, z: ENTRY.trailStart.z, y: 0 };
@@ -60,7 +60,7 @@ while (t < GOAL_T) {
   for (let i = Math.max(0, wi - 20); i < Math.min(trail.length, wi + 60); i++) { const d = (trail[i].x - pos.x) ** 2 + (trail[i].z - pos.z) ** 2 + ((trail[i].y - pos.y) * 1.5) ** 2; if (d < best) { best = d; bi = i; } }
   wi = bi;
   let tgt = trail[Math.min(trail.length - 1, wi + 4)];
-  if (wi >= trail.length - 6) tgt = { x: cleft.x + 1.5, z: cleft.z };      // из слота к нише
+  if (wi >= trail.length - 3) tgt = { x: cleft.x + 1.5, z: cleft.z };      // из слота в нишу
   let dx = tgt.x - pos.x, dz = tgt.z - pos.z; const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
   // склон
   const e = 0.6, gx = (heightAt(pos.x + e, pos.z, pos.y) - heightAt(pos.x - e, pos.z, pos.y)) / (2 * e), gz = (heightAt(pos.x, pos.z + e, pos.y) - heightAt(pos.x, pos.z - e, pos.y)) / (2 * e);
@@ -86,3 +86,17 @@ while (t < GOAL_T) {
   if (!arg('quiet') && Math.floor(t * 30) % 300 === 0) console.log(`t=${t.toFixed(0)} pos=(${pos.x.toFixed(1)},${pos.y.toFixed(1)},${pos.z.toFixed(1)}) leg=${trail[wi].leg} slope=${slopeDeg.toFixed(0)}`);
 }
 if (phase !== 'done') { console.log(`FAIL phase=${phase} t=${t.toFixed(1)} falls=${falls}`); process.exitCode = 1; }
+
+// ---- скрытность входа: с каких точек пустыни (глаз 1.7 м над землёй) виден проём ниши ----
+{
+  const tgt = { x: wallX(nz, 31) - 0.3, y: ENTRY.cleft.y + 1.8, z: nz };
+  let vis = 0, tot = 0; const visPts = [];
+  for (let x = 540; x <= 625; x += 5) for (let z = 215; z <= 345; z += 5) {
+    const gy = fieldH(x, z) + 1.7;
+    const n = Math.ceil(Math.hypot(tgt.x - x, tgt.y - gy, tgt.z - z) / 0.5);
+    let blocked = false;
+    for (let i = 1; i < n; i++) { const k = i / n; if (vol.sample(x + (tgt.x - x) * k, gy + (tgt.y - gy) * k, z + (tgt.z - z) * k) < 0) { blocked = true; break; } }
+    tot++; if (!blocked) { vis++; if (visPts.length < 14) visPts.push(`(${x},${z})`); }
+  }
+  console.log(`niche mouth visible from ${vis}/${tot} desert eye points (${(100 * vis / tot).toFixed(0)}%)`, visPts.join(' '));
+}

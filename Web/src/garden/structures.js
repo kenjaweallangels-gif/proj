@@ -8,7 +8,7 @@ import { markMaterial } from '../level/marks.js';
 import { rng, clamp, smoothstep } from '../core/util.js';
 import { fogPatch, makePlantMaterial } from './plants.js';
 import { adobeTexture, flagstoneTexture, soilTexture, waterNormalTexture, louverTexture } from './textures.js';
-import { C, FLOOR_Y, MOUTH, CHANNELS, BASIN, POND, SPOUT, BEDS, PLAZA, windtrapSites, ringIn, floorHeight } from './layout.js';
+import { C, FLOOR_Y, MOUTH, FACE, CHANNELS, BASIN, POND, SPOUT, BEDS, PLAZA, windtrapSites, ringIn, floorHeight } from './layout.js';
 
 const V3 = THREE.Vector3;
 
@@ -56,11 +56,12 @@ export function createStructures(game, { ground, rim, root, quality }) {
 
   // ---------------- материалы ----------------
   const stoneTex = adobeTexture(); stoneTex.repeat.set(1, 1);
-  const stoneMat = fogPatch(new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.93, color: 0xd8c3a4, vertexColors: true }), 'gd-stone');
+  const stoneMat = fogPatch(new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.93, color: 0xf0e0c6, vertexColors: true }), 'gd-stone');
+  const stonePlain = fogPatch(new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.93, color: 0xf0e0c6 }), 'gd-stone-plain');
   const flagTex = flagstoneTexture();
-  const flagMat = fogPatch(new THREE.MeshStandardMaterial({ map: flagTex, roughness: 0.9, color: 0xffffff }), 'gd-flag');
+  const flagMat = fogPatch(new THREE.MeshStandardMaterial({ map: flagTex, roughness: 0.9, color: 0xffffff, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), 'gd-flag');
   const soilTex = soilTexture();
-  const soilMat = fogPatch(new THREE.MeshStandardMaterial({ map: soilTex, roughness: 1, color: 0xd0c0b0 }), 'gd-soil');
+  const soilMat = fogPatch(new THREE.MeshStandardMaterial({ map: soilTex, roughness: 1, color: 0xd0c0b0, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }), 'gd-soil');
   const wnorm = waterNormalTexture(); wnorm.repeat.set(1, 1);
   const waterMat = fogPatch(new THREE.MeshStandardMaterial({ color: 0x2f6c6a, roughness: 0.05, metalness: 0.0, transparent: true, opacity: 0.86, normalMap: wnorm, normalScale: new THREE.Vector2(0.5, 0.5), envMapIntensity: 1.4 }), 'gd-water');
   const rockMat = createLevelRockMaterial({ band: 5.5, sand: 0.3 });
@@ -114,6 +115,7 @@ export function createStructures(game, { ground, rim, root, quality }) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(U.map((v, i) => (i % 2 ? v * 1.2 : v * 0.7)), 2));
     g.setIndex(I);
+    g.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(P.length).fill(1), 3));
     const stone = new THREE.Mesh(g, stoneMat);
     stone.castShadow = shadows; stone.receiveShadow = true; stone.name = `Channel_${ch.id}`;
     // вода
@@ -132,6 +134,32 @@ export function createStructures(game, { ground, rim, root, quality }) {
   for (const ch of CHANNELS) {
     const m = channelMeshes(ch);
     add(m.stone); add(m.water); out.water.push(m.water); out.channelSamples[ch.id] = m.samples;
+  }
+
+  // ---------------- влажная земля вдоль желобов (тёмные мягкие полосы) ----------------
+  {
+    const wetMat = new THREE.MeshStandardMaterial({ vertexColors: true, transparent: true, depthWrite: false, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    fogPatch(wetMat, 'gd-wet');
+    const P = [], N = [], Cc = [], I = [];
+    const prof = [[-2.6, 0], [-1.6, 0.35], [-0.7, 0.75], [0.7, 0.75], [1.6, 0.35], [2.6, 0]];
+    for (const ch of CHANNELS) {
+      const S = out.channelSamples[ch.id]; if (!S) continue;
+      const base0 = P.length / 3;
+      S.forEach((q) => {
+        const nx = -q.tz, nz = q.tx;
+        for (const [lat, a] of prof) {
+          const x = q.x + nx * lat, z = q.z + nz * lat;
+          P.push(x, ground(x, z) + 0.05, z); N.push(0, 1, 0); Cc.push(0.2, 0.15, 0.1, a * 0.85);
+        }
+      });
+      for (let i = 0; i < S.length - 1; i++) for (let k = 0; k < prof.length - 1; k++) {
+        const a = base0 + i * prof.length + k, b = a + 1, c = a + prof.length, d = c + 1;
+        I.push(a, c, b, b, c, d);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(Cc, 4)); g.setIndex(I);
+    const m = new THREE.Mesh(g, wetMat); m.name = 'WetSoil'; m.renderOrder = 1; m.receiveShadow = true; add(m);
   }
 
   // ---------------- чаша-распределитель и пруд ----------------
@@ -169,10 +197,10 @@ export function createStructures(game, { ground, rim, root, quality }) {
   {
     const list = [], soilGeos = [];
     for (const b of BEDS) {
-      const y = ground(b.x, b.z) + 0.1;
+      const y = ground(b.x, b.z) + 0.16;
       const g = new THREE.PlaneGeometry(b.hx * 2, b.hz * 2, Math.round(b.hx * 2), Math.round(b.hz * 2)); g.rotateX(-Math.PI / 2);
       const p = g.attributes.position;
-      for (let i = 0; i < p.count; i++) p.setY(i, ground(b.x + p.getX(i), b.z + p.getZ(i)) + 0.16 + 0.05 * Math.sin(p.getX(i) * 2.1));
+      for (let i = 0; i < p.count; i++) p.setY(i, ground(b.x + p.getX(i), b.z + p.getZ(i)) + 0.22 + 0.04 * Math.sin(p.getX(i) * 2.1));
       g.translate(b.x, 0, b.z);
       const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * b.hx * 0.6, uv.getY(i) * b.hz * 0.6);
       soilGeos.push(g);
@@ -197,7 +225,7 @@ export function createStructures(game, { ground, rim, root, quality }) {
     const P = [], N = [], U = [], I = [];
     const inside = (x, z) => { const dx = (x - PLAZA.x) / PLAZA.r, dz = (z - PLAZA.z) / (PLAZA.r * 0.85); const a = Math.atan2(dz, dx); return Math.hypot(dx, dz) < 1 + 0.06 * Math.sin(a * 5) + 0.04 * Math.sin(a * 11); };
     for (let x = PLAZA.x - PLAZA.r - 1; x < PLAZA.x + PLAZA.r + 1; x += step) for (let z = PLAZA.z - PLAZA.r; z < PLAZA.z + PLAZA.r; z += step) {
-      if (!inside(x + step / 2, z + step / 2) || x < MOUTH.x + 1.2) continue;
+      if (!inside(x + step / 2, z + step / 2) || x < MOUTH.x + 0.58 * (z - MOUTH.z) + 1.6) continue;
       const k = P.length / 3;
       for (const [dx, dz] of [[0, 0], [step, 0], [step, step], [0, step]]) { const px = x + dx, pz = z + dz; P.push(px, ground(px, pz) + 0.035, pz); N.push(0, 1, 0); U.push(px * 0.45, pz * 0.45); }
       I.push(k, k + 2, k + 1, k, k + 3, k + 2);
@@ -210,7 +238,7 @@ export function createStructures(game, { ground, rim, root, quality }) {
   // ---------------- вход в пещеру на восточной грани: косяки, перемычка, ступени, знаки ----------------
   const mouth = (() => {
     const z0 = MOUTH.z, face = MOUTH.x;
-    const fx = (z) => face + 0.58 * (z - z0);                       // линия грани (приближённо)
+    const fx = (z) => FACE(z) + 1.1;                                // линия грани (+ вынос косяков)
     const list = [];
     const yFloor = MOUTH.y;
     const jamb = (z, h) => { const g = chunkyBox(1.0, h, 1.5, 4, 11 + z, 0.1); g.translate(fx(z) + 0.9, yFloor + h / 2 - 0.05, z); return g; };
@@ -283,12 +311,12 @@ export function createStructures(game, { ground, rim, root, quality }) {
     const H = 9.4;
     const shaft = new THREE.Mesh(new THREE.CylinderGeometry(1.45, 2.1, H, 4, 1, false), towerMat); shaft.rotation.y = Math.PI / 4; shaft.position.y = 0.9 + H / 2; shaft.castShadow = shadows; shaft.receiveShadow = true; group.add(shaft);
     // карниз/парапет и крестовина-флюгер
-    const cap = new THREE.Mesh(new THREE.BoxGeometry(3.3, 0.5, 3.3), stoneMat); cap.position.y = 0.9 + H + 0.2; cap.castShadow = shadows; group.add(cap);
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(3.3, 0.5, 3.3), stonePlain); cap.position.y = 0.9 + H + 0.2; cap.castShadow = shadows; group.add(cap);
     const merl = [];
     for (const [dx, dz] of [[-1.4, -1.4], [1.4, -1.4], [-1.4, 1.4], [1.4, 1.4]]) merl.push(boxGeo(dx, 0.9 + H + 0.75, dz, 0.55, 0.7, 0.55));
     const mm = finalize(merl, stoneMat, 'Merlons'); if (mm) group.add(mm);
-    const vane = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.8, 0.1), stoneMat); vane.position.y = 0.9 + H + 1.5; group.add(vane);
-    const vane2 = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.08, 0.08), stoneMat); vane2.position.y = 0.9 + H + 1.9; group.add(vane2);
+    const vane = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.8, 0.1), stonePlain); vane.position.y = 0.9 + H + 1.5; group.add(vane);
+    const vane2 = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.08, 0.08), stonePlain); vane2.position.y = 0.9 + H + 1.9; group.add(vane2);
     const vane3 = vane2.clone(); vane3.rotation.y = Math.PI / 2; group.add(vane3);
     root.add(group); out.meshes.push(group);
     out.towers.push({ x: s.x, y: y0, z: s.z, group, vane: [vane2, vane3] });

@@ -32,7 +32,7 @@ await page.goto(`file://${join(root, 'dist', arg('file', 'level.html'))}?autotes
 await page.waitForFunction(() => window.__rakis && window.__rakis.approach && window.__rakis.realTime > 1.5, null, { timeout: 900000 });
 await page.evaluate(() => { const g = window.__rakis; g.cinematic.active = true; g.cinematic.owner = 'level_shots'; g.timeScale = 1; });
 
-const hours = async (h) => { await page.evaluate((h) => { const g = window.__rakis; g.weather.request('Clear_Noon', 0.01); g.weather.setHours(h, true); g.weather.snap?.(); }, h); };
+const hours = async (h) => { await page.evaluate((h) => { const g = window.__rakis; g.weather.request(h >= 21 || h < 4.9 ? 'Night_Clear' : h >= 19.6 ? 'Twilight_Violet' : h >= 17.2 ? 'Dusk_Gold' : 'Clear_Noon', 0.01); g.weather.setHours(h, true); g.weather.snap?.(); }, h); };
 async function cam(x, y, z, lx, ly, lz, fov = 62, wait = 1400, rel = false) {
   await page.evaluate(([x, y, z, lx, ly, lz, fov, rel]) => {
     const g = window.__rakis, W = g.world;
@@ -43,7 +43,11 @@ async function cam(x, y, z, lx, ly, lz, fov = 62, wait = 1400, rel = false) {
   }, [x, y, z, lx, ly, lz, fov, rel]);
   await page.waitForTimeout(wait);
 }
-const shot = (name) => page.screenshot({ path: join(outDir, `${name}.png`), timeout: 240000 });
+const shot = async (name) => {
+  await page.screenshot({ path: join(outDir, `${name}.png`), timeout: 240000 });
+  const i = await page.evaluate(() => { const g = window.__rakis, r = g.renderer.info.render; return { calls: r.calls, tris: r.triangles, fps: g.stats.fps }; });
+  console.log(`shot ${name}: calls=${i.calls} tris=${i.tris} fps=${i.fps}`);
+};
 globalThis.__h = { hours, cam, shot, page, want, outDir, errors };
 
 const scenes = arg('scenes', 'level_scenes.mjs');

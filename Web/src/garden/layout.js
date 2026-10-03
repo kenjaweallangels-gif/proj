@@ -5,7 +5,9 @@ import { GARDEN } from '../core/layout.js';
 export const C = GARDEN.center;                 // (840, 395)
 export const FLOOR_Y = GARDEN.floorY;           // 4
 export const R_FLOOR = 52;                      // средний радиус дна котловины (внутренний край гребней)
-export const MOUTH = { x: 799, z: 392, y: 5, w: 3.0, h: 4.3 };   // устье туннеля на восточной грани Когтя (портал сиетча)
+/** Линия восточной грани Когтя у котловины (по лучам в реальный меш): x(z) на высоте 6–30 м. */
+export const FACE = (z) => 798.3 + 0.58 * (z - 390);
+export const MOUTH = { x: 799.5, z: 392, y: 5, w: 3.0, h: 4.3 };   // устье туннеля на восточной грани Когтя (портал сиетча)
 export const PORTAL = GARDEN.portal;            // (790, 5, 392): выход из туннеля сиетча (внутри скалы)
 
 /** Угол от центра (x → z), рад. */
@@ -27,12 +29,12 @@ export function floorHeight(x, z) {
 }
 
 // Гидрология: канавы (каменные желоба), чаша-распределитель, пруд. Все в мировых координатах, ломаные по дну.
-export const SPOUT = { x: 800.6, z: 399.4 };                       // носик перелива цистерны в стене рядом с устьем
+export const SPOUT = { x: 804.4, z: 399.4 };                       // носик перелива цистерны в стене рядом с устьем
 export const BASIN = { x: 829, z: 399.5, w: 4.6, d: 4.2 };         // распределительная чаша
 export const POND = { x: 884, z: 399.5, rx: 4.4, rz: 3.0 };        // замыкающий пруд
 export const CHANNELS = [
   // из стены к чаше
-  { id: 'main', pts: [[801.4, 399.4], [806, 399.5], [814, 399.5], [822, 399.5], [826.7, 399.5]], w: 0.55 },
+  { id: 'main', pts: [[807.9, 399.4], [814, 399.5], [820, 399.5], [826.7, 399.5]], w: 0.55 },
   // от северных ветроловушек (qanat) к чаше
   { id: 'north', pts: [[824, 354], [826.5, 366], [827.5, 378], [828, 390], [828.4, 397.3]], w: 0.5 },
   // восточная ветка вдоль террас к пруду
@@ -65,7 +67,7 @@ export const BEDS = (() => {
   for (const z of [377, 421]) beds.push({ x: 850, z, hx: 7.5, hz: 3.4 });
   return beds;
 })();
-export const PLAZA = { x: 806, z: 394.5, r: 7.5 };
+export const PLAZA = { x: 808.5, z: 394.5, r: 7.0 };
 export function nearChannel(x, z, margin = 1.5) {
   for (const ch of CHANNELS) {
     for (let i = 0; i < ch.pts.length - 1; i++) {

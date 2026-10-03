@@ -13,7 +13,8 @@ function tex(c, { srgb = true, repeat = false, aniso = 4 } = {}) {
   return t;
 }
 const rgb = (r, g, b, a = 1) => `rgba(${r | 0},${g | 0},${b | 0},${a})`;
-const jitter = (base, v, R) => base.map((c) => Math.max(0, Math.min(255, c + (R() - 0.5) * v)));
+// вариация яркости (общий множитель) + слабый сдвиг по каналам — без «радужных» пятен
+const jitter = (base, v, R) => { const f = 1 + (R() - 0.5) * v / 110; return base.map((c) => Math.max(0, Math.min(255, c * f + (R() - 0.5) * v * 0.16))); };
 
 /** Пучок травы: изогнутые заострённые лезвия от нижнего центра. */
 export function grassTexture(kind = 'poverty', seed = 1) {
@@ -41,12 +42,13 @@ export function grassTexture(kind = 'poverty', seed = 1) {
 /** Облако листвы (карточка-кластер). kind: creosote | saltbush | tamarisk | acacia */
 export function foliageTexture(kind, seed = 1) {
   const R = rng(seed * 131 + 7);
-  const [c, g] = canvas(256, 256);
+  const [c, g] = canvas(512, 512);
+  g.scale(2, 2);
   const cfg = {
-    creosote: { pal: [[112, 124, 58], [92, 108, 50], [132, 140, 70], [150, 148, 66]], n: 190, len: 13, wid: 6, kind: 'leaf' },
-    saltbush: { pal: [[150, 168, 142], [128, 150, 126], [170, 182, 158], [118, 138, 112]], n: 210, len: 12, wid: 6, kind: 'leaf' },
-    tamarisk: { pal: [[142, 168, 122], [120, 150, 104], [168, 188, 140]], n: 120, len: 56, wid: 2, kind: 'needle' },
-    acacia: { pal: [[82, 96, 42], [98, 112, 52], [70, 86, 38], [112, 120, 56]], n: 240, len: 10, wid: 3.4, kind: 'leaflet' },
+    creosote: { pal: [[104, 128, 56], [88, 114, 48], [124, 144, 66], [138, 150, 64]], n: 1100, len: 5.2, wid: 2.4, kind: 'leaf' },
+    saltbush: { pal: [[140, 164, 136], [120, 146, 120], [160, 178, 150], [110, 136, 108]], n: 1100, len: 4.8, wid: 2.3, kind: 'leaf' },
+    tamarisk: { pal: [[126, 162, 98], [108, 148, 84], [150, 182, 112]], n: 320, len: 42, wid: 1.5, kind: 'needle' },
+    acacia: { pal: [[78, 104, 40], [92, 118, 46], [66, 92, 34], [106, 128, 50]], n: 520, len: 7, wid: 2.4, kind: 'leaflet' },
   }[kind];
   // мягкая форма: листья только внутри эллипса
   for (let i = 0; i < cfg.n; i++) {
@@ -88,7 +90,7 @@ export function palmFrondTexture() {
     const y = 500 - i * 6.6;
     const len = 112 * Math.sin(Math.PI * Math.min(1, (i + 6) / 80)) + 14;
     for (const sg of [-1, 1]) {
-      const col = jitter([66, 98, 46], 34, R);
+      const col = jitter([96, 134, 62], 34, R);
       g.strokeStyle = rgb(...col); g.lineWidth = 3.2;
       g.beginPath(); g.moveTo(128, y); g.quadraticCurveTo(128 + sg * len * 0.55, y - 8 + R() * 6, 128 + sg * len, y + 12 + R() * 8); g.stroke();
     }
@@ -176,4 +178,19 @@ export function louverTexture() {
   for (let k = 0; k < 6; k++) { const x = 12 + k * 20; g.fillStyle = rgb(36, 26, 20); g.fillRect(x, 24, 7, 150); g.fillStyle = rgb(120, 92, 66); g.fillRect(x - 1, 24, 1, 150); }
   g.fillStyle = rgb(120, 92, 66); g.fillRect(0, 176, 128, 3);
   return tex(c);
+}
+
+/** Кора пальмы: кольца-рубцы от опавших листьев. */
+export function barkTexture() {
+  const R = rng(1717);
+  const [c, g] = canvas(128, 256);
+  g.fillStyle = rgb(112, 88, 62); g.fillRect(0, 0, 128, 256);
+  for (let j = 0; j < 16; j++) {
+    const y = j * 16;
+    const gr = g.createLinearGradient(0, y, 0, y + 16); gr.addColorStop(0, rgb(84, 64, 44)); gr.addColorStop(0.35, rgb(132, 104, 74)); gr.addColorStop(1, rgb(98, 76, 54));
+    g.fillStyle = gr; g.fillRect(0, y, 128, 16);
+    for (let k = 0; k < 9; k++) { g.fillStyle = rgb(...jitter([70, 54, 38], 30, R), 0.5); g.fillRect(R() * 128, y + R() * 14, 6 + R() * 12, 1 + R() * 2); }
+  }
+  for (let i = 0; i < 500; i++) { g.fillStyle = rgb(...jitter([120, 96, 68], 50, R), 0.3); g.fillRect(R() * 128, R() * 256, 1 + R() * 3, 1 + R() * 3); }
+  return tex(c, { repeat: true });
 }
