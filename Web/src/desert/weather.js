@@ -48,11 +48,11 @@ const SKY_KEYS = [
   [-10, '#0e1c52', '#303466', '#563f72', 0.42],
   [-6, '#1a3070', '#5d5a92', '#b85f6a', 0.34],
   [-2.5, '#2a4a92', '#a67e9e', '#f0804a', 0.5],
-  [0.5, '#34569e', '#d49a88', '#f89a3e', 0.8],
-  [4, '#3a62a8', '#d6aa8c', '#f4b866', 1.15],
-  [12, '#3c64a8', '#cbb298', '#eccb92', 1.55],
-  [26, '#3a62a8', '#c8b79a', '#dfcaa2', 1.9],
-  [55, '#2b58a6', '#c0b096', '#cdbba0', 2.05],
+  [0.5, '#2c4b8f', '#d49a88', '#f89a3e', 0.62],
+  [4, '#2f5198', '#d8a38a', '#f6ac5a', 0.8],
+  [12, '#33589f', '#d3ad98', '#eebf86', 1.0],
+  [26, '#3a62a8', '#cfb89c', '#e2cca4', 1.5],
+  [55, '#2b58a6', '#c2b196', '#d0bea3', 2.05],
 ].map(([e, z, a, s, l]) => ({ e, z: hex(z), a: hex(a), s: hex(s), l }));
 function skyAt(el, out) {
   const K = SKY_KEYS;
@@ -172,14 +172,14 @@ export function createWeather(game, sky, world) {
       emit('hours');
     },
     getHours() { return clock.h; },
-    /** Скорость хода суток: игровых минут на реальную секунду (0 — стоп; 1 → сутки за 24 мин; 60 → час в секунду). */
+    /** Скорость хода суток: игровых СЕКУНД на реальную секунду (0 — стоп; 60 → сутки за 24 мин; 3600 → час в секунду). */
     setTimeScale(v) { weather.timeScale = Math.max(0, fin(+v, 0)); emit('timeScale'); },
     /** Частичные переопределения (0..1): {wind, storm, dust, haze, clouds, fog}. null/undefined-ключ → снять override ключа. */
     setOverride(o = {}, blendSec = 3) {
       for (const k of OV_KEYS) {
         if (!(k in o)) continue;
         if (o[k] === null || o[k] === undefined) { ovGoal[k] = 0; ovRate[k] = 1 / Math.max(0.001, blendSec); continue; }
-        const v = clamp(fin(+o[k], 0), 0, 1.5);
+        const v = clamp(fin(+o[k], 0), 0, k === 'wind' ? 40 : 1.5);
         if (ovW[k] < 0.001) ovVal[k] = v;                 // с нуля — сразу целевое значение, плавно растёт вес
         else ovVal[k] = v;
         ovGoal[k] = 1; ovRate[k] = 1 / Math.max(0.001, blendSec);
@@ -234,7 +234,7 @@ export function createWeather(game, sky, world) {
 
   function advanceClock(dt) {
     if (weather.timeScale > 0) {
-      const dh = (weather.timeScale / 60) * dt;           // игровых часов
+      const dh = (weather.timeScale / 3600) * dt;           // timeScale — игровых секунд за реальную; dh — игровых часов
       clock.goal = wrap24(clock.goal + dh);
       clock.h += dh;
     }
@@ -274,7 +274,7 @@ export function createWeather(game, sky, world) {
     eff.dust = ov('dust', st.dust);
     eff.haze = ov('haze', st.haze);
     eff.clouds = ov('clouds', st.clouds);
-    eff.wind = ov('wind', st.wind, (v) => 0.5 + 17.5 * Math.pow(v, 1.1));
+    eff.wind = ov('wind', st.wind);
     // туман: 0..1 → плотность в единицах CSV
     const fogFromCsv = clamp(Math.pow(Math.max(st.fogDensity - 0.0015, 0) / 0.05, 1 / 1.6), 0, 1);
     eff.fog = ov('fog', fogFromCsv);
@@ -369,6 +369,8 @@ export function createWeather(game, sky, world) {
     ENV.uniforms.uKeyDir.value.copy(keyDir);
     ENV.uniforms.uKeyColor.value.setRGB(keyCol.x, keyCol.y, keyCol.z);
     world.sunDir.copy(keyDir);
+    if (!world.sunColor) world.sunColor = new THREE.Color();
+    world.sunColor.setRGB(keyCol.x / kMax, keyCol.y / kMax, keyCol.z / kMax).multiplyScalar(clamp(kMax / 3.2, 0.05, 1));   // для модуля червя: цвет ключевого света
     if (world.sunDir.y < 0.02) { world.sunDir.y = 0.02; world.sunDir.normalize(); }
 
     // --- небо ---
@@ -463,7 +465,7 @@ export function createWeather(game, sky, world) {
     if (sandNow !== lastStorm) { lastStorm = sandNow; weather.sandstorm = sandNow; emit(sandNow ? 'sandstorm:start' : 'sandstorm:end'); }
   }
 
-  weather.update = (dt) => { step(dt); if (game.paused && world.visible !== false) sky.update(game.camera.position); };
+  weather.update = (dt) => { step(dt); if (game.paused && world.visible !== false) { ENV.uniforms.uTime.value = game.realTime; sky.update(game.camera.position); } };
   weather.alwaysUpdate = true; // часы/смена погоды идут и в меню на паузе (dt = реальный)
   // стартовый пресет
   emitLock++;

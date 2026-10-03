@@ -40,8 +40,8 @@ const SHOTS = [
   ['h02_night', 2, 'Morning_Erg', clear, 'claw'],
   ['h02_night_sky', 2, 'Morning_Erg', clear, 'sky'],
   ['storm_noon', 12, 'Storm_Horizon', { storm: 0.55 }, 'claw'],
-  ['storm_full', 14, 'Storm_Horizon', { storm: 1, dust: 0.9, wind: 1 }, 'claw'],
-  ['storm_full_dusk', 18.5, 'Storm_Horizon', { storm: 1, dust: 0.9, wind: 1 }, 'sun'],
+  ['storm_full', 14, 'Storm_Horizon', { storm: 1, dust: 0.9, wind: 17 }, 'claw'],
+  ['storm_full_dusk', 18.5, 'Storm_Horizon', { storm: 1, dust: 0.9, wind: 17 }, 'sun'],
   ['haze_noon', 12, 'Noon_Approach', { haze: 1, dust: 0.35 }, 'low'],
   ['cloudy_sunset', 18.7, 'Morning_Erg', { clouds: 1 }, 'sun'],
   ['night_storm', 23, 'Storm_Horizon', { storm: 0.8 }, 'claw'],
@@ -52,11 +52,12 @@ const browser = await chromium.launch({
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
 });
 const page = await browser.newPage({ viewport: { width: Number(arg('w', 1280)), height: Number(arg('h', 720)) } });
+page.setDefaultTimeout(300000);
 const errors = [];
-page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${m.type()}: ${m.text()}`); });
+page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !m.text().includes('AudioContext')) errors.push(`${m.type()}: ${m.text()}`); });
 page.on('pageerror', (e) => errors.push(String(e)));
 await page.goto(`file://${join(root, 'dist', arg('file', 'desert.html'))}?autotest=1&q=${q}&lang=RU`);
-await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.5, null, { timeout: 120000 });
+await page.waitForFunction(() => window.__rakis && window.__rakis.post && window.__rakis.audio, null, { timeout: 600000 });
 await page.evaluate(() => { window.__rakis.paused = true; });
 
 for (const [name, hours, preset, ov, view] of SHOTS) {
@@ -84,9 +85,11 @@ for (const [name, hours, preset, ov, view] of SHOTS) {
     cam.updateMatrixWorld(true);
   }, { hours, preset, ov, view });
   // прогрев: несколько кадров с обновлением погоды/неба
-  for (let i = 0; i < 3; i++) {
-    await page.evaluate(() => { const g = window.__rakis; g.weather.update(1.0); g.desertRoot.update(0.016, g.realTime); });
-    await page.waitForTimeout(400);
+  for (let i = 0; i < 2; i++) {
+    await page.evaluate(async () => {
+      const g = window.__rakis; g.weather.update(1.0); g.desertRoot.update(0.016, g.realTime);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    });
   }
   await page.screenshot({ path: join(outDir, `${name}.png`) });
   console.log('shot', name);
