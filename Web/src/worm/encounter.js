@@ -12,8 +12,8 @@ import { choosePath } from './path.js';
 import { RADIUS, N_PTS } from './spine.js';
 
 export const DIALOGUE_ID = 'DLG_A2_RIDER_01';
-const V_CRUISE = 30, A_ACC = 2.2, A_BRAKE = 1.7, V_DEPART = 30, A_DEPART = 1.3;
-const OSS_WALK = 2.4, OSS_CLIMB = 2.0, OSS_BACKWALK = 1.8;
+const V_CRUISE = 38, A_ACC = 3.0, A_BRAKE = 2.6, V_DEPART = 32, A_DEPART = 2.2;
+const OSS_WALK = 3.0, OSS_CLIMB = 4.2, OSS_BACKWALK = 2.4, TALK_DIST = 4.0;
 const LEASH = 40;                       // м: дальше от места спуска игрока — Оссана ждёт и зовёт
 const TALK_FALLBACK = 6;                // с: если диалога нет — пауза
 const UP = new THREE.Vector3(0, 1, 0);
@@ -72,6 +72,7 @@ export class EncounterDirector {
     this.oss.phase = 'none';
     this.worm.body.setOpen(0);
     this.installCollider();
+    this.offSub = bus.on('subtitle', (e) => this.onSubtitle(e));
     // камера
     const cam = game.camera;
     this.saved = { pos: cam.position.clone(), quat: cam.quaternion.clone(), fov: cam.fov, near: cam.near };
@@ -115,6 +116,7 @@ export class EncounterDirector {
     this._active = false;
     this.endCinematic();
     this.removeCollider();
+    this.offSub?.(); this.offSub = null;
     const rd = this.worm.riders;
     rd.items.forEach((it) => { it.free = false; it.hidden = true; it.root.visible = false; it.fig.setTalking?.(false); });
     this.worm.gear.setLadder(null);
@@ -226,6 +228,8 @@ export class EncounterDirector {
         break;
       }
       case 'dismount': case 'talk': case 'mount': {
+        if (this.stirT > 0) { this.stirT -= dt; sp.headLift = lerp(sp.headLift, 4 + 2 * Math.sin(this.t * 3), 1 - Math.exp(-3 * dt)); game.shake = Math.max(game.shake || 0, 0.18); }
+        else sp.headLift = lerp(sp.headLift, 1.2, 1 - Math.exp(-1 * dt));
         this.updateOssana(dt);
         break;
       }
@@ -233,9 +237,9 @@ export class EncounterDirector {
         this.departT += dt;
         if (this.crackN < this.worm.gear.hookCount) {
           this.crackT += dt;
-          while (this.crackT > 0.26 && this.crackN < this.worm.gear.hookCount) { this.crackT -= 0.26; this.crackHook(this.crackN++); }
+          while (this.crackT > 0.12 && this.crackN < this.worm.gear.hookCount) { this.crackT -= 0.12; this.crackHook(this.crackN++); }
         }
-        const go = this.crackN >= this.worm.gear.hookCount * 0.7 || this.departT > 5;
+        const go = this.crackN >= this.worm.gear.hookCount * 0.7 || this.departT > 3;
         if (go) {
           if (!this._departEmit) { this._departEmit = true; bus.emit('worm:encounter', { phase: 'depart' }); this.log.push(`${game.time.toFixed(1)} depart-go`); this.api.game.audio?.event?.('Worm.Pass', K.pos.clone()); }
           this.moveHead(dt, V_DEPART, A_DEPART);
@@ -244,7 +248,7 @@ export class EncounterDirector {
           game.shake = Math.max(game.shake || 0, 0.15 * smoothstep(300, 60, this.distToG()) * smoothstep(0, 12, this.v));
         } else sp.headLift = lerp(sp.headLift, 5, 1 - Math.exp(-0.9 * dt));
         // ожидание: камера до нырка, затем игроку возвращается управление, тело ещё уползает
-        if (this.cinematic && (this.pt > 38 || (this.distToG() > 520 && this._dived) || (skip && this.departT > 1.5))) this.endCinematic();
+        if (this.cinematic && (this.pt > 16 || (this.distToG() > 520 && this._dived) || (skip && this.departT > 1.5))) this.endCinematic();
         if (skip && this.departT > 1.5) { this.finish(true); return; }
         if (this._dived && !this.worm.exposed) { this.goneT = (this.goneT || 0) + dt; if (this.goneT > 1.5) this.goneFinish(); }
         if (this.u >= path.len - 2 && this.pt > 60) this.goneFinish();
@@ -351,7 +355,7 @@ export class EncounterDirector {
         const r = RADIUS;
         // спуск: на куполе — шаг, у стены — «боком по канату»
         const w = smoothstep(0.62, 0.15, Math.cos(o.a));
-        const v = lerp(1.7, OSS_CLIMB, w);
+        const v = lerp(2.6, OSS_CLIMB, w);
         o.a += o.side * (v / r) * dt;
         o.climbPhase += dt * 4.2 * (0.3 + w);
         const ww = this.placeSurface(it, o.sDesc, o.a, 0.12, o.side, true);
@@ -370,7 +374,7 @@ export class EncounterDirector {
         const far = Math.hypot(pl.x - o.land.x, pl.z - o.land.z) > LEASH;
         const dx = pl.x - o.pos.x, dz = pl.z - o.pos.z, d = Math.hypot(dx, dz);
         let speed = 0;
-        if (!far && d > 2.9) { speed = OSS_WALK * smoothstep(0, 0.6, o.t); o.pos.x += (dx / d) * speed * dt; o.pos.z += (dz / d) * speed * dt; }
+        if (!far && d > TALK_DIST) { speed = OSS_WALK * smoothstep(0, 0.6, o.t); o.pos.x += (dx / d) * speed * dt; o.pos.z += (dz / d) * speed * dt; }
         o.pos.y = ground(o.pos.x, o.pos.z);
         it.fig.animate(speed, dt);
         const fx = speed > 0 || d > 0.1 ? dx / (d || 1) : 0, fz = d > 0.1 ? dz / (d || 1) : 1;
@@ -380,7 +384,7 @@ export class EncounterDirector {
           if (o.callT > 9) { o.callT = 0; this.call(); }
         } else o.callT = 6;
         o.waitT += dt;
-        if (!far && d <= 2.95) { o.phase = 'talk'; o.t = 0; this.startTalk(); }
+        if (!far && d <= TALK_DIST + 0.05) { o.phase = 'talk'; o.t = 0; this.startTalk(); }
         else if (o.waitT > 150) { o.phase = 'talk'; o.t = 0; this.startTalk(true); }
         break;
       }
@@ -390,7 +394,7 @@ export class EncounterDirector {
         it.fig.animate(0, dt);
         rd.placeFree(it, o.pos, UP, this._q.set(dx / d, 0, dz / d));
         it.fig.lookAt?.(this._w.set(pl.x, pl.y + 1.5, pl.z));
-        if (this.talkDone) { it.fig.setTalking?.(false); it.fig.parts && (it.fig.parts.headPivot.rotation.y = 0); o.phase = 'walkBackTo'; o.t = 0; this.setPhase('mount'); }
+        if (this.talkDone || this.leaveNow) { it.fig.setTalking?.(false); it.fig.parts && (it.fig.parts.headPivot.rotation.y = 0); o.phase = 'walkBackTo'; o.t = 0; this.setPhase('mount'); }
         break;
       }
       case 'walkBackTo': {
@@ -405,7 +409,7 @@ export class EncounterDirector {
       }
       case 'up': {
         const w = smoothstep(0.62, 0.15, Math.cos(o.a));
-        const v = lerp(1.9, OSS_CLIMB * 0.9, w);
+        const v = lerp(2.6, OSS_CLIMB * 0.9, w);
         o.a -= o.side * (v / RADIUS) * dt;
         o.climbPhase += dt * 4.0 * (0.3 + w);
         const ww = this.placeSurface(it, o.sDesc, o.a, 0.12, o.side, false);
@@ -421,15 +425,22 @@ export class EncounterDirector {
         it.moving = true;
         const ds = it.s - it.sNow;
         it.sNow += clamp(ds, -OSS_BACKWALK * dt, OSS_BACKWALK * dt);
-        if (Math.abs(ds) < 0.15) {
+        if (Math.abs(ds) < 0.15 && this.talkDone) {      // отход — только после конца цепочки RIDER_*
           it.moving = false; o.phase = 'done'; o.t = 0; it.face = 0;
           this.startDepart();
-        }
+        } else if (Math.abs(ds) < 0.15) it.moving = false;
         break;
       }
       default: break;
     }
     void game; void bus;
+  }
+
+  /** Синхронизация с репликами: RIDER_09 — червь шевелится, RIDER_10 — Оссана уходит на ходу. */
+  onSubtitle(e) {
+    if (!e || !this._active) return;
+    if (e.id === 'DLG_A2_RIDER_09') { this.stirT = 5; this.api.bus.emit('worm:encounter', { phase: 'stir' }); this.api.game.audio?.event?.('Worm.RingSandfall', this.api.K.pos.clone()); this.api.fx.puff(this.api.K.pos.x, this.api.K.pos.y + 6, this.api.K.pos.z, 0.8, 'wide'); }
+    if (e.id === 'DLG_A2_RIDER_10') this.leaveNow = true;
   }
 
   call() {
@@ -446,7 +457,7 @@ export class EncounterDirector {
   startTalk(timeout = false) {
     const { game } = this.api;
     this.setPhase('talk');
-    this.talkDone = false; this._holdCb = null; this._talkGuard = game.time + 180;
+    this.talkDone = false; this.leaveNow = false; this._holdCb = null; this._talkGuard = game.time + 180;
     const it = this.worm.riders.ossana;
     it.fig.setTalking?.(true);
     const t0 = game.time;
@@ -550,12 +561,12 @@ export class EncounterDirector {
     } else {
       // отход
       const dt_ = this.departT;
-      if (dt_ < 7) {
+      if (dt_ < 4) {
         shot = 5;
         path.local(2, 3, pos); pos.y = gG + 1.6;
         this.spinePt(52, this._w);
         goal.copy(this._w).setY(this._w.y + 12);
-        fov = lerp(40, 34, smoothstep(0, 7, dt_)); damp_ = 3;
+        fov = lerp(40, 34, smoothstep(0, 4, dt_)); damp_ = 3;
       } else if (this.distToG() < 330 && !this._dived) {
         shot = 6;
         // сбоку и низко: тело скользит мимо, камера тянется за головой

@@ -222,7 +222,7 @@ export function create(game) {
     forced = { x, z, armedT: 0 };
     const a = computeAim(pl ? pl.x : x, pl ? pl.z : z);
     K.depth = tune.burrowDepth; K.steer = { x: a.x, z: a.z }; K.speed = tune.forcedSpeed;
-    setState('Approach');
+    setState('Ridden');          // ведомый червь: не 'Approach' — иначе встанут реплики дикого червя
   };
 
   /** Сцена «Встреча» с укрощённым червём. Promise<{skipped}> выполняется, когда червь ушёл ('gone'). */
@@ -296,13 +296,6 @@ export function create(game) {
       }
       case 'Approach': {
         const dPl = pl ? Math.hypot(pl.x - K.pos.x, pl.z - K.pos.z) : 1e9;
-        if (forced) {
-          forced.armedT += dt;
-          K.steer = { x: aim.x, z: aim.z }; K.speed = tune.forcedSpeed;
-          worm.threat = 0.45 + 0.4 * clamp(1 - dPl / 600, 0, 1);
-          if (dPl <= tune.wildMinDistance + 30 || forced.armedT > 24) { forced = null; beginPass(); }
-          break;
-        }
         aimT += dt;
         if (P < tune.listenThreshold) quietT += dt; else quietT = 0;
         if (aimT > 0.5 && lastTarget && game.time - lastTarget.t < 8) { aimT = 0; const a = computeAim(lastTarget.x, lastTarget.z); K.steer = { x: a.x, z: a.z }; }
@@ -310,7 +303,18 @@ export function create(game) {
         if (!sensingOn() || quietT >= tune.passTime || dPl <= tune.wildMinDistance) beginPass();
         break;
       }
-      case 'Ridden': { worm.threat = director.phase === 'arrive' || director.phase === 'depart' ? clamp(0.1 + K.speed / 120, 0, 0.35) : 0.05; break; }
+      case 'Ridden': {
+        if (forced && !director.active) {               // далёкая волна идёт к группе, ждёт playReveal(), иначе отворачивает
+          const dPl = pl ? Math.hypot(pl.x - K.pos.x, pl.z - K.pos.z) : 1e9;
+          forced.armedT += dt;
+          K.steer = { x: aim.x, z: aim.z }; K.speed = tune.forcedSpeed;
+          worm.threat = 0.25 + 0.3 * clamp(1 - dPl / 600, 0, 1);
+          if (dPl <= tune.wildMinDistance + 30 || forced.armedT > 24) { forced = null; beginPass(); }
+          break;
+        }
+        worm.threat = director.phase === 'arrive' || director.phase === 'depart' ? clamp(0.1 + K.speed / 120, 0, 0.35) : 0.05;
+        break;
+      }
       case 'Pass': {
         passT += dt;
         worm.threat = Math.max(0, 0.7 - passT / 8);
