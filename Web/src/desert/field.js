@@ -115,7 +115,19 @@ function draa(x, z, sp) {
   return far * a * duneProfile(f, 0.84) * fade(780, sp);
 }
 
+/** Плоская площадка под большой харвестер (модуль Web/src/harvester): центр (x,z) м, плоская часть радиусом radius, затем плавный спуск на blend м. */
+export const FLAT_ZONE = { x: 330, z: -60, radius: 70, blend: 80, level: 5.4 };
+
 export function heightAt(x, z, spacing = 0) {
+  const h = heightRaw(x, z, spacing);
+  const fd = Math.hypot(x - FLAT_ZONE.x, z - FLAT_ZONE.z);
+  if (fd >= FLAT_ZONE.radius + FLAT_ZONE.blend) return h;
+  const k = 1 - smoothstep(FLAT_ZONE.radius, FLAT_ZONE.radius + FLAT_ZONE.blend, fd);
+  const flat = FLAT_ZONE.level + 0.12 * noise2(x / 23, z / 23);
+  return lerp(h, flat, k);
+}
+
+function heightRaw(x, z, spacing = 0) {
   const u = x * Wx + z * Wz, v = -x * Wz + z * Wx;
 
   // влияние дорожки/островов/плит: подавляет дюны, чтобы идти было приятно
@@ -240,6 +252,8 @@ export function masks(x, z, out = { rock: 0, packed: 0 }) {
   const flats = smoothstep(0.1, 0.6, noise2(x / 210 - 5, z / 210 + 3)) * 0.6;
   out.rock = rock;
   out.packed = Math.max(pan, flats * (1 - rock)) * (1 - rock);
+  const fd = Math.hypot(x - FLAT_ZONE.x, z - FLAT_ZONE.z);
+  if (fd < FLAT_ZONE.radius + FLAT_ZONE.blend) out.packed = Math.max(out.packed, 0.7 * (1 - smoothstep(FLAT_ZONE.radius, FLAT_ZONE.radius + FLAT_ZONE.blend * 0.6, fd)));
   return out;
 }
 
