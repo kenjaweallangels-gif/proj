@@ -383,7 +383,7 @@ export function create(game) {
     lastNight = night;
     const run = S.eng;
     const lit = clamp(night + run * 0.25, 0, 1);
-    glowMat.color.setScalar(lerp(0.2, 1.35, night) + run * 0.25);
+    glowMat.color.setScalar(lerp(0.2, 0.95, night) + run * 0.2);
     spots.forEach((l) => { l.intensity = 3200 * night * (0.6 + 0.4 * run) + 400 * run; });
     workLight.intensity = 1400 * lit * S.scoop;
     consoleLight.intensity = 260 * night;

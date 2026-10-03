@@ -84,7 +84,7 @@ export function buildHarvester(quality) {
   const bolts = [];
   const decals = [];
   const { HULL, HULL2, HULL3, SLATE, STEEL, DARKS, CREAM, TEAL, YEL, RUSTY, OLIVE, BLACK } = C;
-  const glowWin = '#ffd58a', glowLamp = '#fff1c8', glowRed = '#ff3b1c', glowAmber = '#ff9a2a';
+  const glowWin = '#ffa648', glowLamp = '#fff1c8', glowRed = '#ff3b1c', glowAmber = '#ff9a2a';
 
   // ======================================================== ШАССИ И ГУСЕНИЧНЫЕ РАМЫ
   P.box(-7, 8.6, 0, 92, 2.5, 30, SLATE, 1);

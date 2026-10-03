@@ -43,7 +43,12 @@ async function cam(x, y, z, lx, ly, lz, fov = 60, wait = 1200) {
 const shot = (name) => page.screenshot({ path: join(outDir, `${name}.png`), timeout: 240000 });
 const H = await page.evaluate(() => { const p = window.__rakis.harvester.position; return { x: p.x, y: p.y, z: p.z }; });
 console.log('harvester at', JSON.stringify(H));
-const stats = async (tag) => console.log(tag, JSON.stringify(await page.evaluate(() => { const g = window.__rakis, r = g.renderer.info.render; return { calls: r.calls, tris: r.triangles, fps: g.stats.fps, state: g.harvester.state }; })));
+const stats = async (tag) => console.log(tag, JSON.stringify(await page.evaluate(() => {
+  const g = window.__rakis; let draws = 0, tris = 0, inst = 0;
+  g.harvester.root.traverse((o) => { if (!o.isMesh || !o.visible) return; let p = o.parent, vis = true; while (p) { if (!p.visible) vis = false; p = p.parent; } if (!vis) return; draws++; const geo = o.geometry; const n = geo.index ? geo.index.count / 3 : geo.attributes.position.count / 3; tris += n * (o.isInstancedMesh ? o.count : 1); if (o.isInstancedMesh) inst += o.count; });
+  const pc = g.scene.getObjectByProperty('isMesh', true) && 0;
+  return { harvesterDraws: draws + 2, harvesterTris: Math.round(tris), instances: inst, fps: g.stats.fps, state: g.harvester.state };
+})));
 
 if (want('views')) {
   const P2 = [108, 43], P4 = [279, 95];
@@ -87,7 +92,7 @@ if (want('startup')) {
   await page.evaluate(() => { window.__rakis.timeScale = 1; });
 }
 if (want('run')) {
-  await page.evaluate(() => { const g = window.__rakis; if (g.harvester.state === 'off') g.harvester.debugSet('running'); g.timeScale = 4; });
+  await page.evaluate(() => { const g = window.__rakis; window.__fpN = 0; const w = g.world, o = w.addFootprint.bind(w); w.addFootprint = (x, z, yaw, op) => { if (op && op.type === 'worm') window.__fpN++; return o(x, z, yaw, op); }; if (g.harvester.state === 'off') g.harvester.debugSet('running'); g.timeScale = 4; });
   await page.waitForTimeout(6000);
   const H2 = await page.evaluate(() => { const p = window.__rakis.harvester.position; return { x: p.x, y: p.y, z: p.z, h: window.__rakis.harvester.heading }; });
   console.log('moved to', JSON.stringify(H2));
@@ -102,8 +107,11 @@ if (want('run')) {
   await page.evaluate(() => { const g = window.__rakis; g.harvester.stop(); g.timeScale = 4; });
   await page.waitForFunction(() => window.__rakis.harvester.state === 'off', null, { timeout: 300000, polling: 200 });
   await page.evaluate(() => { window.__rakis.timeScale = 1; });
-  const H3 = await page.evaluate(() => { const p = window.__rakis.harvester.position; return { x: p.x, z: p.z }; });
-  await cam(H3.x - 30, 55, H3.z + 90, H3.x - 60, 0, H3.z + 10, 55, 1500); await shot('stopped_furrows');
+  const H3 = await page.evaluate(() => { const p = window.__rakis.harvester.position; return { x: p.x, z: p.z, h: window.__rakis.harvester.heading, n: window.__fpN }; });
+  console.log('furrow stamps', H3.n);
+  const c3 = Math.cos(H3.h), s3 = Math.sin(H3.h), loc = (lx, lz) => [H3.x + lx * c3 - lz * s3, H3.z + lx * s3 + lz * c3];
+  const cp = loc(-72, 30), lp = loc(-40, 14);
+  await cam(cp[0], 14, cp[1], lp[0], 0, lp[1], 60, 1500); await shot('stopped_furrows');
 }
 if (want('night')) {
   await page.evaluate(() => {
@@ -119,6 +127,7 @@ if (want('night')) {
   const H4 = await page.evaluate(() => { const p = window.__rakis.harvester.position; return { x: p.x, z: p.z }; });
   await cam(279, 1.7, 95, H4.x, 14, H4.z, 62, 1500); await shot('night_P4');
   await cam(H4.x + 40, 3, H4.z + 55, H4.x + 20, 14, H4.z, 60, 1500); await shot('night_close');
+  await cam(H4.x + 70, 5, H4.z + 20, H4.x + 45, 6, H4.z, 62, 1500); await shot('night_front');
 }
 
 

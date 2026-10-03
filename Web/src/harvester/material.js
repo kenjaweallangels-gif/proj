@@ -75,11 +75,15 @@ const FRAG_COLOR = /* glsl */`
   base *= 1.0 - 0.45 * seam;
   base += vec3(0.07) * riv * (1.0 - patchK * 0.5);
 
+  float n1 = 0.55, n2 = 0.5, n3 = 0.5, dirt = 0.35, chip = 0.0, oil = 0.0, scour = 0.0;
+  float low = smoothstep(14.0, 0.0, vLP.y);
+  vec3 sand = vec3(0.62, 0.46, 0.28);
+  if (dist < 320.0) {
   // --- грязь, масляные потёки, ржавчина
-  float n1 = rkFbm(uv * 0.45 + ax * 9.0 + vLP.x * 0.05);
-  float n2 = rkFbm(uv * 2.3 + 3.0 + ax * 5.0);
-  float n3 = rkNoise(uv * 9.0 + ax);
-  float dirt = smoothstep(0.30, 0.85, n1) * (0.5 + 0.5 * uWear);
+  n1 = rkFbm(uv * 0.45 + ax * 9.0 + vLP.x * 0.05);
+  n2 = rkFbm(uv * 2.3 + 3.0 + ax * 5.0);
+  n3 = rkNoise(uv * 9.0 + ax);
+  dirt = smoothstep(0.30, 0.85, n1) * (0.5 + 0.5 * uWear);
   base = mix(base, base * vec3(0.62, 0.54, 0.46), dirt * 0.55);
   float rustN = rkFbm(uv * 0.9 + 11.0 + ax * 3.0) + seam * 0.22 + (1.0 - smoothstep(0.0, 9.0, vLP.y)) * 0.12;
   float rustK = (tag == 3 ? 1.7 : 0.8) * uWear;
@@ -87,21 +91,22 @@ const FRAG_COLOR = /* glsl */`
   vec3 rustC = mix(vec3(0.30, 0.11, 0.045), vec3(0.50, 0.22, 0.07), n2);
   if (tag != 2) base = mix(base, rustC, rust * 0.85);
   // сколы краски у кромок
-  float chip = smoothstep(0.14, 0.0, edge) * smoothstep(0.45, 0.7, n2 + n3 * 0.3) * step(float(tag), 3.5) * uWear;
+  chip = smoothstep(0.14, 0.0, edge) * smoothstep(0.45, 0.7, n2 + n3 * 0.3) * step(float(tag), 3.5) * uWear;
   base = mix(base, vec3(0.36, 0.33, 0.30), chip * 0.55 * lod);
-  float oil = 0.0;
-  if (ax != 1.0) {
+    if (ax != 1.0) {
     float st = rkNoise(vec2(uv.x * 2.3 + ch * 7.0, uv.y * 0.08));
     float st2 = rkNoise(vec2(uv.x * 5.7, uv.y * 0.04 + 2.0));
     oil = smoothstep(0.64, 0.82, st) * (0.4 + 0.6 * smoothstep(0.2, 0.8, st2)) * (0.3 + 0.7 * smoothstep(20.0, 4.0, vLP.y));
     base = mix(base, vec3(0.05, 0.04, 0.03), oil * 0.7 * uWear);
   }
   // --- пескоструй: внизу краска стёрта, налёт песка
-  float low = smoothstep(14.0, 0.0, vLP.y);
-  float scour = low * smoothstep(0.35, 0.75, n1 + n3 * 0.25);
+  scour = low * smoothstep(0.35, 0.75, n1 + n3 * 0.25);
   if (tag != 2) base = mix(base, vec3(0.38, 0.34, 0.30), scour * 0.5 * uWear);
-  vec3 sand = vec3(0.62, 0.46, 0.28);
   base = mix(base, sand * (0.8 + 0.4 * n2), low * (0.18 + 0.3 * n1) * uWear);
+  } else {
+    base = mix(base, base * vec3(0.62, 0.54, 0.46), 0.2);
+    base = mix(base, sand * 0.8, low * 0.25);
+  }
   // --- сигнальные полосы
   if (tag == 4) {
     float s = step(0.5, fract((uv.x + uv.y) / 1.3));
