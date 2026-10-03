@@ -1,14 +1,15 @@
 // game.audio — процедурный звук на WebAudio (без файлов). Запускается по первому жесту пользователя / событию 'start'.
-// API: event(id, pos?), setMusic(state), finalChord(), setVolume(bus, v), resume(), ready, musicState.
+// API: event(id, pos?), setMusic(state), finalChord(), setVolume(bus, v), resume(), ready, musicState, voice (речь на языке Ракиса: speak/stop/renderOffline).
 // Если AudioContext недоступен — все методы безопасно ничего не делают.
 import { createEngine } from './engine.js';
 import { createAmbience } from './ambience.js';
 import { createSfx } from './sfx.js';
 import { createMusic } from './music.js';
+import { createVoice, renderOffline } from './voice.js';
 
 export function create(game) {
   const { bus } = game;
-  let eng = null, amb = null, sfx = null, music = null;
+  let eng = null, amb = null, sfx = null, music = null, voice = null;
   let pendingMusic = null, failed = false, acc = 0;
   let duckTarget = 1;
 
@@ -21,6 +22,8 @@ export function create(game) {
       sfx = createSfx(game, eng);
       music = createMusic(game, eng);
       music.start();
+      voice = createVoice(game, eng);
+      api.voice = voice;
       eng.resume();
       if (pendingMusic) music.set(pendingMusic);
       applyAll();
@@ -82,6 +85,8 @@ export function create(game) {
     finalChord() { if (ensure()) music.finalChord(); },
     setVolume(name, v) { if (eng) eng.setVolume(name, v); else if (game.settings.volume) game.settings.volume[name] = v; },
     applyVolumes: applyAll,
+    /** Офлайн-рендер реплики синтезатором (проверка графа): → {rms, peak, speechRms}. */
+    renderOffline,
     update(dt) {
       if (!eng || !eng.running) return;
       acc += dt;
@@ -91,6 +96,7 @@ export function create(game) {
         eng.updateListener();
         amb.update(d);
         sfx.update(d);
+        voice?.update();
         eng.ramp(eng.duck.gain, game.paused ? 0.6 : duckTarget, duckTarget < 1 ? 0.25 : 1.0);
       } catch (e) { console.error('[audio] update:', e); }
     },

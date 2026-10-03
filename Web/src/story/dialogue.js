@@ -1,6 +1,6 @@
 // Диалоговая система (порт URakisDialogueSubsystem): цепочки реплик по NextID, очередь без наложений,
-// условия, лай толпы, надписи-лор, необязательная озвучка speechSynthesis (черновое VO).
-// События: 'subtitle' {id, speaker, name, text, duration, kind:'line'|'lore'|'bark', pos?}, 'line:end' {id}, 'chain:end' {id}.
+// условия, лай толпы, надписи-лор. Озвучка — game.audio.voice (язык Ракиса), здесь только данные в 'subtitle'.
+// События: 'subtitle' {id, speaker, name, text, native, nativeScript, duration, kind:'line'|'lore'|'bark', pos?}, 'line:end' {id}, 'chain:end' {id}.
 import { clamp } from '../core/util.js';
 import { loadSettings } from '../ui/settings.js';
 
@@ -10,9 +10,6 @@ const SPEAKERS = {
   Guard: ['Страж', 'Guard'], Harmat: ['Наиб Хармат', 'Naib Harmat'], Priestess: ['Жрица', 'Priestess'],
   Crowd: ['', ''], Lore: ['', ''],
 };
-// Высота голоса TTS по говорящему (черновая озвучка).
-const PITCH = { Kair: 0.82, Ilva: 1.25, Rayn: 0.98, Ossana: 1.12, Rider1: 0.78, Rider2: 0.9, Guard: 0.68, Harmat: 0.55, Priestess: 1.45, Crowd: 1.0 };
-
 const MAX_CHAIN_STEPS = 64;
 const BARK_RADIUS = 10;        // м
 const BARK_GLOBAL_INTERVAL = 3; // с
@@ -67,6 +64,17 @@ export function create(game) {
     return f ? { id, speaker: f[0], RU: f[1], EN: f[2], next: f[3] || '', condition: '', duration: 0 } : null;
   }
   function textOf(r) { return game.lang === 'RU' ? (r.RU || r.EN) : (r.EN || r.RU); }
+  /** Перевод для субтитра + реплика на языке мира. Строки жрицы «язык [перевод]» без native: перевод — в скобках, native — латинская часть EN-строки. */
+  function lineParts(r) {
+    let text = textOf(r);
+    let native = r.native || '', nativeScript = r.nativeScript || '';
+    const m = /^([^\[]*)\[([^\]]*)\]\s*$/.exec(text);
+    if (m) {
+      text = m[2].trim();
+      if (!native) { const e = /^([^\[]*)\[/.exec(r.EN || ''); native = e ? e[1].trim() : ''; }
+    }
+    return { text, native, nativeScript };
+  }
   function speakerName(id) {
     const n = SPEAKERS[id];
     if (!n) return id || '';
@@ -104,45 +112,10 @@ export function create(game) {
     }
   }
 
-  // ---- Озвучка (TTS) ----
-  const tts = { ok: typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined', voices: [] };
-  if (tts.ok) {
-    const load = () => { try { tts.voices = speechSynthesis.getVoices() || []; } catch { tts.voices = []; } };
-    load();
-    try { speechSynthesis.addEventListener?.('voiceschanged', load); } catch { /* нет */ }
-  }
-  function pickVoice() {
-    const want = game.lang === 'RU' ? ['ru-RU', 'ru'] : ['en-US', 'en-GB', 'en'];
-    for (const w of want) {
-      const v = tts.voices.find((x) => x.lang?.replace('_', '-').toLowerCase() === w.toLowerCase()) || tts.voices.find((x) => x.lang?.toLowerCase().startsWith(w.toLowerCase()));
-      if (v) return v;
-    }
-    return null;
-  }
-  function speak(text, speaker, volume = 1) {
-    if (!tts.ok || !game.settings.voice) return;
-    try {
-      // Строка жрицы: вымышленный язык + [перевод] — озвучиваем только первую часть.
-      text = String(text).replace(/\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim();
-      if (!text) return;
-      const u = new SpeechSynthesisUtterance(text);
-      const v = pickVoice();
-      if (v) u.voice = v;
-      u.lang = game.lang === 'RU' ? 'ru-RU' : 'en-US';
-      u.rate = 0.95;
-      u.pitch = clamp(PITCH[speaker] ?? 1, 0.1, 2);
-      u.volume = clamp(volume * (game.settings.volume?.vo ?? 1) * (game.settings.volume?.master ?? 1), 0, 1);
-      u.onerror = () => {};
-      speechSynthesis.speak(u);
-    } catch { /* озвучка необязательна */ }
-  }
-  function cancelSpeech() { if (tts.ok) { try { speechSynthesis.cancel(); } catch { /* нет */ } } }
-  function pauseSpeech(on) {
-    if (!tts.ok) return;
-    try { on ? speechSynthesis.pause() : speechSynthesis.resume(); } catch { /* нет */ }
-  }
-  bus.on('pause', ({ paused }) => pauseSpeech(paused));
-  bus.on('photo', ({ active }) => pauseSpeech(active));
+  // ---- Озвучка ----
+  // Реплики озвучивает game.audio.voice на вымышленном языке (nativeScript → арабский TTS либо формантный синтезатор по native).
+  // Здесь только данные: в событие 'subtitle' уходят перевод (text), native и nativeScript. Русский/английский текст не озвучивается.
+  const cancelSpeech = () => game.audio?.voice?.stop?.();
 
   // ---- Цепочки ----
   function startLine(id, ignoreCond) {
@@ -157,13 +130,11 @@ export function create(game) {
       return;
     }
     playing = true; curId = id;
-    const text = textOf(r);
+    const { text, native, nativeScript } = lineParts(r);
     const isLore = r.speaker === 'Lore';
     const duration = r.duration > 0 ? r.duration : (isLore ? clamp(0.07 * text.length + 2, 4, 10) : autoDuration(text));
     remaining = duration;
-    bus.emit('subtitle', { id, speaker: r.speaker, name: speakerName(r.speaker), text, duration, kind: isLore ? 'lore' : 'line', emotion: r.emotion });
-    cancelSpeech();
-    if (!isLore) speak(text, r.speaker);
+    bus.emit('subtitle', { id, speaker: r.speaker, name: speakerName(r.speaker), text, native, nativeScript, duration, kind: isLore ? 'lore' : 'line', emotion: r.emotion });
   }
   function lineDone() {
     const id = curId;
@@ -245,7 +216,6 @@ export function create(game) {
       const duration = clamp(autoDuration(text), 1.8, 5);
       barkUntil = t + duration;
       bus.emit('subtitle', { id: chosen.id, speaker: '', name: '', text, duration, kind: 'bark', pos: pos || null, archetype: chosen.archetype });
-      if (!playing) speak(text, chosen.archetype === 'Child' ? 'Ilva' : 'Crowd', 0.55);
       return chosen;
     },
     stopAll() {
@@ -268,8 +238,6 @@ export function create(game) {
     },
   };
 
-  // Смена языка — остановить озвучку текущей реплики (субтитр остаётся на прежнем языке до следующей).
-  bus.on('lang', () => cancelSpeech());
   bus.on('interact', ({ tag } = {}) => {
     if (!tag) return;
     flags.add(`Interact:${tag}`);
