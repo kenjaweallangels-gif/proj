@@ -12,12 +12,13 @@
 /** @type {Device[]} */
 export const DEVICES = [
   {
-    id: 'viture-luma-ultra', short: 'lumaultra', brand: 'VITURE', name: 'Luma Ultra', fovDiag: 52, aspect: 16 / 10, res: [1920, 1200], nits: 1250, refresh: 120,
+    id: 'viture-luma-ultra', short: 'lumaultra', brand: 'VITURE', name: 'Luma Ultra', fovDiag: 52, aspect: 16 / 10, res: [1920, 1200], nits: 1500, refresh: 120,
     weightG: 83, optics: 'призма (birdbath), Sony micro-OLED', ghost: 0.05, edgeSoft: 0.45,
     transmit: 0.40, dimLevels: [0.40, 0.20, 0.08, 0.005], dimNote: 'электрохромное, 0,5–40 %, ~0,1 с',
     tracking: '6dof', hands: true, cameras: 'RGB + 2 камеры глубины', driftDegMin: 0, latencyMs: 18, distM: 4, centerDeg: -2, dial: -4, housing: 15,
-    note: 'Привязка к стапелю и детали, жесты. Колесо диоптрий до −4 D.', estimates: ['задержка', 'смещение окна'],
-    sources: ['https://roadtovr.com/?p=173085', 'https://heise.de/-10482368', 'https://www.gamingnexus.com/Article/16314/VITURE-Luma-Ultra/'],
+    note: 'Привязка к стапелю и детали, жесты (6DoF и жесты — с Pro Neckband или ПК; на Android-телефоне только 3DoF). Колесо диоптрий до −4 D. 1500 нит после обновления ПО (1250 при запуске).',
+    estimates: ['задержка', 'смещение окна'],
+    sources: ['https://roadtovr.com/?p=173085', 'https://heise.de/-10482368', 'https://vrarwiki.com/wiki/Viture_Luma_Ultra', 'https://www.viture.com/developer/unity-sdk/unity'],
   },
   {
     id: 'viture-luma-pro', short: 'lumapro', brand: 'VITURE', name: 'Luma Pro', fovDiag: 52, aspect: 16 / 10, res: [1920, 1200], nits: 1000, refresh: 120,
@@ -29,11 +30,11 @@ export const DEVICES = [
   },
   {
     id: 'viture-beast', short: 'beast', brand: 'VITURE', name: 'The Beast', fovDiag: 58, aspect: 16 / 10, res: [1920, 1200], nits: 1250, refresh: 120,
-    weightG: 98, optics: 'призма (birdbath), Sony micro-OLED, металлический корпус', ghost: 0.045, edgeSoft: 0.5,
-    transmit: 0.40, dimLevels: [0.40, 0.20, 0.08, 0.005], dimNote: 'электрохромное',
+    weightG: 88, optics: 'призма (birdbath), Sony micro-OLED, корпус из алюминиево-магниевого сплава', ghost: 0.045, edgeSoft: 0.5,
+    transmit: 0.40, dimLevels: [0.40, 0.30, 0.22, 0.15, 0.10, 0.06, 0.03, 0.012, 0.005], dimNote: 'электрохромное, 9 ступеней, 0,5–40 %',
     tracking: '3dof', hands: false, cameras: 'камера, микрофон', driftDegMin: 1.2, latencyMs: 20, distM: 4, centerDeg: -2, dial: -4, housing: 13,
-    note: 'Широкое поле 58°, 3DoF (VisionPair). Тяжелее — быстрее устаёт переносица.', estimates: ['вес', 'задержка'],
-    sources: ['https://www.uploadvr.com/viture-luma-viture-the-beast-display-glasses-announce-preorders/', 'https://arinsider.co/2026/04/28/viture-beast-sets-new-standard-for-video-display-glasses/'],
+    note: 'Широкое поле 58°, 3DoF в очках (VisionPair), металлическая оправа.', estimates: ['задержка'],
+    sources: ['https://www.uploadvr.com/viture-luma-viture-the-beast-display-glasses-announce-preorders/', 'https://arinsider.co/2026/04/28/viture-beast-sets-new-standard-for-video-display-glasses/', 'https://www.gamingnexus.com/Article/16375/VITURE-Beast/'],
   },
   {
     id: 'xreal-air2-pro', short: 'air2pro', brand: 'XREAL', name: 'Air 2 Pro', fovDiag: 46, aspect: 16 / 9, res: [1920, 1080], nits: 500, refresh: 120,
@@ -56,7 +57,7 @@ export const DEVICES = [
     weightG: 84, optics: 'призма (birdbath), Sony 0,68″ micro-OLED, чип X1', ghost: 0.06, edgeSoft: 0.45,
     transmit: 0.28, dimLevels: [0.28, 0.12, 0.01], dimNote: 'электрохромное, 3 режима',
     tracking: '3dof', hands: false, cameras: 'нет (опц. камера Eye)', driftDegMin: 0.6, latencyMs: 3, distM: 4, centerDeg: -1, dial: 0, housing: 16,
-    note: 'Собственный 3DoF в очках (X1), задержка 3 мс — окна «стоят» при поворотах.', estimates: ['пропускание линз'],
+    note: 'Собственный 3DoF в очках (X1), задержка 3 мс — окна «стоят» при поворотах. С камерой XREAL Eye и XREAL SDK 3.1 — 6DoF.', estimates: ['пропускание линз'],
     sources: ['https://tutorials.xreal.com/docs/glasses/one-series/spec'],
   },
   {
@@ -64,17 +65,17 @@ export const DEVICES = [
     weightG: 87, optics: 'плоская призма X-Prism, Sony 0,55″ micro-OLED', ghost: 0.012, edgeSoft: 0.2,
     transmit: 0.30, dimLevels: [0.30, 0.12, 0.01], dimNote: 'электрохромное, 3 режима',
     tracking: '3dof', hands: false, cameras: 'нет (опц. камера Eye)', driftDegMin: 0.6, latencyMs: 3, distM: 4, centerDeg: -1, dial: 0, housing: 14,
-    note: 'Плоская призма: без внутренних бликов, резкие края. 3DoF, 3 мс.', estimates: ['пропускание линз'],
-    sources: ['https://tutorials.xreal.com/docs/glasses/one-series/spec'],
+    note: 'Плоская призма X-Prism: без внутренних бликов, резкие края. 3DoF, 3 мс; с камерой XREAL Eye (12 Мп, 1,5 г) и SDK 3.1 — 6DoF.', estimates: ['пропускание линз'],
+    sources: ['https://tutorials.xreal.com/docs/glasses/one-series/spec', 'https://docs.xreal.com/Release%20Note/XREAL%20SDK%203.1.0'],
   },
   {
     id: 'xreal-aura', short: 'aura', brand: 'XREAL', name: 'Aura (Android XR)', fovDiag: 70, aspect: 16 / 10, res: [1920, 1200], nits: 700, refresh: 120,
-    weightG: 95, optics: 'оптически прозрачная, Sony micro-OLED, X1S + вычислительный блок Snapdragon', ghost: 0.02, edgeSoft: 0.3,
+    weightG: 95, optics: 'плоская призма X-Prism, Sony micro-OLED, X1S + вычислительный блок Snapdragon Reality Elite', ghost: 0.015, edgeSoft: 0.25,
     transmit: 0.40, dimLevels: [0.40, 0.18, 0.05], dimNote: 'электрохромное',
     tracking: '6dof', hands: true, cameras: '2 камеры, трекинг рук', driftDegMin: 0, latencyMs: 8, distM: 2, centerDeg: 0, dial: 0, housing: 12,
-    note: 'Поле 70°: окна КД и перехода видны целиком. 6DoF, руки, Gemini. Блок вычислений на кабеле.',
-    estimates: ['яркость (не опубликована)', 'пропускание', 'задержка', 'расстояние экрана'],
-    sources: ['https://www.xreal.com/us/blog/aura-25-tas-release-en', 'https://www.arcompare.com/ar-glasses/xreal-project-aura/', 'https://www.techtimes.com/articles/319140/20260626/xreal-aura-brings-70-degree-android-xr-glasses-mwc-shanghai-fall-2026-launch-confirmed.htm'],
+    note: 'Поле 70°: окна КД и перехода видны целиком. 6DoF, руки, Android XR. Блок вычислений (с тачпадом) на кабеле. ≈ $1500, осень 2026.',
+    estimates: ['яркость (не опубликована)', 'пропускание', 'задержка', 'расстояние экрана', 'вес'],
+    sources: ['https://www.xreal.com/us/blog/aura-25-tas-release-en', 'https://www.arcompare.com/ar-glasses/xreal-project-aura/', 'https://www.techtimes.com/articles/319140/20260626/xreal-aura-brings-70-degree-android-xr-glasses-mwc-shanghai-fall-2026-launch-confirmed.htm', 'https://gsmarena.com/xreal_aura_glasses_unveiled_with_android_xr_and_the_new_snapdragon_reality_elite-news-73315.php'],
   },
 ];
 

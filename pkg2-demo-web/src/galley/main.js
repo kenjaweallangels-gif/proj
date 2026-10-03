@@ -22,6 +22,7 @@ import { createLink, trimText } from './link.js';
 import { PHRASES, createRecognizer, parseGalley, speak } from './voice_cmd.js';
 import { OPERATIONS } from './process.js';
 import { searchDocs } from './catalog.js';
+import { buildGlassesModel } from './glasses_model.js';
 import { DEFAULT_DEVICE, DEVICES, deviceById, deviceSummary, dimLevelOfStep, dimStepOf, fitDistance, matchDevice, transmitAt, weightFatigue, windowDeg } from './glasses.js';
 import '../style.css';
 import './galley.css';
@@ -39,20 +40,6 @@ for (const t of location.hash.slice(1).split(/[-_.~]/).filter(Boolean)) {      /
 const $ = (id) => document.getElementById(id);
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const SHIFT_START_MIN = 7 * 60 + 30;
-
-function glassesModel() {
-  const g = new THREE.Group();
-  const frame = new THREE.MeshPhysicalMaterial({ color: '#0e0f11', roughness: 0.3, clearcoat: 1 });
-  const lens = new THREE.MeshPhysicalMaterial({ color: '#1f2b33', roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.75, clearcoat: 1 });
-  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.035, 0.022), frame);
-  g.add(bar);
-  for (const s of [-1, 1]) {
-    const l = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.004), lens); l.position.set(s * 0.034, -0.002, -0.012); g.add(l);
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.012, 0.14), frame); arm.position.set(s * 0.074, 0.004, 0.07); g.add(arm);
-  }
-  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  return g;
-}
 
 async function main() {
   // тот же адрес с #tablet — пульт сборщика вместо 3D (второе устройство открывает общую ссылку)
@@ -189,6 +176,11 @@ async function main() {
     params.dial = Math.max(d.dial, params.dial);                  // у XREAL колеса диоптрий нет (dial 0) — только вставки
     if (!d.dimLevels) { sim.dimLevel = 0; }
     mgr.setTracking(d.tracking, d.driftDegMin, STAND, 0);
+    if (glasses && glasses.parent && glasses.userData.device !== d.id && (scen.state === 'intro' || scen.state === 'desk')) {
+      const ng = buildGlassesModel(d.id);
+      ng.position.copy(glasses.position); ng.quaternion.copy(glasses.quaternion); ng.visible = glasses.visible;
+      scene.remove(glasses); scene.add(ng); glasses = ng;
+    }
     viz.setAnchored(d.tracking === '6dof');
     markerFrames?.forEach((f) => { f.visible = false; });
     q.set('glasses', d.short);
@@ -200,9 +192,11 @@ async function main() {
     if (!$('card').hidden && $('card').dataset.kind === 'vision') { toggleCard('x'); toggleCard('vision'); }
     pushState(true);
   }
-  const glasses = glassesModel();
+  // модель выбранных очков на зарядной станции (кабель USB-C лежит на столе; у Aura — блок вычислений)
+  let glasses = buildGlassesModel(sim.device.id);
+  glasses.rotation.y = Math.PI + 0.5;
   const [dx, dy, dz] = PLACES.workplace.dock;
-  glasses.position.set(dx, dy + 0.06, dz);
+  glasses.position.set(dx, dy + 0.067, dz);
   scene.add(glasses);
   // рамки подсветки меток стапеля (голограмма при привязке)
   const markerFrames = world.jig.markers.map((m) => {
@@ -322,7 +316,7 @@ async function main() {
   const rayReal = new THREE.Raycaster(); rayReal.layers.set(LAYER_REAL);
   function pickReal(ndc) {
     rayReal.setFromCamera(ndc, cam);
-    return rayReal.intersectObjects([world.galley.root, world.jig.root, world.hall.root, world.rack, world.cart], true).find((h) => isVisible(h.object));
+    return rayReal.intersectObjects([world.galley.root, world.jig.root, world.hall.root, world.rack, world.cart, world.showcase.root], true).find((h) => isVisible(h.object));
   }
   function isVisible(o) { while (o) { if (!o.visible) return false; o = o.parent; } return true; }
 
@@ -480,6 +474,20 @@ async function main() {
       case 'auto_pause': auto.pause(true); break;
       case 'auto_stop': auto.stop(); break;
       case 'auto_toggle': if (auto.on && !auto.paused) auto.pause(true); else auto.start(); break;
+      case 'inspect_glasses': {
+        // подойти к витрине и рассмотреть модель выбранных очков вблизи
+        const m = world.showcase.models.get(arg && deviceById.has(arg) ? deviceById.get(arg).id : sim.device.id);
+        const p = m.getWorldPosition(V());
+        auto.pause();
+        if (player.mode === 'inspect') { player.inspect = null; }
+        player.path = null; player.mode = 'walk';
+        player.place(p.x, p.z + 0.95, 0, -0.35);
+        player.update(0);
+        player.startInspect(p.clone().add(V(0, 0.015, 0)), V(0.3, 0.3, 1).normalize(), 0.2);
+        const d = deviceById.get(m.userData.device);
+        app.notify(`${d.brand} ${d.name}: ${d.optics}; ${d.weightG} г. Мышь — осмотр, Esc — выход`, 6);
+        break;
+      }
       case 'recenter': app.notify(mgr.recenter() ? 'Окна — по центру взгляда' : 'Окна закреплены у стапеля (6DoF) — центрировать не нужно'); break;
       case 'device': {
         const i = DEVICES.indexOf(sim.device);
@@ -624,6 +632,7 @@ async function main() {
       Окно КД 1,2 × 0,86 м видно целиком с ${fitDistance(dv, 1.2, 0.864).toFixed(2).replace('.', ',')} м (окно ${wd.h.toFixed(0)}×${wd.v.toFixed(0)}°). ${dv.note}
       ${dv.estimates.length ? `<br><i>Оценка (не опубликовано): ${dv.estimates.join(', ')}.</i>` : ''}
       <br>Источники: ${dv.sources.map((u, i) => `<a href="${u}" target="_blank" rel="noopener">[${i + 1}]</a>`).join(' ')}</div>
+      <div class="presets"><button id="b_insp">🔍 Рассмотреть модель ${dv.brand} ${dv.name} на витрине</button></div>
       <h3>Модель зрения в очках</h3>
       <div class="presets">${Object.entries(PRESETS).map(([k, p]) => `<button data-p="${k}" aria-pressed="${q.get('vision') === k}">${p.label}</button>`).join('')}</div>
       ${sl('age', 'Возраст, лет', 18, 65, 1)}${sl('refraction', 'Рефракция глаза, дптр', -4, 2, 0.25)}
@@ -636,6 +645,7 @@ async function main() {
       Дисплей виден на ≈ ${dv.distM} м: при работе вблизи голограммы теряют резкость (конфликт вергенции и аккомодации).
       Вес ${dv.weightG} г: усталость за смену <b id="v_wear"></b>.</div>`;
     c.querySelectorAll('[data-dev]').forEach((b) => b.onclick = () => setDevice(b.dataset.dev));
+    $('b_insp').onclick = () => act('inspect_glasses');
     c.querySelectorAll('[data-p]').forEach((b) => b.onclick = () => { act('preset', b.dataset.p); q.set('vision', b.dataset.p); toggleCard('x'); toggleCard('vision'); });
     c.querySelectorAll('input[type=range]').forEach((r) => r.oninput = () => {
       const key = r.id.slice(2); const v = Number(r.value);
@@ -884,7 +894,7 @@ async function main() {
     const ndc = pointerNdc();
     if (frame++ % 3 === 0) {
       gazeRay.setFromCamera(center, cam);
-      const hit = gazeRay.intersectObjects([world.galley.root, world.jig.root, world.hall.root, world.rack, world.cart], true).find((h) => isVisible(h.object));
+      const hit = gazeRay.intersectObjects([world.galley.root, world.jig.root, world.hall.root, world.rack, world.cart, world.showcase.root], true).find((h) => isVisible(h.object));
       const ph = mgr.enabled ? mgr.pick(center) : null;
       gaze = ph && (!hit || ph.distance < hit.distance + 0.3) ? { dist: ph.distance, holo: true } : { dist: hit ? hit.distance : 8, holo: false };
       const h = mgr.pointer(ndc, 'move');

@@ -239,6 +239,20 @@ function stdUnit() {
   return g;
 }
 
+/** Решётка слива: перфорация Ø3 мм по концентрическим окружностям. */
+function grateTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#cfd2d5'; g.fillRect(0, 0, 256, 256);
+  g.fillStyle = '#16181a';
+  for (let r = 22; r < 120; r += 19) {
+    const n = Math.round((2 * Math.PI * r) / 20);
+    for (let k = 0; k < n; k++) { const a = (k / n) * Math.PI * 2 + r; g.beginPath(); g.arc(128 + r * Math.cos(a), 128 + r * Math.sin(a), 5.5, 0, Math.PI * 2); g.fill(); }
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return t;
+}
+
 // ---------- сборка модели ----------
 export function buildGalley() {
   const root = new THREE.Group();
@@ -339,35 +353,83 @@ export function buildGalley() {
     add('SHEET-BS', rbox(bs.size[0], bs.size[1], 0.5, GM.stainless(), bs.pos[0], bs.pos[1], bs.pos[2], 0.2));
   }
 
-  // раковина
+  // раковина: штампованная чаша 12Х18Н10Т — отбортовка с завальцовкой на облицовке столешницы, стенки с уклоном 2°,
+  // скругление дна R25, уклон дна к сливу 3 мм, слив с перфорированной решёткой и пробкой, шов герметика по контуру
   {
     const { x, z, w, d, depth } = S.SINK;
+    const top = S.G.deckTop + 0.6;
+    // профиль чаши: [смещение внутрь от проёма, мм; высота от облицовки, мм; радиус угла в плане, мм]
+    const prof = [[-12, 0, 46], [-11, 1.6, 45], [-8, 2.6, 42], [-1.5, 2.6, 36], [0, 1.2, 34], [0.6, -2, 33.4]];
+    const H = depth - 25;
+    for (let k = 1; k <= 6; k++) prof.push([0.6 + (5.4 * k) / 6, -2 - ((H - 2) * k) / 6, 33.4 - (5.4 * k) / 6]);
+    for (let k = 1; k <= 8; k++) {                                   // скругление дна R25
+      const a = (k / 8) * (Math.PI / 2);
+      prof.push([6 + 25 * (1 - Math.cos(a)), -H - 25 * Math.sin(a), Math.max(4, 28 - 25 * (1 - Math.cos(a)))]);
+    }
+    const nC = 8, nW = 10, nD = 7;                                     // точки: угол, длинная, короткая сторона
+    const ring = (inset, y, r) => {
+      const hw = w / 2 - inset, hd = d / 2 - inset, rr = Math.min(r, hw - 1, hd - 1);
+      const pts = [];
+      const corner = (cx, cz, a0) => { for (let k = 0; k <= nC; k++) { const a = a0 + (k / nC) * (Math.PI / 2); pts.push([cx + rr * Math.cos(a), cz + rr * Math.sin(a)]); } };
+      const side = (x0, z0, x1, z1, n) => { for (let k = 1; k < n; k++) pts.push([x0 + ((x1 - x0) * k) / n, z0 + ((z1 - z0) * k) / n]); };
+      corner(hw - rr, hd - rr, 0); side(hw - rr, hd, -hw + rr, hd, nW);
+      corner(-hw + rr, hd - rr, Math.PI / 2); side(-hw, hd - rr, -hw, -hd + rr, nD);
+      corner(-hw + rr, -hd + rr, Math.PI); side(-hw + rr, -hd, hw - rr, -hd, nW);
+      corner(hw - rr, -hd + rr, Math.PI * 1.5); side(hw, -hd + rr, hw, hd - rr, nD);
+      return pts.map(([u, v]) => [x + u, top + y, z + v]);
+    };
+    const rings = prof.map(([i, y, r]) => ring(i, y, r));
+    // дно: от края скругления к сливу (окружность R27) с уклоном 3 мм, затем ниже — слив
+    const last = rings[rings.length - 1];
+    const drainR = 27, yDrain = top - depth - 3;
+    rings.push(last.map(([px, , pz]) => { const a = Math.atan2(pz - z, px - x); return [x + drainR * Math.cos(a), yDrain, z + drainR * Math.sin(a)]; }));
+    const N = last.length;
+    const pos = [], uv = [], idx = [];
+    let vAcc = 0;
+    rings.forEach((rg, ri) => {
+      if (ri) { const a = rings[ri - 1][0], b = rg[0]; vAcc += Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); }
+      let uAcc = 0;
+      rg.forEach((p, k) => { if (k) uAcc += Math.hypot(p[0] - rg[k - 1][0], p[2] - rg[k - 1][2]); pos.push(...p); uv.push(uAcc, vAcc); });
+    });
+    for (let ri = 0; ri < rings.length - 1; ri++) for (let k = 0; k < N; k++) {
+      const a = ri * N + k, b = ri * N + ((k + 1) % N), c = (ri + 1) * N + k, e = (ri + 1) * N + ((k + 1) % N);
+      idx.push(a, c, b, b, c, e);
+    }
+    const bowlGeo = new THREE.BufferGeometry();
+    bowlGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    bowlGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    bowlGeo.setIndex(idx);
+    bowlGeo.computeVertexNormals();
+    const bowlMat = GM.stainless().clone(); bowlMat.side = THREE.DoubleSide; bowlMat.roughness = 0.4; bowlMat.color.set('#d9dcdf'); bowlMat.envMapIntensity = 1.8;   // сатинированная нержавейка
     const g = new THREE.Group();
-    const rim = new THREE.ExtrudeGeometry(shapeOf(S.roundedRect(x, z, w, d, 34), [S.roundedRect(x, z, w - 22, d - 22, 28)]), { depth: 1.5, bevelEnabled: false });
-    rim.applyMatrix4(planeMatrix('XZ', S.G.deckTop + 2.1));
-    const wall = new THREE.ExtrudeGeometry(shapeOf(S.roundedRect(x, z, w - 20, d - 20, 30), [S.roundedRect(x, z, w - 22, d - 22, 28)]), { depth, bevelEnabled: false });
-    wall.applyMatrix4(planeMatrix('XZ', S.G.deckTop + 0.6));
-    // дно: контур (u, −v) в XY, поворот −90° вокруг X → (u, 0, v), нормаль вверх
-    const bottom = new THREE.ShapeGeometry(shapeOf(S.roundedRect(x, z, w - 22, d - 22, 28).map(([u, v]) => [u, -v])), 6);
-    bottom.rotateX(-Math.PI / 2);
-    bottom.translate(0, S.G.deckTop - depth + 0.6, 0);
-    const bmesh = mesh(bottom, GM.stainless());
-    const drain = cyl(24, 2, GM.chrome(), 28); drain.position.set(x, S.G.deckTop - depth + 2, z);
-    const hole = cyl(18, 2.2, GM.rubber(), 24); hole.position.set(x, S.G.deckTop - depth + 2.2, z);
-    g.add(mesh(rim, GM.stainless()), mesh(wall, GM.stainless()), bmesh, drain, hole);
+    g.add(mesh(bowlGeo, bowlMat));
+    // слив: стакан, перфорированная решётка, пробка-грибок, тёмная горловина
+    const cup = mesh(new THREE.CylinderGeometry(drainR, drainR - 3, 14, 40, 1, true), bowlMat); cup.position.set(x, yDrain - 7, z); g.add(cup);
+    const throat = cyl(drainR - 3, 2, GM.rubber(), 32); throat.position.set(x, yDrain - 14, z); g.add(throat);
+    const grate = mesh(new THREE.CylinderGeometry(drainR - 1, drainR - 1, 1.2, 48), new THREE.MeshPhysicalMaterial({ map: grateTexture(), metalness: 1, roughness: 0.22, color: '#ffffff' }));
+    grate.position.set(x, yDrain + 0.4, z); g.add(grate);
+    const knob = mesh(new THREE.SphereGeometry(8, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), GM.chrome()); knob.scale.y = 0.6; knob.position.set(x, yDrain + 1, z); g.add(knob);
+    // шов герметика по контуру отбортовки
+    const seal = ring(-12.6, 0.2, 46.6).map(([px, py, pz]) => V3(px, py, pz));
+    const bead = mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(seal, true), seal.length * 2, 1.1, 6, true), new THREE.MeshPhysicalMaterial({ color: '#d8dad6', roughness: 0.4, clearcoat: 0.6 }));
+    g.add(bead);
     add('SINK-1', g);
   }
   // кран питьевой воды: основание, стойка, гусак, рычаг
   {
     const f = S.PLUMBING.find((x) => x.id === 'FAUCET-1');
     const g = new THREE.Group();
-    const base = cyl(22, 14, GM.chrome(), 28); base.position.set(0, 7, 0);
+    const esc = mesh(new THREE.CylinderGeometry(30, 32, 3, 40), GM.chrome()); esc.position.set(0, 1.5, 0);   // розетка
+    const base = mesh(new THREE.CylinderGeometry(20, 22, 14, 32), GM.chrome()); base.position.set(0, 10, 0);
     const col = cyl(13, 150, GM.chrome(), 24); col.position.set(0, 89, 0);
     const curve = new THREE.QuadraticBezierCurve3(V3(0, 160, 0), V3(0, 260, 40), V3(0, 175, 120));
     const spout = mesh(new THREE.TubeGeometry(curve, 24, 9, 16), GM.chrome());
-    const tip = cyl(10, 14, GM.chrome(), 16); tip.position.set(0, 170, 120);
-    const lever = rbox(10, 10, 70, GM.chrome(), 22, 140, -20, 4); lever.rotation.x = -0.4;
-    g.add(base, col, spout, tip, lever);
+    const tip = cyl(10, 14, GM.chrome(), 24); tip.position.set(0, 170, 120);
+    const aer = mesh(new THREE.CylinderGeometry(8, 8, 2, 24), new THREE.MeshStandardMaterial({ color: '#3a3d40', roughness: 0.7 })); aer.position.set(0, 162.5, 120);   // аэратор
+    const hub = mesh(new THREE.SphereGeometry(14, 24, 16), GM.chrome()); hub.position.set(0, 140, 0);
+    const lever = mesh(new THREE.CapsuleGeometry(5, 62, 6, 16), GM.chrome()); lever.rotation.x = Math.PI / 2 - 0.35; lever.position.set(0, 152, -34);
+    const dot = mesh(new THREE.CircleGeometry(4, 20), new THREE.MeshStandardMaterial({ color: '#1f6fd1', roughness: 0.4 })); dot.position.set(0, 152, 14.2);   // метка «холодная»
+    g.add(esc, base, col, spout, tip, aer, hub, lever, dot);
     g.position.set(...f.pos);
     add('FAUCET-1', g);
   }

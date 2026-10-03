@@ -9,6 +9,8 @@ import { FLOOR, JIG, buildJig } from './jig.js';
 import { DONE_BEFORE_SHIFT, STEPS, applyStep, stateFrom } from './process.js';
 import * as S from './spec.js';
 import { galleyMat as GM, textTexture } from './tex.js';
+import { DEVICES } from './glasses.js';
+import { buildGlassesModel } from './glasses_model.js';
 
 /** Положение модуля на стапеле: центр модуля по X и Z — в начале координат мира. */
 export const GALLEY_ORIGIN = new THREE.Vector3(0, -FLOOR / 1000, -S.G.D / 2000);
@@ -122,7 +124,56 @@ export function buildWorld(scene) {
   dl.position.set(9.5 + 0.35, 1.4, -3.27 + 0.95); dl.rotation.y = -0.35; scene.add(dl);
   solid(9.5, -3.4, 2.4, 1.6);
 
-  return { hall, jig, galley, kit, rack, cart, finished: done, colliders: hall.colliders };
+  // ---------- витрина AR-очков у рабочего места: все профили симулятора в натуральную величину ----------
+  const showcase = buildShowcase();
+  scene.add(showcase.root);
+
+  return { hall, jig, galley, kit, rack, cart, finished: done, showcase, colliders: hall.colliders };
 }
 
 export { HALL, PLACES };
+
+/** Витрина: шкаф с подсвеченными стеклянными полками, по 4 модели очков на полке, таблички с характеристиками. */
+function buildShowcase() {
+  const root = new THREE.Group(); root.name = 'showcase';
+  const [wx, wz] = PLACES.workplace.desk;
+  const x0 = wx - 2.3, z0 = wz - 0.12;
+  root.position.set(x0, 0, z0);
+  const body = painted('#d9dcdf', { rough: 0.4, metal: 0.3 });
+  root.add(box(1.16, 0.86, 0.46, body, 0, 0.43, 0, 0.01));
+  root.add(box(1.16, 0.04, 0.46, body, 0, 1.68, 0, 0.008));                  // крыша
+  for (const sx of [-0.57, 0.57]) root.add(box(0.025, 0.8, 0.46, body, sx, 1.27, 0, 0.004));
+  root.add(box(1.12, 0.8, 0.012, painted('#e7e9ea', { rough: 0.5, metal: 0 }), 0, 1.27, -0.22, 0.002));
+  const glassM = new THREE.MeshPhysicalMaterial({ color: '#dfe9ee', roughness: 0.03, transparent: true, opacity: 0.12, clearcoat: 1, side: THREE.DoubleSide, depthWrite: false });
+  const front = new THREE.Mesh(new THREE.PlaneGeometry(1.12, 0.8), glassM); front.position.set(0, 1.27, 0.225); root.add(front);
+  front.raycast = () => {};                          // стекло не мешает взгляду и фокусу глаза
+  const shelfM = new THREE.MeshPhysicalMaterial({ color: '#cfe0e6', roughness: 0.05, transparent: true, opacity: 0.35, clearcoat: 1 });
+  const lightM = new THREE.MeshBasicMaterial({ color: new THREE.Color('#fff4e0').multiplyScalar(2.2) });
+  const strip = new THREE.Mesh(new THREE.PlaneGeometry(1.08, 0.02), lightM); strip.rotation.x = Math.PI / 2; strip.position.set(0, 1.655, 0.12); root.add(strip);
+  const ral = new THREE.RectAreaLight('#fff1dc', 9, 1.0, 0.3);       // светодиодная панель витрины
+  ral.position.set(0, 1.64, 0.05); ral.lookAt(0, 0.9, 0.05); root.add(ral);
+  const models = new Map();
+  DEVICES.forEach((d, i) => {
+    const row = Math.floor(i / 4), col = i % 4;
+    const y = row === 0 ? 1.33 : 0.92;
+    if (col === 0) {
+      const sh = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.008, 0.42), row === 0 ? shelfM : body);
+      sh.position.set(0, y - 0.004, 0); sh.receiveShadow = true; root.add(sh);
+    }
+    const m = buildGlassesModel(d.id, { cable: false });
+    m.position.set(-0.405 + col * 0.27, y + 0.027, 0.02);
+    m.rotation.y = Math.PI - 0.35;                     // лицом к зрителю, в три четверти
+    m.traverse((o) => { if (o.isMesh) o.userData.featureId = null; });
+    root.add(m);
+    models.set(d.id, m);
+    const lab = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.06), new THREE.MeshStandardMaterial({
+      map: textTexture([`${d.brand} ${d.name}`, `${d.fovDiag}° · ${d.nits} нит · ${d.tracking === '6dof' ? '6DoF' : '3DoF'} · ${d.weightG} г`], { w: 512, h: 128, bg: '#16191c', fg: '#e8edf0', border: null, size: 40 }),
+      roughness: 0.5 }));
+    lab.position.set(m.position.x, y + 0.012, 0.19); lab.rotation.x = -1.0; root.add(lab);
+  });
+  const head = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.09), new THREE.MeshStandardMaterial({ map: textTexture(['AR-ОЧКИ УЧАСТКА · ВЫДАЧА И ПРИМЕРКА'], { w: 1024, h: 102, bg: '#1d2a33', fg: '#cfe9f5', border: null, size: 46 }) }));
+  head.position.set(0, 1.74, 0.232); root.add(head);
+  root.traverse((o) => { if (o.isMesh) { o.castShadow = o.castShadow || false; } });
+  solid(x0, z0, 1.2, 0.5);
+  return { root, models };
+}
