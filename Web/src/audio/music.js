@@ -179,7 +179,7 @@ export function createMusic(game, eng) {
 
     DesertCalm(out) {
       const pad = eng.gain(1); pad.connect(out); eng.send(pad, 0.35);
-      const holds = [hold(pad, 'sine', mtof(38), 0.045), hold(pad, 'sine', mtof(45), 0.03, 4), hold(pad, 'triangle', mtof(26), 0.0)];   // Ред. 2: тише и без суб-тона (убран постоянный гул)
+      const holds = [hold(pad, 'sine', mtof(50), 0.03), hold(pad, 'sine', mtof(57), 0.018, 4), hold(pad, 'triangle', mtof(26), 0.0)];   // Ред. 2: дрон на октаву выше и тише (73/110 Гц читались как постоянный гул)
       // медленное «дыхание» дрона
       const lfo = ctx.createOscillator(), lg = eng.gain(0.012); lfo.frequency.value = 0.07; lfo.connect(lg); lg.connect(holds[0].g.gain); lfo.start();
       let nextPhrase = T() + 4, nextDrum = T() + rnd(8, 14);

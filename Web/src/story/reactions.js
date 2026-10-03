@@ -61,8 +61,8 @@ export function createReactions(game, story) {
     // после зала: жизнь продолжается
     { id: 'DLG_PH_001', gap: 8, hold: 6, test: () => story.isCompleted('SB_B5_08_Ossana') },
     // сад
-    { id: 'DLG_C1_G10', gap: 10, hold: 0, test: () => inZone('C1_Garden', 28) && story.isCompleted('SB_C1_04_Birds') },
-    { id: 'DLG_C1_010', gap: 14, hold: 0, test: () => inZone('C1_Garden', 52) && played.has('DLG_C1_G10') },
+    { id: 'DLG_C1_G01', gap: 10, hold: 0, test: () => inZone('C1_Garden', 28) && story.isCompleted('SB_C1_04_Birds') },
+    { id: 'DLG_C1_010', gap: 14, hold: 0, test: () => inZone('C1_Garden', 52) && played.has('DLG_C1_G01') },
     { id: 'DLG_C1_020', gap: 14, hold: 0, test: () => inZone('C1_Garden', 76) && played.has('DLG_C1_010') },
     // червь
     { id: 'DLG_WRM_L02', gap: 0, hold: 3, test: () => ws('Listening') && played.has('DLG_WRM_L01') },

@@ -30,10 +30,10 @@ let bad = 0;
 const fail = (m) => { console.error('FAIL:', m); bad++; };
 
 // 1. банк + декодирование
-const SAMPLE = ['DLG_A1_001', 'DLG_A1_002', 'DLG_A2_RIDER_01', 'DLG_B5_P01', 'DLG_B5_021', 'DLG_B2_M32', 'DLG_B2_K10', 'DLG_C1_G10'];
+const SAMPLE = ['DLG_A1_001', 'DLG_A1_002', 'DLG_A2_RIDER_01', 'DLG_B5_P01', 'DLG_B5_021', 'DLG_B2_M32', 'DLG_B2_K10', 'DLG_C1_G01'];
 const res = await page.evaluate(async (sample) => {
   const g = window.__rakis;
-  g.settings.voiceForce = true;
+  g.settings.voiceForce = true; g.settings.voiceMode = 'auto'; g.settings.voice = true;
   g.audio.resume();
   await new Promise((r) => setTimeout(r, 600));
   const v = g.audio.voice;
@@ -111,22 +111,44 @@ else {
 if (!live.usedClip) fail('реплика не воспроизводится из банка (ушла на синтезатор?)');
 if (live.maxRms < -55) fail(`на выходе тишина (${live.maxRms} dBFS) — голос не слышен`);
 
-// 3. фон без реплик в спокойной пустыне: нет постоянного низкочастотного «землетрясения»
+// 3. фон без «вечного» гула: без музыки (она тональная) на старте, в эрге и в сиетче нет подкладки 20–90 Гц,
+//    а sfx (рокот червя, харвестер) в тишине — практически ноль; рядом с настоящим червём рокот есть.
 const bed = await page.evaluate(async () => {
   const g = window.__rakis;
+  g.settings.voiceMode = 'off';
   g.dialogue.stopAll?.();
-  g.debug?.goto?.('start');
-  await new Promise((r) => setTimeout(r, 2500));
-  const an = g.audio.engine;
-  const a = an.ctx.createAnalyser(); a.fftSize = 8192; an.out.connect(a);
-  await new Promise((r) => setTimeout(r, 1500));
-  const f = new Float32Array(a.frequencyBinCount); a.getFloatFrequencyData(f);
-  const hz = an.ctx.sampleRate / 2 / f.length;
-  const band = (lo, hi) => { let s = 0, n = 0; for (let i = Math.floor(lo / hz); i <= Math.ceil(hi / hz); i++) { s += Math.pow(10, f[i] / 10); n++; } return 10 * Math.log10(s / Math.max(1, n)); };
-  return { sub: +band(20, 90).toFixed(1), mid: +band(300, 3000).toFixed(1), state: g.worm?.state };
+  const an = g.audio.engine, ctx = an.ctx;
+  const hz = ctx.sampleRate / 2 / 8192;
+  const measure = async () => {
+    const saved = { ...g.settings.volume };
+    for (const k of ['music', 'vo']) an.setVolume(k, 0);
+    const a = ctx.createAnalyser(); a.fftSize = 16384; a.smoothingTimeConstant = 0.9; an.out.connect(a);
+    await new Promise((r) => setTimeout(r, 1500));
+    const f = new Float32Array(a.frequencyBinCount); a.getFloatFrequencyData(f);
+    const band = (lo, hi) => { let s = 0; for (let i = Math.floor(lo / hz); i <= Math.ceil(hi / hz); i++) s += Math.pow(10, f[i] / 10); return +(10 * Math.log10(s)).toFixed(1); };
+    const t = new Float32Array(2048); a.getFloatTimeDomainData(t); let q = 0; for (const v of t) q += v * v;
+    an.out.disconnect(a);
+    for (const k of Object.keys(saved)) an.setVolume(k, saved[k]);
+    return { sub: band(20, 90), low: band(90, 200), mid: band(300, 3000), rms: +(10 * Math.log10(q / t.length + 1e-12)).toFixed(1) };
+  };
+  const res = {};
+  for (const pt of ['start', 'erg', 'sietch']) {
+    g.debug?.goto?.(pt);
+    await new Promise((r) => setTimeout(r, 3500));
+    res[pt] = { ...(await measure()), worm: g.worm?.state, space: g.space };
+  }
+  g.debug?.goto?.('worm');
+  await new Promise((r) => setTimeout(r, 4000));
+  res.nearWorm = { ...(await measure()), worm: g.worm?.state };
+  return res;
 });
-console.log('спектр фона (старт, без реплик):', JSON.stringify(bed));
-if (bed.sub > bed.mid + 18) fail(`низкочастотная подкладка (20–90 Гц) на ${bed.sub - bed.mid} дБ выше средних: возможный гул`);
+console.log('фон без музыки:', JSON.stringify(bed));
+for (const pt of ['start', 'erg', 'sietch']) {
+  const b = bed[pt];
+  if (b.sub > b.mid + 6 && b.sub > -80) fail(`${pt}: подкладка 20–90 Гц (${b.sub} дБ) выше средних (${b.mid} дБ) — гул`);
+  if (b.rms > -24) fail(`${pt}: фон слишком громкий без музыки (${b.rms} dB)`);
+}
+if (bed.erg.worm === 'Dormant' && bed.erg.rms > -34) fail(`erg: червь спит, а фон ${bed.erg.rms} dB — гул не должен звучать`);
 
 await browser.close();
 if (errors.length) { console.error(`ОШИБКИ (${errors.length}):\n` + [...new Set(errors)].slice(0, 20).join('\n')); bad++; }
