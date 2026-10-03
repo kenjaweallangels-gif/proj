@@ -20,7 +20,7 @@ SB_A2_12_Stop,170,Beat:SB_A2_10_Tension,PlayDialogue,DLG_A2_ARR_01,2.0
 SB_A2_13_Tremble,180,Beat:SB_A2_12_Stop,PlayDialogue,DLG_A2_ARR_03,3.0
 SB_A2_14_ForceWorm,190,Beat:SB_A2_13_Tremble,ForceWorm,Rakis.Worm.Reveal,2.0
 SB_A2_15_Silence,200,Beat:SB_A2_14_ForceWorm,SetMusic,Silence,7.0
-SB_A2_16_RevealWeather,210,Beat:SB_A2_15_Silence,SetWeather,"Worm_Reveal,3",1.5
+SB_A2_16_RevealWeather,210,Beat:SB_A2_15_Silence,SetWeather,"Worm_Reveal,4",1.5
 SB_A2_17_TitleWorm,220,Beat:SB_A2_15_Silence,TitleCard,Шай-Хулуд|Shai-Hulud,1.5
 SB_A2_18_Cinematic,230,Beat:SB_A2_17_TitleWorm,PlayCinematic,/Game/Rakis/Cinematics/LS_WormReveal,0
 SB_A2_19_RevealMusic,240,Beat:SB_A2_17_TitleWorm,SetMusic,WormReveal,0

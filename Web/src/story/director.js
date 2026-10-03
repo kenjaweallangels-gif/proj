@@ -39,7 +39,7 @@ const BUILTIN = [
   B('S_A2_Stand', 16, 'ZoneEnter:A2_Erg', 'PlayDialogue', 'A2_Kair_02', 45),
   B('S_A2_WormHint', 17, 'WormState:Listening', 'Hint', 'Не бегите. Держитесь камня.|Don\'t run. Keep to the rock.'),
   B('S_A2_RevealTitle', 20, 'Beat:S_A2_Stand', 'TitleCard', 'Шай-Хулуд|Shai-Hulud', 0.5),
-  B('S_A2_RevealWx', 21, 'Beat:S_A2_Stand', 'SetWeather', 'Worm_Reveal,3'),
+  B('S_A2_RevealWx', 21, 'Beat:S_A2_Stand', 'SetWeather', 'Worm_Reveal,4'),
   B('S_A2_RevealMusic', 22, 'Beat:S_A2_Stand', 'SetMusic', 'WormReveal'),
   B('S_A2_Reveal', 23, 'Beat:S_A2_Stand', 'PlayCinematic', '/Game/Rakis/Cinematics/LS_WormReveal', 1),
   B('S_A2_AfterWx', 24, 'Beat:S_A2_Reveal', 'SetWeather', 'Morning_Erg,8'),
