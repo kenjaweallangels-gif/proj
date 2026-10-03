@@ -206,7 +206,7 @@ export function planGlobePositions() {
   add('B2', 44, 0, 3.3, 0.85); add('B2', 45, 6, 4.5, 0.7); add('B2', 45, -6, 4.5, 0.7);
   // B3: у ниш и по проходам.
   for (let x = 102; x < 150; x += 6) add('B3', x, (Math.round(x) % 2 ? -0.4 : 0.4), 2.25, 1.0);
-  for (const n of NICHES) { add('B3', n.xc, n.zc, 2.6, n.open ? 1.0 : 0.8, { niche: n.id }); if (n.rz > 3) add('B3', n.xc + 0.5, n.zc + n.side * 2.4, 2.4, 0.6, { niche: n.id }); }
+  for (const n of NICHES) { add('B3', n.xc, n.zc, 2.6, n.open ? 1.3 : 1.15, { niche: n.id }); if (n.rz > 3) add('B3', n.xc + 0.5, n.zc + n.side * 2.4, 2.4, 0.6, { niche: n.id }); }
   for (let x = 104; x < 120; x += 6) { add('B3', x + 2, -7.5, 2.2, 0.65); add('B3', x + 2, 7.5, 2.2, 0.65); }
   add('B3', 118, -12, 2.2, 0.65); add('B3', 121, -15.2, 2.2, 0.65); add('B3', 128, -15, 2.2, 0.65); add('B3', 134, -14.8, 2.2, 0.65);
   add('B3', 140, -15, 1.9, 0.5);
@@ -219,14 +219,14 @@ export function planGlobePositions() {
   add('B5', 153, -1.7, 2.4, 0.8); add('B5', 153, 1.7, 2.4, 0.8);
   for (const z of [-2.8, 0, 2.8]) add('B5', 193.5, z, 5.8 + (z === 0 ? 0.6 : 0), 1.2);
   add('B5', 197, -4, 5.0, 1.0); add('B5', 197, 4, 5.0, 1.0);
-  { let nextS = 6; EXIT.nodes.forEach((n, i) => { if (EXIT.cum[i] >= nextS && EXIT.cum[i] < EXIT.length - EXIT.tail - 1) { add('B5', n[0], n[1], EXIT.ys[i] + 2.5, 0.8, { exit: 1 }); nextS += 9.5; } }); }
+  { let nextS = 5; EXIT.nodes.forEach((n, i) => { if (EXIT.cum[i] >= nextS && EXIT.cum[i] < EXIT.length - EXIT.tail - 1) { add('B5', n[0], n[1], EXIT.ys[i] + 2.5, 1.0, { exit: 1 }); nextS += 6.5; } }); }
   // B6: водяной погреб — холодные тусклые шары: лестница, тамбур, неф, ниши-кладовые, станция измерения.
-  for (const [z, y] of [[13.5, 0.3], [19.5, -2.6], [25.5, -5.5]]) add('B6', CELLAR.stairs.x, z, y, 0.5);
+  for (const [z, y] of [[12.5, 0.6], [16.5, -1.4], [20.5, -3.2], [24.5, -5.2]]) add('B6', CELLAR.stairs.x, z, y, 0.6);
   add('B6', 101.6, 31.2, -5.6, 0.6); add('B6', 111, 31.4, -6.5, 0.5);
   for (const x of [113, 121, 129, 137, 143]) { add('B6', x, 32.4, -5.2, 0.7); add('B6', x, 41.6, -5.2, 0.7); }
   for (const x of [118, 127, 136]) add('B6', x, 37, -4.8, 0.9, { chain: 1 });
   for (const x of CELLAR.bayX) { add('B6', x, CELLAR.bayZ.n, -6.4, 0.4); add('B6', x, CELLAR.bayZ.s, -6.4, 0.4); }
-  add('B6', 146.5, 37, -6.2, 0.8);
+  add('B6', 146.5, 37, -6.2, 1.1); add('B6', 144.2, 34.6, -6.0, 0.8); add('B6', 144.2, 39.4, -6.0, 0.8);
   for (const x of [-1.5, 3]) add('B1', x, x < 0 ? 5 : 0.2, 2.3, 0.45);
   return G;
 }

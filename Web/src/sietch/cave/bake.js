@@ -455,7 +455,7 @@ function buildPVS(V, mesh, chunks, log, CS = 8, FAR = 115) {
   for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
     // воздушные точки внутри ячейки
     const pts = [];
-    for (let a = 0; a < 90 && pts.length < 14; a++) {
+    for (let a = 0; a < 700 && pts.length < 14 && !(a > 120 && pts.length >= 1); a++) {
       const x = ox + (i + rnd()) * CS, y = oy + (j + rnd()) * CS, z = oz + (k + rnd()) * CS;
       if (V.sample(x, y, z) < -0.35) pts.push([x, y, z]);
     }
@@ -466,7 +466,7 @@ function buildPVS(V, mesh, chunks, log, CS = 8, FAR = 115) {
       const bs = list[c].bs;
       const dd = Math.hypot(bs[0] - cx, bs[1] - cy, bs[2] - cz) - bs[3] - cr;
       if (dd > FAR) continue;
-      let vis = dd < 2;           // рядом — всегда
+      let vis = dd < 10;          // рядом (≤ 10 м от ячейки) — всегда: страховка от «дыр» за поворотами
       for (let t = 0; t < targets[c].length && !vis; t++) {
         const q = targets[c][t];
         for (let a = 0; a < pts.length; a++) { pairs++; if (clearLine(V, pts[a][0], pts[a][1], pts[a][2], q[0], q[1], q[2])) { vis = true; break; } }

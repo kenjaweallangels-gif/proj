@@ -52,6 +52,9 @@ const VIEWS = [
   ['44_room_Ns2_kids', [140.5, 1.5, 4.0], [139.2, 0.3, 7.6], 76],
   ['45_corridor_doors', [118, 1.6, 0.3], [140, 1.5, 0.0], 78],
   ['46_bay_on_shelf', [62, 7.7, 5.6], [62.5, 7.2, 10.5], 80],
+  ['47_sleepers_Nn2', [141, 1.5, -3.0], [140.5, 0.4, -9.8], 78],
+  ['48_shadow_gallery', [66, 1.7, 1.8], [66, 1.6, 5.6], 76],
+  ['49_kids_corridor', [112, 1.5, 0.3], [125, 1.0, 0.2], 74],
   // водяной погреб
   ['50_cellar_stairs', [101.3, -0.4, 11.5], [101.3, -4.6, 26.0], 76],
   ['51_cellar_landing', [101.6, -7.4, 29.0], [108.5, -7.6, 31.4], 76],
@@ -76,7 +79,7 @@ page.on('pageerror', (e) => errors.push(String(e)));
 const file = arg('file', 'sietch.html');
 await page.goto(`file://${join(root, 'dist', file)}?autotest=1&q=${q}&lang=RU${process.argv.includes('--keepworld') ? '&keepworld=1' : ''}`);
 await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.0, null, { timeout: 480000 });
-await page.evaluate(async (hide) => { const g0 = window.__rakis; if (hide) { const h = () => { for (const c of g0.companions?.list || []) { if (c.figure?.group) c.figure.group.visible = false; } if (g0.player?.figure?.group) g0.player.figure.group.visible = false; }; g0.__hideCompanions = h; const r0 = g0.render; g0.render = (dt) => { h(); r0(dt); }; } const w = window.__rakis.world; if (w && !new URLSearchParams(location.search).has('keepworld')) { w.setVisible(false); w.setVisible = () => {}; } await window.__rakis.sietch.enter(); window.__rakis.cinematic = { active: true, owner: 'shots' }; }, !process.argv.includes('--companions'));
+await page.evaluate(async (hide) => { const g0 = window.__rakis; if (hide && g0.dialogue) g0.dialogue.bark = () => null; if (hide) { const h = () => { for (const c of g0.companions?.list || []) { if (c.figure?.group) c.figure.group.visible = false; } if (g0.player?.figure?.group) g0.player.figure.group.visible = false; }; g0.__hideCompanions = h; const r0 = g0.render; g0.render = (dt) => { h(); r0(dt); }; } const w = window.__rakis.world; if (w && !new URLSearchParams(location.search).has('keepworld')) { w.setVisible(false); w.setVisible = () => {}; } await window.__rakis.sietch.enter(); window.__rakis.cinematic = { active: true, owner: 'shots' }; }, !process.argv.includes('--companions'));
 await page.waitForTimeout(500);
 
 const shoot = async (name, pos, tgt, fov = 70, wait = Number(arg('wait', 1500))) => {
