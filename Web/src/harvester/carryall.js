@@ -117,16 +117,16 @@ function wingSeg(i, sd) {
   for (let r = 0; r < nR; r++) {
     const t0 = r / nR, t1 = (r + 1) / nR, zA = t0 * len, zB = t1 * len;
     const cA = c0 + (c1 - c0) * t0, cB = c0 + (c1 - c0) * t1, cm = (cA + cB) / 2, zm = (zA + zB) / 2;
-    P.box(-cm / 2 - 0.15, -0.06, sd * zm, cm, 0.12, (zB - zA) - 0.06, (r + i) % 3 === 0 ? TAN2 : (r + i) % 3 === 1 ? TAN : '#9b8052', 0, { jit: 0.07 });
+    P.box(-cm / 2 - 0.15, -0.06, sd * zm, cm, 0.12, (zB - zA) - 0.06, (r + i) % 3 === 0 ? TAN2 : (r + i) % 3 === 1 ? TAN : '#9b8052', 7, { jit: 0.07 });
     P.box(-cm * 0.5 - 0.15, 0.1, sd * zA, cA, 0.14, 0.16, '#3d3a35', 1);                 // нервюра сверху
     P.box(-cm * 0.5 - 0.15, -0.2, sd * zm, cm * 0.96, 0.05, 0.12, '#5b5448', 3);          // нижняя тяга
     // щитки на задней кромке (закрылки)
-    P.box(-cm - 0.35, -0.08, sd * zm, 0.9, 0.1, (zB - zA) - 0.14, r % 2 ? C.TEAL : TAN, 0);
+    P.box(-cm - 0.35, -0.08, sd * zm, 0.9, 0.1, (zB - zA) - 0.14, r % 2 ? C.TEAL : TAN, 7);
   }
   // продольные жилки
   for (const f of [0.28, 0.55, 0.8]) P.box(-(c0 + c1) / 2 * f - 0.1, 0.07, sd * len / 2, 0.1, 0.08, len, '#4a443d', 1);
   // шарниры и гидроцилиндры
-  P.cyl(0, 0, sd * z0, 0.5, 0.5, 0.7, STEEL, 1, { axis: 'z', seg: 12 });
+  P.cyl(0, 0, 0, 0.5, 0.5, 0.7, STEEL, 1, { axis: 'z', seg: 12 });
   if (i < 2) P.cyl(-0.4, -0.5, sd * (len - 0.2), 0.4, 0.4, 0.6, STEEL, 1, { axis: 'z', seg: 12 });
   P.cyl(-1.0, -0.3, sd * len * 0.55, 0.14, 0.14, len * 0.55, '#7a2e1e', 2, { axis: 'z', seg: 6 });
   if (i === 2) {   // законцовка: сигнальные полосы
@@ -168,11 +168,15 @@ export function createCarryall(game, hullMat, glowMat, lampMat, quality, decalMa
   fus.frustumCulled = false; fus.castShadow = false;
   body.add(fus);
 
-  // свечение: кабина, окна гондола, огни, сопла
+  // стекло кабины и гондола: тёмное зеркальное, ночью подсвечено изнутри (янтарь); лампы и сопло — свечение
+  const Gw = new Parts(1204);
+  Gw.box(15.0, 2.0, 0, 1.2, 1.3, 3.0, '#ffffff', 0, { rz: -0.5, jit: 0 });
+  Gw.box(13.2, 2.9, 0, 3.4, 1.1, 3.4, '#ffffff', 0, { rz: -0.2, jit: 0 });
+  for (const z of [-1, 1]) { Gw.cyl(13.0, -1.2, z * 1.6, 0.4, 0.4, 0.08, '#ffffff', 0, { axis: 'z', seg: 10 }); Gw.cyl(11.6, -1.2, z * 1.7, 0.4, 0.4, 0.08, '#ffffff', 0, { axis: 'z', seg: 10 }); }
+  const canopyMat = new THREE.MeshStandardMaterial({ color: 0x5a7585, roughness: 0.2, metalness: 0.15, emissive: 0xffb255, emissiveIntensity: 0.05 });
+  const canopy = new THREE.Mesh(Gw.merge(), canopyMat); canopy.frustumCulled = false; body.add(canopy);
   const G = new Parts(1203);
-  G.box(15.0, 2.0, 0, 1.2, 1.3, 3.0, '#ffcf7a', 0, { rz: -0.5, jit: 0.1 });
-  G.box(13.2, 2.9, 0, 3.4, 1.1, 3.4, '#ffcf7a', 0, { rz: -0.2, jit: 0.1 });
-  for (const z of [-1, 1]) { G.box(-1, 3.4, z * 4.3, 8, 0.28, 0.1, '#ffd9a0', 0); G.cyl(13.0, -1.2, z * 1.6, 0.4, 0.4, 0.08, '#ffcf7a', 0, { axis: 'z', seg: 10 }); G.cyl(11.6, -1.2, z * 1.7, 0.4, 0.4, 0.08, '#ffcf7a', 0, { axis: 'z', seg: 10 }); }
+  for (const z of [-1, 1]) G.box(-1, 3.4, z * 4.3, 8, 0.28, 0.1, '#ffd9a0', 0);
   G.cyl(16.1, -1.6, 0, 0.5, 0.5, 0.06, '#fff1c8', 0, { axis: 'x', seg: 10 });
   G.cyl(-22.1, 0.2, 0, 0.7, 0.4, 0.2, '#ff7a2a', 0, { axis: 'x', seg: 12 });
   for (const s of [-1, 1]) { G.box(15.0, -0.6, s * 1.0, 0.1, 0.35, 0.5, '#fff1c8', 0); G.box(7.5, -3.55, s * 4.2, 0.1, 0.3, 0.4, '#fff1c8', 0); }
@@ -196,9 +200,9 @@ export function createCarryall(game, hullMat, glowMat, lampMat, quality, decalMa
     const root = new THREE.Group(); root.position.set(x, y, z); body.add(root);
     const mesh0 = new THREE.Mesh(segGeo[sd][0], hullMat); mesh0.frustumCulled = false; root.add(mesh0);
     const j1 = new THREE.Group(); j1.position.set(0, 0, sd * SEG_LEN[0]); root.add(j1);
-    const mesh1 = new THREE.Mesh(segGeo[sd][1], hullMat); mesh1.frustumCulled = false; mesh1.position.z = -sd * SEG_LEN[0]; j1.add(mesh1);
+    const mesh1 = new THREE.Mesh(segGeo[sd][1], hullMat); mesh1.frustumCulled = false; j1.add(mesh1);
     const j2 = new THREE.Group(); j2.position.set(0, 0, sd * SEG_LEN[1]); j1.add(j2);
-    const mesh2 = new THREE.Mesh(segGeo[sd][2], hullMat); mesh2.frustumCulled = false; mesh2.position.z = -sd * (SEG_LEN[0] + SEG_LEN[1]); j2.add(mesh2);
+    const mesh2 = new THREE.Mesh(segGeo[sd][2], hullMat); mesh2.frustumCulled = false; j2.add(mesh2);
     return { root, j1, j2, sd, x };
   });
 
@@ -284,6 +288,7 @@ export function createCarryall(game, hullMat, glowMat, lampMat, quality, decalMa
 
   function update(dt, time, H) {
     if (!group.visible) return;
+    canopyMat.emissiveIntensity = 0.04 + 1.6 * (H?.night || 0);
     if (script.on) {
       group.position.copy(script.pos);
       body.rotation.set(script.roll, -script.yaw, script.pitch, 'YZX');

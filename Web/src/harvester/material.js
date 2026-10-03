@@ -72,7 +72,7 @@ const FRAG_COLOR = /* glsl */`
   float seam = (1.0 - smoothstep(0.0, 0.04, edge)) * step(float(tag), 3.5);
   if (tag == 2) seam *= 0.4;
   float riv = 0.0;
-  if (lod > 0.01 && tag != 2) {
+  if (lod > 0.01 && tag != 2 && tag != 7) {
     float r1 = length(vec2(e.x - 0.22, (fract(f.y / 0.45) - 0.5) * 0.45)) * step(0.15, e.y);
     float r2 = length(vec2(e.y - 0.22, (fract(f.x / 0.45) - 0.5) * 0.45)) * step(0.15, e.x);
     float r = min(e.x < 0.4 ? r1 : 9.0, e.y < 0.4 ? r2 : 9.0);
@@ -83,7 +83,7 @@ const FRAG_COLOR = /* glsl */`
   float patchK = step(0.9, ch2) * step(float(tag), 0.5);
   base = mix(base, vec3(0.30, 0.31, 0.26) * (0.8 + 0.4 * ch), patchK);
   base *= 1.0 - 0.45 * seam;
-  base += vec3(0.07) * riv * (1.0 - patchK * 0.5);
+  base += vec3(0.045) * riv * lod * (1.0 - patchK * 0.5);
 
   float n1 = 0.55, n2 = 0.5, n3 = 0.5, dirt = 0.35, chip = 0.0, oil = 0.0, scour = 0.0;
   float low = smoothstep(16.0, 5.0, vLP.y);
@@ -134,6 +134,12 @@ const FRAG_COLOR = /* glsl */`
   gR = mix(0.5, 0.92, clamp(dirt + top + scour, 0.0, 1.0));
   gR = mix(gR, 0.28, oil * 0.8);
   if (tag == 2) gR = 0.9;
+  if (tag == 7) {   // перепонка крыльев, брезент: ткань без заклёпок
+    float wv = sin(uv.x * 36.0) * sin(uv.y * 36.0) * 0.5 + 0.5;
+    base = diffuseColor.rgb * (0.95 + 0.1 * rkNoise(uv * 5.0)) * (0.93 + 0.1 * wv * lod) * (1.0 - 0.18 * smoothstep(0.4, 0.9, n1));
+    base = mix(base, sand * 0.8, top * 0.25);
+    gR = 0.85; gH = 0.0;
+  }
   if (tag == 6) {   // песчаные наносы на корпусе
     float rip = sin((uv.x * 1.3 + uv.y * 0.7) * 5.0 + n1 * 6.0) * 0.5 + 0.5;
     base = mix(sand, vec3(0.62, 0.34, 0.17), 0.18 * smoothstep(0.5, 0.9, n1)) * (0.88 + 0.2 * n2) * (0.93 + 0.1 * rip);

@@ -22,6 +22,7 @@ page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning')
 page.on('pageerror', (e) => errors.push(String(e)));
 await page.goto(`file://${join(root, 'dist', 'harvester_studio.html')}?q=${q}`, { waitUntil: 'commit', timeout: 120000 });
 await page.waitForFunction(() => window.__rakis && window.__rakis.harvester && window.__rakis.frames() > 3, null, { timeout: 300000 });
+await page.evaluate(() => window.__rakis.step(5, 0.05));
 if (arg('run', '0') === '1') await page.evaluate(() => window.__rakis.harvester.debugSet('running'));
 if (arg('night', '0') === '1') await page.evaluate(() => { const g = window.__rakis; g.world.sunDir.set(0.3, -0.2, 0.5).normalize(); });
 
