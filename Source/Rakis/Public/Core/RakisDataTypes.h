@@ -9,7 +9,7 @@
  * (первая колонка CSV — имя строки). Контракт: docs/06_demo_contract.md §4.
  */
 
-/** Dialogue_S1.csv: DialogueID,Speaker,Line_RU,Line_EN,Condition,Emotion,VO_File,Duration,NextID */
+/** Dialogue_S1.csv: DialogueID,Speaker,Line_RU,Line_EN,Condition,Emotion,VO_File,Duration,NextID,Line_Native,Line_NativeScript */
 USTRUCT(BlueprintType)
 struct FRakisDialogueRow : public FTableRowBase
 {
@@ -29,6 +29,10 @@ struct FRakisDialogueRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rakis|Dialogue") float Duration = 0.f;
 	/** Следующая реплика цепочки (пусто = конец). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rakis|Dialogue") FName NextID;
+	/** Реплика на языке Ракиса (латиница, см. docs/lore/language.md) — то, что звучит; RU/EN — перевод в субтитрах. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rakis|Dialogue") FString Line_Native;
+	/** Та же реплика арабской вязью — для синтеза речи арабским голосом. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rakis|Dialogue") FString Line_NativeScript;
 };
 
 /** Barks.csv: BarkID,Archetype,Context,Line_RU,Line_EN,VO_File,Weight,Cooldown */

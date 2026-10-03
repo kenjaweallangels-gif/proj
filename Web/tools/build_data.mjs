@@ -43,6 +43,7 @@ const data = {
   Dialogue: Object.fromEntries(load('Dialogue_S1').map((r) => [r.DialogueID, {
     id: r.DialogueID, speaker: r.Speaker, RU: r.Line_RU, EN: r.Line_EN, condition: r.Condition,
     emotion: r.Emotion, duration: num(r.Duration), next: r.NextID,
+    native: r.Line_Native || '', nativeScript: r.Line_NativeScript || '',
   }])),
   Barks: load('Barks').map((r) => ({ id: r.BarkID, archetype: r.Archetype, context: r.Context, RU: r.Line_RU, EN: r.Line_EN, weight: num(r.Weight) || 1, cooldown: num(r.Cooldown) })),
   StoryBeats: load('StoryBeats').map((r) => ({ id: r.BeatID, order: num(r.Order), trigger: r.Trigger, action: r.Action, param: r.Param, delay: num(r.Delay) })).sort((a, b) => a.order - b.order),
