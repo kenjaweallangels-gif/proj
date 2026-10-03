@@ -51,7 +51,7 @@ export function create(game) {
   // Режим передвижения: C / LB — переключатель (обычный ⇄ походка по песку), Alt — «пока держишь». Shift (бег) отменяет песок.
   let desertToggle = false, altHeld = false, padLB = false;
   const onKey = (e) => {
-    if (e.code === 'KeyC' && !e.repeat) { if (!(game.paused || game.cinematic.active || game.ui?.blocking || p.inputLocked)) desertToggle = !desertToggle; }
+    if (e.code === 'KeyC' && e.type === 'keydown' && !e.repeat) { if (!(game.paused || game.cinematic.active || game.ui?.blocking || p.inputLocked)) desertToggle = !desertToggle; }
     if (e.code === 'AltLeft' || e.code === 'AltRight') altHeld = e.type === 'keydown';
   };
   addEventListener('keydown', onKey); addEventListener('keyup', onKey);

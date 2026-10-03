@@ -82,8 +82,8 @@ if (rg == 0) {
   base *= 1.0 + (nz * 0.22 + nz2 * 0.1) * (0.4 + uWear);
   float crack = smoothstep(0.55, 0.8, nz + nz2 * 0.4) * uWear;
   base = mix(base, base * vec3(1.5, 1.4, 1.25) + 0.015, crack * 0.5);
-  float sm = abs(fract(vAux.w * 2.0) - 0.5);
-  base *= 1.0 - 0.4 * (1.0 - smoothstep(0.0, 0.01, sm)) * step(0.5, vAux.y) * step(vAux.w, 1.0);
+  float cs = 1.0 - smoothstep(0.0, 0.007, abs(vBind.x));
+  base *= 1.0 - 0.35 * cs * step(0.95, vBind.y) * step(vBind.y, 1.45) * step(0.5, vAux.y);
   rough = 0.42 + 0.25 * (1.0 - hump) + 0.2 * crack;
   dustK = vAux.z + (1.0 - hump) * 0.2 * vAux.y;
   bumpAmt = 0.7 * fade;
@@ -174,13 +174,14 @@ export function makeUniforms(o) {
     uHipY: { value: 0.92 }, uCloth2: { value: C(o.cloth2 || o.cloth || '#8a6a48') }, uLegL: { value: new THREE.Vector4(0, 0.48, 0, 0.08) }, uLegR: { value: new THREE.Vector4(0, 0.48, 0, 0.08) },
   };
 }
-export function makeBodyMaterial(U) {
-  const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, metalness: 0 });
-  patch(m, 'rk-fig-body', U, false);
+// clone() у three не копирует onBeforeCompile — переопределяем, чтобы клонирование (например, в модуле червя) сохраняло шейдер.
+function make(U, cloth) {
+  const m = cloth
+    ? new THREE.MeshStandardMaterial({ color: U.uCloth.value.clone(), roughness: 0.9, metalness: 0, side: THREE.DoubleSide })
+    : new THREE.MeshStandardMaterial({ color: U.uSuit.value.clone(), roughness: 0.6, metalness: 0 });
+  patch(m, cloth ? 'rk-fig-cloth' : 'rk-fig-body', U, cloth);
+  m.clone = function () { const c = make(U, cloth); c.copy(this); return c; };
   return m;
 }
-export function makeClothMaterial(U) {
-  const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, metalness: 0, side: THREE.DoubleSide });
-  patch(m, 'rk-fig-cloth', U, true);
-  return m;
-}
+export function makeBodyMaterial(U) { return make(U, false); }
+export function makeClothMaterial(U) { return make(U, true); }

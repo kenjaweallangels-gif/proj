@@ -119,7 +119,7 @@ if (has('crowd')) {
     let n = 0;
     for (let r = 0; r < 6; r++) for (let c = 0; c < 10; c++) {
       const k = keys[(n++) % keys.length], P = PAL[k];
-      const f = S.add({ ...P, name: 'NPC_' + k + '_' + n, hood: Math.random() < 0.7, mask: Math.random() < 0.4 }, (c - 4.5) * 1.5, -r * 2.4 + 3, Math.random() * 6.28);
+      const f = S.add({ ...P, lod: undefined, name: 'NPC_' + k + '_' + n, hood: Math.random() < 0.7, mask: Math.random() < 0.4 }, (c - 4.5) * 1.5, -r * 2.4 + 3, Math.random() * 6.28);
       f.animate(1.0, 0.016, 0);
     }
     window.__rakis.figures.setFigureView(window.__rakis.camera.position);

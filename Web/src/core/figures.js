@@ -52,7 +52,7 @@ export const PRESETS = {
   Ilva: {
     name: 'Ilva', height: 1.68, build: 'f', skin: '#b08a68', suit: '#3e3630', cloth: '#7e7466', cloth2: '#b8ae9c', accent: '#6b5a7a', lining: '#d8c8a8', leather: '#5a4a3a',
     robe: true, robeStyle: 'jubba', robeTint: 2, layers: [{ style: 'shawl', hemTrim: true, fold: 0.06, folds: 7, lining: true }], hood: true, mask: 'down', pouches: 1, hemTrim: false, hair: 'bun', hairColor: '#2a1c14', wear: 0.2, dust: 0.45,
-    style: { composed: 1, sway: 0.55, bounce: 0.8, armSwing: 0.55, stride: 0.95, shoulders: 0.0 }, seed: 23, staff: 'pilgrim',
+    style: { composed: 1, sway: 0.55, bounce: 0.8, armSwing: 0.55, stride: 0.95, shoulders: 0.0 }, seed: 23, staff: 'sling',
   },
   Rayn: {
     name: 'Rayn', height: 1.6, build: 'm', bulk: 1.1, skin: '#a9805e', suit: '#3e3630', cloth: '#5a4a3a', cloth2: '#7a2e24', accent: '#c9a46a', leather: '#4a3524',
@@ -94,16 +94,21 @@ const clean = (o) => { const r = {}; for (const k in o) if (o[k] !== undefined) 
 function hashStr(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
 
 /** Разрешить опции: пресет → явные опции → выведенные «вариации» (по сиду). */
+// Старые вызовы без preset (модуль червя: name 'Rider1'/'Ossana'/'Rider3') получают одноимённый пресет; явные цвета/размеры из опций главнее.
+const NAME_PRESET = { Kair: 'Kair', Ilva: 'Ilva', Rayn: 'Rayn', Ossana: 'Ossana', Rider1: 'Rider', Rider3: 'Rider', Rider2: 'Rider2', Harmat: 'Harmat', Priestess: 'Priestess' };
 function resolveOptions(opts) {
-  const pre = opts.preset ? (PRESETS[opts.preset] || {}) : {};
+  const byName = !opts.preset && NAME_PRESET[opts.name];
+  const presetKey = opts.preset || byName;
+  const pre = presetKey ? (PRESETS[presetKey] || {}) : {};
   const o = { ...DEFAULTS, ...pre, ...clean(opts) };
-  const seed = opts.seed ?? (opts.name && !opts.preset ? hashStr(opts.name) : pre.seed ?? Math.floor(Math.random() * 1e9));
+  if (byName && opts.hooks === undefined) o.hooks = 0; // у наездников на черве свои шесты
+  const seed = opts.seed ?? (opts.name && !presetKey ? hashStr(opts.name) : pre.seed ?? Math.floor(Math.random() * 1e9));
   const R = rng(seed + 7);
   o.seed = seed;
   const explicit = (k) => opts[k] !== undefined || pre[k] !== undefined;
   const child = o.height < 1.4;
   if (!explicit('build')) o.build = child ? 'c' : (R() < 0.42 ? 'f' : 'm');
-  if (opts.preset == null) {
+  if (!presetKey) {
     if (o.robe !== false && !explicit('robeStyle')) { const r = R(); o.robeStyle = child ? 'kaftan' : r < 0.5 ? 'jubba' : r < 0.78 ? 'kaftan' : 'tunic'; if (o.robeStyle === 'tunic' && !o.layers) o.layers = [{ style: 'cape', fold: 0.045, tear: R() }]; }
     if (!explicit('hemTrim')) o.hemTrim = R() < 0.5;
     if (!explicit('frontTrim')) o.frontTrim = R() < 0.3;

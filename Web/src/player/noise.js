@@ -49,7 +49,7 @@ export function createNoise(game, p, fx) {
       if (game.cinematic.active || p.speed < S.minSpeed * 0.6) return;
       const gait = e.mode === 'run' ? 'run' : e.mode === 'desert' ? 'sandwalk' : 'walk';
       p.stepIntervalNow = lastAt >= 0 ? now - lastAt : p.stepIntervalNow;
-      step(now, gait, e.side === 0 ? 1 : -1);
+      step(now - (e.ago || 0), gait, e.side === 0 ? 1 : -1);
     },
     stutter(now, moving) {
       if (now - stutterAt < C.stutterCooldown) return;

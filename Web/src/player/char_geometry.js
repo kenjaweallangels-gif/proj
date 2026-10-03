@@ -57,26 +57,37 @@ export class GB {
     }
     const cols = closed ? M : M - 1;
     const at = (j, i) => base + j * M + (i % M);
-    const flip = !!o.flip;
+    // Ориентация граней определяется геометрически: нормаль первого квада должна смотреть от оси лофта наружу.
+    const ctr = (ring) => { let x = 0, y = 0, z = 0; for (const p of ring) { x += p[0]; y += p[1]; z += p[2]; } return [x / ring.length, y / ring.length, z / ring.length]; };
+    const jm = Math.max(0, Math.min(R - 2, (R - 1) >> 1)), cm = ctr(rings[jm]);
+    const pa = rings[jm][0], pb = rings[jm][1 % M], pc = rings[jm + 1][0];
+    const e1 = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]], e2 = [pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]];
+    const nn = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    const out = [pa[0] - cm[0], pa[1] - cm[1], pa[2] - cm[2]];
+    const flip = (nn[0] * out[0] + nn[1] * out[1] + nn[2] * out[2] < 0) !== !!o.flip;
     for (let j = 0; j < R - 1; j++) for (let i = 0; i < cols; i++) {
       const a = at(j, i), b = at(j, i + 1), c = at(j + 1, i), d = at(j + 1, i + 1);
       if (flip) this.idx.push(a, c, b, b, c, d); else this.idx.push(a, b, c, b, d, c);
     }
-    const cap = (j, down) => {
-      const ring = rings[j]; let cx = 0, cy = 0, cz = 0;
-      for (const p of ring) { cx += p[0]; cy += p[1]; cz += p[2]; }
-      cx /= M; cy /= M; cz /= M;
+    const c0 = ctr(rings[0]), c1 = ctr(rings[R - 1]);
+    const dir = [c1[0] - c0[0], c1[1] - c0[1], c1[2] - c0[2]];
+    const cap = (j, sign) => {
+      const ring = rings[j], c = ctr(ring);
       const m = meta(j, 0, ring[0]);
-      const c = this.vert(cx, cy, cz, m.reg, m.aux, m.sk);
+      const cv = this.vert(c[0], c[1], c[2], m.reg, m.aux, m.sk);
       const vs = [];
       for (let i = 0; i < M; i++) vs.push(this.vert(ring[i][0], ring[i][1], ring[i][2], m.reg, m.aux, m.sk));
+      const A = ring[0], Bp = ring[1 % M];
+      const u1 = [A[0] - c[0], A[1] - c[1], A[2] - c[2]], u2 = [Bp[0] - c[0], Bp[1] - c[1], Bp[2] - c[2]];
+      const n = [u1[1] * u2[2] - u1[2] * u2[1], u1[2] * u2[0] - u1[0] * u2[2], u1[0] * u2[1] - u1[1] * u2[0]];
+      const ok = (n[0] * dir[0] + n[1] * dir[1] + n[2] * dir[2]) * sign > 0;
       for (let i = 0; i < cols; i++) {
         const a = vs[i], b = vs[(i + 1) % M];
-        if (down !== flip) this.idx.push(c, a, b); else this.idx.push(c, b, a);
+        if (ok) this.idx.push(cv, a, b); else this.idx.push(cv, b, a);
       }
     };
-    if (o.capStart) cap(0, true);
-    if (o.capEnd) cap(R - 1, false);
+    if (o.capStart) cap(0, -1);
+    if (o.capEnd) cap(R - 1, 1);
   }
 
   build() {
@@ -377,15 +388,15 @@ function buildHead(b, o, lod, B) {
   // волосы (если голова открыта у скулы/виска; под капюшоном лишь шапка)
   if (o.hair !== 'none' && lod < 2) {
     const long = o.hair === 'long', bun = o.hair === 'bun' || o.hair === 'braid';
-    const hr = [0.14, 0.128, 0.105, 0.075, 0.045, 0.02];
-    const rr = hr.map((y) => { const [rx, rz, cz] = headRow(y); return ringY(Y(y), 0, Z(cz / 1) - 0.006, rx * hs + 0.006, rz * hs + 0.008, N, null, Math.PI * 0.62, Math.PI * 2 - Math.PI * 0.62, true); });
-    // шапка: открытый лофт сзади/сверху; спереди — лоб свободен
-    b.loft(rr, (j, i, p) => ({ reg: REG.HAIR, aux: [0, 0, 0, 0], sk: HSK }), { closed: false, capStart: true });
+    const hr = [0.14, 0.128, 0.108, 0.085, 0.06, 0.035, 0.01], hth = [0.0, 0.25, 0.7, 1.15, 1.5, 1.75, 1.9];
+    const rr = hr.map((y, k) => { const [rx, rz, cz] = headRow(y); return ringY(Y(y), 0, Z(cz / 1) - 0.006, rx * hs + 0.007, rz * hs + 0.009, N, null, hth[k], Math.PI * 2 - hth[k], true); });
+    // шапка волос: от линии лба по макушке к затылку и вискам
+    b.loft(rr.reverse(), (j, i, p) => ({ reg: REG.HAIR, aux: [0, 0, 0, 0], sk: HSK }), { closed: false, capEnd: true });
     if (bun) ellipsoid(b, [0, Y(0.07), Z(-0.115)], [0.04 * hs, 0.036 * hs, 0.036 * hs], REG.HAIR, HSK, { u: 8, v: 5, aux: [0, 0, 0, 0] });
-    if (long) b.loft([0.02, -0.05, -0.13, -0.22].map((y, k) => ringY(Y(y), 0, Z(-0.07 - k * 0.012), 0.068 - k * 0.006, 0.03, 10, null, Math.PI * 0.72, Math.PI * 1.28, true)), (j, i, p) => ({ reg: REG.HAIR, aux: [0, 0, 0, 0], sk: HSK }), { closed: false });
+    if (long) b.loft([-0.22, -0.13, -0.05, 0.02].map((y, k) => ringY(Y(y), 0, Z(-0.07 - (3 - k) * 0.012), 0.068 - (3 - k) * 0.006, 0.03, 10, null, Math.PI * 0.72, Math.PI * 1.28, true)), (j, i, p) => ({ reg: REG.HAIR, aux: [0, 0, 0, 0], sk: HSK }), { closed: false });
   }
   if (o.beard && lod < 2) {
-    const rr = [-0.04, -0.075, -0.108, -0.14, -0.19, -0.23].map((y, k) => { const [rx, rz, cz] = headRow(Math.max(y, -0.12)); return ringY(Y(y), 0, Z(cz) + 0.012 + k * 0.004, rx * hs * (1 - k * 0.05) + 0.008, rz * hs * (1 - k * 0.06) + 0.012, 12, null, -Math.PI * 0.62, Math.PI * 0.62, true); });
+    const rr = [-0.23, -0.19, -0.14, -0.108, -0.075, -0.04].map((y, k) => { const [rx, rz, cz] = headRow(Math.max(y, -0.12)); return ringY(Y(y), 0, Z(cz) + 0.012 + (5 - k) * 0.004, rx * hs * (1 - (5 - k) * 0.05) + 0.008, rz * hs * (1 - (5 - k) * 0.06) + 0.012, 12, null, -Math.PI * 0.62, Math.PI * 0.62, true); });
     b.loft(rr, (j, i, p) => ({ reg: REG.HAIR, aux: [0, 0, 0, 0], sk: HSK }), { closed: false, capEnd: false });
   }
 }
@@ -399,8 +410,8 @@ export function buildCowl(b, o, lod, B) {
     if (y < -0.125) return 0;
     if (y < -0.035) return maskUp ? 0 : (y < -0.1 ? 0 : 1.15);
     if (y < 0.0) return 0.95 + (0.0 - y) * 4;
-    if (y < 0.06) return 0.95 - y * 2.2;
-    return Math.max(0, 0.82 - (y - 0.06) * 12);
+    if (y < 0.05) return 0.95 - y * 2.0;
+    return Math.max(0, 0.85 - (y - 0.05) * 19);
   };
   const rings = rowsY.map((y) => {
     const yy = Math.max(y, -0.12), [rx, rz, cz] = headRow(yy);
@@ -498,7 +509,7 @@ const ROBE_ROWS = {
   jubba: [[0.16, 0.34, 0.31, 0.0], [0.4, 0.3, 0.27, 0.0], [0.7, 0.265, 0.235, 0.0], [0.92, 0.225, 0.19, 0], [1.05, 0.2, 0.15, 0.004], [1.2, 0.205, 0.15, 0.008], [1.32, 0.225, 0.147, 0.004], [1.41, 0.215, 0.12, -0.003], [1.45, 0.14, 0.09, -0.004], [1.485, 0.085, 0.07, -0.004]],
   kaftan: [[0.42, 0.285, 0.255, 0.0], [0.7, 0.262, 0.232, 0.0], [0.92, 0.225, 0.19, 0], [1.05, 0.2, 0.15, 0.004], [1.2, 0.205, 0.15, 0.008], [1.32, 0.225, 0.147, 0.004], [1.41, 0.215, 0.12, -0.003], [1.45, 0.14, 0.09, -0.004], [1.485, 0.085, 0.07, -0.004]],
   tunic: [[0.74, 0.232, 0.2, 0.0], [0.92, 0.218, 0.178, 0], [1.05, 0.195, 0.15, 0.004], [1.2, 0.2, 0.15, 0.008], [1.32, 0.222, 0.147, 0.004], [1.41, 0.212, 0.12, -0.003], [1.45, 0.14, 0.09, -0.004], [1.485, 0.085, 0.07, -0.004]],
-  cape: [[0.7, 0.32, 0.27, -0.02], [0.92, 0.29, 0.24, -0.015], [1.05, 0.265, 0.21, -0.01], [1.2, 0.265, 0.19, -0.005], [1.32, 0.265, 0.175, -0.005], [1.4, 0.245, 0.15, -0.005], [1.44, 0.19, 0.12, -0.004], [1.47, 0.12, 0.09, -0.004], [1.495, 0.085, 0.078, -0.004]],
+  cape: [[0.7, 0.32, 0.27, -0.02], [0.92, 0.29, 0.24, -0.015], [1.05, 0.265, 0.21, -0.01], [1.2, 0.265, 0.19, -0.005], [1.32, 0.265, 0.175, -0.005], [1.4, 0.245, 0.175, -0.01], [1.44, 0.195, 0.14, -0.008], [1.47, 0.125, 0.105, -0.006], [1.495, 0.085, 0.085, -0.004]],
   shawl: [[0.62, 0.34, 0.3, -0.03], [0.92, 0.31, 0.26, -0.02], [1.1, 0.29, 0.23, -0.01], [1.25, 0.28, 0.2, -0.005], [1.36, 0.27, 0.17, -0.005], [1.43, 0.25, 0.14, -0.004], [1.46, 0.17, 0.11, -0.004], [1.49, 0.092, 0.08, -0.004]],
   heavy: [[0.1, 0.46, 0.4, 0], [0.5, 0.39, 0.34, 0], [0.92, 0.31, 0.26, -0.01], [1.15, 0.285, 0.22, -0.005], [1.3, 0.29, 0.2, 0], [1.4, 0.29, 0.16, -0.004], [1.45, 0.2, 0.12, -0.004], [1.49, 0.1, 0.09, -0.004]],
 };
@@ -552,25 +563,24 @@ function sleeves(b, o, lod, B, N) {
 
 /** Капюшон (ткань): над и вокруг головы, спереди открыт; хвост назад. */
 function clothHood(b, o, lod, B) {
-  const hs = B.head, N = [18, 10, 6][lod];
-  const ys = lod === 0 ? [-0.2, -0.16, -0.11, -0.06, -0.01, 0.04, 0.09, 0.13, 0.16, 0.185, 0.2] : [-0.2, -0.1, 0.0, 0.09, 0.16, 0.2];
-  const th = (y) => (y < -0.14 ? 0 : y < -0.05 ? 1.2 * sstep(-0.14, -0.05, y) + 0.2 : y < 0.12 ? 1.18 - (y + 0.05) * 1.5 : 0.8 - (y - 0.12) * 7);
+  const hs = B.head, N = [22, 12, 7][lod];
+  const ys = lod === 0 ? [-0.2, -0.16, -0.11, -0.06, -0.01, 0.04, 0.09, 0.13, 0.165, 0.195, 0.21, 0.216] : [-0.2, -0.1, 0.0, 0.09, 0.165, 0.205, 0.216];
+  const th = (y) => (y < -0.14 ? 0 : y < -0.05 ? 1.2 * sstep(-0.14, -0.05, y) + 0.2 : y < 0.12 ? 1.18 - (y + 0.05) * 1.5 : Math.max(0, 0.9 - (y - 0.12) * 8));
   const rings = ys.map((y) => {
     const t = Math.max(0, th(y)), yy = clamp(y, -0.12, 0.141), [rx, rz, cz] = headRow(yy);
-    const sz = y > 0.141 ? Math.max(0.2, 1 - (y - 0.141) * 12) : 1;
-    const off = 0.03 + (y < -0.03 ? 0.06 * sstep(-0.03, -0.18, y) : 0) + (y > 0.08 ? 0.01 : 0);
-    const R = ringY(HEAD_Y + y * hs, 0, cz * hs - 0.015 - (y > 0.0 ? 0.015 : 0), (rx + off) * hs * sz, (rz + off + 0.015) * hs * sz, N, (a) => 1 + 0.03 * Math.sin(a * 6 + y * 20), t, Math.PI * 2 - t, true);
-    return R;
+    const u = y > 0.141 ? (y - 0.141) / 0.077 : 0;
+    const sz = y > 0.141 ? Math.sqrt(Math.max(0, 1 - u * u)) * 0.96 + 0.04 : 1;
+    const off = 0.03 + (y < -0.03 ? 0.06 * sstep(-0.03, -0.18, y) : 0) + (y > 0.08 ? 0.012 : 0);
+    return ringY(HEAD_Y + y * hs, 0, cz * hs - 0.015 - Math.max(0, y) * 0.25, (rx + off) * hs * sz, (rz + off + 0.02) * hs * sz, N, (a) => 1 + 0.03 * Math.sin(a * 6 + y * 20), t, Math.PI * 2 - t, true);
   });
   b.loft(rings, (j, i, p) => {
     const y = p[1] - HEAD_Y, back = clamp(Math.abs(i / N - 0.5) * 2, 0, 1);
-    return { reg: REG.CLOTH, aux: [0.18 * (y < -0.1 ? 1 : 0.4) * back, 0, p[1] * 2, i], sk: y < -0.15 ? skY(p[1], [[1.5, BI.head], [1.43, BI.chest]]) : HSK };
+    return { reg: REG.CLOTH, aux: [0.18 * (y < -0.1 ? 1 : 0.4) * back + (y > 0.1 ? 0.12 * back : 0), 0, p[1] * 2, i], sk: y < -0.15 ? skY(p[1], [[1.5, BI.head], [1.43, BI.chest]]) : HSK };
   }, { closed: false, capEnd: true });
   // обод капюшона (скатанная кромка)
   if (lod < 2) {
-    const e0 = rings.map((r) => r[0]), e1 = rings.map((r) => r[r.length - 1]);
-    const pts = [...e0.slice(3), ...e1.slice(3).reverse()];
-    tube(b, pts.filter((_, i) => i % 1 === 0), 0.012, o.hoodTrim ? REG.ACCENT : REG.CLOTH, (y) => (y > 1.5 ? HSK : [BI.chest, 1]), { seg: 6, aux: [0, 0, 0.4, 0] });
+    const k0 = 3, e0 = rings.slice(k0).map((r) => r[0]), e1 = rings.slice(k0).map((r) => r[r.length - 1]);
+    tube(b, [...e0, ...e1.reverse()], 0.012, o.hoodTrim ? REG.ACCENT : REG.CLOTH, (y) => (y > 1.5 ? HSK : [BI.chest, 1]), { seg: 6, aux: [0, 0, 0.4, 0] });
   }
 }
 

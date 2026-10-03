@@ -21,8 +21,8 @@ export function createAnimator(parts, cfg = {}) {
   const sc = () => root.scale.y || 1;
   const feet = [limbs.L, limbs.R];
   const S = {
-    t: R() * 50, ph: R(), wMove: 0, wRun: 0, wDesert: 0, wSlide: 0, wTalk: 0, spPrev: 0, accel: 0, yawPrev: null, yawRate: 0, Hp: HIP_Y - 0.01,
-    sway: 0, lean: 0, headYaw: 0, headPitch: 0, lookYaw: 0, lookW: 0, glanceT: 1 + R() * 3, glanceTarget: 0, glance: 0, floorPrev: [0, 0],
+    t: R() * 50, ph: 0, phU: 1000, wMove: 0, wRun: 0, wDesert: 0, wSlide: 0, wTalk: 0, spPrev: 0, accel: 0, yawPrev: null, yawRate: 0, Hp: HIP_Y - 0.01,
+    sway: 0, lean: 0, headYaw: 0, headPitch: 0, lookYaw: 0, lookW: 0, glanceT: 1 + R() * 3, glanceTarget: 0, glance: 0, floorPrev: [null, null],
     breath: R() * 6, shiftT: R() * 6, shiftTarget: 0, shift: 0, talk: false, hitch: 0, env: 1, speedL: 0, moving: false, bodyZ: 0,
     pelvisYaw: 0, fidgetT: 3 + R() * 5, fidget: 0, nerv: 0, nervT: 0.5,
   };
@@ -53,7 +53,7 @@ export function createAnimator(parts, cfg = {}) {
     const f = D.feet[bt.foot];
     f.swing = false; f.u = 1;
     D.settle[bt.foot] = 0.25;
-    hooks.onStep?.({ foot: bt.foot ? 'R' : 'L', side: bt.foot, intensity: bt.dragged ? 0.3 : bt.type === 'long' ? 0.45 : 0.3, mode: 'desert', speed: vL * sc() });
+    hooks.onStep?.({ ago: Math.max(0, bt.t - bt.dur), foot: bt.foot ? 'R' : 'L', side: bt.foot, intensity: bt.dragged ? 0.3 : bt.type === 'long' ? 0.45 : 0.3, mode: 'desert', speed: vL * sc() });
     const r = R();
     if (r < 0.22) D.pause = 0.4 + R() * 0.7;
   }
@@ -243,11 +243,11 @@ export function createAnimator(parts, cfg = {}) {
     // фаза обычной походки (по пройденному пути: стопы не скользят)
     const stepLen = (0.3 + 0.17 * ve) * style.stride * (1 + S.wRun * 0.12);
     if (S.hitch > 0) S.hitch -= dt;
-    if (ve > 0.1 && S.hitch <= 0) S.ph = frac(S.ph + (ve * dt * style.tempo) / (2 * stepLen));
+    if (ve > 0.1 && S.hitch <= 0) { S.phU += (ve * dt * style.tempo) / (2 * stepLen); S.ph = frac(S.phU); }
     for (let i = 0; i < 2; i++) {
-      const fl = Math.floor(S.ph + i * 0.5 + 1000);
+      const fl = Math.floor(S.phU + i * 0.5);
       if (fl !== S.floorPrev[i]) {
-        if (S.floorPrev[i] && S.wMove > 0.6 && S.wDesert < 0.5) hooks.onStep?.({ foot: i ? 'R' : 'L', side: i, intensity: clamp(0.35 + ve * 0.12, 0, 1), mode: S.wRun > 0.5 ? 'run' : 'walk', speed });
+        if (S.floorPrev[i] !== null && S.wMove > 0.6 && S.wDesert < 0.5) hooks.onStep?.({ ago: frac(S.ph + i * 0.5) * 2 * stepLen / Math.max(0.3, ve * style.tempo), foot: i ? 'R' : 'L', side: i, intensity: clamp(0.35 + ve * 0.12, 0, 1), mode: S.wRun > 0.5 ? 'run' : 'walk', speed });
         S.floorPrev[i] = fl;
       }
     }
