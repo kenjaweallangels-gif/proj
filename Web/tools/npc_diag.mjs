@@ -82,7 +82,7 @@ const res = await page.evaluate((SEC) => {
         const vmax = Math.max(4, (n.speed || 1.2) * 3.5);
         if (dd > Math.max(0.9, vmax * dtS * 1.3) && n.mode !== 'wait') { M.npc.teleports++; M.npc.teleNpcs.add(n.id); ex('npcTele', [n.id, n.kind, r1(t), r1(dd), n.mode]); }
         // смены направления
-        if (dd > 0.004 && s.dirs.length) { const [px, pz] = s.dirs[s.dirs.length - 1]; if (px * dxm + pz * dzm < -0.2 * Math.hypot(px, pz) * dd) { s.flips.push(t); if (flipsIn(s.flips, t) >= 4) { M.npc.jitter++; M.npc.jitterNpcs.add(n.id); s.flips.length = 0; } } }
+        if (dd > 0.004 && s.dirs.length) { const [px, pz] = s.dirs[s.dirs.length - 1]; if (px * dxm + pz * dzm < -0.2 * Math.hypot(px, pz) * dd) { s.flips.push(t); if (flipsIn(s.flips, t) >= 4) { M.npc.jitter++; M.npc.jitterNpcs.add(n.id); ex('jitter', [n.id, n.kind, n.mode, r1(t), n.speedNow && +n.speedNow.toFixed(2), n.lod]); s.flips.length = 0; } } }
         if (dd > 0.004) { s.dirs.push([dxm, dzm]); if (s.dirs.length > 3) s.dirs.shift(); }
         s.lx = n.x; s.lz = n.z; s.lt = t;
       }
