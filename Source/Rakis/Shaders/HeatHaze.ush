@@ -1,0 +1,86 @@
+// =====================================================================================
+// HeatHaze.ush — марево над раскалённым песком (пост-процесс M_PP_HeatHaze).
+//
+// Использование в Custom-ноде (Output Type = CMOT Float 2):
+//   Include File Paths:  /Project/Rakis/HeatHaze.ush
+//   Code:                return RakisHeatHazeUV(UV, Depth, CamRelPos, Time, Intensity,
+//                                                WormThreat, WindDir, Interior, Params0, Params1);
+// Входы:
+//   UV         — ViewportUV (TexCoord[0] в PP-домене)
+//   Depth      — SceneDepth, см
+//   CamRelPos  — WorldPosition (Camera Relative), см: позиция пикселя относительно камеры
+//   Time       — секунды (нода Time)
+//   Intensity  — MPC.HeatHaze * параметр инстанса (0..1+)
+//   WormThreat — MPC.WormThreat01: добавляет низкочастотную «дрожь» у земли (вибрация песка)
+//   WindDir    — MPC.WindDirection.xy (куда дует) — снос ряби марева по экрану
+//   Interior   — MPC.Interior01: в сиетче марево выключается
+//   Params0    — (StartDistanceCm, FullDistanceCm, HeightFalloffCm, CameraHeightCm)
+//   Params1    — (MaxOffsetUV, NoiseScale, RiseSpeed, SkyHorizonBand)
+//
+// Физика (упрощённо): мираж/марево возникает, когда луч долго идёт вдоль горячего
+// приземного слоя. Поэтому маска = (дистанция) × (близость точки к уровню земли)
+// + узкая полоса горизонта на небе. Ближе StartDistance эффекта нет — иначе
+// «плывёт» оружие/руки и собственные ноги.
+// Стоимость: ~70 ALU + 1 доп. выборка PostProcessInput0 (делается снаружи по возвращённым UV).
+// =====================================================================================
+#pragma once
+#include "/Project/Rakis/RakisNoise.ush"
+
+float RakisHeatHazeMask(float Depth, float3 CamRelPos, float4 Params0, float SkyHorizonBand)
+{
+	const float StartDist   = Params0.x;
+	const float FullDist    = Params0.y;
+	const float HeightFall  = max(Params0.z, 1.0);
+	const float CamHeight   = Params0.w;
+
+	const float3 Dir = CamRelPos / max(length(CamRelPos), 1.0);
+	const bool bSky = Depth > 2.0e6; // > 20 км — считаем небом/фоном
+
+	// Высота пикселя над «уровнем земли под камерой» (камера ~CamHeight над песком).
+	const float HeightAboveGround = CamRelPos.z + CamHeight;
+	const float HeightMask = exp(-max(HeightAboveGround, 0.0) / HeightFall);
+	const float DistMask = RakisLinearStep(StartDist, FullDist, Depth);
+
+	// На небе — только тонкая полоса у горизонта (там, где луч скользит над дюнами).
+	const float HorizonMask = 1.0 - saturate(abs(Dir.z) / max(SkyHorizonBand, 1e-3));
+
+	return bSky ? HorizonMask * 0.6 : DistMask * HeightMask;
+}
+
+float2 RakisHeatHazeUV(float2 UV, float Depth, float3 CamRelPos, float Time, float Intensity,
+                       float WormThreat, float2 WindDir, float Interior, float4 Params0, float4 Params1)
+{
+	const float MaxOffset  = Params1.x; // в долях экрана, типично 0.0015..0.004
+	const float NoiseScale = Params1.y; // частота ряби на экране, типично 90..160
+	const float RiseSpeed  = Params1.z; // скорость подъёма струй, типично 0.08..0.2
+	const float HorizonBand = Params1.w;
+
+	const float Strength = saturate(Intensity) * (1.0 - saturate(Interior));
+	const float Mask = RakisHeatHazeMask(Depth, CamRelPos, Params0, HorizonBand);
+	const float ThreatTerm = saturate(WormThreat);
+	if (Strength * Mask + ThreatTerm <= 1e-3)
+	{
+		return UV;
+	}
+
+	// Анизотропная рябь: вертикально вытянутые струи, поднимающиеся вверх, со сносом ветром.
+	// Чем дальше точка — тем мельче рябь (больше ячеек на экран).
+	const float DepthScale = lerp(0.7, 1.6, RakisLinearStep(2000.0, 60000.0, Depth));
+	float2 P = UV * float2(NoiseScale, NoiseScale * 0.45) * DepthScale;
+	const float2 Wind = normalize(WindDir + float2(1e-4, 0.0));
+	const float2 Scroll = float2(-Wind.y * 0.15, RiseSpeed) * Time; // экранный X ~ поперёк ветра
+
+	// Две октавы с разной скоростью: «кипение» + крупные волны.
+	const float n1 = RakisValueNoise2(P + Scroll * NoiseScale * 0.25) * 2.0 - 1.0;
+	const float n2 = RakisValueNoise2(P * 2.3 + float2(5.2, 1.3) + Scroll * NoiseScale * 0.6) * 2.0 - 1.0;
+	const float n3 = RakisValueNoise2(P.yx * 1.7 + float2(9.1, 4.7) - Scroll * NoiseScale * 0.4) * 2.0 - 1.0;
+	float2 Offset = float2(n1 * 0.35 + n3 * 0.25, n2 * 0.75 + n1 * 0.25);
+
+	// Червь рядом: медленная низкочастотная «дрожь» нижней трети экрана (песок вибрирует).
+	const float LowerScreen = RakisLinearStep(0.45, 1.0, UV.y);
+	const float Quake = (RakisValueNoise2(float2(Time * 6.0, UV.x * 4.0)) * 2.0 - 1.0);
+	const float2 ThreatOffset = float2(0.0, Quake) * ThreatTerm * LowerScreen * 0.6;
+
+	const float2 Total = (Offset * Strength * Mask + ThreatOffset) * MaxOffset;
+	return clamp(UV + Total, 0.001, 0.999);
+}

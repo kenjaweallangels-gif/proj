@@ -1,0 +1,8 @@
+---
+description: Базовые правила проекта Rakis
+alwaysApply: true
+---
+- Следуй `AGENTS.md`. Источник правды: `docs/00_GDD.md`, `docs/01_scenario.md`, `docs/04_standards.md`.
+- Перед задачей определи роль по `docs/02_agent_roster.md` и работай только в её зоне файлов.
+- Каждая задача завершается handoff в `orchestrator/handoffs/<TASK_ID>.md`.
+- Не цитируй книги «Дюны» дословно.

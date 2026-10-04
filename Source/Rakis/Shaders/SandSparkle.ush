@@ -1,0 +1,72 @@
+// =====================================================================================
+// SandSparkle.ush — искры кварцевых/слюдяных зёрен на песке (M_Landscape_Sand).
+//
+// Идея: мир разбит на ячейки размером CellSize (≈ одно «блестящее» зерно на ячейку).
+// Каждая ячейка получает случайную микро-нормаль. Если отражённый от неё вектор солнца
+// попадает в камеру — ячейка «вспыхивает». Возвращаем МАСКУ 0..1, а не цвет:
+// снаружи маска опускает Roughness и поднимает Specular → блик рисует сам Lumen/прямой
+// свет, значит в тени искр нет (честно), а цвет блика = цвет солнца.
+//
+// Custom-нода (Output Type = Float 1):
+//   Include: /Project/Rakis/SandSparkle.ush
+//   Code:    return RakisSandSparkle(WorldPos, CameraVector, SunDir, Normal, Depth, Params);
+// Входы:
+//   WorldPos     — Absolute World Position, см
+//   CameraVector — нода CameraVector (от пикселя к камере, нормализован)
+//   SunDir       — MPC.SunDirection (НА солнце)
+//   Normal       — VertexNormalWS
+//   Depth        — PixelDepth, см
+//   Params       — (CellSizeCm, Density 0..1, Sharpness 50..400, FadeDistanceCm)
+//
+// Антиалиасинг: искры гаснут с дистанцией (FadeDistance) и при слишком мелкой ячейке
+// относительно пикселя (fwidth) — иначе TSR даёт мерцающий «снег».
+// Стоимость: ~45 ALU.
+// =====================================================================================
+#pragma once
+#include "/Project/Rakis/RakisNoise.ush"
+
+float RakisSandSparkle(float3 WorldPos, float3 CameraVector, float3 SunDir, float3 Normal, float Depth, float4 Params)
+{
+	const float CellSize  = max(Params.x, 0.05);
+	const float Density   = saturate(Params.y);
+	const float Sharpness = max(Params.z, 1.0);
+	const float FadeDist  = max(Params.w, 1.0);
+
+	const float DistFade = 1.0 - RakisLinearStep(FadeDist * 0.4, FadeDist, Depth);
+	if (DistFade <= 0.0 || Density <= 0.0)
+	{
+		return 0.0;
+	}
+
+	const float3 P = WorldPos / CellSize;
+	const float3 Cell = floor(P);
+	const float3 R = RakisHash33(Cell);
+
+	// Только часть ячеек содержит «зеркальное» зерно.
+	const float Present = step(R.x, Density);
+
+	// Случайная микро-нормаль вокруг макро-нормали (до ~60°).
+	float3 Jitter = RakisHash33(Cell + 17.0) * 2.0 - 1.0;
+	const float3 MicroN = normalize(Normal + Jitter * 1.1);
+
+	// Половинный вектор Блинна: зерно вспыхивает, когда его нормаль ≈ H.
+	const float3 H = normalize(SunDir + CameraVector);
+	const float NdotH = saturate(dot(MicroN, H));
+	float Glint = pow(NdotH, Sharpness);
+
+	// Солнце ниже горизонта или поверхность к солнцу спиной — нет искр.
+	Glint *= saturate(dot(Normal, SunDir) * 4.0);
+
+	// Разная «яркость» зёрен.
+	Glint *= lerp(0.4, 1.0, R.y);
+
+	// Подавление субпиксельных ячеек.
+#if PIXELSHADER
+	const float PixelFootprint = length(fwidth(P));
+#else
+	const float PixelFootprint = 0.0;
+#endif
+	const float AA = 1.0 - RakisLinearStep(0.5, 1.5, PixelFootprint);
+
+	return saturate(Glint * Present * DistFade * AA * 4.0);
+}

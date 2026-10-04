@@ -1,0 +1,17 @@
+Binaries/
+Build/
+DerivedDataCache/
+Intermediate/
+Saved/
+.vs/
+*.sln
+*.VC.db
+.venv/
+__pycache__/
+orchestrator/logs/
+Export/
+.env
+.claude/worktrees/
+Tools/tts/models/
+Tools/tts/.cache/
+release/

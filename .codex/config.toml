@@ -1,0 +1,19 @@
+# Шаблон для Codex CLI. Скопируйте в ~/.codex/config.toml (или используйте как проектный,
+# если ваша версия Codex поддерживает .codex/config.toml в доверенном проекте).
+# Имя модели проверьте командой /model в Codex — список меняется.
+
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+model_reasoning_effort = "high"
+
+[profiles.rakis-auto]
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+
+[mcp_servers.blender]
+command = "uvx"
+args = ["blender-mcp"]
+
+[mcp_servers.unreal]
+command = "uv"
+args = ["--directory", "/home/USER/tools/unreal-mcp/Python", "run", "unreal_mcp_server.py"]

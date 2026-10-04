@@ -1,0 +1,14 @@
+# Роль → движок исполнителя и движок ревьюера.
+# Автор и ревьюер всегда на разных движках (кросс-ревью).
+# prompt: файл роли (единый источник для всех движков).
+roles:
+  orchestrator:        {engine: claude, reviewer: none,   prompt: .claude/agents/orchestrator.md}
+  game-designer:       {engine: claude, reviewer: kimi,   prompt: .claude/agents/game-designer.md}
+  level-designer:      {engine: claude, reviewer: codex,  prompt: .claude/agents/level-designer.md}
+  environment-artist:  {engine: codex,  reviewer: claude, prompt: .claude/agents/environment-artist.md}
+  character-artist:    {engine: kimi,   reviewer: claude, prompt: .claude/agents/character-artist.md}
+  tech-artist:         {engine: codex,  reviewer: claude, prompt: .claude/agents/tech-artist.md}
+  animator:            {engine: kimi,   reviewer: codex,  prompt: .claude/agents/animator.md}
+  gameplay-programmer: {engine: codex,  reviewer: claude, prompt: .claude/agents/gameplay-programmer.md}
+  audio-designer:      {engine: kimi,   reviewer: claude, prompt: .claude/agents/audio-designer.md}
+  qa-reviewer:         {engine: claude, reviewer: none,   prompt: .claude/agents/qa-reviewer.md}

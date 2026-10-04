@@ -1,0 +1,8 @@
+---
+description: Скрипты Blender
+globs: Tools/blender/**/*.py
+alwaysApply: false
+---
+- Запуск: `blender -b -P script.py -- --out <path>`; аргументы после `--` через argparse.
+- Единицы: метры, масштаб 1.0; экспорт FBX с `apply_scale_options='FBX_SCALE_UNITS'`, ось Z вверх, X вперёд.
+- Не сохраняй .blend поверх исходников; результат — в `Export/`.

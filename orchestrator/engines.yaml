@@ -1,0 +1,18 @@
+# Как запускать каждый движок в неинтерактивном режиме.
+# {prompt} заменяется на текст задачи. Флаги могут меняться между версиями CLI —
+# сверяйтесь с `claude --help`, `codex exec --help`, `kimi --help`.
+engines:
+  claude:
+    cmd: ["claude", "-p", "{prompt}", "--permission-mode", "acceptEdits", "--output-format", "text"]
+    timeout_min: 45
+  codex:
+    cmd: ["codex", "exec", "--full-auto", "{prompt}"]
+    timeout_min: 45
+  kimi:
+    # Проверьте флаг неинтерактивного режима в вашей версии: `kimi --help`.
+    cmd: ["kimi", "-p", "{prompt}"]
+    timeout_min: 45
+  cursor:
+    # Необязательный четвёртый движок (Cursor CLI).
+    cmd: ["cursor-agent", "-p", "{prompt}"]
+    timeout_min: 45

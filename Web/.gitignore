@@ -1,0 +1,10 @@
+node_modules/
+dist/shots/
+assets_src/_tmp/
+assets_src/raw/
+dist/base.html
+dist/real*.html
+dist/before*.html
+dist/garden*.html
+dist/level.html
+dist/harvester*.html

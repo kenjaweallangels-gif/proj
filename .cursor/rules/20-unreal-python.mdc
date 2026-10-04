@@ -1,0 +1,9 @@
+---
+description: Python-скрипты редактора Unreal
+globs: Tools/unreal_python/**/*.py
+alwaysApply: false
+---
+- Используй `import unreal`, EditorActorSubsystem, EditorAssetLibrary.
+- Скрипты идемпотентны: помечай акторов тегами `blockout:<zone>` / `gen:<script>` и удаляй старые перед пересозданием.
+- Все размеры в сантиметрах. Параметры — в начале файла константами.
+- Оборачивай изменения в `unreal.ScopedEditorTransaction`.

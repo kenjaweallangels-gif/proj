@@ -1,0 +1,9 @@
+---
+description: C++ для Unreal Engine 5 (роль gameplay-programmer)
+globs: Source/**/*.cpp,Source/**/*.h,Source/**/*.cs
+alwaysApply: false
+---
+- UE 5.x, C++20, префиксы U/A/F/E/I, UPROPERTY/UFUNCTION с категориями `Rakis|<System>`.
+- Параметры в DataAsset/DataTable, не в коде. Избегай Tick.
+- Для ИИ используй StateTree и Smart Objects; фоновую толпу — Mass Entity.
+- Тесты — Automation Framework (`IMPLEMENT_SIMPLE_AUTOMATION_TEST`).

@@ -1,0 +1,88 @@
+// =====================================================================================
+// RakisNoise.ush — дешёвые ALU-шумы для материалов Rakis (без текстур).
+// Подключается из других .ush проекта:  #include "/Project/Rakis/RakisNoise.ush"
+// Виртуальный путь /Project/Rakis регистрируется в FRakisModule::StartupModule
+// (модуль грузится на PostConfigInit — см. Rakis.uproject).
+//
+// Все функции префиксованы Rakis*, чтобы не конфликтовать с движковыми.
+// Стоимость: RakisValueNoise2 ≈ 20 ALU, RakisFbm2(4 окт.) ≈ 90 ALU.
+// =====================================================================================
+#pragma once
+
+// Хэш без синусов (Dave Hoskins, "Hash without Sine") — стабилен на всех GPU.
+float RakisHash12(float2 p)
+{
+	float3 p3 = frac(float3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return frac((p3.x + p3.y) * p3.z);
+}
+
+float2 RakisHash22(float2 p)
+{
+	float3 p3 = frac(float3(p.xyx) * float3(0.1031, 0.1030, 0.0973));
+	p3 += dot(p3, p3.yzx + 33.33);
+	return frac((p3.xx + p3.yz) * p3.zy);
+}
+
+float3 RakisHash33(float3 p3)
+{
+	p3 = frac(p3 * float3(0.1031, 0.1030, 0.0973));
+	p3 += dot(p3, p3.yxz + 33.33);
+	return frac((p3.xxy + p3.yxx) * p3.zyx);
+}
+
+// Value-noise 2D, результат 0..1, C1-гладкий (quintic).
+float RakisValueNoise2(float2 p)
+{
+	float2 i = floor(p);
+	float2 f = frac(p);
+	float2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+	float a = RakisHash12(i);
+	float b = RakisHash12(i + float2(1, 0));
+	float c = RakisHash12(i + float2(0, 1));
+	float d = RakisHash12(i + float2(1, 1));
+	return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
+}
+
+// Fractal Brownian Motion, результат примерно -1..1. Octaves — константа в коде вызова (1..6).
+float RakisFbm2(float2 p, int Octaves)
+{
+	float Sum = 0.0;
+	float Amp = 0.5;
+	float Norm = 0.0;
+	// Поворот между октавами убирает сеточные артефакты.
+	const float2x2 Rot = float2x2(0.80, 0.60, -0.60, 0.80);
+	for (int o = 0; o < Octaves; ++o)
+	{
+		Sum += Amp * (RakisValueNoise2(p) * 2.0 - 1.0);
+		Norm += Amp;
+		p = mul(Rot, p) * 2.03 + 17.17;
+		Amp *= 0.5;
+	}
+	return Sum / max(Norm, 1e-4);
+}
+
+// Клеточный шум (Worley/Voronoi) 2D: x = расстояние до ближайшей точки, y = до второй, z = id ячейки 0..1.
+float3 RakisVoronoi2(float2 p)
+{
+	float2 i = floor(p);
+	float2 f = frac(p);
+	float F1 = 8.0, F2 = 8.0, Id = 0.0;
+	[unroll] for (int y = -1; y <= 1; ++y)
+	[unroll] for (int x = -1; x <= 1; ++x)
+	{
+		float2 g = float2(x, y);
+		float2 o = RakisHash22(i + g);
+		float2 r = g + o - f;
+		float d = dot(r, r);
+		if (d < F1) { F2 = F1; F1 = d; Id = RakisHash12(i + g + 3.1); }
+		else if (d < F2) { F2 = d; }
+	}
+	return float3(sqrt(F1), sqrt(F2), Id);
+}
+
+// smoothstep-эквивалент без зависимостей от движковых макросов.
+float RakisLinearStep(float a, float b, float x)
+{
+	return saturate((x - a) / max(b - a, 1e-5));
+}

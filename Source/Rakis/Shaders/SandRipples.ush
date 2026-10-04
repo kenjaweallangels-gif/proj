@@ -1,0 +1,80 @@
+// =====================================================================================
+// SandRipples.ush — эоловая рябь (ветровые знаки) на песке M_Landscape_Sand.
+//
+// Реальная рябь: длина волны 5–15 см, высота ~0.5–1 см, гребни ПЕРПЕНДИКУЛЯРНЫ ветру,
+// профиль асимметричен (пологий наветренный склон, крутой подветренный), гребни
+// ветвятся и обрываются (Y-образные «дефекты»), рябь медленно мигрирует по ветру.
+//
+// Custom-нода (Output Type = Float 4):
+//   Include: /Project/Rakis/SandRipples.ush
+//   Code:    return RakisSandRipples(WorldPos, WindDir, Time, WindSpeed, Params);
+// Входы:
+//   WorldPos  — Absolute World Position, см
+//   WindDir   — MPC.WindDirection (куда дует), используется xy
+//   Time      — секунды
+//   WindSpeed — MPC.WindSpeed, м/с
+//   Params    — (WavelengthCm, Breakup 0..1, MigrationScale, Asymmetry 0..0.9)
+// Выход: xyz — нормаль в касательном пространстве ландшафта (≈ мировое, Z вверх),
+//        w   — высота 0..1 (для displacement Nanite-тесселяции и смешивания).
+// Стоимость: ~60 ALU.
+// =====================================================================================
+#pragma once
+#include "/Project/Rakis/RakisNoise.ush"
+
+// Асимметричный профиль гребня на фазе f∈[0,1): подъём на [0,A), спад на [A,1).
+float RakisRippleProfile(float f, float A)
+{
+	// A — доля периода, приходящаяся на пологий наветренный склон.
+	const float Up = smoothstep(0.0, A, f);
+	const float Down = 1.0 - smoothstep(A, 1.0, f);
+	return min(Up, Down);
+}
+
+float4 RakisSandRipples(float3 WorldPos, float3 WindDir, float Time, float WindSpeed, float4 Params)
+{
+	const float Wavelength = max(Params.x, 1.0);
+	const float Breakup    = saturate(Params.y);
+	const float Migration  = Params.z;
+	const float Asym       = clamp(Params.w, 0.5, 0.95);
+
+	float2 W = WindDir.xy;
+	W = normalize(W + float2(1e-4, 0.0)); // скаляр-безопасно, без векторного тернарного оператора
+	const float2 Across = float2(-W.y, W.x);
+
+	const float2 P = WorldPos.xy;
+	const float s = dot(P, W) / Wavelength;      // вдоль ветра (поперёк гребней)
+	const float t = dot(P, Across) / Wavelength; // вдоль гребня
+
+	// Изгиб гребней + ветвление: крупный и мелкий шум сдвигают фазу.
+	const float Warp = RakisFbm2(float2(s * 0.08, t * 0.05), 3) * 2.2
+	                 + RakisValueNoise2(float2(s * 0.35, t * 0.22)) * 0.6;
+	// Миграция: ~1 длина волны за ~10 минут при 6 м/с (визуально «живой», но не текущий).
+	const float Drift = Time * WindSpeed * 0.0003 * Migration;
+
+	const float Phase = s + Warp * Breakup - Drift;
+	const float f = frac(Phase);
+	const float h = RakisRippleProfile(f, Asym);
+
+	// Обрывы гребней: амплитуда модулируется вдоль гребня.
+	const float Continuity = lerp(1.0, smoothstep(0.25, 0.65, RakisValueNoise2(float2(s * 0.5, t * 0.12) + 3.7)), Breakup);
+
+	// Аналитическая производная профиля по фазе (через конечную разность — дёшево и стабильно).
+	const float e = 0.02;
+	const float dh = (RakisRippleProfile(frac(Phase + e), Asym) - RakisRippleProfile(frac(Phase - e), Asym)) / (2.0 * e);
+	// Наклон в мировых единицах: высота гребня ~0.7 см на длину волны; ×2π — художественное усиление
+	// (без него рябь не читается при скользящем солнце), итоговую силу задаёт RippleStrength снаружи.
+	const float Slope = dh * (0.7 / Wavelength) * 6.2831 * Continuity;
+
+	// Антиалиасинг: когда период меньше ~3 пикселей — гасим нормаль.
+	// fwidth есть только в пиксельном шейдере; displacement Nanite-тесселяции считается в compute.
+#if PIXELSHADER
+	const float Footprint = fwidth(s);
+#else
+	const float Footprint = 0.0;
+#endif
+	const float AA = 1.0 - RakisLinearStep(0.15, 0.45, Footprint);
+
+	const float2 Grad = W * Slope * AA;
+	const float3 N = normalize(float3(-Grad, 1.0));
+	return float4(N, h * Continuity * AA);
+}
