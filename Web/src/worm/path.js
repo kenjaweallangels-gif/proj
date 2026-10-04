@@ -1,17 +1,19 @@
 // Маршрут укрощённого червя по поверхности (в плане XZ) относительно группы игрока G.
-// Локальная рамка: f — направление движения червя на подходе, r — «право» (r = (-f.z, f.x) при осях X — восток, Z — юг).
-//   1) подход по прямой на расстоянии R0 слева от G (проход мимо группы ~60–80 м),
-//   2) «великая дуга» — спираль по часовой стрелке вокруг G с радиусом R0 → R1: червь тормозит и ложится дугой вокруг группы,
-//   3) отход: спираль раскручивается наружу (R1 → R2) и уходит прямо в пустыню.
+// Червь длинный (LENGTH ~1,6 км), тело лежит на пройденном пути («поезд»), поэтому путь — длинная ПРЯМАЯ и один плавный поворот к группе:
+// закручивать спираль вокруг группы нельзя (тело перекрыло бы себя и замкнуло игрока в кольцо).
+// Локальная рамка: f — направление движения червя на подходе, r — «право» (r = (-f.z, f.x) при осях X — восток, Z — юг); (la, lr) — вдоль f / вдоль r.
+//   1) подход по прямой на расстоянии R0 слева от G (линия тела проходит мимо группы ~R0),
+//   2) плавная дуга радиуса turnR вправо — к группе, на угол psi; голова останавливается в dEnd от G (60–150 м), смотря поперёк группы,
+//   3) хвост пути: прямая за точкой остановки (нужна только как запас для кинематики головы).
+// Тело за головой — дуга и прямой участок слева от группы: игрок видит его вдоль взгляда; ближайшая к группе точка тела ≥ ~85 м.
 // Путь пересэмплирован с шагом 1 м, чтобы голова ехала по длине дуги u (м) независимо от формы.
-const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-
 export const PATH_DEFAULTS = {
-  approach: 420,            // м прямого подхода до начала дуги
-  R0: 76, R1: 52, R2: 175,  // радиусы: проход, финал дуги, отход
-  phi1: 4.1,                // рад: поворот до остановки (≈235°)
-  phi2: 5.35,               // рад: конец разворота при отходе
-  tail: 1200,               // м прямого отхода
+  approach: 850,            // м прямого подхода до начала поворота
+  R0: 140,                  // боковой отступ линии подхода от группы, м
+  turnR: 210,               // радиус дуги подхода, м (тело Ø 40 м гнётся мягко)
+  psi: 1.22,                // рад: угол поворота к группе (~70°)
+  dEnd: 100,                // м: расстояние голова ↔ группа в конце
+  tail: 200,                // м прямого хвоста пути после остановки
 };
 
 /**
@@ -68,23 +70,19 @@ export class EncounterPath {
     const rx = -fz, rz = fx;
     this.f = { x: fx, z: fz }; this.r = { x: rx, z: rz };
     const raw = [];
-    const pushRaw = (x, z) => raw.push(x, z);
+    const pushLoc = (la, lr) => raw.push(G.x + fx * la + rx * lr, G.z + fz * la + rz * lr);
+    // положение конца дуги: lr_e = -R0 + turnR (1 - cos psi); la_e подбирается так, чтобы |конец| = dEnd
+    const lrE = -o.R0 + o.turnR * (1 - Math.cos(o.psi));
+    const laE = Math.sqrt(Math.max(0, o.dEnd * o.dEnd - lrE * lrE));
+    const a0 = laE - o.turnR * Math.sin(o.psi);
+    this.a0 = a0;
     // 1) подход
-    for (let l = -o.approach; l < 0; l += 2) pushRaw(G.x + fx * l - rx * o.R0, G.z + fz * l - rz * o.R0);
-    // 2) спираль внутрь, 3) наружу
-    const Rof = (phi) => (phi <= o.phi1 ? o.R0 + (o.R1 - o.R0) * sstep(0, o.phi1, phi) : o.R1 + (o.R2 - o.R1) * sstep(o.phi1, o.phi2, phi));
-    let phi = 0;
-    while (phi < o.phi2) {
-      const R = Rof(phi);
-      const c = Math.cos(phi), s = Math.sin(phi);
-      pushRaw(G.x + R * (-rx * c + fx * s), G.z + R * (-rz * c + fz * s));
-      phi += 0.4 / R;
-    }
-    const Re = Rof(o.phi2), c2 = Math.cos(o.phi2), s2 = Math.sin(o.phi2);
-    const ex = G.x + Re * (-rx * c2 + fx * s2), ez = G.z + Re * (-rz * c2 + fz * s2);
-    let tx = rx * s2 + fx * c2, tz = rz * s2 + fz * c2;
-    const tl = Math.hypot(tx, tz); tx /= tl; tz /= tl;
-    for (let l = 0; l <= o.tail; l += 2) pushRaw(ex + tx * l, ez + tz * l);
+    for (let l = -o.approach; l < 0; l += 2) pushLoc(a0 + l, -o.R0);
+    // 2) дуга вправо
+    for (let ps = 0; ps < o.psi; ps += 2 / o.turnR) pushLoc(a0 + o.turnR * Math.sin(ps), -o.R0 + o.turnR * (1 - Math.cos(ps)));
+    // 3) хвост по конечному курсу
+    const hx = Math.cos(o.psi), hz = Math.sin(o.psi);       // курс в (la, lr)
+    for (let l = 0; l <= o.tail; l += 2) pushLoc(laE + hx * l, lrE + hz * l);
     // пересэмплирование по длине дуги, шаг 1 м
     const n = raw.length / 2;
     const cum = new Float64Array(n);
@@ -105,20 +103,9 @@ export class EncounterPath {
       const a = Math.max(0, i - 2), b = Math.min(m - 1, i + 2);
       this.Y[i] = Math.atan2(this.Z[b] - this.Z[a], this.X[b] - this.X[a]);
     }
-    this.uSpiral = o.approach;                     // начало дуги
-    this.uStop = this._uAtPhi(o.phi1, Rof);        // остановка головы
-    this.uOut = this._uAtPhi(o.phi2, Rof);
-  }
-
-  _uAtPhi(target, Rof) {
-    // длина дуги: approach + ∫ sqrt(R² + R'²) dφ (численно)
-    let u = this.o.approach, phi = 0;
-    const h = 0.002;
-    while (phi < target) {
-      const R = Rof(phi), dR = (Rof(phi + h) - R) / h;
-      u += Math.hypot(R, dR) * h; phi += h;
-    }
-    return u;
+    this.uSpiral = o.approach;                     // начало поворота (имя сохранено для совместимости)
+    this.uStop = o.approach + o.turnR * o.psi;     // остановка головы
+    this.uOut = this.uStop;
   }
 
   /** Точка пути на длине u (м): {x, z, yaw}. */
@@ -142,7 +129,7 @@ export class EncounterPath {
 
   /** Проверка маршрута: границы карты и зона скалы/сиетча (x>500, z∈[-150,700]). */
   valid() {
-    for (let i = 0; i < this.X.length; i += 25) {
+    for (let i = 0; i < this.X.length; i += 10) {
       const x = this.X[i], z = this.Z[i];
       if (x < -900 || x > 1500 || z < -1000 || z > 1400) return false;
       if (x > 470 && z > -170 && z < 720) return false;

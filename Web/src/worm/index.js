@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { clamp, lerp, smoothstep, rng } from '../core/util.js';
 import { WORM_SPAWN, WORM_REVEAL, SUN_AZIMUTH_DEG } from '../core/layout.js';
 import { colliders } from '../core/colliders.js';
-import { Spine, RADIUS, N_PTS } from './spine.js';
+import { Spine, RADIUS, N_PTS, SEG_LEN, LENGTH } from './spine.js';
 import { createUniforms, guardPostHaze } from './shaders.js';
 import { WormBody, QUALITY_ORDER } from './body.js';
 import { Gear } from './gear.js';
@@ -44,6 +44,7 @@ export function create(game) {
 
   const ground = (x, z) => game.world?.heightAt?.(x, z) ?? 0;
   const spine = new Spine();
+  spine.setGround(ground);
   const U = createUniforms(spine.tex);
   const body = new WormBody(game, U, spine, quality);
   const gear = new Gear(spine);
@@ -52,8 +53,10 @@ export function create(game) {
   scene.add(body.group, gear.group, riders.group, fx.group);
   body.group.visible = false;
 
-  // ---- твёрдое тело: цепочка капсул (owner 'worm'), по одной на 2 кольца; обновляется каждый кадр, пока тело над песком ----
-  const COL_N = Math.floor((N_PTS - 1) / 2);
+  // ---- твёрдое тело: цепочка капсул (owner 'worm'), по одной на COL_STEP колец (16 м); обновляется, пока тело над песком ----
+  // Закопанные звенья не трогаем (припаркованы под землёй, solid=false): игрок не упирается в невидимое, а цена не растёт с длиной.
+  const COL_STEP = 4;
+  const COL_N = Math.floor((N_PTS - 1) / COL_STEP);
   const wormCols = [];
   for (let i = 0; i < COL_N; i++) {
     const id = colliders.add({ type: 'capsule', owner: 'worm', a: new THREE.Vector3(0, -500, 0), b: new THREE.Vector3(0, -500, 1), r: RADIUS * 0.96, solid: false, tags: new Set(['worm']) });
@@ -61,18 +64,43 @@ export function create(game) {
   }
   let colsOn = false, colT = 0;
   function syncColliders(exposedNow) {
-    if (!exposedNow) { if (colsOn) { for (const c of wormCols) c.solid = false; colsOn = false; } return; }
-    const P = spine.P, RS = spine.RS;
+    if (!exposedNow) {
+      if (colsOn) { for (const c of wormCols) { c.solid = false; c.a.y = c.b.y = -500; } colsOn = false; }
+      return;
+    }
+    const P = spine.P, RS = spine.RS, GY = spine.GY, EX = spine.EX;
     for (let i = 0; i < COL_N; i++) {
-      const i0 = i * 2, i1 = i0 + 2, c = wormCols[i];
+      const i0 = i * COL_STEP, i1 = i0 + COL_STEP, c = wormCols[i];
+      let any = 0; for (let k = i0; k <= i1; k++) any |= EX[k];
+      if (!any) { if (c.solid) { c.solid = false; c.a.y = c.b.y = -500; } continue; }
       const a0 = P[i0 * 3], b0 = P[i1 * 3];
       if (!(Number.isFinite(a0 + b0 + P[i0 * 3 + 1] + P[i1 * 3 + 1] + P[i0 * 3 + 2] + P[i1 * 3 + 2]))) { c.solid = false; continue; }
       c.a.set(a0, P[i0 * 3 + 1], P[i0 * 3 + 2]); c.b.set(b0, P[i1 * 3 + 1], P[i1 * 3 + 2]);
-      c.r = RADIUS * 0.96 * Math.max(0.03, (RS[i0] + RS[i1]) * 0.5);
+      let rs = 0; for (let k = i0; k <= i1; k++) rs += RS[k]; rs /= (COL_STEP + 1);
+      c.r = RADIUS * 0.96 * Math.max(0.03, rs);
       const top = Math.max(c.a.y, c.b.y) + c.r;
-      c.solid = top > ground((a0 + b0) * 0.5, (c.a.z + c.b.z) * 0.5) + 0.4;
+      c.solid = top > (GY[i0] + GY[i1]) * 0.5 + 0.4;
     }
     colsOn = true;
+  }
+
+  let bodyD = 1e9, bodyT = 0;
+  function updateBodyDist(dt) {
+    bodyT -= dt;
+    if (bodyT > 0) return;
+    bodyT = 0.25;
+    const pl = game.player?.position;
+    if (!pl) { bodyD = 1e9; return; }
+    let best = Math.hypot(pl.x - K.pos.x, pl.z - K.pos.z);
+    if (worm.exposed) {
+      const P = spine.P, EX = spine.EX, RS = spine.RS;
+      for (let i = 0; i < N_PTS; i++) {
+        if (!EX[i]) continue;
+        const d = Math.hypot(P[i * 3] - pl.x, P[i * 3 + 2] - pl.z) - RADIUS * RS[i];
+        if (d < best) best = d;
+      }
+    }
+    bodyD = Math.max(0, best);
   }
 
   // ---- кинематика головы ----
@@ -281,6 +309,9 @@ export function create(game) {
     return new THREE.Vector3(e[12], e[13], e[14]).addScaledVector(new THREE.Vector3(e[4], e[5], e[6]), hh);
   };
 
+  /** Расстояние от игрока до ближайшей точки тела над песком (или до головы), м. Кэш ~4 Гц: тело длинное, дрожь/гул считаются по нему, а не по голове. */
+  worm.bodyDistance = () => bodyD;
+
   /** Сколько метров до игрока. */
   worm.distanceToPlayer = () => { const p = game.player?.position; return p ? Math.hypot(p.x - K.pos.x, p.z - K.pos.z) : Infinity; };
 
@@ -382,7 +413,7 @@ export function create(game) {
           break;
         }
         // укрощённый червь: гул только пока он идёт и близко; лежащий/отдыхающий — тишина
-        worm.threat = director.phase === 'arrive' ? clamp(K.speed / 100, 0, 0.3) * nearF(pl ? Math.hypot(pl.x - K.pos.x, pl.z - K.pos.z) : 1e9, 420, 120) : 0;
+        worm.threat = director.phase === 'arrive' ? clamp(K.speed / 100, 0, 0.3) * nearF(bodyD, 420, 120) : 0;
         break;
       }
       case 'Pass': {
@@ -428,15 +459,8 @@ export function create(game) {
     spine.waveAmp = tame ? (resting ? 0.35 : 0.9) : 0;
     spine.breath = tame ? (resting ? 1 : 0.4) : 0;
     if (active) spine.compute(director.active ? director.timeV : t, tame ? 1 : 0.4);
-    // видимость тела: есть ли над песком что-то
-    let exposed = false;
-    if (active) {
-      const Pp = spine.P;
-      for (let i = 0; i < N_PTS; i += 1) {
-        const gy = ground(Pp[i * 3], Pp[i * 3 + 2]);
-        if (Pp[i * 3 + 1] + RADIUS * 0.85 > gy - 0.5) { exposed = true; break; }
-      }
-    }
+    // видимость тела: есть ли над песком что-то (по кэшу рельефа в spine.compute — без heightAt по сотне точек)
+    const exposed = active && spine.exCount > 0;
     worm.exposed = exposed;
     body.group.visible = exposed && inDesert;
     colT += dt;
@@ -462,8 +486,9 @@ export function create(game) {
       const sf = smoothstep(1, 14, K.speed);
       if (underground) {
         const dpf = smoothstep(62, 20, depth);
-        mound = { on: true, amp: lerp(5, 13, dpf), width: lerp(22, 30, dpf), trail: lerp(55, 85, dpf), intensity: 1, spray: 0.4 + 0.6 * dpf };
-      } else mound = { on: true, amp: 2.5 + 3.5 * sf, width: 30, trail: 40, intensity: sf, spray: 0.5 * sf, ahead: 30 };
+        // гигант: холм над головой шире и выше, шлейф длиннее (меш 170 м)
+        mound = { on: true, amp: lerp(7, 17, dpf), width: lerp(30, 40, dpf), trail: lerp(80, 130, dpf), intensity: 1, spray: 0.5 + 0.7 * dpf };
+      } else mound = { on: true, amp: 5 + 6 * sf, width: 42, trail: 90, intensity: sf, spray: 0.7 * sf, ahead: 45 };
     } else if (!tame && underground && st !== 'Dormant' && st !== 'Listening' && (st !== 'Pass' || K.speed > 2)) {
       const dpf = smoothstep(62, 20, depth);
       const spawnFade = clamp(K.travel / 40, 0, 1);
@@ -502,17 +527,21 @@ export function create(game) {
     if (showGear) { gear.update(dt); riders.update(dt, ground, t); }
   }
 
+  // Дрожь: только вблизи (по расстоянию до ТЕЛА, а не головы) и только пока червь ползёт; сглажена по времени (медленная, без дёрганья).
+  let shakeV = 0;
   function shakeUpdate(dt) {
     const pl = game.player?.position;
     impulse = Math.max(0, impulse - dt / 0.9);
-    if (!pl || devour.active || game.space !== 'desert') return;   // при пожирании тряской ведает сценарий; в скале не трясёт
-    const dist = Math.hypot(pl.x - K.pos.x, pl.z - K.pos.z);
-    const prox = nearF(dist, 340, 110);
-    if (prox <= 0.001) return;                  // дальше ~340 м земля не дрожит вовсе
+    updateBodyDist(dt);
+    if (!pl || devour.active || game.space !== 'desert') { shakeV = 0; return; }   // при пожирании тряской ведает сценарий; в скале не трясёт
+    const dist = Math.min(bodyD, Math.hypot(pl.x - K.pos.x, pl.z - K.pos.z));
+    const prox = nearF(dist, 220, 50);
     const st = worm.state;
-    const amp = st === 'Approach' ? lerp(0.03, 0.14, worm.threat) : st === 'Pass' ? 0.1 * worm.threat : st === 'Ridden' && !worm.resting ? 0.22 * clamp(K.speed / 25, 0, 1) : 0;
-    const f = Math.max(amp * prox * prox, impulse * prox);
-    if (f > 0.01) game.shake = Math.max(game.shake || 0, clamp(f, 0, 1));
+    let amp = 0;
+    if (prox > 0.001) amp = st === 'Approach' ? lerp(0.02, 0.1, worm.threat) : st === 'Pass' ? 0.07 * worm.threat : st === 'Ridden' && !worm.resting ? 0.12 * clamp(K.speed / 25, 0, 1) : 0;
+    const target = Math.max(amp * prox * prox, impulse * prox);
+    shakeV += (target - shakeV) * (1 - Math.exp(-dt / (target > shakeV ? 0.9 : 1.6)));
+    if (shakeV > 0.008) game.shake = Math.max(game.shake || 0, clamp(shakeV, 0, 0.5));
   }
 
   function startRipple() {
