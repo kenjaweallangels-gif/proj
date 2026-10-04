@@ -87,14 +87,17 @@ if (only.includes('tunnel')) {
   if (path.length) {
     const toHall = [[803, 395.8], [796, 395.8]].concat(path.slice().reverse());
     const r1 = await walk('garden -> tunnel -> hall', toHall, { start: [812, 396], maxStuck: 25 });
-    const toGarden = path.concat([[796, 395.8], [803, 395.8], [812, 396]]);
-    await walk('hall -> tunnel -> garden', toGarden, { start: toHall[toHall.length - 1], maxStuck: 25 });
+    // из зала: входим в сиетч штатным способом (debug enter 'exit' — пространство и свет переключает сам сиетч) и идём по туннелю к саду
+    const e0 = await page.evaluate(async () => { const g = window.__rakis; await g.sietch.enter('exit'); const p = g.player.position; return [p.x, p.z]; });
+    let k0 = 0, best = 1e9; path.forEach((q, i) => { const d = Math.hypot(q[0] - e0[0], q[1] - e0[1]); if (d < best) { best = d; k0 = i; } });
+    const toGarden = path.slice(k0).concat([[796, 395.8], [803, 395.8], [812, 396]]);
+    await walk('hall(exit) -> tunnel -> garden', toGarden, { start: e0, yStart: await page.evaluate(() => window.__rakis.player.position.y), maxStuck: 25 });
     console.log('space/zone', JSON.stringify(await page.evaluate(() => ({ space: window.__rakis.space, zone: window.__rakis.zone }))));
   } else console.log('no sietch.exitPath — skip');
 }
 if (only.includes('perf')) {
   const r = await page.evaluate(() => { const p = window.__rakis.garden.perf; return { avgMs: +p.avg.toFixed(3), maxMs: +p.max.toFixed(2), firstMs: +p.first.toFixed(2), frames: p.n }; });
-  console.log('garden update() CPU:', JSON.stringify(r));
+  console.log('garden update() CPU:', JSON.stringify(r), 'render:', JSON.stringify(await page.evaluate(() => window.__rakis.garden.renderStats())));
 }
 if (only.includes('trail')) {
   // проходимость тропы «как в игре»: на каждой точке тропы game.collide не должен смещать позицию ступней (ни препятствия пустыни, ни коллайдеры)

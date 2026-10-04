@@ -198,6 +198,17 @@ export function create(game) {
     /** Высота ландшафта пустыни под садом (с заплаткой −0.3 м): для тестов «пустыня не торчит над полом». */
     terrainAt: prevHeight,
     surfaceKind: (x, z) => field.kind(x, z),
+    /** Что сад отдаёт рендеру сейчас: вызовы отрисовки и треугольники (по видимым мешам корня, без учёта отсечения по пирамиде и теней). */
+    renderStats() {
+      let calls = 0, tris = 0, inst = 0;
+      root.traverseVisible((o) => {
+        if (!(o.isMesh || o.isInstancedMesh) || !o.geometry) return;
+        const n = o.isInstancedMesh ? o.count : 1; if (!n) return;
+        calls++; inst += o.isInstancedMesh ? n : 0;
+        const g = o.geometry; tris += (g.index ? g.index.count : g.attributes.position.count) / 3 * n;
+      });
+      return { calls, tris: Math.round(tris), instances: inst };
+    },
     stats: { tris: mesh.index.length / 3, groundTris: gm.tris, instances: flora.total, buildMs: 0 },
     update(dt, t) {
       const tp = performance.now();

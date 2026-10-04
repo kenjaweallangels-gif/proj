@@ -45,7 +45,7 @@ export function createMouth(game, { root, faceAt, ground, quality }) {
       const ay = Math.max(0, Math.min(1, py / MOUTH.h));
       let nz = -pz, ny = (MOUTH.h * 0.5 - py) * (py > 1.0 ? 0.6 : 0);
       const nl = Math.hypot(nz, ny) || 1; N.push(0, ny / nl, nz / nl);
-      const tone = 0.55 + 0.25 * (0.5 - ay * 0.5);
+      const tone = 0.34 + 0.18 * (0.5 - ay * 0.5);
       C.push(tone * k, tone * 0.88 * k, tone * 0.74 * k);
       UV.push(x * 0.5, j * 0.3);
     }
@@ -79,7 +79,7 @@ export function createMouth(game, { root, faceAt, ground, quality }) {
     vertexPars: 'varying vec3 vWP;\n',
     vertexMain: 'vec3 transformed = vec3(position);\nvWP = (modelMatrix * vec4(position, 1.0)).xyz;',
     fragPars: 'varying vec3 vWP;\n',
-    fragColor: '#include <color_fragment>\ndiffuseColor.rgb *= 0.8 + 0.4 * rkFbm(vWP.zy * 1.3 + vWP.x * 0.4);',
+    fragColor: '#include <color_fragment>\ndiffuseColor.rgb *= 0.62 + 0.75 * rkFbm(vWP.zy * 1.9 + vWP.x * 0.25) * (0.8 + 0.4 * rkNoise(vec2(vWP.z * 6.0, vWP.y * 0.6)));',
   });
   const lining = new THREE.Mesh(lg, liningMat);
   lining.name = 'MouthLining'; lining.receiveShadow = shadows;
