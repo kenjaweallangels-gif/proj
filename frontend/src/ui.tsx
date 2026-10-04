@@ -1,22 +1,22 @@
-// Небольшая библиотека UI-примитивов: без тяжёлых зависимостей, единый стиль.
+// UI-примитивы: без тяжёлых зависимостей, единый стиль, крупно и понятно.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ApiError, get, type User } from "./api";
 
-// ---- toasts
-type Toast = { id: number; kind: "ok" | "err" | "info"; text: string };
-const ToastCtx = createContext<(kind: Toast["kind"], text: string) => void>(() => {});
+// ---- toasts (с кнопкой «Отменить»)
+type Toast = { id: number; kind: "ok" | "err" | "info"; text: string; undo?: () => void };
+const ToastCtx = createContext<(kind: Toast["kind"], text: string, undo?: () => void) => void>(() => {});
 export const useToast = () => useContext(ToastCtx);
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [list, setList] = useState<Toast[]>([]);
-  const push = useCallback((kind: Toast["kind"], text: string) => {
+  const push = useCallback((kind: Toast["kind"], text: string, undo?: () => void) => {
     const id = Date.now() + Math.random();
-    setList((l) => [...l, { id, kind, text }]);
-    setTimeout(() => setList((l) => l.filter((t) => t.id !== id)), kind === "err" ? 7000 : 3500);
+    setList((l) => [...l.slice(-3), { id, kind, text, undo }]);
+    setTimeout(() => setList((l) => l.filter((t) => t.id !== id)), kind === "err" ? 8000 : undo ? 6000 : 3500);
   }, []);
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      <div className="toasts">{list.map((t) => <div key={t.id} className={`toast ${t.kind}`}>{t.text}</div>)}</div>
+      <div className="toasts">{list.map((t) => <div key={t.id} className={`toast ${t.kind}`}>{t.text}{t.undo && <button className="undo" onClick={() => { t.undo?.(); setList((l) => l.filter((x) => x.id !== t.id)); }}>Отменить</button>}</div>)}</div>
     </ToastCtx.Provider>
   );
 }
@@ -69,7 +69,7 @@ export const Card = ({ title, children, actions, className = "" }: { title?: Rea
 export const Stat = ({ label, value, tone, hint }: { label: string; value: ReactNode; tone?: string; hint?: string }) => (
   <div className={`stat ${tone ?? ""}`}><div className="stat-v">{value}</div><div className="stat-l">{label}</div>{hint && <div className="stat-h">{hint}</div>}</div>
 );
-export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+export function Modal({ title, onClose, children, wide }: { title: ReactNode; onClose: () => void; children: ReactNode; wide?: boolean }) {
   useEffect(() => { const h = (e: KeyboardEvent) => e.key === "Escape" && onClose(); window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); }, [onClose]);
   return (
     <div className="modal-bg" onMouseDown={onClose}>
@@ -97,6 +97,33 @@ export function Table<T>({ rows, cols, onRow, empty, keyFn }: { rows: T[]; cols:
   );
 }
 
+/** Подсказка «что здесь делать» — закрывается один раз и больше не показывается. */
+export function Help({ id, children }: { id: string; children: ReactNode }) {
+  const key = `plm.help.${id}`;
+  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(key) === "1"; } catch { return false; } });
+  if (hidden) return null;
+  return (
+    <div className="help">
+      <span className="help-i">💡</span>
+      <div className="grow">{children}</div>
+      <button className="icon" title="Понятно, больше не показывать" onClick={() => { try { localStorage.setItem(key, "1"); } catch { /* empty */ } setHidden(true); }}>✕</button>
+    </div>
+  );
+}
+
+/** Кольцо прогресса: процент готовности. */
+export function Ring({ percent, size = 56, label }: { percent: number; size?: number; label?: string }) {
+  const r = (size - 8) / 2, c = 2 * Math.PI * r;
+  const tone = percent >= 100 ? "var(--green)" : percent > 0 ? "var(--amber)" : "var(--red)";
+  return (
+    <div className="ring" style={{ width: size, height: size }} title={label}>
+      <svg width={size} height={size}><circle cx={size / 2} cy={size / 2} r={r} stroke="var(--line)" strokeWidth={6} fill="none" />
+        <circle cx={size / 2} cy={size / 2} r={r} stroke={tone} strokeWidth={6} fill="none" strokeLinecap="round" strokeDasharray={`${(c * percent) / 100} ${c}`} transform={`rotate(-90 ${size / 2} ${size / 2})`} /></svg>
+      <span className="ring-t" style={{ fontSize: size / 4 }}>{percent}%</span>
+    </div>
+  );
+}
+
 export const STATUS_TONE: Record<string, string> = {
   draft: "gray", review: "amber", approved: "blue", rejected: "red", implemented: "green", released: "green", obsolete: "gray", in_review: "amber",
   planned: "gray", launched: "blue", done: "green", open: "gray", in_work: "amber", assembled: "green", shipped: "blue",
@@ -104,9 +131,14 @@ export const STATUS_TONE: Record<string, string> = {
   in_progress: "amber", ready: "green", missing: "red",
 };
 export const STATUS_LABEL: Record<string, string> = {
-  draft: "Черновик", review: "На согласовании", approved: "Согласовано", rejected: "Отклонено", implemented: "Проведено", released: "Выпущена",
-  obsolete: "Устарела", in_review: "На проверке", planned: "Запланировано", launched: "Запущено", done: "Выполнено", open: "Открыт", in_work: "В работе",
-  assembled: "Собран", shipped: "Отгружен", sent: "Отправлен", confirmed: "Подтверждён", partial: "Частично", received: "Получен", closed: "Закрыт",
-  cancelled: "Отменён", pending: "Ожидает", accepted: "Принято", in_progress: "В работе", ready: "Готово", missing: "Отсутствует",
+  draft: "Черновик", review: "На согласовании", approved: "Согласовано", rejected: "Отклонено", implemented: "Проведено", released: "Действует",
+  obsolete: "Устарела", in_review: "На проверке", planned: "Запланировано", launched: "Запущено", done: "Выполнено", open: "Новый", in_work: "В работе",
+  assembled: "Укомплектован", shipped: "Отгружен", sent: "Отправлен", confirmed: "Подтверждён", partial: "Частично", received: "Получен", closed: "Закрыт",
+  cancelled: "Отменён", pending: "Ожидает", accepted: "Принято", in_progress: "В работе", ready: "Есть", missing: "Нет",
 };
 export const Status = ({ s }: { s: string }) => <Badge tone={STATUS_TONE[s] ?? "gray"}>{STATUS_LABEL[s] ?? s}</Badge>;
+
+export const TYPE_RU: Record<string, string> = {
+  product: "Изделие", assembly: "Сборочная единица", part: "Деталь", purchased: "Покупное", outsourced: "Делают на стороне",
+  outsourced_op: "Операция на стороне", fastener: "Крепёж", material: "Материал", tooling: "Оснастка",
+};

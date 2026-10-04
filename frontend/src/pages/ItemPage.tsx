@@ -87,7 +87,7 @@ export default function ItemPage() {
         {tab === "rev" && (
           <div className="grid">
             {(revs.data ?? []).slice().reverse().map((r) => (
-              <Card key={r.id} title={<span>Ревизия {r.rev} <Status s={r.status} /> {r.change_notice_id && <Link to="/ecn" className="small">извещение #{r.change_notice_id}</Link>}</span>}
+              <Card key={r.id} title={<span>Ревизия {r.rev} <Status s={r.status} /> {r.change_notice_id && <Link to="/more/changes" className="small">извещение #{r.change_notice_id}</Link>}</span>}
                 actions={<span className="muted small">{r.released_at ? `выпущена ${dt(r.released_at)}` : `создана ${dt(r.created_at)}`}{r.note && ` · ${r.note}`}</span>}>
                 <Table rows={r.lines} keyFn={(l) => l.id} empty="Состав пуст"
                   cols={[

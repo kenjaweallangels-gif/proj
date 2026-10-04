@@ -28,7 +28,7 @@ export default function Dashboard() {
         </div>
       )}
       <div className="grid g2">
-        <Card title="🔴 Дефицит по комплектам" actions={<Link to="/planning">Все →</Link>}>
+        <Card title="🔴 Дефицит по комплектам" actions={<Link to="/shortage">Все →</Link>}>
           <Table rows={(short.data ?? []).slice(0, 8)} empty="Дефицита нет" keyFn={(r) => r.item_id}
             cols={[
               { h: "Позиция", c: (r) => <Link to={`/items/${r.item_id}`}><span className="mono">{r.code}</span><br /><span className="muted small">{r.name}</span></Link> },
@@ -38,7 +38,7 @@ export default function Dashboard() {
               { h: "Комплекты", c: (r) => <span className="small">{r.kits.join(", ")}</span> },
             ]} />
         </Card>
-        <Card title="⚠️ Позиции риска снабжения" actions={<Link to="/analytics">Аналитика →</Link>}>
+        <Card title="⚠️ Позиции риска снабжения" actions={<Link to="/more/analytics">Аналитика →</Link>}>
           <Table rows={(risks.data ?? []).slice(0, 8)} empty="Рисков не выявлено" keyFn={(r) => r.item_id}
             cols={[
               { h: "Позиция", c: (r) => <Link to={`/items/${r.item_id}`}><span className="mono">{r.code}</span><br /><span className="muted small">{r.name}</span></Link> },

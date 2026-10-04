@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { api, post } from "../api";
 import { Card, Field, Table, useToast } from "../ui";
 
@@ -8,12 +8,18 @@ const FIELDS: Record<string, string> = { code: "Обозначение / код"
 
 export default function ImportPage() {
   const toast = useToast();
+  const loc = useLocation();
   const [mode, setMode] = useState<"bom" | "plan" | "stock">("bom");
   const [prev, setPrev] = useState<Preview | null>(null);
   const [token, setToken] = useState("");
   const [rootCode, setRootCode] = useState("");
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [busy, setBusy] = useState(false);
+  // сюда попадают с главной, если автоимпорт не распознал структуру файла
+  useEffect(() => {
+    const st = loc.state as { applied?: boolean; token?: string; preview?: Preview } | null;
+    if (st && st.applied === false && st.preview && st.token) { setToken(st.token); setPrev(st.preview); }
+  }, [loc.state]);
   const upload = async (file: File) => {
     const fd = new FormData(); fd.append("file", file);
     setBusy(true); setResult(null);
@@ -50,7 +56,7 @@ export default function ImportPage() {
       )}
       {result && <Card title="Результат">
         <pre className="small">{JSON.stringify(result, null, 2)}</pre>
-        <Link to="/items">Перейти к номенклатуре →</Link>
+        <Link to="/specs">Перейти к спецификациям →</Link>
       </Card>}
     </div>
   );

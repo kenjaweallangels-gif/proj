@@ -51,6 +51,23 @@ TYPE_WORDS = {
 }
 
 
+def _indent(v) -> int:
+    """Отступ в ячейке (пробелы/табы в начале) — так часто оформляют вложенность в Excel."""
+    if v is None or not isinstance(v, str):
+        return 0
+    n = 0
+    for ch in v:
+        if ch == " ":
+            n += 1
+        elif ch == "\t":
+            n += 4
+        elif ch == "\u00a0":
+            n += 1
+        else:
+            break
+    return n
+
+
 def _norm(s) -> str:
     return re.sub(r"\s+", " ", str(s or "")).strip().lower()
 
@@ -113,8 +130,15 @@ def preview(data: bytes, sheet: str | None = None, header_row: int | None = None
     if not mapping.get("parent") and not mapping.get("level"):
         warnings.append("Нет колонки «Родитель» или «Уровень» — все строки будут подчинены корню")
     sample = [{k: (str(v) if v is not None else "") for k, v in r.items()} for r in rows[:8]]
+    indent = False
+    if not mapping.get("parent") and not mapping.get("level"):
+        cols = [c for c in (mapping.get("code"), mapping.get("name")) if c]
+        indent = any(_indent(r.get(c)) > 0 for r in rows for c in cols)
+        if indent:
+            warnings = [w for w in warnings if not w.startswith("Нет колонки")]
+            warnings.append("Вложенность определена по отступам в ячейках")
     return ImportPreview(sheet=title, header_row=hr, columns=header, mapping=mapping, rows_total=len(rows),
-                         sample=sample, warnings=warnings)
+                         sample=sample, warnings=warnings, indent_detected=indent)
 
 
 def _dec(v, default=Decimal(1)) -> Decimal:
@@ -145,6 +169,7 @@ def apply_bom(db: Session, data: bytes, mapping: dict[str, str | None], sheet: s
         if not code:
             continue
         recs.append({
+            "indent": max(_indent(r.get(m.get("code", ""))), _indent(r.get(m.get("name", "")))),
             "code": code, "name": str(r.get(m.get("name", ""), "") or code).strip(),
             "parent": _code(r.get(m.get("parent", ""), "")) if "parent" in m else "",
             "level": int(_dec(r.get(m.get("level", "")), Decimal(0))) if "level" in m else None,
@@ -153,6 +178,11 @@ def apply_bom(db: Session, data: bytes, mapping: dict[str, str | None], sheet: s
             "price": _dec(r.get(m.get("price", "")), Decimal(0)), "note": str(r.get(m.get("note", ""), "") or ""),
             "lead": int(_dec(r.get(m.get("lead_time", "")), Decimal(10))) if "lead_time" in m else None,
         })
+    # вложенность отступами → уровни (ранг отступа среди встретившихся)
+    if recs and all(not r["parent"] for r in recs) and all(r["level"] is None for r in recs) and any(r["indent"] > 0 for r in recs):
+        ranks = {ind: i for i, ind in enumerate(sorted({r["indent"] for r in recs}))}
+        for r in recs:
+            r["level"] = ranks[r["indent"]]
     # восстановление родителя по уровню (если нет явной колонки)
     if recs and all(not r["parent"] for r in recs) and any(r["level"] is not None for r in recs):
         stack: list[tuple[int, str]] = []
@@ -170,7 +200,7 @@ def apply_bom(db: Session, data: bytes, mapping: dict[str, str | None], sheet: s
             r["parent"] = root_code
         if root_code not in {r["code"] for r in recs}:
             recs.insert(0, {"code": root_code, "name": root_code, "parent": "", "level": 0, "qty": Decimal(1), "unit": "шт",
-                            "type_text": "изделие", "material": "", "price": Decimal(0), "note": "", "lead": None})
+                            "type_text": "изделие", "material": "", "price": Decimal(0), "note": "", "lead": None, "indent": 0})
         parents.add(root_code)
 
     created = updated = 0

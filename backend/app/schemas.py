@@ -507,6 +507,7 @@ class ImportPreview(BaseModel):
     rows_total: int
     sample: list[dict]
     warnings: list[str] = []
+    indent_detected: bool = False  # вложенность задана отступами в ячейках
 
 
 class ImportApply(BaseModel):
