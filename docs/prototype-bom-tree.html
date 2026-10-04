@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Состав изделия</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; padding: 20px; background:#f7f7f9; }
+  h1 { margin-top: 0; }
+
+  .toolbar {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    margin-bottom: 16px; background:#fff; padding:12px;
+    border-radius:8px; box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  .toolbar button, .toolbar label {
+    padding: 6px 12px; border: 1px solid #ccc; border-radius: 6px;
+    background:#fff; cursor:pointer; font-size:14px;
+  }
+  .toolbar button:hover { background:#f0f0f0; }
+  .toolbar input[type=file] { display: none; }
+
+  #tree { background:#fff; padding:16px; border-radius:8px;
+          box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+
+  .node {
+    padding: 6px 10px; margin: 3px 0; border-radius: 6px;
+    border-left: 4px solid #ccc;
+    display: flex; align-items: center; gap: 6px;
+    transition: background .2s; user-select: none;
+  }
+  .node .toggle {
+    width: 22px; height: 22px; flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 4px; cursor: pointer; color:#555;
+    font-size: 13px; background:#f0f0f0;
+  }
+  .node .toggle:hover { background:#e0e0e0; }
+  .node .toggle.empty { background: transparent; cursor: default; color:#ccc; }
+
+  .node .name { font-weight: 600; }
+  .node .meta { color:#777; font-size: 13px; }
+  .node .spacer { flex: 1; }
+
+  .node button.mini {
+    padding: 2px 8px; font-size: 12px; border-radius: 4px;
+    border: 1px solid #bbb; background:#fafafa; cursor:pointer;
+    white-space: nowrap;
+  }
+  .node button.mini:hover { background:#eee; }
+  .node button.mini.add-child { background:#e3f2fd; border-color:#90caf9; }
+  .node button.mini.add-sibling { background:#e8f5e9; border-color:#a5d6a7; }
+
+  .ready { background:#d4edda; border-color:#28a745; }
+  .partial { background:#fff3cd; border-color:#ffc107; }
+  .missing { background:#f8d7da; border-color:#dc3545; }
+  .node.ready::after {
+    content:"✓ можно собирать"; color:#28a745;
+    font-size:12px; margin-left:8px;
+  }
+
+  .children { margin-left: 20px; border-left: 2px dashed #e5e5e5; padding-left: 8px; }
+  .children.collapsed { display: none; }
+
+  .check {
+    width: 22px; height: 22px; border: 2px solid #888;
+    border-radius: 6px; cursor: pointer; flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; color: transparent; background: #fff;
+  }
+  .check.on { background:#28a745; border-color:#28a745; color:#fff; }
+
+  .badge {
+    background:#6c757d; color:#fff; font-size:11px;
+    padding: 1px 6px; border-radius: 10px; margin-left: 6px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Состав изделия</h1>
+
+<div class="toolbar">
+  <label>📂 Загрузить Excel
+    <input type="file" id="fileInput" accept=".xlsx,.xls">
+  </label>
+  <button id="addRootBtn">➕ Корень</button>
+  <button id="expandAllBtn">▾ Развернуть всё</button>
+  <button id="collapseAllBtn">▸ Свернуть всё</button>
+  <button id="resetBtn">Сбросить отметки</button>
+  <button id="saveJsonBtn">💾 Сохранить</button>
+  <label>📥 Загрузить JSON
+    <input type="file" id="jsonInput" accept=".json">
+  </label>
+</div>
+
+<div id="tree"></div>
+
+<script>
+// ============================================================
+// МОДЕЛЬ
+// ============================================================
+// node = {
+// id, name, required, unit,
+// done: false, // отметка "пришло"
+// expanded: true, // раскрыт ли узел
+// children: []
+// }
+
+let root = null;
+
+// ============================================================
+// ВСПОМОГАТЕЛЬНОЕ
+// ============================================================
+function makeNode(name, opts = {}) {
+  const clean = String(name || '').trim();
+  if (!clean) throw new Error('Пустое имя узла');
+  return {
+    id: opts.id || ('N' + Date.now() + '-' + Math.floor(Math.random() * 10000)),
+    name: clean,
+    required: opts.required || 1,
+    unit: opts.unit || 'шт',
+    done: false,
+    expanded: true,
+    children: []
+  };
+}
+
+// найти родителя узла в дереве (null — если это корень)
+function findParent(current, target, parent = null) {
+  if (current === target) return parent;
+  for (const c of current.children) {
+    const found = findParent(c, target, current);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+function countDescendants(node) {
+  let n = 0;
+  node.children.forEach(c => { n += 1 + countDescendants(c); });
+  return n;
+}
+
+// ============================================================
+// EXCEL: чтение с авто-поиском шапки и нормализацией ключей
+// ============================================================
+document.getElementById('fileInput').onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const rows = await readExcelRows(file);
+    if (!rows.length) throw new Error('В файле нет данных');
+
+    root = buildTreeFromRows(rows);
+    if (!root) throw new Error('Не удалось построить дерево — нет корня');
+
+    recalcAll();
+    render();
+  } catch (err) {
+    console.error(err);
+    alert('Ошибка загрузки: ' + err.message);
+  }
+};
+
+function readExcelRows(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Не удалось прочитать файл'));
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        if (!ws) throw new Error('На первом листе нет данных');
+
+        // ищем строку с "Код"
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        let headerRow = 0;
+        outer:
+        for (let r = range.s.r; r <= range.e.r; r++) {
+          for (let c = range.s.c; c <= range.e.c; c++) {
+            const cell = ws[XLSX.utils.encode_cell({ r, c })];
+            if (cell && String(cell.v).trim() === 'Код') {
+              headerRow = r;
+              break outer;
+            }
+          }
+        }
+
+        let rows = XLSX.utils.sheet_to_json(ws, { range: headerRow });
+
+        rows = rows.map(r => {
+          const o = {};
+          Object.keys(r).forEach(k => {
+            o[String(k).trim().replace(/\s+/g, ' ')] = r[k];
+          });
+          return o;
+        }).filter(r => r['Код']);
+
+        console.log('Колонки:', Object.keys(rows[0] || {}));
+        console.log('Строк:', rows.length);
+
+        if (!rows.length) throw new Error('Строк с "Код" не найдено');
+        resolve(rows);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function norm(v) {
+  if (v === null || v === undefined) return '';
+  let s = String(v).trim();
+  s = s.replace(/\.0+$/, '').replace(/,0+$/, '');
+  return s.toUpperCase();
+}
+
+function buildTreeFromRows(rows) {
+  const map = {};
+  const order = [];
+
+  rows.forEach(r => {
+    const code = norm(r['Код']);
+    if (!code) return;
+    if (map[code]) {
+      console.warn('Дубликат кода:', code);
+      return;
+    }
+    map[code] = {
+      id: code,
+      name: String(r['Наименование'] || '').trim() || code,
+      required: Number(r['Кол-во']) || 1,
+      unit: r['Ед.'] || r['Ед.изм'] || 'шт',
+      done: false,
+      expanded: true,
+      children: []
+    };
+    order.push({
+      code,
+      parent: norm(r['Родитель'])
+    });
+  });
+
+  let rootNode = null;
+  order.forEach(({ code, parent }) => {
+    const node = map[code];
+    if (!parent) {
+      if (rootNode) console.warn('Несколько корней:', rootNode.id, code);
+      rootNode = node;
+    } else if (map[parent]) {
+      map[parent].children.push(node);
+    } else {
+      console.warn('❌ Родитель не найден:', JSON.stringify(parent),
+                   '→ для', code);
+    }
+  });
+
+  if (!rootNode) {
+    rootNode = {
+      id: 'VIRTUAL',
+      name: 'Изделие',
+      required: 1, unit: 'шт',
+      done: false, expanded: true, children: []
+    };
+    order.filter(o => !o.parent).forEach(o => {
+      if (map[o.code]) rootNode.children.push(map[o.code]);
+    });
+  }
+
+  return rootNode;
+}
+
+// ============================================================
+// СТАТУСЫ (снизу вверх)
+// ============================================================
+function recalcAll() { if (root) recalc(root); }
+
+function recalc(node) {
+  if (node.children.length === 0) {
+    node.status = node.done ? 'ready' : 'missing';
+    return node.status;
+  }
+  const childStatuses = node.children.map(recalc);
+  const allReady = childStatuses.every(s => s === 'ready');
+  const selfReady = node.done;
+
+  if (selfReady && allReady) node.status = 'ready';
+  else if (selfReady || allReady) node.status = 'partial';
+  else node.status = 'missing';
+
+  return node.status;
+}
+
+// ============================================================
+// РЕНДЕР
+// ============================================================
+function render() {
+  const container = document.getElementById('tree');
+  container.innerHTML = '';
+  if (!root) {
+    container.innerHTML =
+      '<p style="color:#888">Нет данных. Загрузите Excel или создайте корень.</p>';
+    return;
+  }
+  container.appendChild(renderNode(root));
+}
+
+function renderNode(node) {
+  const wrap = document.createElement('div');
+
+  const div = document.createElement('div');
+  div.className = 'node ' + (node.status || 'missing');
+
+  const hasChildren = node.children.length > 0;
+
+  // --- Стрелка раскрытия ---
+  const toggle = document.createElement('span');
+  if (hasChildren) {
+    toggle.className = 'toggle';
+    toggle.textContent = node.expanded ? '▾' : '▸';
+    toggle.title = node.expanded ? 'Свернуть' : 'Развернуть';
+    toggle.onclick = (e) => {
+      e.stopPropagation();
+      node.expanded = !node.expanded;
+      render();
+    };
+  } else {
+    toggle.className = 'toggle empty';
+    toggle.textContent = '·';
+  }
+  div.appendChild(toggle);
+
+  // --- Галочка "пришло" ---
+  const check = document.createElement('div');
+  check.className = 'check' + (node.done ? ' on' : '');
+  check.textContent = '✓';
+  check.title = 'Отметить как пришедшее';
+  check.onclick = (e) => {
+    e.stopPropagation();
+    node.done = !node.done;
+    recalcAll(); render();
+  };
+  div.appendChild(check);
+
+  // --- Имя ---
+  const name = document.createElement('span');
+  name.className = 'name';
+  name.textContent = node.name;
+  div.appendChild(name);
+
+  // --- Мета ---
+  const meta = document.createElement('span');
+  meta.className = 'meta';
+  meta.textContent = `(${node.id}) — ${node.required} ${node.unit}`;
+  div.appendChild(meta);
+
+  // --- Бейдж свёрнутых ---
+  if (hasChildren && !node.expanded) {
+    const badge = document.createElement('span');
+    badge.className = 'badge';
+    badge.textContent = countDescendants(node) + ' поз.';
+    div.appendChild(badge);
+  }
+
+  const spacer = document.createElement('span');
+  spacer.className = 'spacer';
+  div.appendChild(spacer);
+
+  // --- ➕↳ Добавить вложенный (уровень ниже) ---
+  const addChildBtn = document.createElement('button');
+  addChildBtn.className = 'mini add-child';
+  addChildBtn.textContent = '➕↳';
+  addChildBtn.title = 'Добавить вложенный узел (уровень ниже)';
+  addChildBtn.onclick = (e) => {
+    e.stopPropagation();
+    const n = prompt('Название вложенного узла:');
+    if (!n || !n.trim()) return;
+    try {
+      node.children.push(makeNode(n));
+      node.expanded = true;
+      recalcAll(); render();
+    } catch (err) { alert(err.message); }
+  };
+  div.appendChild(addChildBtn);
+
+  // --- ➕↔ Добавить соседа (тот же уровень) ---
+  const addSiblingBtn = document.createElement('button');
+  addSiblingBtn.className = 'mini add-sibling';
+  addSiblingBtn.textContent = '➕↔';
+  addSiblingBtn.title = 'Добавить узел на том же уровне';
+  addSiblingBtn.onclick = (e) => {
+    e.stopPropagation();
+    const n = prompt('Название узла (на том же уровне):');
+    if (!n || !n.trim()) return;
+
+    const parent = findParent(root, node);
+    let newNode;
+    try { newNode = makeNode(n); }
+    catch (err) { alert(err.message); return; }
+
+    if (!parent) {
+      // это корень — соседа нельзя, добавим вложенным
+      if (!confirm('Это корневой узел. Добавить как вложенный?')) return;
+      node.children.push(newNode);
+      node.expanded = true;
+    } else {
+      const idx = parent.children.indexOf(node);
+      parent.children.splice(idx + 1, 0, newNode); // сразу после node
+    }
+    recalcAll(); render();
+  };
+  div.appendChild(addSiblingBtn);
+
+  // --- ✏️ Редактировать ---
+  const editBtn = document.createElement('button');
+  editBtn.className = 'mini';
+  editBtn.textContent = '✏️';
+  editBtn.title = 'Редактировать название/количество';
+  editBtn.onclick = (e) => {
+    e.stopPropagation();
+    const n = prompt('Название:', node.name);
+    if (n !== null && n.trim()) node.name = n.trim();
+    const q = prompt('Количество:', node.required);
+    if (q !== null && !isNaN(q)) node.required = Number(q);
+    recalcAll(); render();
+  };
+  div.appendChild(editBtn);
+
+  // --- 🗑 Удалить ---
+  const delBtn = document.createElement('button');
+  delBtn.className = 'mini';
+  delBtn.textContent = '🗑';
+  delBtn.title = 'Удалить узел';
+  delBtn.onclick = (e) => {
+    e.stopPropagation();
+    if (!confirm(`Удалить "${node.name}" со всеми вложениями?`)) return;
+
+    const parent = findParent(root, node);
+    if (!parent) {
+      if (!confirm('Это корень. Удалить весь состав?')) return;
+      root = null;
+    } else {
+      const idx = parent.children.indexOf(node);
+      parent.children.splice(idx, 1);
+    }
+    recalcAll(); render();
+  };
+  div.appendChild(delBtn);
+
+  // --- Клик по строке — toggle раскрытия ---
+  div.onclick = () => {
+    if (hasChildren) {
+      node.expanded = !node.expanded;
+      render();
+    }
+  };
+
+  wrap.appendChild(div);
+
+  // --- Дети ---
+  if (hasChildren) {
+    const kids = document.createElement('div');
+    kids.className = 'children' + (node.expanded ? '' : ' collapsed');
+    node.children.forEach(c => kids.appendChild(renderNode(c)));
+    wrap.appendChild(kids);
+  }
+
+  return wrap;
+}
+
+// ============================================================
+// КНОПКИ ВЕРХНЕЙ ПАНЕЛИ
+// ============================================================
+document.getElementById('addRootBtn').onclick = () => {
+  if (root && !confirm('Заменить текущий состав?')) return;
+  const n = prompt('Название изделия:', 'Изделие');
+  if (!n || !n.trim()) return;
+  root = makeNode(n, { id: 'ROOT-' + Date.now() });
+  recalcAll(); render();
+};
+
+function setExpanded(node, val) {
+  node.expanded = val;
+  node.children.forEach(c => setExpanded(c, val));
+}
+document.getElementById('expandAllBtn').onclick = () => {
+  if (root) { setExpanded(root, true); render(); }
+};
+document.getElementById('collapseAllBtn').onclick = () => {
+  if (root) { setExpanded(root, false); render(); }
+};
+
+document.getElementById('resetBtn').onclick = () => {
+  if (!root || !confirm('Сбросить все отметки?')) return;
+  clearMarks(root);
+  recalcAll(); render();
+};
+function clearMarks(node) {
+  node.done = false;
+  node.children.forEach(clearMarks);
+}
+
+document.getElementById('saveJsonBtn').onclick = () => {
+  if (!root) return;
+  const blob = new Blob([JSON.stringify(root, null, 2)],
+                        { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'bom.json';
+  a.click();
+};
+
+document.getElementById('jsonInput').onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    root = JSON.parse(await file.text());
+    recalcAll(); render();
+  } catch (err) {
+    alert('Ошибка чтения JSON: ' + err.message);
+  }
+};
+
+// первичный рендер
+render();
+</script>
+</body>
+</html>
