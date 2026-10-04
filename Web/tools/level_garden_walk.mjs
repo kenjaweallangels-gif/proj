@@ -55,27 +55,27 @@ async function walk(name, way, { start, yStart, maxStuck = 20, maxT = 600, tol =
 }
 
 if (only.includes('garden')) {
-  const loop = [[803, 395.8], [812, 396.5], [822, 395.5], [832, 397.5], [842, 402.8], [852, 404], [864, 403.5], [878, 406.5], [890, 410], [902, 412.5], [914, 416.5], [926, 419.5]];
-  const y0 = await page.evaluate(() => window.__rakis.world.heightAt(796, 395.8));
-  await walk('mouth -> ravine -> desert', loop, { start: [796, 395.8], yStart: y0 });
-  await walk('ravine -> mouth', loop.slice().reverse().concat([[797, 395.8]]), { start: [926, 419.5] });
+  const loop = [[803, 395], [812, 396.5], [822, 395.5], [832, 397.5], [842, 402.8], [852, 404], [864, 403.5], [878, 406.5], [890, 410], [902, 412.5], [914, 416.5], [926, 419.5]];
+  const y0 = await page.evaluate(() => window.__rakis.world.heightAt(796, 395));
+  await walk('mouth -> ravine -> desert', loop, { start: [796, 395], yStart: y0 });
+  await walk('ravine -> mouth', loop.slice().reverse().concat([[797, 395]]), { start: [926, 419.5] });
   await walk('garden loop', [[812, 396], [818, 386], [826, 368], [828, 396], [836, 420], [846, 436], [830, 412], [850, 404], [852, 380], [870, 372], [878, 390], [868, 420], [840, 440], [820, 410], [808, 396]], { start: [808, 396] });
   await walk('beds crossing', [[836, 395], [843, 382], [843, 397], [861, 397], [861, 412], [850, 420], [850, 404]], { start: [836, 395] });
   const c = await page.evaluate(() => { const g = window.__rakis; return { zone: g.zone, space: g.space, surf: g.world.surfaceAt(822, 396), surfBed: g.world.surfaceAt(843, 388) }; });
   console.log('state', JSON.stringify(c));
 }
 if (only.includes('diag')) {
-  // диагностика стыка штольня ↔ туннель сиетча: высота/коллизия/пространство по шагам вдоль оси z = 395.8
+  // диагностика стыка штольня ↔ туннель сиетча: высота/коллизия/пространство по шагам вдоль оси z = 395
   const rows = await page.evaluate(() => {
     const g = window.__rakis, T = g.THREE, out = [];
     const sp0 = g.space; g.space = 'sietch';      // как у игрока в туннеле (contains решает по точке)
     for (let x = 800; x >= 789.9; x -= 0.5) {
-      const y0 = g.world.heightAt(x, 395.8, 6);
-      const p = new T.Vector3(x, y0, 395.8); const o = p.clone();
+      const y0 = g.world.heightAt(x, 395, 6);
+      const p = new T.Vector3(x, y0, 395); const o = p.clone();
       const inS = !!g.sietch?.contains?.(p);
-      const gh = g.groundAt ? g.groundAt(x, 395.8, y0)?.heightAt?.(x, 395.8, y0) : null;
+      const gh = g.groundAt ? g.groundAt(x, 395, y0)?.heightAt?.(x, 395, y0) : null;
       const hit = g.collide(p, 0.35);
-      const cols = []; for (const e of g.colliders.near(new T.Vector3(x, y0 + 1, 395.8), 1.2)) cols.push(`${e.owner}:${[...(e.tags || [])].join('/')}`);
+      const cols = []; for (const e of g.colliders.near(new T.Vector3(x, y0 + 1, 395), 1.2)) cols.push(`${e.owner}:${[...(e.tags || [])].join('/')}`);
       out.push({ x, wh: +y0.toFixed(2), sietchContains: inS, groundH: gh === null ? null : +gh.toFixed(2), push: hit ? [+(p.x - o.x).toFixed(2), +(p.z - o.z).toFixed(2)] : 0, cols });
     }
     g.space = sp0;
@@ -87,12 +87,12 @@ if (only.includes('tunnel')) {
   // сиетч ↔ сад: из сада по выходному туннелю к залу и обратно (смена пространства desert ↔ sietch на ходу)
   const path = await page.evaluate(() => (window.__rakis.sietch?.exitPath || []).map((p) => [p.x, p.z]));
   if (path.length) {
-    const toHall = [[803, 395.8], [796, 395.8]].concat(path.slice().reverse());
+    const toHall = [[803, 395], [796, 395]].concat(path.slice().reverse());
     const r1 = await walk('garden -> tunnel -> hall', toHall, { start: [812, 396], maxStuck: 25 });
     // из зала: входим в сиетч штатным способом (debug enter 'exit' — пространство и свет переключает сам сиетч) и идём по туннелю к саду
     const e0 = await page.evaluate(async () => { const g = window.__rakis; await g.sietch.enter('exit'); const p = g.player.position; return [p.x, p.z]; });
     let k0 = 0, best = 1e9; path.forEach((q, i) => { const d = Math.hypot(q[0] - e0[0], q[1] - e0[1]); if (d < best) { best = d; k0 = i; } });
-    const toGarden = path.slice(k0).concat([[796, 395.8], [803, 395.8], [812, 396]]);
+    const toGarden = path.slice(k0).concat([[796, 395], [803, 395], [812, 396]]);
     await walk('hall(exit) -> tunnel -> garden', toGarden, { start: e0, yStart: await page.evaluate(() => window.__rakis.player.position.y), maxStuck: 25 });
     console.log('space/zone', JSON.stringify(await page.evaluate(() => ({ space: window.__rakis.space, zone: window.__rakis.zone }))));
   } else console.log('no sietch.exitPath — skip');

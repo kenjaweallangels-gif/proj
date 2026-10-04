@@ -95,7 +95,7 @@ function walk(name, way, { maxT = 400, start } = {}) {
     if (rise > 0.5) { pos.x = ox; pos.z = oz; vx = vz = 0; }
     const gy = heightAt(pos.x, pos.z, pos.y);
     maxStep = Math.max(maxStep, Math.abs(gy - pos.y));
-    if (gy < pos.y - 1.2) jumps++;
+    if (gy < pos.y - 1.2) { jumps++; if (process.argv.includes("--trace")) console.log("drop at", pos.x.toFixed(1), pos.z.toFixed(1), pos.y.toFixed(1), "->", gy.toFixed(1)); }
     pos.y = Math.abs(gy - pos.y) > 1.2 ? gy : pos.y + (gy - pos.y) * (1 - Math.exp(-18 * DT));
     t += DT;
     if (d > lastD - 0.02) stuck += DT; else { stuck = 0; lastD = d; }
@@ -104,7 +104,7 @@ function walk(name, way, { maxT = 400, start } = {}) {
   return { name, ok: wi >= way.length, t: t.toFixed(0), maxSlope: maxSlope.toFixed(0), falls: jumps, maxStep: maxStep.toFixed(2), end: [pos.x.toFixed(1), pos.y.toFixed(1), pos.z.toFixed(1)] };
 }
 const ravEnd = RAVINE.pts[RAVINE.pts.length - 1];
-const loop = [[796, MOUTH.z], [803, MOUTH.z], [812, 396.5], [822, 395.5], [832, 397.5], [842, 402.8], [852, 404], [864, 403.5], [878, 406.5], [890, 410], [902, 412.5], [914, 416.5], [926, 419.5], [940, 421.5], [960, 424]];
+const loop = [[799, MOUTH.z], [803, MOUTH.z], [812, 396.5], [822, 395.5], [832, 397.5], [842, 402.8], [852, 404], [864, 403.5], [878, 406.5], [890, 410], [902, 412.5], [914, 416.5], [926, 419.5], [940, 421.5], [960, 424]];
 const results = [];
 results.push(walk('mouth->ravine->desert', loop));
 results.push(walk('desert->ravine->mouth', loop.slice().reverse(), { start: undefined }));

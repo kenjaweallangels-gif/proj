@@ -11,8 +11,8 @@ export async function run({ hours, shot, want, page }) {
   };
   await hours(10.5);
   if (want('mouth') || want('all')) {
-    await camG(814.5, 1.7, 397, 800, 1.4, 395.8, 62, 1500); await shot('m0_mouth_from_plaza');
-    await camG(806, 1.7, 395.8, 830, 0.5, 397, 66); await shot('m1_from_portal');
+    await camG(814.5, 1.7, 397, 800, 1.4, 395, 62, 1500); await shot('m0_mouth_from_plaza');
+    await camG(806, 1.7, 395, 830, 0.5, 397, 66); await shot('m1_from_portal');
     // что за «парящая плита» в кадре: луч через пиксель (445,100) из 960×540
     const hit = await page.evaluate(() => {
       const g = window.__rakis, T = g.THREE; const rc = new T.Raycaster(); rc.setFromCamera(new T.Vector2(-0.07, 0.63), g.camera);
@@ -20,8 +20,8 @@ export async function run({ hours, shot, want, page }) {
       return hs.map((h) => ({ name: h.object.name || h.object.type, parent: h.object.parent?.name, d: +h.distance.toFixed(1), p: h.point.toArray().map((v) => +v.toFixed(1)) }));
     });
     console.log('pick', JSON.stringify(hit));
-    await camG(796.5, 1.7, 395.8, 812, 0.4, 396.5, 66); await shot('m2_from_inside');
-    await camG(803, 1.7, 400, 800, 1.2, 395.8, 70); await shot('m3_mouth_closeup');
+    await camG(796.5, 1.7, 395, 812, 0.4, 396.5, 66); await shot('m2_from_inside');
+    await camG(803, 1.7, 400, 800, 1.2, 395, 70); await shot('m3_mouth_closeup');
   }
   if (want('garden') || want('all')) {
     await camG(812, 9, 372, 852, 0, 410, 62); await shot('g2_wide_high');
@@ -39,12 +39,12 @@ export async function run({ hours, shot, want, page }) {
       const g = window.__rakis, T = g.THREE, out = [];
       const sp0 = g.space; g.space = 'sietch';
       for (let x = 800; x >= 789.9; x -= 0.5) {
-        const y0 = g.world.heightAt(x, 395.8, 6);
-        const p = new T.Vector3(x, y0, 395.8); const o = p.clone();
+        const y0 = g.world.heightAt(x, 395, 6);
+        const p = new T.Vector3(x, y0, 395); const o = p.clone();
         const inS = !!g.sietch?.contains?.(p);
-        const gh = g.groundAt(x, 395.8, y0)?.heightAt?.(x, 395.8, y0);
+        const gh = g.groundAt(x, 395, y0)?.heightAt?.(x, 395, y0);
         const hit = g.collide(p, 0.35);
-        const cols = []; for (const e of g.colliders.near(new T.Vector3(x, y0 + 1, 395.8), 1.2)) cols.push(`${e.owner}:${[...(e.tags || [])].join('/')}`);
+        const cols = []; for (const e of g.colliders.near(new T.Vector3(x, y0 + 1, 395), 1.2)) cols.push(`${e.owner}:${[...(e.tags || [])].join('/')}`);
         out.push({ x, wh: +y0.toFixed(2), sietch: inS, groundH: +(gh ?? NaN).toFixed(2), push: hit ? [+(p.x - o.x).toFixed(2), +(p.z - o.z).toFixed(2)] : 0, cols });
       }
       g.space = sp0; return out;
@@ -102,9 +102,9 @@ export async function run({ hours, shot, want, page }) {
   if (want('tunnelview')) {
     // игрок реально стоит в устье/штольне: смотрим наружу и внутрь (пространство и видимость выставляют сами модули)
     for (const [px, name] of [[797.5, 't0_stub_out'], [792.5, 't1_tunnel_end_out']]) {
-      await page.evaluate(([px]) => { const g = window.__rakis; g.player.teleport(px, g.world.heightAt(px, 395.8, 6), 395.8, 0, false); }, [px]);
+      await page.evaluate(([px]) => { const g = window.__rakis; g.player.teleport(px, g.world.heightAt(px, 395, 6), 395, 0, false); }, [px]);
       await page.waitForTimeout(2500);
-      await page.evaluate(([px]) => { const g = window.__rakis; g.camera.position.set(px, g.world.heightAt(px, 395.8, 6) + 1.62, 395.8); g.camera.fov = 70; g.camera.updateProjectionMatrix(); g.camera.lookAt(830, 3.5, 397); }, [px]);
+      await page.evaluate(([px]) => { const g = window.__rakis; g.camera.position.set(px, g.world.heightAt(px, 395, 6) + 1.62, 395); g.camera.fov = 70; g.camera.updateProjectionMatrix(); g.camera.lookAt(830, 3.5, 397); }, [px]);
       await page.waitForTimeout(1500);
       console.log('state', name, JSON.stringify(await page.evaluate(() => ({ space: window.__rakis.space, worldVisible: window.__rakis.world.visible, gardenVisible: window.__rakis.garden.root.visible }))));
       await shot(name);
