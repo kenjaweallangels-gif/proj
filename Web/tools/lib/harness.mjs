@@ -67,7 +67,7 @@ export async function openGame({ file = 'worm.html', q = 'med', w = 1280, h = 72
   const errors = [];
   page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !/AudioContext/.test(m.text())) errors.push(`${m.type()}: ${m.text()}`); });
   page.on('pageerror', (e) => errors.push(String(e)));
-  await page.goto(`file://${join(root, 'dist', file)}?autotest=1&q=${q}&lang=RU`);
+  await page.goto(`file://${join(root, 'dist', file)}?autotest=1&q=${q}&lang=RU`, { timeout: 300000 });
   await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.5, null, { timeout: 900000 });
   console.log('GL:', gl, '|', await page.evaluate(() => { const gl = window.__rakis.renderer.getContext(); const e = gl.getExtension('WEBGL_debug_renderer_info'); return e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : 'n/a'; }));
   await page.evaluate(([at, yaw, hideSubs]) => {
