@@ -34,6 +34,40 @@ export async function run({ hours, shot, want, page }) {
     await camG(905, 1.7, 413, 880, 3, 406, 62); await shot('r1_ravine_back');
     await camG(950, 2.5, 424, 915, 3, 416, 62); await shot('r2_ravine_outside');
   }
+  if (want('cleft')) {
+    await hours(9.5);
+    const camAbs = async (x, y, z, lx, ly, lz, fov = 62, wait = 1200) => {
+      await page.evaluate(([x, y, z, lx, ly, lz, fov]) => { const g = window.__rakis; g.camera.position.set(x, y, z); g.camera.fov = fov; g.camera.updateProjectionMatrix(); g.camera.lookAt(lx, ly, lz); }, [x, y, z, lx, ly, lz, fov]);
+      await page.waitForTimeout(wait);
+    };
+    const trailEye = async (x, z, yHint, lx, lz, ly, fov = 62) => {
+      const y = await page.evaluate(([x, z, yh]) => window.__rakis.world.heightAt(x, z, yh), [x, z, yHint]);
+      await camAbs(x, y + 1.7, z, lx, ly, lz, fov);
+    };
+    await trailEye(640.5, 251.5, 30, 653, 251, 31.5); await shot('c0_slot_to_niche');
+    await trailEye(646.4, 251.2, 30.5, 652, 251, 31.8); await shot('c1_niche');
+    await camAbs(649, 31.7, 251.3, 640, 30.5, 253, 70); await shot('c2_from_niche_outward');
+    await trailEye(612, 273, 22, 606, 285, 18, 70); await shot('c3_shelf_junction');
+    await hours(10.5);
+  }
+  if (want('fauna')) {
+    const follow = async (expr, { dist = 1.2, h = 0.5, side = 0.6, fov = 50, wait = 1100 } = {}) => {
+      await page.evaluate(([expr, dist, h, side, fov]) => {
+        const g = window.__rakis;
+        if (!g.__shotcam) g.add('__shotcam', { alwaysUpdate: true, update() { window.__follow?.(); } }), g.__shotcam = true;
+        const ent = new Function('g', `return (${expr});`);
+        g.camera.fov = fov; g.camera.updateProjectionMatrix();
+        window.__follow = () => { const p = ent(g); if (!p) return; g.camera.position.set(p.x + side, p.y + h, p.z + dist); g.camera.lookAt(p.x, p.y + 0.04, p.z); };
+        window.__follow();
+      }, [expr, dist, h, side, fov]);
+      await page.waitForTimeout(wait);
+    };
+    await page.evaluate(() => { const g = window.__rakis; g.garden.fauna.mice.forEach((m) => { m.state = 'idle'; m.vis = 1; m.hiddenFor = 0; m.t = 3; }); });
+    await follow('g.garden.fauna.mice[0]', { dist: 1.3, h: 0.45, side: 0.3, fov: 40 }); await shot('f0_mouse');
+    await follow('g.garden.fauna.lizards[0].g.position', { dist: 0.9, h: 0.35, side: 0.5, fov: 40 }); await shot('f1_lizard');
+    await follow('({x:g.garden.life.birds[0].x, y:g.garden.life.birds[0].y, z:g.garden.life.birds[0].z})', { dist: 1.6, h: 0.2, side: 0.4, fov: 40 }); await shot('f2_songbird');
+    await page.evaluate(() => { window.__follow = null; });
+  }
   if (want('night') || want('all')) {
     await hours(22.5);
     await camG(806, 1.7, 392, 840, 1.0, 398, 66, 1500); await shot('n0_night');

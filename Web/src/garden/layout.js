@@ -13,8 +13,9 @@ export const FACE = (z) => 798.3 + 0.58 * (z - 390);
  * (арка w × h), пол — плоский y = MOUTH.y; туннель сиетча должен приходить сюда по оси z = MOUTH.z на высоте пола MOUTH.y
  * и с сечением не больше (w × h).
  */
-export const MOUTH = { x: 801.2, z: 395.8, y: 5, w: 3.0, h: 3.1, lining: 6 };
-export const PORTAL = GARDEN.portal;            // (790, 5, 392): выход из туннеля сиетча (внутри скалы)
+export const MOUTH = { x: 801.2, z: 395.8, y: 5, w: 3.0, h: 3.1, lining: 8 };
+/** Стык со штольней сиетча: внутренний конец облицовки устья (туннель сиетча должен приходить сюда по оси +X). */
+export const PORTAL = { x: MOUTH.x - MOUTH.lining, y: MOUTH.y, z: MOUTH.z };
 
 /** Угол от центра (x → z), рад. */
 export const ang = (x, z) => Math.atan2(z - C.z, x - C.x);

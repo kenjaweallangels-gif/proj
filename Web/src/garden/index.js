@@ -182,7 +182,7 @@ export function create(game) {
     if (pos.x > MOUTH.x - 2 && pos.x < MOUTH.x + 8 && Math.abs(pos.z - MOUTH.z) < 5) return 'C1_Garden';
     return null;
   };
-  let inside = false, shelter = 0;
+  let inside = false, shelter = 0, worldForced = false;
   const camP = new V3();
   let flT = 0, firstRefresh = true;
   const perf = { ms: 0, avg: 0, n: 0, max: 0, first: 0 };
@@ -195,6 +195,8 @@ export function create(game) {
     get sheltered() { return shelter; },
     /** Высота земли (без стенок) / вид поверхности / грань Когтя. */
     groundAt: groundBase, walkable, faceAt,
+    /** Высота ландшафта пустыни под садом (с заплаткой −0.3 м): для тестов «пустыня не торчит над полом». */
+    terrainAt: prevHeight,
     surfaceKind: (x, z) => field.kind(x, z),
     stats: { tris: mesh.index.length / 3, groundTris: gm.tris, instances: flora.total, buildMs: 0 },
     update(dt, t) {
@@ -208,6 +210,12 @@ export function create(game) {
       const dM = Math.hypot(cam.x - MOUTH.x, cam.z - MOUTH.z);
       // сад виден в пустыне и из штольни у устья (вид наружу), но не из глубины сиетча
       const seen = game.space === 'desert' || dM < 70;
+      // Из штольни (пространство sietch) вид наружу: небо/пустыня должны быть включены, пока устье рядом (иначе в проёме чёрный фон).
+      // Включаем только то, что выключено, и выключаем только то, что включили сами; остальное решают desert/sietch.
+      if (game.space === 'sietch') {
+        if (dM < 36 && world.visible === false) { world.setVisible?.(true); worldForced = true; }
+        else if (dM > 44 && worldForced) { world.setVisible?.(false); worldForced = false; }
+      } else worldForced = false;
       const near = dC < 330 && seen;
       root.visible = seen && dC < 520;
       if (!near) { perf.ms = 0; return; }
