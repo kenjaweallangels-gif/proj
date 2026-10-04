@@ -29,7 +29,7 @@ services:
       PLM_SECRET_KEY: ${PLM_SECRET_KEY:?set in .env}
       PLM_SEED_DEMO: ${PLM_SEED_DEMO:-false}
       PLM_CORS_ORIGINS: ${PLM_CORS_ORIGINS:-https://plm.corp.local}
-      PLM_LOCAL_LLM_ENABLED: ${PLM_LOCAL_LLM_ENABLED:-true}
+      PLM_LOCAL_LLM_ENABLED: ${PLM_LOCAL_LLM_ENABLED:-false}
       PLM_LOCAL_LLM_URL: http://ollama:11434/v1
       PLM_LOCAL_LLM_MODEL: ${PLM_LOCAL_LLM_MODEL:-qwen2.5:14b-instruct}
       PLM_CLOUD_LLM_ENABLED: ${PLM_CLOUD_LLM_ENABLED:-false}
@@ -45,8 +45,11 @@ services:
       timeout: 5s
       retries: 5
 
+  # Локальная LLM — опционально. По умолчанию НЕ запускается.
+  # Включить: WITH_LLM=1 ./up.sh  (или docker compose --profile llm up -d и PLM_LOCAL_LLM_ENABLED=true в .env)
   ollama:
     image: ollama/ollama:latest
+    profiles: ["llm"]
     restart: unless-stopped
     volumes:
       - ollama:/root/.ollama

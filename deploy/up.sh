@@ -12,7 +12,12 @@ if [ ! -f .env ]; then
 fi
 [ -f certs/plm.crt ] || sh ./make-certs.sh "${1:-plm.corp.local}"
 
-docker compose up -d --build
+if [ "${WITH_LLM:-0}" = "1" ]; then
+  sed -i.bak "s|^PLM_LOCAL_LLM_ENABLED=.*|PLM_LOCAL_LLM_ENABLED=true|" .env && rm -f .env.bak
+  docker compose --profile llm up -d --build
+else
+  docker compose up -d --build
+fi
 echo
 echo "Ожидание готовности приложения..."
 for i in $(seq 1 60); do
@@ -22,10 +27,12 @@ for i in $(seq 1 60); do
   sleep 2
 done
 
-if [ "${SKIP_LLM:-0}" != "1" ]; then
+if [ "${WITH_LLM:-0}" = "1" ]; then
   MODEL=$(grep '^PLM_LOCAL_LLM_MODEL=' .env | cut -d= -f2)
-  echo "Загрузка локальной LLM ${MODEL:-qwen2.5:14b-instruct} (~9 ГБ, можно пропустить: SKIP_LLM=1 ./up.sh)..."
-  docker compose exec -T ollama ollama pull "${MODEL:-qwen2.5:14b-instruct}" || echo "Не удалось загрузить модель — ассистент будет работать в режиме правил."
+  echo "Загрузка локальной LLM ${MODEL:-qwen2.5:14b-instruct} (~9 ГБ)..."
+  docker compose exec -T ollama ollama pull "${MODEL:-qwen2.5:14b-instruct}" || echo "Не удалось загрузить модель — ассистент будет работать в режиме команд."
+else
+  echo "Локальная LLM не разворачивалась (ассистент в режиме команд). Включить позже: WITH_LLM=1 ./up.sh"
 fi
 echo
 echo "Вход: admin / admin12345   Логи: docker compose logs -f app"
