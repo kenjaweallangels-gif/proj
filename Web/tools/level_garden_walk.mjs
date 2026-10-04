@@ -125,6 +125,9 @@ if (only.includes('mismatch')) {
     while (n < 200) {
       const x = 805 + rnd() * 110, z = 340 + rnd() * 110;
       if (G.grid.coverAt(x, z) < 0.99) continue;
+      // только пол внутри котловины: у стен видимая «земля» — скала, там heightAt (колонки SDF) и должен быть выше сетки
+      const inRav = x > 856 && G.field.ravineW(x, z).d < 2.2;
+      if (!inRav && (Math.hypot(x - G.center.x, z - G.center.z) > 46 || x < G.faceAt(z) + 4)) continue;
       // вне стенок/структур: bump = 0
       if (field.bump(x, z) > 0.001) continue;
       const hp = g.world.heightAt(x, z, 1e3);          // «верх» колонки — только для точек в котловине без скал над головой

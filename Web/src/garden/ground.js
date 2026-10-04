@@ -28,7 +28,7 @@ export function createGroundField({ desert, faceAt }) {
     // западная граница — грань Когтя (пол уходит на 0.8 м под скалу)
     const west = smoothstep(FD(z) - 1.4, FD(z) - 0.8, x);
     // у устья: коридор внутрь скалы
-    const mouth = (1 - smoothstep(MOUTH.w * 0.5 + 0.2, MOUTH.w * 0.5 + 0.6, Math.abs(z - MOUTH.z))) * smoothstep(MOUTH.x - MOUTH.lining - 1, MOUTH.x - MOUTH.lining, x);
+    const mouth = (1 - smoothstep(MOUTH.w * 0.5 + 0.2, MOUTH.w * 0.5 + 0.6, Math.abs(z - MOUTH.z))) * smoothstep(MOUTH.x - MOUTH.lining - 3, MOUTH.x - MOUTH.lining - 1.5, x);   // пол плоский до внутреннего конца облицовки и ещё на 1.5 м (стык с туннелем сиетча)
     return Math.max(m * west, mouth * (x < MOUTH.x + 3 ? 1 : 0));
   }
   /** Овраг: w — доля поперёк (1 на дне, 0 за бортами), s — длина вдоль оси, d — расстояние до оси. */

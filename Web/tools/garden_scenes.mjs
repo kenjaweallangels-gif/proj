@@ -51,16 +51,37 @@ export async function run({ hours, shot, want, page }) {
     });
     for (const r of rows) console.log('diag', JSON.stringify(r));
   }
-  if (want('tunnelview')) {
-    // игрок реально стоит в устье/штольне: смотрим наружу и внутрь (пространство и видимость выставляют сами модули)
-    for (const [px, name] of [[797.5, 't0_stub_out'], [792.5, 't1_tunnel_end_out']]) {
-      await page.evaluate(([px]) => { const g = window.__rakis; g.player.teleport(px, g.world.heightAt(px, 395.8, 6), 395.8, 0, false); }, [px]);
-      await page.waitForTimeout(2500);
-      await page.evaluate(([px]) => { const g = window.__rakis; g.camera.position.set(px, g.world.heightAt(px, 395.8, 6) + 1.62, 395.8); g.camera.fov = 70; g.camera.updateProjectionMatrix(); g.camera.lookAt(830, 3.5, 397); }, [px]);
-      await page.waitForTimeout(1500);
-      console.log('state', name, JSON.stringify(await page.evaluate(() => ({ space: window.__rakis.space, worldVisible: window.__rakis.world.visible, gardenVisible: window.__rakis.garden.root.visible }))));
-      await shot(name);
-    }
+  if (want('cdiag')) {
+    // стык тропы с нишей/сиетчем: высота/коллизия/пространство вдоль последних метров щели
+    const rows = await page.evaluate(() => {
+      const g = window.__rakis, T = g.THREE, out = [];
+      for (const sp of ['desert', 'sietch']) {
+        const sp0 = g.space; g.space = sp;
+        for (let x = 640; x <= 656; x += 0.75) {
+          const z = 251.2, y0 = g.heightAt(x, z, 30.3);
+          const p = new T.Vector3(x, y0, z); const o = p.clone();
+          const inS = !!g.sietch?.contains?.(p);
+          const hit = g.collide(p, 0.35);
+          const cols = []; for (const e of g.colliders.near(new T.Vector3(x, y0 + 1, z), 1.0)) cols.push(`${e.owner}:${[...(e.tags || [])].join('/')}`);
+          out.push({ sp, x, h: +y0.toFixed(2), contains: inS, push: hit ? [+(p.x - o.x).toFixed(2), +(p.z - o.z).toFixed(2)] : 0, cols });
+        }
+        g.space = sp0;
+      }
+      return out;
+    });
+    for (const r of rows) console.log('cdiag', JSON.stringify(r));
+  }
+  if (want('trailclear')) {
+    const clear = await page.evaluate(() => {
+      const g = window.__rakis, A = g.approach, T = g.THREE; const bad = [];
+      for (let i = 0; i < A.trail.length; i += 2) {
+        const p = A.trail[i]; const pos = new T.Vector3(p.x, g.world.heightAt(p.x, p.z, p.y), p.z); const o = pos.clone();
+        g.collide(pos, 0.35); if (Math.hypot(pos.x - o.x, pos.z - o.z) > 0.02) bad.push([+p.x.toFixed(1), +p.y.toFixed(1), +p.z.toFixed(1), +Math.hypot(pos.x - o.x, pos.z - o.z).toFixed(2)]);
+      }
+      let desertCols = 0; for (const e of g.colliders.all()) if (e.owner === 'desert' && e.c && e.c.x > 575 && e.c.x < 670 && e.c.z > 225 && e.c.z < 325) desertCols++;
+      return { n: A.trail.length / 2 | 0, blocked: bad.length, bad: bad.slice(0, 10), desertColliders: desertCols };
+    });
+    console.log('trailclear', JSON.stringify(clear));
   }
   if (want('cleft')) {
     await hours(9.5);
@@ -77,6 +98,19 @@ export async function run({ hours, shot, want, page }) {
     await camAbs(649, 31.7, 251.3, 640, 30.5, 253, 70); await shot('c2_from_niche_outward');
     await trailEye(612, 273, 22, 606, 285, 18, 70); await shot('c3_shelf_junction');
     await hours(10.5);
+  }
+  if (want('tunnelview')) {
+    // игрок реально стоит в устье/штольне: смотрим наружу и внутрь (пространство и видимость выставляют сами модули)
+    for (const [px, name] of [[797.5, 't0_stub_out'], [792.5, 't1_tunnel_end_out']]) {
+      await page.evaluate(([px]) => { const g = window.__rakis; g.player.teleport(px, g.world.heightAt(px, 395.8, 6), 395.8, 0, false); }, [px]);
+      await page.waitForTimeout(2500);
+      await page.evaluate(([px]) => { const g = window.__rakis; g.camera.position.set(px, g.world.heightAt(px, 395.8, 6) + 1.62, 395.8); g.camera.fov = 70; g.camera.updateProjectionMatrix(); g.camera.lookAt(830, 3.5, 397); }, [px]);
+      await page.waitForTimeout(1500);
+      console.log('state', name, JSON.stringify(await page.evaluate(() => ({ space: window.__rakis.space, worldVisible: window.__rakis.world.visible, gardenVisible: window.__rakis.garden.root.visible }))));
+      await shot(name);
+    }
+    await page.evaluate(() => { const g = window.__rakis; g.player.teleport(812, g.world.heightAt(812, 396, 6), 396, 0, false); });
+    await page.waitForTimeout(1500);
   }
   if (want('fauna')) {
     const follow = async (expr, { dist = 1.2, h = 0.5, side = 0.6, fov = 50, wait = 1100 } = {}) => {
