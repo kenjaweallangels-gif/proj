@@ -61,6 +61,7 @@ export class WormBody {
 
     // Тело
     this.bodyMat = patchChitin(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.8, metalness: 0 }), 0, U, cfg.hq);
+    this.LOD = LOD;                       // доступ для тестов (пороги можно менять в рантайме)
     this.lodKey = new Uint8Array(Math.ceil(LENGTH / LOD.block)); this.lodT = 0; this.rows = 0; this.rowsAvg = 0;
     this.camPos = new THREE.Vector3(); this._lodCam = new THREE.Vector3(1e9, 0, 0); this._lodDirty = true;
     this.tube = new THREE.Mesh(tubeGeometry(cfg.ns, cfg.na), this.bodyMat);
