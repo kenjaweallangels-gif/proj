@@ -42,11 +42,12 @@ alembic check                                          # убедиться, ч�
 ## Развёртывание в корпоративной сети
 
 ```bash
-cd deploy && cp .env.example .env   # задать пароли и PLM_SECRET_KEY
-mkdir -p certs                      # plm.crt / plm.key от корпоративного CA
-docker compose up -d --build
-docker compose exec ollama ollama pull qwen2.5:14b-instruct   # локальная LLM
+cd deploy && ./up.sh                # первый запуск одной командой: .env, сертификат, сборка, старт, загрузка LLM
 ```
+
+Вручную: `cp .env.example .env` (задать пароли и `PLM_SECRET_KEY`), положить `certs/plm.crt` и `certs/plm.key`
+от корпоративного CA (или `./make-certs.sh` для самоподписанного), `docker compose up -d --build`,
+`docker compose exec ollama ollama pull qwen2.5:14b-instruct`.
 
 Состав: PostgreSQL 16 → приложение (4 воркера uvicorn) → nginx (TLS, rate-limit на вход) + Ollama
 (локальная LLM, данные не покидают сеть) + ежедневный `pg_dump` в `deploy/backups`.
