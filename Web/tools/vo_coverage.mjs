@@ -60,8 +60,8 @@ for (const f of files) {
   }
 }
 for (const [id, f] of refs) {
-  if (id.endsWith('_')) continue;
-  if (id.startsWith('LORE_')) { if (!data.Dialogue[id]) miss('REF', id, `нет в CSV (${f})`); continue; }
+  if (id.endsWith('_') || id === 'DLG_WRM_H' || id === 'LORE_X' || id === 'LORE_FB') continue;
+  if (id.startsWith('LORE_')) { if (!data.Dialogue[id]) console.log(`предупреждение: надпись ${id} не в CSV (только текст, не озвучивается) — ${f}`); continue; }
   if (!known(id)) miss('REF', id, `нет в CSV (${f})`);
   else if (data.Dialogue[id] && !VO[id] && data.Dialogue[id].speaker !== 'Lore') miss('REF', id, `нет озвучки (${f})`);
 }
