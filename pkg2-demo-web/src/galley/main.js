@@ -498,6 +498,19 @@ async function main() {
     if (k === 'KeyU') act('auto_cam');
     if (k === 'Digit6') act('player');
     if (k === 'Digit5') act('tp');
+    // окно «Система»: 7–0 и = — вкладки, PageUp/PageDown — прокрутка
+    const TAB_KEYS = { Digit7: 'algo', Digit8: 'cat', Digit9: 'kd', Digit0: 'tree', Equal: 'ctl' };
+    if (TAB_KEYS[k]) act('sys', TAB_KEYS[k]);
+    if (k === 'PageUp' || k === 'PageDown') { e.preventDefault(); act('sys_scroll', k === 'PageUp' ? -1 : 1); }
+    // одни клавиши — для того, что запущено: виртуальная сборка (если открыта) или имитация реальными деталями
+    if (!asm.open && auto.on) {
+      if (k === 'Space') { e.preventDefault(); act('auto_toggle'); }
+      if (k === 'Comma') act('sim_step', -1);
+      if (k === 'Period') act('sim_step', 1);
+      if (k === 'BracketLeft') act('sim_speed', 'down');
+      if (k === 'BracketRight') act('sim_speed', 'up');
+      if (k === 'Minus') act('sim_rev');
+    }
     if (asm.open) {
       if (k === 'Space') { e.preventDefault(); act('player_play'); }
       if (k === 'Comma') act('player_back');
@@ -678,6 +691,10 @@ async function main() {
       case 'player_speed': if (asm.open) { if (typeof arg === 'number') asm.setSpeed(arg); else asm.faster(arg === 'down' ? -1 : 1); } break;
       case 'player_style': if (asm.open && asm.target.setStyle) { asm.target.setStyle(asm.target.style === 'glasses' ? 'holo' : 'glasses'); asm.apply(true); playerUi(); app.notify(asm.target.style === 'glasses' ? 'Голограмма — только в окне дисплея очков, как в настоящих AR-очках' : 'Голограмма видна целиком (вид симулятора)', 4); } break;
       case 'auto_stop': auto.stop(); break;
+      case 'sim_speed': if (auto.on) auto.setRate(arg === 'down' ? -1 : arg === 'up' ? 1 : Number(arg) || 1); break;
+      case 'sim_rev': if (auto.on) auto.reverse(); break;
+      case 'sim_step': if (auto.on) auto.stepBy(Number(arg) || 1); break;
+      case 'sys_scroll': { const a = panels.algo; if (!a.visible) cornerAlgo(true, true); a.onWheel?.(Number(arg) || 1, null, a); a.dirty = true; break; }
       case 'auto_toggle': if (auto.on && !auto.paused) auto.pause(true); else auto.start(); break;
       case 'inspect_glasses': {
         // подойти к витрине и рассмотреть модель выбранных очков вблизи
@@ -786,7 +803,7 @@ async function main() {
       kd: { code: app.kd.code, sheet: app.kd.sheet, zone: app.kd.zone, zoom: Math.round(app.kd.zoom * 10) / 10 },
       panels: Object.fromEntries(Object.entries(PANEL_OF).map(([k, p]) => [k, !!p.visible])),
       dim: { mode: sim.dimMode, level: Math.round(sim.dimLevel * 100) / 100, t: Math.round(transmitAt(sim.device, sim.dimLevel) * 1000) / 1000 }, bright: sim.bright, light: params.light, lux: Math.round(lumCd * 5),
-      device: sim.device.id, auto: { on: auto.on, paused: auto.paused, cam: auto.cam },
+      device: sim.device.id, auto: { on: auto.on, paused: auto.paused, cam: auto.cam, rate: auto.rate, dir: auto.dir, place: auto.st ? auto.st.short : 'Стапель СТ-3' },
       station: activeSt ? { name: activeSt.short, step: activeSt.done ? 'готово' : `${activeSt.step.id} ${activeSt.step.title}`, k: activeSt.index, n: activeSt.steps.length } : null,
       asm: asm?.open ? { name: asm.target.name, t: Math.round(asm.t * 100) / 100, n: asm.n, playing: asm.playing, speed: asm.speed, dir: asm.dir, step: asm.current.step ? `${asm.current.step.id} ${asm.current.step.title}` : '' } : null,
       inspect: app.local && player.mode === 'inspect' ? app.local.features.slice(0, 4).map(({ f }) => trimText(`${f.designation || f.id} — ${f.name || ''}`, 70)) : null,
@@ -844,8 +861,10 @@ async function main() {
         ['колесо над КД', 'зум к точке; перетаскивание — сдвиг листа'], ['F', 'осмотр точки узла + локальный алгоритм; Esc/Q — назад'], ['E', 'взаимодействие: очки, дверцы'],
         ['N / B', 'переход вперёд / назад'], ['P', 'фото в журнал'], ['G', 'закрепить окно перед глазами'], ['1–4', 'окна КД / переход / система / задание'],
         ['Tab', 'вид: полное поле ≈ 200° / центр 72° / без периферии / прямой обзор'], ['\\', 'схема зон поля зрения'],
-        ['I', 'имитация сборки: запуск / пауза; Shift+I — стоп'],
-        ['6', 'виртуальная сборка без деталей (плеер): пробел, , . [ ] − Home End'], ['5', 'вид от третьего лица (колесо — ближе/дальше)'], ['U', 'имитация: камера ведёт / хожу сам'], ['X', 'алгоритм в углу поля зрения; Shift+X — другой угол'], ['K', 'другие очки (Shift+K — назад)'], ['R', '3DoF: окна по центру взгляда'],
+        ['I', 'имитация сборки реальными деталями — на месте, где стоите: запуск / пауза; Shift+I — стоп'],
+        ['6', 'виртуальная сборка из голограмм: открыть / закрыть'],
+        ['Пробел', 'пауза / пуск — виртуальной сборки (если открыта) или имитации'], ['[ ]', 'скорость ×0,25 … ×8'],
+        ['−', 'направление: вперёд / назад во времени (разборка)'], [', .', 'шаг назад / вперёд'], ['Home / End', 'виртуальная сборка: в начало / в конец'], ['5', 'вид от третьего лица (колесо — ближе/дальше)'], ['U', 'имитация: камера ведёт / хожу сам'], ['X', 'окно «Система» на экране: показать / скрыть; Shift+X — компактно / полностью'], ['7 8 9 0 =', 'вкладки окна: Алгоритм, Каталог, КД, Дерево, Управление'], ['PgUp / PgDn', 'прокрутка окна'], ['K', 'другие очки (Shift+K — назад)'], ['R', '3DoF: окна по центру взгляда'],
         ['T', 'ускорение времени участка ×1 / ×60 / ×600'], ['L', 'затемнение линз по ступеням очков → авто'], ['V', 'снять / надеть очки'], ['O', 'модель зрения'], ['Enter', 'пропустить вступление'],
       ].map(([a, b]) => `<tr><td><kbd>${a}</kbd></td><td>${b}</td></tr>`).join('')}</table>`;
       return;
@@ -1018,7 +1037,7 @@ async function main() {
   // ускоренно (часы участка «проматываются», таймер виден) → «выполнено» и следующий переход.
   const FLY_KINDS = new Set(['panel', 'bracket', 'fitting', 'equipment', 'trim', 'decor', 'door', 'hinge', 'latch', 'plumbing', 'sheet', 'sink', 'faucet', 'siphon', 'valve', 'light', 'handle', 'placard', 'retainer', 'stdunit', 'trolley', 'turnbutton']);
   const auto = {
-    on: false, paused: false, phase: 'show', t: 0, fly: null, ff: false, rate: 1,
+    on: false, paused: false, phase: 'show', t: 0, fly: null, ff: false, rate: 1, dir: 1,
     // guide — камера ведёт к месту работы; free — сборщик ходит и смотрит сам, сборка идёт своим ходом
     // по умолчанию имитация персонажем не управляет: сборка идёт сама, сборщик ходит где хочет
     cam: q.get('autocam') === 'guide' ? 'guide' : 'free',
@@ -1040,11 +1059,16 @@ async function main() {
       updateBar(); pushState(true);
     },
     phaseLabel() {
+      const tail = `${this.rate !== 1 ? ` · ×${String(this.rate).replace('.', ',')}` : ''}${this.dir < 0 ? ' · ◀ назад' : ''}`;
+      return this.phaseText() + tail;
+    },
+    phaseText() {
+      if (this.dir < 0) return `${this.st ? this.st.short.split(' · ')[0] : 'стапель'}: разборка по шагам`;
       if (this.st) { const s = this.st.step; return s ? `${this.st.short.split(' · ')[0]}: ${s.id} — ${{ show: 'голограмма', act: 'выполнение', done: 'контроль' }[this.phase] || ''}` : 'готово'; }
       if (this.cam === 'free' && this.phase === 'show') return `переход ${run.step.id} — голограмма (свободно)`; return { show: `переход ${run.step.id} — голограмма`, move: 'подход к месту', act: `переход ${run.step.id} — выполнение`, fly: `установка ${this.fly?.ids?.join(', ') || ''}`, wait: 'выдержка (ускорено)' }[this.phase] || ''; },
     start() {
       if (scen.state === 'choose') { startScenario('auto'); return; }
-      if (!this.on) { this.phase = 'show'; this.t = 0; this.st = this.pickStation(); this.begun = false; }
+      if (!this.on) { this.phase = 'show'; this.t = 0; this.st = this.pickStation(); this.begun = false; this.dir = 1; }
       this.on = true; this.paused = false;
       if (scen.state === 'free') this.begin();
       else app.notify('Имитация сборки начнётся после вступления (Enter — пропустить)', 4);
@@ -1123,6 +1147,7 @@ async function main() {
     update(dt) {
       if (!this.on || this.paused || scen.state !== 'free') return;
       if (!this.begun) this.begin();
+      if (this.dir < 0) { this.updateBack(dt); return; }
       if (this.st) { this.updateStation(dt); return; }
       const s = run.step;
       if (!s) return;
@@ -1148,7 +1173,7 @@ async function main() {
       if (this.phase === 'move') return;
       if (this.phase === 'fly') {
         const F = this.fly;
-        F.t += dt;
+        F.t += dt * this.rate;
         const k = Math.min(1, F.t / 1.5), e = k * k * (3 - 2 * k);
         for (const it of F.its) {
           it.o.position.copy(it.p0).addScaledVector(it.off, 1 - e);
@@ -1160,7 +1185,7 @@ async function main() {
       if (this.phase === 'wait') {
         const tm = run.blockingTimer();
         if (!tm) { this.phase = 'act'; this.t = 0; return; }
-        run.tick(Math.max(run.remaining(tm) * Math.min(1, dt * 1.2), (dt * app.speed) / 60) + 1e-3);
+        run.tick(Math.max(run.remaining(tm) * Math.min(1, dt * 1.2 * this.rate), (dt * this.rate * app.speed) / 60) + 1e-3);
         return;
       }
       // act: одно действие в ≈ 0,9 с
@@ -1204,7 +1229,51 @@ async function main() {
     this.phase = 'show'; this.t = 0;
     pushState(true);
   };
-  app.simInfo = () => (auto.on ? { paused: auto.paused, place: auto.st ? auto.st.short : 'Стапель СТ-3', st: auto.st } : null);
+  /** Назад во времени: переходы откатываются по одному (на участке детали «уходят» обратно). */
+  auto.updateBack = function (dt) {
+    this.t += dt * this.rate;
+    const atStart = () => { this.paused = true; this.dir = 1; this.phase = 'show'; this.t = 0; app.notify('Имитация: дошли до начала — пауза (направление снова вперёд)', 4); updateBar(); pushState(true); };
+    if (this.st) {
+      const st = this.st;
+      if (this.phase !== 'back') { if (st.index <= 0) { atStart(); return; } this.phase = 'back'; this.t = 0; }
+      const f = Math.max(0, 1 - this.t / 2.4);
+      st.apply(st.index - 1, f);
+      if (f <= 0) { st.prev(); st.panel.dirty = true; this.phase = 'show'; this.t = 0; pushState(true); }
+      return;
+    }
+    if (this.fly) this.finishFly();
+    if (this.t < 2.2) return;
+    this.t = 0;
+    const i = run.index;
+    app.prev();
+    if (run.index === i) atStart();
+  };
+  /** Скорость имитации: ×0,25 … ×8 (k = +1 / −1 — на ступень, число — точно). */
+  auto.setRate = function (k) {
+    const i = SPEEDS.indexOf(this.rate);
+    this.rate = k === 1 || k === -1 ? SPEEDS[Math.min(SPEEDS.length - 1, Math.max(0, (i < 0 ? 2 : i) + k))] : k;
+    app.notify(`Имитация: скорость ×${String(this.rate).replace('.', ',')}`, 2); updateBar(); pushState(true);
+  };
+  auto.reverse = function () {
+    this.dir = -this.dir; this.phase = 'show'; this.t = 0;
+    if (this.st) this.st.apply(this.st.index, 0);
+    app.notify(this.dir < 0 ? 'Имитация: назад во времени — переходы откатываются (разборка)' : 'Имитация: вперёд', 3); updateBar(); pushState(true);
+  };
+  /** Шаг вручную в имитации (на паузе): d = +1 — следующий переход, −1 — предыдущий. */
+  auto.stepBy = function (d) {
+    this.pause();
+    if (this.st) {
+      const st = this.st;
+      if (d > 0) { const s = st.step; if (s?.check && !(s.id in st.values)) st.values[s.id] = s.check.nominal; st.next(); } else st.prev();
+      st.panel.dirty = true;
+    } else if (d > 0) { run.next(); } else app.prev();
+    pushState(true);
+  };
+  app.simInfo = () => (auto.on ? { paused: auto.paused, place: auto.st ? auto.st.short : 'Стапель СТ-3', st: auto.st, rate: auto.rate, dir: auto.dir } : null);
+  /** Подсказка клавиш для окна «Система» — по тому, что запущено. */
+  app.hotkeys = () => (asm?.open ? 'Виртуальная: Пробел — пуск/пауза · [ ] — скорость · − — назад · , . — шаг · Home/End · 6 — закрыть'
+    : auto.on ? 'Имитация: Пробел — пауза · [ ] — скорость · − — назад · , . — шаг · Shift+I — стоп'
+      : 'I — имитация здесь · 6 — виртуальная сборка · X / Shift+X — окно · 7 8 9 0 = — вкладки');
   run.on((e) => { if (e.event === 'step') auto.flown = false; });
   app.autoInfo = () => (auto.on ? (auto.paused ? 'ИМИТАЦИЯ: пауза' : `▶ ИМИТАЦИЯ · ${auto.phaseLabel()}`) : null);
 

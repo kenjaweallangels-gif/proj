@@ -110,7 +110,11 @@ export function mountTablet() {
     const autoRow = `<div class="card"><div class="row">${au.on && !au.paused ? '<button class="btn warn" data-c="auto_pause">⏸ Пауза имитации</button>'
       : `<button class="btn ok" data-c="auto_start">▶ ${au.on ? 'Продолжить имитацию' : 'Имитация сборки'}</button>`}${au.on ? '<button class="btn bad" data-c="auto_stop">⏹ Стоп</button>' : ''}
       <button class="btn" aria-pressed="${au.cam === 'free'}" data-c="auto_cam">${au.cam === 'free' ? '🚶 Хожу сам' : '🎥 Камера ведёт'}</button>
-      <button class="btn" aria-pressed="${!!S.panels?.algo}" data-c="corner">Окно «Система»</button></div></div>`;
+      <button class="btn" aria-pressed="${!!S.panels?.algo}" data-c="corner">Окно «Система»</button></div>
+      ${au.on ? `<div class="id" style="margin-top:8px">Имитация: ${esc(au.place || '')}</div><div class="row" style="margin-top:6px">
+        <button class="btn" data-c="sim_step" data-a="-1">⏪ шаг</button><button class="btn" aria-pressed="${au.dir < 0}" data-c="sim_rev">◀ назад</button>
+        <button class="btn" data-c="sim_step" data-a="1">шаг ⏩</button><button class="btn" data-c="sim_speed" data-a="down">−</button>
+        <button class="btn" disabled>×${num(au.rate ?? 1)}</button><button class="btn" data-c="sim_speed" data-a="up">+</button></div>` : ''}</div>`;
     const A = S.asm;
     const asmRow = A ? `<div class="card"><div class="id">Виртуальная сборка · ${esc(A.name)}</div><h2 style="font-size:18px">${esc(A.step)}</h2>
       <div class="timer"><div class="bar"><i style="width:${Math.round((A.t / A.n) * 100)}%"></i></div></div>

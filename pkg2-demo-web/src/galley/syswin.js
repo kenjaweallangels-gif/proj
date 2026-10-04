@@ -84,6 +84,7 @@ export function systemWindow(mgr, app) {
     const sim = app.simInfo?.();
     const msg = sim ? `${sim.paused ? '⏸' : '▶'} ${ai || 'Имитация'}` : need === 'timer' ? 'Идёт выдержка' : need === 'value' ? `Замер: ${s.check.name}` : need === 'photo' ? 'Нужно фото' : 'Можно дальше ▸';
     ui.text(msg, 40, H - 150, { size: sim ? 54 : 66, color: sim ? C.warn : need ? C.warn : C.ok, max: tm ? W - 460 : W - 80 });
+    if (sim) ui.text('Пробел — пауза · [ ] — скорость · − — назад · , . — шаг · Shift+I — стоп', 40, H - 214, { size: 38, color: C.dim, max: W - 80 });
     if (tm) ui.text(`⏱ ${fmtMin(app.run.remaining(tm))}`, W - 40, H - 150, { size: 72, color: C.warn, align: 'right', mono: true });
     // кнопки: управлять можно указателем смартфона, мышью, голосом
     const bw = (W - 80 - 3 * 24) / 4, by = H - 110;
@@ -118,7 +119,8 @@ export function systemWindow(mgr, app) {
     else ({ algo: tabAlgo, cat: tabCat, kd: tabKd, tree: tabTree, ctl: tabCtl })[panel.state.tab](ui, panel, area, a);
     // подвал: способы управления окном
     ui.rect(20, H - 44, W - 40, 34, { fill: 'rgba(88,230,255,0.04)', stroke: 'rgba(88,230,255,0.25)', r: 8, lw: 1.5 });
-    ui.text(`📱 ${panel.state.phone ? 'указатель смартфона подключён' : 'смартфон: вкладка «Указатель» на #tablet'} · 🎙 «сборка каталог / дерево / открой алгоритм …» · 👆 жест «нажатие» — на очках (в демо нет)`, 30, H - 21, { size: 14, color: C.dim, max: W - 60 });
+    const keys = app.hotkeys?.() || 'X — скрыть · Shift+X — компактно · 7 8 9 0 = — вкладки · PgUp/PgDn — прокрутка';
+    ui.text(`⌨ ${keys} · 📱 указатель смартфона (#tablet) · 🎙 голос`, 30, H - 21, { size: 14, color: C.dim, max: W - 60 });
   }
 
   function setView(v) { p.state.view = v; p.dirty = true; app.onSysView?.(v); }
