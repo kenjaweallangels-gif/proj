@@ -66,6 +66,13 @@ export function createCameraRig(game, p) {
       feet.set(pt.x, pt.y - CFG.eye, pt.z);
       const ptOn = hv.contains(feet);
       if (pOn !== ptOn) return true;
+      if (pOn) {
+        // перекрытия борта: голова не выше низа плиты над ней и не ниже пола борта (низкие потолки, прыжок под плитой, лестницы)
+        const ce = game.ceilingAt ? game.ceilingAt(pt.x, pt.z, p.position.y + 0.3) : Infinity;
+        if (pt.y + r > ce) return true;
+        const fl = game.boardFloorAt ? game.boardFloorAt(pt.x, pt.z, p.position.y + 0.5) : null;
+        if (Number.isFinite(fl) && pt.y - r < fl + 0.05) return true;
+      }
       if (pOn && hv.collide) { fbuf.set(pt.x, pt.y - 1.0, pt.z); if (hv.collide(fbuf, r)) return true; }
     }
     // прочие твёрдые тела (валуны, прилавки, постройки сада); люди (npc) камеру не загораживают
