@@ -34,6 +34,34 @@ export async function run({ hours, shot, want, page }) {
     await camG(905, 1.7, 413, 880, 3, 406, 62); await shot('r1_ravine_back');
     await camG(950, 2.5, 424, 915, 3, 416, 62); await shot('r2_ravine_outside');
   }
+  if (want('diag')) {
+    const rows = await page.evaluate(() => {
+      const g = window.__rakis, T = g.THREE, out = [];
+      const sp0 = g.space; g.space = 'sietch';
+      for (let x = 800; x >= 789.9; x -= 0.5) {
+        const y0 = g.world.heightAt(x, 395.8, 6);
+        const p = new T.Vector3(x, y0, 395.8); const o = p.clone();
+        const inS = !!g.sietch?.contains?.(p);
+        const gh = g.groundAt(x, 395.8, y0)?.heightAt?.(x, 395.8, y0);
+        const hit = g.collide(p, 0.35);
+        const cols = []; for (const e of g.colliders.near(new T.Vector3(x, y0 + 1, 395.8), 1.2)) cols.push(`${e.owner}:${[...(e.tags || [])].join('/')}`);
+        out.push({ x, wh: +y0.toFixed(2), sietch: inS, groundH: +(gh ?? NaN).toFixed(2), push: hit ? [+(p.x - o.x).toFixed(2), +(p.z - o.z).toFixed(2)] : 0, cols });
+      }
+      g.space = sp0; return out;
+    });
+    for (const r of rows) console.log('diag', JSON.stringify(r));
+  }
+  if (want('tunnelview')) {
+    // игрок реально стоит в устье/штольне: смотрим наружу и внутрь (пространство и видимость выставляют сами модули)
+    for (const [px, name] of [[797.5, 't0_stub_out'], [792.5, 't1_tunnel_end_out']]) {
+      await page.evaluate(([px]) => { const g = window.__rakis; g.player.teleport(px, g.world.heightAt(px, 395.8, 6), 395.8, 0, false); }, [px]);
+      await page.waitForTimeout(2500);
+      await page.evaluate(([px]) => { const g = window.__rakis; g.camera.position.set(px, g.world.heightAt(px, 395.8, 6) + 1.62, 395.8); g.camera.fov = 70; g.camera.updateProjectionMatrix(); g.camera.lookAt(830, 3.5, 397); }, [px]);
+      await page.waitForTimeout(1500);
+      console.log('state', name, JSON.stringify(await page.evaluate(() => ({ space: window.__rakis.space, worldVisible: window.__rakis.world.visible, gardenVisible: window.__rakis.garden.root.visible }))));
+      await shot(name);
+    }
+  }
   if (want('cleft')) {
     await hours(9.5);
     const camAbs = async (x, y, z, lx, ly, lz, fov = 62, wait = 1200) => {

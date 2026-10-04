@@ -34,7 +34,7 @@ function cyl(r0, r1, h, x, y, z, c, rot) {
   g.translate(x, y, z); return paint(g, hex(c));
 }
 const merge = (list) => { const g = mergeGeometries(list, false); list.forEach((x) => x.dispose()); g.computeBoundingSphere(); return g; };
-const mkMat = (key, o = {}) => fogPatch(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0, ...o }), key);
+const mkMat = (key, o = {}) => fogPatch(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0, envMapIntensity: 0.45, ...o }), key);
 
 /** Тонкий хвост из N сегментов вдоль -z с изгибом вверх; пивот в начале. */
 function tailGeo(len, r0, r1, curve, c, tuft) {

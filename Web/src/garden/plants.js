@@ -7,7 +7,7 @@ import { rng } from '../core/util.js';
 export const GWIND = { value: new THREE.Vector4(0.5, 0.87, 0.06, 0) };
 
 export function makePlantMaterial({ map = null, alphaTest = 0.42, roughness = 0.88, key = 'gd-plant', side = THREE.DoubleSide, vertexColors = true, color = 0xffffff, emissive = 0x000000 } = {}) {
-  const m = new THREE.MeshStandardMaterial({ map, alphaTest: map ? alphaTest : 0, side, roughness, metalness: 0, vertexColors, color, emissive });
+  const m = new THREE.MeshStandardMaterial({ map, alphaTest: map ? alphaTest : 0, side, roughness, metalness: 0, vertexColors, color, emissive, envMapIntensity: 0.55 });
   m.alphaToCoverage = !!map && alphaTest > 0;
   patchMaterial(m, key, {
     uniforms: { uGWind: GWIND },

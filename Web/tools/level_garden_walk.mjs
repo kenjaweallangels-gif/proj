@@ -62,6 +62,25 @@ if (only.includes('garden')) {
   const c = await page.evaluate(() => { const g = window.__rakis; return { zone: g.zone, space: g.space, surf: g.world.surfaceAt(822, 396), surfBed: g.world.surfaceAt(843, 388) }; });
   console.log('state', JSON.stringify(c));
 }
+if (only.includes('diag')) {
+  // диагностика стыка штольня ↔ туннель сиетча: высота/коллизия/пространство по шагам вдоль оси z = 395.8
+  const rows = await page.evaluate(() => {
+    const g = window.__rakis, T = g.THREE, out = [];
+    const sp0 = g.space; g.space = 'sietch';      // как у игрока в туннеле (contains решает по точке)
+    for (let x = 800; x >= 789.9; x -= 0.5) {
+      const y0 = g.world.heightAt(x, 395.8, 6);
+      const p = new T.Vector3(x, y0, 395.8); const o = p.clone();
+      const inS = !!g.sietch?.contains?.(p);
+      const gh = g.groundAt ? g.groundAt(x, 395.8, y0)?.heightAt?.(x, 395.8, y0) : null;
+      const hit = g.collide(p, 0.35);
+      const cols = []; for (const e of g.colliders.near(new T.Vector3(x, y0 + 1, 395.8), 1.2)) cols.push(`${e.owner}:${[...(e.tags || [])].join('/')}`);
+      out.push({ x, wh: +y0.toFixed(2), sietchContains: inS, groundH: gh === null ? null : +gh.toFixed(2), push: hit ? [+(p.x - o.x).toFixed(2), +(p.z - o.z).toFixed(2)] : 0, cols });
+    }
+    g.space = sp0;
+    return out;
+  });
+  for (const r of rows) console.log(JSON.stringify(r));
+}
 if (only.includes('tunnel')) {
   // сиетч ↔ сад: из сада по выходному туннелю к залу и обратно (смена пространства desert ↔ sietch на ходу)
   const path = await page.evaluate(() => (window.__rakis.sietch?.exitPath || []).map((p) => [p.x, p.z]));
