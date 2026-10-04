@@ -24,40 +24,40 @@ G = "[Galach]"
 # A1. Гребень. Начало: Илва поправляет шаг Рэйна; разговор о миссии
 # =====================================================================================================================
 S("DLG_A1_001", "", [
-    ("Ilva", "Calm", "Bā-Rayn, tūm taḍbuṭū. An-tirb yaṣnut an-ḍabṭ.",
-     "Мастер Рэйн, вы шагаете в такт. А песок слышит такт.", "Master Rayn, you're stepping in rhythm. The sand hears rhythm."),
+    ("Ilva", "Calm", "Bā-Rayn, tūm taḍbuṭū ʿūd. An-tirb yaṣnut hād.",
+     "Мастер Рэйн, вы опять шагаете в такт. Песок это слышит.", "Master Rayn, you're stepping in rhythm again. The sand hears it."),
     ("Rayn", "Wry", "Ānu yasrub ġīr. Kufa ġayr yasrub?",
-     "Я просто иду. А как ещё ходят?", "I'm simply walking. How else does one walk?"),
-    ("Kair", "Calm", "Maš ka-ʿarḍ. Madd, qiṭ, iṭmun — fa ka-ʿātir. Iḥdaq.",
-     "Не как на параде. Шаг длинный, шаг короткий, замри — и будто споткнулся. Смотри.", "Not like a parade. Long step, short step, freeze — then stumble as if by accident. Watch."),
-    ("Rayn", "Wry", "Hād sarb? Bi-hākā maš ġad natūl ʿad an-ġurb.",
-     "Это у вас называется «идти»? Так мы и к закату не дойдём.", "That's what you call walking? We won't arrive by sundown like that."),
-    ("Kair", "Wry", "Natūl. An-ṣaḥr maš tabġī an-mustaʿjil, wa-ānu maš abġī adfin nazīl.",
-     "Дойдём. Пустыня не любит торопливых, а я не люблю хоронить гостей.", "We'll get there. The desert doesn't like the hasty, and I don't like burying guests."),
+     "Я просто иду! А как ещё ходят?", "I'm just walking! How else do people walk?"),
+    ("Kair", "Calm", "Ka-ʿajūz dī khafat masrabuh. Madd, qiṭ, iṭmun. Iḥdaq.",
+     "Как старик, который забыл, куда шёл. Длинный, короткий, замер. Смотри.", "Like an old man who forgot where he was going. Long, short, freeze. Watch."),
+    ("Rayn", "Wry", "ʿAšān ḥawl ṣaqalku asrub sawī — wa-dulā ka-ʿajūz?",
+     "Двадцать лет учился ходить прямо — а теперь как старик?", "Twenty years learning to walk straight — and now like an old man?"),
+    ("Kair", "Wry", "Hun ġīr dī yasrub ka-ʿajūz yaʿīš madd.",
+     "Здесь до старости доживает только тот, кто ходит как старик.", "Out here, only those who walk like old men live to be old."),
 ])
 
 S("DLG_A1_020", "ZoneEnter:A1_Ridge", [
-    ("Rayn", "Wry", "Yā Kayr, fu-Kīn yalqut: an-ṣaḥr khāw — maš ḍumm, maš nuṭf.",
-     "Кайр, в Кине говорят: пустыня пуста — ни людей, ни воды.", "Kair, in Keen they say the desert is empty — no people, no water."),
-    ("Kair", "Calm", "Fu-Kīn yalqut jamm. Wa-kull-mā hun — duḥ adwāsak.",
-     "В Кине много чего говорят. А всё, что здесь есть, лежит у тебя под ногами.", "Keen says a lot of things. Everything that's out here lies under your feet."),
+    ("Rayn", "Wry", "Yā Kayr, fu-Kīn yaʿhadū: an-ṣaḥr khāw — maš ḍumm, maš nuṭf.",
+     "Кайр, в Кине клянутся, что пустыня пуста. Ни людей, ни воды.", "Kair, in Keen they swear the desert is empty. No people, no water."),
+    ("Kair", "Calm", "Kīn yaʿhad li-an-ʿušr. Ḍumm hun tamm — bayd maš yabayyinū muḥayyahum.",
+     "Кин клянётся ради десятины. Люди тут есть — просто лиц не показывают.", "Keen swears for the sake of the tithe. There are people here — they just don't show their faces."),
 ])
 
 S("DLG_A1_010", "", [
-    ("Ilva", "Calm", "Yā Kayr, kurr li-Bā-Rayn: tayn naḥ nasrub? Hū ṣanat bi-nuṣf fumm.",
-     "Кайр, повторите мастеру Рэйну, куда мы идём. Он слушал вполуха.", "Kair, tell Master Rayn again where we're headed. He only half listened."),
-    ("Kair", "Neutral", "ʿAd Tabr an-Nūr. Hād tabr an-nahḍiyyīn — dī yataqalū bi-Šay-Ḥulūd ʿurr ḥanābin.",
-     "В Табр-ан-Нур. Это сиетч возрожденцев — тех, кто верит в Шай-Хулуда без жрецов.", "To Tabr-an-Nur. The revivalists' sietch — people who believe in Shai-Hulud without priests."),
-    ("Kair", "Neutral", "Kīn yabġī ʿušr an-nuṭf mun hum. Wa-ānu ʿātil luqt an-ḥanābin li-an-Nāʾib.",
-     "Кин хочет с них водяную десятину. А я несу наибу слово жрецов.", "Keen wants the water tithe from them. And I carry the priests' word to the naib."),
-    ("Rayn", "Neutral", "Wa-lin an-Nāʾib maš yanfil?",
-     "А если наиб не даст?", "And if the naib doesn't give?"),
-    ("Kair", "Wry", "Fa Kīn yašḥan jund. Wa-an-jund, yā Rayn, yamṣuṣ ajamm mun yaḥluṣ.",
-     "Тогда Кин пришлёт солдат. А солдаты, Рэйн, пьют больше, чем платят.", "Then Keen sends soldiers. And soldiers, Rayn, drink more than they pay."),
-    ("Ilva", "Calm", "Wa-tū, yā Kayr? Sāb mūn tū?",
-     "А вы, Кайр? На чьей вы стороне?", "And you, Kair? Whose side are you on?"),
-    ("Kair", "Neutral", "Ānu sāb an-nuṭf. Dulā hī fu-qullī.",
-     "Я на стороне воды. Пока что она у меня во фляге.", "I'm on the side of water. For the moment it's in my flask."),
+    ("Ilva", "Wry", "Yā Kayr, Bā-Rayn yaḥluṣ li-an-masrab, bayd maš našad tayn yatūl hād an-masrab.",
+     "Кайр, мастер Рэйн платит за дорогу, а куда она ведёт, так и не спросил.", "Kair, Master Rayn pays for the road but never asked where it leads."),
+    ("Rayn", "Wry", "Našadku! Fu-Kīn. Laqatū: ʿad tabr, ʿad ḍumm an-ḍalāl.",
+     "Спросил! Ещё в Кине. Сказали: в сиетч, к еретикам.", "I did! Back in Keen. They said: to a sietch, to the heretics."),
+    ("Kair", "Neutral", "Maš ḍalāl — nahḍiyyīn. Yaḥnabū li-Šay-Ḥulūd ʿurr ḥanābin. Wa-an-ḥanābin maš yaḥillū hād.",
+     "Не еретики — возрожденцы. Молятся Шай-Хулуду без жрецов. А жрецы такого не прощают.", "Not heretics — revivalists. They pray to Shai-Hulud without priests. And priests don't forgive that."),
+    ("Rayn", "Neutral", "Wa-li-hād Kīn yašḥan ʿadhum… tū?",
+     "И поэтому Кин посылает к ним… вас?", "And so Keen sends them… you?"),
+    ("Kair", "Wry", "Ānu, wa-khaṭṭ ʿalā an-ʿušr. Wa-lin an-Nāʾib maš yanfil — bād ānu ġad yašḥanū jund.",
+     "Меня. С письмом о десятине. А если наиб не даст — после меня пришлют солдат.", "Me. With a letter about the tithe. And if the naib won't pay, they send soldiers after me."),
+    ("Ilva", "Calm", "Wa-tūm, yā Kayr? Sāb mūn tūm?",
+     "А вы сами, Кайр? На чьей вы стороне?", "And you, Kair? Whose side are you on?"),
+    ("Kair", "Wry", "Sāb qullī. Dulā hū maliy.",
+     "На стороне своей фляги. Пока она полная.", "My flask's side. As long as it's full."),
 ])
 
 # ---- обучающие реплики (реакции на походку) ----
@@ -80,38 +80,38 @@ S("DLG_TUT_006", "Surface:PackedSand", [("Kair", "Tense", "Tirb šahb yaṭbul k
 S("DLG_A2_001", "", [
     ("Rayn", "Neutral", "Qaddi ʿad an-Ḍafr? Adwāsī maš dīlī.",
      "Сколько ещё до Когтя? Мои ноги уже не мои.", "How far to the Claw? My feet aren't mine anymore."),
-    ("Kair", "Calm", "ʿAd an-Ḍafr nuṣf ḍaww, lin an-tirb yaḥill.",
-     "До Когтя полдня — если песок позволит.", "Half a day to the Claw — if the sand allows."),
+    ("Kair", "Wry", "Qaddi an-tirb yanfil. Nuṣf ḍaww — lin maš tanšad kull mīt sarb.",
+     "Сколько песок даст. Полдня — если не будешь спрашивать каждые сто шагов.", "As long as the sand allows. Half a day — if you don't ask every hundred steps."),
 ])
 
 # религия: спит ли Бог в каждом черве
 S("DLG_A2_B01", "ZoneEnter:A2_Erg", [
     ("Rayn", "Neutral", "Yā Kayr, kay wakīd: Il yašān fu-kull ḥūl? Aw fu-an-aḍkham ġīr?",
-     "Кайр, правда, что Бог спит в каждом черве? Или только в самом большом?", "Kair, is it true God sleeps in every worm? Or only in the biggest?"),
-    ("Kair", "Wry", "Ḥanābin Kīn yalqutū: fu-kull ḥūl. Wa-fu-an-aḍkham — li-dī yaḥluṣ ajamm.",
-     "Жрецы Кина говорят: в каждом. А в самом большом — это для тех, кто платит больше.", "Keen's priests say: in every one. And in the biggest — that's for those who pay more."),
-    ("Ilva", "Calm", "Bayd Il an-Mašṭūr maš dašn. Šaṭar ʿaynuh li-an-ṣaḥr, maš li-an-khazn.",
-     "Но Разделённый Бог — не товар. Он разделил Себя ради пустыни, а не ради казны.", "But the Divided God is not merchandise. He divided Himself for the desert, not for the treasury."),
-    ("Kair", "Neutral", "Tū taqrā khuṭūṭhum ajamm mun an-ḥanābin. Hād muqšiʿ, yā ḥalīt.",
-     "Вы читаете их книги лучше самих жрецов. Это опасно, сестра.", "You read their scriptures better than the priests do. That's dangerous, sister."),
-    ("Ilva", "Calm", "Maš muqšiʿ an-qirā. Muqšiʿ an-ḥašn bād an-qirā.",
-     "Опасно не чтение. Опасно молчание после чтения.", "Reading isn't dangerous. Silence after reading is."),
-    ("Rayn", "Wry", "Tūm taḥšunū ka-ānu maš hun. Ānu ḥalaṣku li-hād an-sarb!",
-     "Вы разговариваете так, будто меня здесь нет. Между прочим, этот поход оплатил я!", "You two talk as if I weren't here. I paid for this trip, by the way!"),
+     "Кайр, а правда, что Бог спит в каждом черве? Или только в больших?", "Kair, is it true God sleeps in every worm? Or only the big ones?"),
+    ("Kair", "Wry", "Inšad ḥanbān. Ġad yalqut: fu-kull ḥūl. Wa-fu-an-aḍkham — bi-sawm ġayr.",
+     "Спроси жреца. Скажет: в каждом. А в больших — за отдельную плату.", "Ask a priest. He'll say: in every one. The big ones cost extra."),
+    ("Ilva", "Calm", "Tūm taḍḥakū ʿalā an-ḥanābin. Bayd ṣanatku ʿad bakr — ḥanabkun li-an-masrab.",
+     "Вы смеётесь над жрецами. А утром я слышала, как вы просили у Него дороги.", "You laugh at the priests. Yet this morning I heard you ask Him for the road."),
+    ("Kair", "Neutral", "Li-an-Ḥūl aḥnab. Li-an-ḥanābin aḥluṣ. Ḥā taqlibū, yā ḥalīt.",
+     "Червю я молюсь. Жрецам — плачу. Не путайте, сестра.", "To the worm I pray. To the priests I pay. Don't mix them up, sister."),
+    ("Rayn", "Wry", "Wa-ānu aḥluṣ li-kull. ʿAsā li-hād maš ḥad yaʿqubnī.",
+     "А я плачу всем сразу. Может, поэтому мне никто не отвечает.", "And I pay everyone at once. Maybe that's why nobody answers me."),
+    ("Ilva", "Amused", "Yaʿqubūkum, Bā-Rayn. Bayd an-ḥiṣr yatūl bād.",
+     "Вам отвечают, мастер Рэйн. Просто счёт приходит позже.", "You do get answers, Master Rayn. The bill just comes later."),
 ])
 
 # политика: десятина водой
 S("DLG_A2_B20", "ZoneEnter:A3_Approach", [
-    ("Rayn", "Neutral", "Yā Kayr, qaddi ʿušr an-nuṭf? Qaddi yaḥluṣ an-tabr?",
-     "Кайр, сколько составляет водяная десятина? И сколько платит сиетч?", "Kair, how much is the water tithe? And how much does a sietch pay?"),
-    ("Kair", "Neutral", "Kull nuṭfat ʿaš. Mun kull ḥalq, mun kull qull, wa-ayḍ mun dumʿ an-khufūt.",
-     "Каждая десятая капля. С каждого кольца, с каждого кувшина — и даже со слёз на похоронах.", "Every tenth drop. From every ring, every jar — even from tears at a funeral."),
-    ("Rayn", "Afraid", "Mun dumʿ?! Maš ṭāq ḥaṣr!",
-     "Со слёз?! Это невозможно сосчитать!", "Tears?! That can't be counted!"),
-    ("Kair", "Wry", "Kīn yaḥṣur kull. Li-hād ladayh ḥanābin ḥāṣirīn.",
-     "Кин считает всё. Для этого у него и жрецы-счетоводы.", "Keen counts everything. That's what its bookkeeper-priests are for."),
-    ("Ilva", "Calm", "Li-hād an-nahḍiyyīn ġabarū. Hum yaḥluṣū, bayd maš li-an-ḥanābin.",
-     "Поэтому возрожденцы и ушли. Они платят — но не жрецам.", "That's why the revivalists left. They pay — just not to the priests."),
+    ("Rayn", "Neutral", "Yā Kayr, hād an-ʿušr — qaddi ʿalā ʾahl ḥad?",
+     "Кайр, а эта десятина — сколько выходит с одной семьи?", "Kair, this tithe — how much is it per family?"),
+    ("Kair", "Neutral", "Kull nuṭfat ʿaš. Mun an-ḥulūq, mun an-qull, mun nuṭf an-khufūt.",
+     "Каждая десятая капля. С колец, с кувшинов, даже с воды покойников.", "Every tenth drop. From rings, from jars, even from the water of the dead."),
+    ("Rayn", "Afraid", "Mun an-khufūt ayḍ? Wa-mūn yaḥṣur hād?",
+     "С покойников тоже? И кто же это считает?", "From the dead too? And who counts that?"),
+    ("Kair", "Wry", "Ḥanbān sāb qays. An-khāfit maš yaʿqub.",
+     "Жрец с меркой. Покойник обычно не спорит.", "A priest with a measure. The dead rarely argue."),
+    ("Ilva", "Calm", "Li-hād an-nahḍiyyīn ġabarū duḥ an-ṣalt. Yaqsimū — bayd maš sāb Kīn.",
+     "Поэтому возрожденцы и ушли под камень. Делятся — но не с Кином.", "That's why the revivalists went under the rock. They share — just not with Keen."),
 ])
 
 # семья и шутки: «свадьба или мешок»
@@ -119,15 +119,15 @@ S("DLG_A2_B30", "ZoneEnter:A2_Erg", [
     ("Rayn", "Neutral", "Yā Kayr, kay ladak ʾahl? Zawjat, ṣiġāġ? Aw tū zawaj an-ṣaḥr?",
      "Кайр, у вас есть семья? Жена, дети? Или вы женаты на пустыне?", "Kair, do you have a family? A wife, children? Or are you married to the desert?"),
     ("Kair", "Calm", "Ladī umm fu-Kīn, tadšin ġazl. Kull-mā ġabarku, talqut: ġad takurr bi-ʿurs aw fu-kīs.",
-     "Есть мать. В Кине, торгует нитками. Каждый раз, как я ухожу, говорит: вернёшься либо со свадьбой, либо в мешке.", "I have a mother, in Keen, selling thread. Every time I leave she says: you'll come back with a wedding or in a sack."),
+     "Мать в Кине, торгует нитками. Провожает всегда одинаково: вернись со свадьбой — или в мешке.", "My mother, in Keen — she sells thread. She always sees me off the same way: come back with a wedding, or in a sack."),
     ("Ilva", "Amused", "Wa-ayy tabġī, yā Kayr?",
-     "И что вы предпочитаете, Кайр?", "And which do you prefer, Kair?"),
+     "И что вы выбираете, Кайр?", "And which do you choose, Kair?"),
     ("Kair", "Wry", "An-kīs aqrab. An-ʿurs yabġī nuṭf li-kull tabr, wa-an-kīs — li-ḥad.",
      "Мешок ближе. Свадьбе нужна вода на весь сиетч, а мешку — на одного.", "The sack is closer. A wedding needs water for a whole sietch; a sack, for one."),
-    ("Rayn", "Amused", "Ānu abġī an-ʿurs. An-nuzul yazūdū hibāt, wa-ānu aḥṣur.",
-     "Я бы выбрал свадьбу. Гости приносят подарки, а я бы их пересчитал.", "I'd pick the wedding. Guests bring gifts, and I'd count them."),
-    ("Kair", "Wry", "Iḥdaq, yā ḥalīt: yaḥṣur an-hibāt, wa-bād an-nuzul, wa-bād nuṭf jildhum.",
-     "Видите, сестра: сначала считает подарки, потом гостей, потом воду в их костюмах.", "See, sister: first he counts the gifts, then the guests, then the water in their suits."),
+    ("Rayn", "Amused", "Wa-ānu abġī an-ʿurs. Hnāy ayḍ yanfilū ṭaʿām.",
+     "А я бы выбрал свадьбу. Там хотя бы кормят.", "I'd pick the wedding. At least they feed you there."),
+    ("Kair", "Wry", "Yanfilū. Wa-bād yaḥṣurū qaddi maṣaṣka. An-ʿurs fu-tabr — ḥiṣr sāb wallat.",
+     "Кормят. А потом считают, сколько ты выпил. Свадьба в сиетче — это ревизия с песнями.", "They feed you. Then they count how much you drank. A sietch wedding is an audit with singing."),
 ])
 
 # костюм пьёт
@@ -156,14 +156,14 @@ S("DLG_A2_B45", "MoistureBelow:0.35", [
 
 # похороны, вода мёртвых; шутка про привычку считать
 S("DLG_A2_B50", "ZoneEnter:A3_Approach", [
-    ("Rayn", "Neutral", "Yā Kayr, kay wakīd: an-tabr yakurr nuṭf an-khufūt li-an-ḍumm? Hum khufūt!",
-     "Кайр, правда, что в сиетчах воду умерших возвращают общине? Это же покойники!", "Kair, is it true the sietches return the water of the dead to the community? They're corpses!"),
-    ("Kair", "Calm", "Maš nuṭf khufūt. Nuṭf jaddunā. Yamṣuṣūhā bi-ḥamd, bayd maš bi-jahr.",
-     "Не «вода покойников». Вода нашего деда. Её пьют с благодарностью, только вслух об этом не говорят.", "Not 'the water of corpses'. Our grandfather's water. It's drunk with gratitude — just never aloud."),
+    ("Rayn", "Neutral", "Yā Kayr, kay wakīd: fu-an-tabr yamṣuṣū nuṭf an-khufūt? Khufūthum?",
+     "Кайр, а правда, что в сиетчах воду мёртвых… пьют? Своих же покойников?", "Kair, is it true that in the sietches they… drink the water of the dead? Their own dead?"),
+    ("Kair", "Calm", "Maš khufūt. Jadd. Nuṭfuh funā — hākā yalqutū. Wa-yalqutū bi-ḥašn.",
+     "Не покойников. Деда. «Его вода в нас» — так говорят. И говорят тихо.", "Not 'the dead'. Grandfather. 'His water is in us' — that's how they say it. And they say it quietly."),
     ("Ilva", "Wry", "Bā-Rayn yanšad ka-ḥāṣir.",
-     "Мастер Рэйн спрашивает, как составитель описи.", "Master Rayn asks questions like a man drawing up an inventory."),
-    ("Rayn", "Wry", "Daʾb. Naqš ṣāf — sawm ṣāf.",
-     "Привычка. Хорошая память — хорошая цена.", "Habit. Good memory, good price."),
+     "Мастер Рэйн спрашивает, будто составляет опись.", "Master Rayn asks questions like a man drawing up an inventory."),
+    ("Rayn", "Wry", "Daʾb daššān: dī maš ḥaṣarku — maš bāt.",
+     "Привычка купца: чего не пересчитал — того и не было.", "A merchant's habit: if I didn't count it, it never existed."),
 ])
 
 # --- встреча с червём ---
@@ -194,8 +194,8 @@ S("DLG_A2_RIDER_01", "", [
      "Вы приехали не из-за бури. Вы приехали на нас посмотреть.", "You didn't come because of the storm. You came to look at us."),
     ("Rider1", "Tense", "Yā Ossāna! An-Ḥūl maš yaṭmun!",
      "Оссана! Червь не стоит на месте!", "Ossana! The worm won't hold still!"),
-    ("Ossana", "Wry", "Wa-tū taḥdaq ʿūd, yā qāṣidat. Ġad alqut li-an-Nāʾib. — Irdifū an-ʿuqūf. Maš ġad anqub tūm kurr tinā.",
-     "А ты смотришь в ответ, паломница. Я скажу об этом наибу. — Идите по крючьям. Второй раз искать вас мы не станем.", "And you look back, pilgrim. I'll tell the naib that. — Follow the hooks. We won't search for you a second time."),
+    ("Ossana", "Wry", "Ṣanatku! — Ḥadaqku, yā qāṣidat. Wa-tū taḥdaq ʿūd; an-Nāʾib ġad yaʿlaš. Irdifū an-ʿuqūf — maš ġad nanqubkum tinā-kurr.",
+     "Слышу! — Смотрела, паломница. А ты смотришь в ответ; наиб узнает. Идите по крючьям — второй раз искать не станем.", "I hear you! — I did look, pilgrim. And you look back; the naib will hear of it. Follow the hooks — we won't search for you twice."),
 ])
 
 # --- состояния червя (реакции) ---
@@ -246,13 +246,13 @@ S("DLG_A3_001", "", [
 ])
 S("DLG_A3_010", "", [
     ("Rayn", "Neutral", "Ḥadarat fūqah ka-darj. Darj ḥayy.",
-     "Она спустилась по нему, как по лестнице. Живой лестнице.", "She came down it like a staircase. A living staircase."),
+     "Она спустилась по нему, как по лестнице. По живой лестнице.", "She came down it like a staircase. A living staircase."),
     ("Kair", "Wry", "An-darj maš yaṭraḥak.",
      "Лестница не пытается тебя сбросить.", "A staircase doesn't try to throw you off."),
-    ("Rayn", "Wry", "Wa-ḥadaqatak amadd mun kull, yā ḥalīt.",
-     "А на вас она смотрела дольше всех, сестра.", "And she looked at you longest of all, sister."),
+    ("Rayn", "Wry", "Wa-ḥadaqatak amadd mun an-Ḥūl, yā ḥalīt.",
+     "А на вас, сестра, она смотрела дольше, чем на червя.", "And she looked at you longer than at the worm, sister."),
     ("Ilva", "Calm", "Ḥadaqat kullhum. Ġīr ḥallatnī anbah.",
-     "Она смотрела на всех. Просто мне позволила это заметить.", "She looked at everyone. She only let me notice it."),
+     "Она смотрела на всех. Просто мне позволила это заметить.", "She looked at everyone. She just let me notice it."),
 ])
 S("DLG_A3_020", "", [
     ("Kair", "Tense", "Mun an-Ḥarr — iḥdaq. Yaṣfarr. Ossāna maš māhat.",
@@ -271,23 +271,23 @@ S("DLG_A3_030", "ZoneEnter:A3_Approach", [
      "И тот, кто вас послал. И, похоже, наиб.", "And whoever sent you. And, it seems, the naib."),
 ])
 S("DLG_A3_040", "ZoneEnter:A3_Approach", [
-    ("Kair", "Whisper", "Ḥanābin Kīn laqatū: fu-an-ṣaḥr maš tamm ḍumm — Il ġīr.",
-     "Жрецы Кина говорили: в пустыне нет людей, только Бог.", "Keen's priests said: there are no people in the desert, only God."),
+    ("Kair", "Whisper", "Fu-Kīn laqatū lī: an-ṣaḥr khāw — tamm Il ġīr.",
+     "В Кине мне твердили: пустыня пуста, в ней только Бог.", "In Keen they kept telling me: the desert is empty, there's only God in it."),
     ("Ilva", "Wry", "Wa-Il, ʿasā, yaʿtil an-ḍumm fūq ḍahruh.",
-     "А Бог, выходит, возит людей у себя на спине.", "And God, it seems, carries people on His back."),
-    ("Rayn", "Neutral", "Wa-yaṭmun ḥīn yuqāl. Hād… hād yaqlib an-sawm.",
-     "И замирает по приказу. Это… это меняет цены.", "And stands still when told. That… that changes prices."),
+     "А Бог, выходит, возит людей на спине.", "And God, it seems, carries people on His back."),
+    ("Rayn", "Neutral", "Wa-yaṭmun ḥīn yuqāl. Bayn an-daššānīn hād ġad… Ḥasb. Maš šāl.",
+     "И замирает, когда велят. Среди купцов за такое бы… Нет. Неважно.", "And holds still when told. Among merchants, that would… No. Never mind."),
 ])
 # шутки про песок
 S("DLG_A3_050", "ZoneEnter:A3_Approach", [
-    ("Rayn", "Wry", "An-tirb fu-jildī, fu-aḥdāqī, wa-ʿasā fu-luqtī.",
-     "Песок у меня в костюме, в глазах и, кажется, даже в словах.", "There's sand in my suit, in my eyes, and I think even in my words."),
-    ("Kair", "Amused", "Fu-luqtak qadīm, yā Rayn. Ġīr maš nadayka tirb.",
-     "В твоих словах он давно. Просто ты не называл это песком.", "It's been in your words for ages, Rayn. You just never called it sand."),
-    ("Ilva", "Wry", "Yā Kayr, hād ʿakir.",
-     "Кайр, это было жестоко.", "Kair, that was cruel."),
-    ("Kair", "Wry", "Hād rakīṣ. ʿAkir — ḥīn alḥaf nuṭfah.",
-     "Это было дёшево. Жестоко — это когда я заберу у него воду.", "That was cheap. Cruel is when I take his water."),
+    ("Rayn", "Wry", "An-tirb fu-jildī, fu-aḥdāqī, wa-ʿasā fu-hāmī.",
+     "Песок у меня в костюме, в глазах и, кажется, уже в голове.", "There's sand in my suit, in my eyes, and I think it's in my head by now."),
+    ("Kair", "Amused", "Fu-hāmak — ṣāf. Hāmak ġad yasrub bi-hawn, wa-adwāsak ḥašīn.",
+     "В голове — это хорошо. Голова пойдёт медленнее, а ноги — тише.", "In your head is good. Your head will slow down, and your feet will go quiet."),
+    ("Ilva", "Wry", "Yā Kayr, tūm laqatkun inn hāmuh ʿakir.",
+     "Кайр, вы только что назвали его тугодумом.", "Kair, you just called him slow-witted."),
+    ("Kair", "Wry", "Laqatku: ḥayy. Fu-an-ṣaḥr hād ṣāf jamm.",
+     "Я назвал его живым. В пустыне это комплимент.", "I called him alive. Out here that's a compliment."),
 ])
 
 # =====================================================================================================================
@@ -353,38 +353,38 @@ S("DLG_B1_001", "", [
 # =====================================================================================================================
 # Шиана и Шайтан (шёпот, религия)
 S("DLG_B2_C01", "ZoneEnter:B2_Gallery", [
-    ("Crowd", "Whisper", "Yalqutū: Šiyāna taḥšun sāb Šayṭān.",
-     "Говорят, Шиана беседует с Шайтаном.", "They say Sheeana talks with Shaitan."),
-    ("Crowd", "Whisper", "Taḥšun. Wa-hū yaṣnut. Hād an-muqšiʿ.",
-     "Беседует. А он слушает. Вот что страшно.", "She talks. And he listens. That's the frightening part."),
-    ("Crowd", "Whisper", "Maš muqšiʿ — hād ṣāf. Dulā Il yaṣnut ḥad.",
-     "Не страшно, а хорошо. Бог наконец слушает хоть кого-то.", "Not frightening — good. God is finally listening to someone."),
-    ("Crowd", "Whisper", "Ḥašš. Barriyyīn qurb.",
-     "Тише. Чужие рядом.", "Hush. Strangers nearby."),
+    ("Weaver", "Whisper", "Kay ṣanatkum? Šiyāna ġabarat ʿad an-ṣaḥr ʿūd — taḥšun sāb Šayṭān.",
+     "Слыхали? Шиана опять ушла в пески — говорить с Шайтаном.", "Did you hear? Sheeana went out to the sands again — to talk with Shaitan."),
+    ("Elder", "Whisper", "Taḥšun — maš muqšiʿ. Muqšiʿ inn hū yaṣnut.",
+     "Что она говорит — полбеды. Беда, что Он слушает.", "Her talking is nothing. What's frightening is that He listens."),
+    ("Carrier", "Wry", "Wa-ānu — ṣāf. Il yaṣnut ḥad. Wa-naḥ? Maš.",
+     "А по мне — хорошо. Хоть кого-то Бог слушает. Нас-то — нет.", "I say it's good. God listens to somebody. Not to us, though."),
+    ("Elder", "Whisper", "Ḥašš. Hnāy an-barriyyīn. Iḍḥak.",
+     "Тсс. Вон чужие. Улыбайся.", "Shh. There, the strangers. Smile."),
 ])
 # спор о десятине
 S("DLG_B2_C10", "ZoneEnter:B2_Gallery", [
-    ("Crowd", "Angry", "Kīn laḥaf ʿušr an-nuṭf ʿūd!",
-     "Кин опять забрал водяную десятину!", "Keen has taken the water tithe again!"),
-    ("Crowd", "Angry", "Ḥallū yalḥafū. Mun naḥ nuṭfat — wa-mun hum ḥiṣr.",
-     "Пусть берут. С нас капля — с них потом спросится.", "Let them take it. A drop from us — a reckoning from them."),
-    ("Crowd", "Angry", "Nuṭfatak hī qull ṣiġāġī, yā ḥādiq!",
-     "Твоя «капля» — это кувшин моих детей, умник!", "Your 'drop' is my children's jar, clever one!"),
-    ("Crowd", "Whisper", "Ḥašš. Hum yaṣnutū.",
-     "Тише. Нас слушают.", "Hush. They're listening."),
+    ("Youth", "Angry", "Kīn rafaʿ an-ʿušr ʿūd! ʿŪd, yā Jadd!",
+     "Кин опять поднял десятину! Опять, дед!", "Keen raised the tithe again! Again, grandfather!"),
+    ("Elder", "Calm", "Ḥallūhum yalḥafū. Mun naḥ nuṭfat — wa-mun hum ḥiṣr. Il yaḥṣur ṣaḥḥ mun an-ḥanābin.",
+     "Пусть берут. С нас капля — с них спрос. Бог считает вернее жрецов.", "Let them take it. A drop from us, a reckoning for them. God counts better than the priests."),
+    ("Carrier", "Angry", "Nuṭfatak — qull ṣiġāġī, yā Jadd! Wa-Il maš yakurruh.",
+     "Твоя «капля» — кувшин моих детей, дед! И Бог его не вернёт.", "Your 'drop' is my children's jar, grandfather! And God won't give it back."),
+    ("Youth", "Whisper", "Ḥašš, tūm tinā. An-Kīniyyīn yaṣnutū.",
+     "Тише вы оба. Кинские слушают.", "Quiet, both of you. The Keen folk are listening."),
 ])
 # корабли, Досточтимые
 S("DLG_B2_C20", "ZoneEnter:B2_Gallery", [
-    ("Elder", "Whisper", "Fūq Kīn ṭayr ʿūd. Yalqutū: fu-ḥad — nisā bi-sawād.",
-     "Над Кином опять корабли. Говорят, на одном — женщины в чёрном.", "Ships over Keen again. They say there are women in black aboard one."),
-    ("Weaver", "Whisper", "An-Sawādiyyāt? Dī yaḥdaqū Šiyāna?",
-     "Сёстры в чёрном? Те, что следят за Шианой?", "The Black Sisters? The ones who watch Sheeana?"),
-    ("Elder", "Whisper", "Hum fu-kull. Dī yalqut ṣaḥḥ jamm — ṣaqal fu-an-dayr.",
-     "Они везде. Кто говорит слишком правильно — учился в обители.", "They're everywhere. Whoever speaks too correctly studied in the convent."),
-    ("Weaver", "Whisper", "Wa-tamm ḥawḍiyyīn ayḍ. Hum ʿakir ajamm: yaḍḥakū ḥīn yaḥṣurū ʿaḍmak.",
-     "А ещё есть люди из чанов — тлейлаксу. Те хуже: улыбаются, пока считают твои кости.", "And then there are the vat-people — the Tleilaxu. Worse: they smile while they count your bones."),
-    ("Elder", "Afraid", "Ḥā talqut hum bi-jahr duḥ an-ṣalt. An-ṣalt yaṣnut.",
-     "Не называй их вслух под камнем. Камень слышит.", "Don't name them aloud under the stone. The stone listens."),
+    ("Elder", "Whisper", "Fūq Kīn ṭayr ʿūd. Wa-ʿūd — nisā bi-sawād.",
+     "Над Кином опять корабли. И опять — женщины в чёрном.", "Ships over Keen again. And again — women in black."),
+    ("Weaver", "Whisper", "An-Sawādiyyāt? Šāl yabġū hun — ġīr Šiyāna?",
+     "Чёрные сёстры? Что им тут нужно, кроме Шианы?", "The Black Sisters? What do they want here, besides Sheeana?"),
+    ("Elder", "Whisper", "Iṣnut an-qāṣidīn. Dī yalqut ṣaḥḥ jamm — ṣaqal fu-an-dayr.",
+     "А ты послушай паломников. Кто говорит слишком гладко — тот из обители.", "Listen to the pilgrims. Whoever speaks too smoothly was schooled in the convent."),
+    ("Weaver", "Whisper", "Hād — ṣāf. Bayd an-ḥawḍiyyīn… yaḍḥakū ḥīn yaḥṣurū ʿaḍmak.",
+     "Сёстры — ещё ладно. А люди из чанов улыбаются, пока считают твои кости.", "The sisters, fine. But the vat-people smile while they count your bones."),
+    ("Elder", "Afraid", "Tamm ʿakir ajamm. Dī tālū mun… Maš. Duḥ an-ṣalt maš nalqut hum.",
+     "Есть и похуже. Те, что пришли из… Нет. Под камнем о них не говорят.", "There are worse. The ones who came from… No. Under the stone we don't speak of them."),
 ])
 # торг: вода и нитки (политика, шутка)
 S("DLG_B2_M10", "", [
@@ -516,12 +516,12 @@ S("DLG_B2_B01", "ZoneEnter:B2_Gallery", [
      "Чужую воду вслух не считают, Рэйн. Это стыдно.", "You don't count other people's water aloud, Rayn. It's shameful."),
 ])
 S("DLG_B2_B03", "ZoneEnter:B2_Gallery", [
-    ("Ilva", "Calm", "Iḥdaq an-ṣiġāġ. Yazrafū bi-mā ḥadaqnā ʿad bakr.",
-     "Посмотрите на детей. Они играют в то, что мы видели утром.", "Look at the children. They're playing at what we saw this morning."),
-    ("Kair", "Neutral", "Fu-Kīn an-ṣiġāġ yazrafū ḥanābin.",
-     "В Кине дети играют в жрецов.", "In Keen, children play at priests."),
-    ("Ilva", "Calm", "Wa-ayy yašubbū?",
-     "И кем вырастают?", "And what do they grow into?"),
+    ("Ilva", "Calm", "Iḥdaqū an-ṣiġāġ. Yazrafū bi-mā ḥadaqnā ʿad bakr.",
+     "Посмотрите на детей. Играют в то, что мы видели утром.", "Look at the children. They're playing at what we saw this morning."),
+    ("Kair", "Wry", "Fu-Kīn an-ṣiġāġ yazrafū ḥanābin. Ḥad yaḥṣur, wa-kull yaḥluṣū.",
+     "В Кине дети играют в жрецов. Один считает, остальные платят.", "In Keen, children play at priests. One counts, the rest pay."),
+    ("Ilva", "Calm", "Wa-hun ḥad ḥūl — wa-kull yaṣnutū.",
+     "А здесь один — червь, и все слушают.", "And here one is the worm, and everyone listens."),
 ])
 S("DLG_B2_B06", "ZoneEnter:B2_Gallery", [
     ("Rayn", "Wry", "Hād an-nisj… ānu fu-Kīn adšin hād bi-šalt sawm!",
@@ -629,10 +629,10 @@ S("DLG_PH_001", "Beat:SB_B5_08_Ossana", [
      "Я не голоден. Я в ужасе.", "I'm not hungry. I'm terrified."),
     ("Kair", "Wry", "Fu-an-ṣaḥr hād ʿayn ḥad. Iḥṭam ġīr.",
      "В пустыне это одно и то же. Ешь.", "In the desert that's the same thing. Eat."),
-    ("Ilva", "Calm", "Ṣaqalnā hun jamm qubay an-ṭaʿām. Ṣuġat tawill — wa-an-ṣaḥr yaʿqub.",
-     "Мы узнали здесь много до еды. Девочка пела — и пустыня ответила.", "We learned a great deal here before the meal. A girl sang — and the desert answered."),
+    ("Ilva", "Calm", "Iḥṭamū, Bā-Rayn. An-Nāʾib yaḥdaq: mūn yaḥṭam — wa-mūn yaḥṣur.",
+     "Ешьте, мастер Рэйн. Наиб смотрит, кто ест, а кто считает.", "Eat, Master Rayn. The naib is watching who eats and who counts."),
     ("Kair", "Neutral", "Wa-ġad nalqut li-Kīn šāl? Ānu ʿalaš maš.",
-     "И что мы скажем Кину? Я пока не знаю.", "And what will we tell Keen? I don't know yet."),
+     "А что мы скажем Кину… я пока не знаю.", "And what we'll tell Keen… I don't know yet."),
 ])
 
 # =====================================================================================================================
