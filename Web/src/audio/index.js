@@ -1,5 +1,5 @@
 // game.audio — процедурный звук на WebAudio (без файлов). Запускается по первому жесту пользователя / событию 'start'.
-// Слои: ветер/интерьер с плавным смешением по расстоянию до проёмов, сад (garden:enter/leave), поедание харвестера (worm:devour {phase}).
+// Слои (звук Ред. 3: сэмплы банка + гранулярные/текстурные петли, SFX-шина с лимитером и дакингом): ветер/интерьер с плавным смешением по расстоянию до проёмов, сад (garden:enter/leave), поедание харвестера (worm:devour {phase}).
 // API: event(id, pos?), setMusic(state), finalChord(), setVolume(bus, v), resume(), ready, musicState, voice (речь на языке Ракиса: speak/stop/renderOffline).
 // Если AudioContext недоступен — все методы безопасно ничего не делают.
 import { createEngine } from './engine.js';
@@ -7,18 +7,20 @@ import { createAmbience } from './ambience.js';
 import { createSfx } from './sfx.js';
 import { createMusic } from './music.js';
 import { createVoice, renderOffline } from './voice.js';
+import { SFX } from '../assets/sfx_bank.js';
 
 export function create(game) {
   const { bus } = game;
   let eng = null, amb = null, sfx = null, music = null, voice = null;
   let pendingMusic = null, failed = false, acc = 0;
-  let duckTarget = 1, ambTarget = 1, harvRunning = false, gardenPending = false;
+  let duckTarget = 1, ambTarget = 1, sfxTarget = 1, harvRunning = false, gardenPending = false;
 
   function ensure() {
     if (eng || failed) return eng;
     try {
       eng = createEngine(game);
       if (!eng) { failed = true; return null; }
+      eng.loadSamples(SFX).catch((e) => console.warn('[audio] банк SFX:', e));   // асинхронно: до готовности шаги идут запасным шумом
       amb = createAmbience(game, eng);
       sfx = createSfx(game, eng);
       music = createMusic(game, eng);
@@ -55,15 +57,15 @@ export function create(game) {
 
   // Дакинг музыки под диалоги.
   bus.on('subtitle', (s) => {
-    if (s?.kind === 'line') { duckTarget = 0.42; ambTarget = 0.6; }
-    else if (s?.kind === 'lore') { duckTarget = 0.75; ambTarget = 0.85; }
+    if (s?.kind === 'line') { duckTarget = 0.42; ambTarget = 0.6; sfxTarget = 0.65; }
+    else if (s?.kind === 'lore') { duckTarget = 0.75; ambTarget = 0.85; sfxTarget = 0.85; }
     if (s?.id === 'DLG_B5_001' && s.kind === 'line') amb?.chant(Math.min(s.duration || 4, 6));
   });
-  bus.on('chain:end', () => { duckTarget = 1; ambTarget = 1; });
-  bus.on('dialogue:stop', () => { duckTarget = 1; ambTarget = 1; });
+  bus.on('chain:end', () => { duckTarget = 1; ambTarget = 1; sfxTarget = 1; });
+  bus.on('dialogue:stop', () => { duckTarget = 1; ambTarget = 1; sfxTarget = 1; });
   bus.on('harvester', ({ state } = {}) => { harvRunning = /^(running|run)$/i.test(String(state || '')); });
   bus.on('ritual', () => { if (amb) amb.ritualOn = true; });
-  bus.on('pause', () => { if (eng) { eng.ramp(eng.duck.gain, game.paused ? 0.6 : duckTarget, 0.15); eng.ramp(eng.ambDuck.gain, game.paused ? 0.6 : ambTarget, 0.15); } });
+  bus.on('pause', () => { if (eng) { eng.ramp(eng.duck.gain, game.paused ? 0.6 : duckTarget, 0.15); eng.ramp(eng.ambDuck.gain, game.paused ? 0.6 : ambTarget, 0.15); eng.ramp(eng.sfxDuck.gain, game.paused ? 0.6 : sfxTarget, 0.15); } });
   bus.on('worm:state', ({ to } = {}) => {
     if (to === 'Listening') sfx?.ui.tick();
   });
@@ -138,11 +140,13 @@ export function create(game) {
       const d = acc; acc = 0;
       try {
         eng.updateListener();
+        eng.pump();
         amb.update(d);
         sfx.update(d);
         voice?.update();
         eng.ramp(eng.duck.gain, game.paused ? 0.6 : duckTarget, duckTarget < 1 ? 0.25 : 1.0);
         eng.ramp(eng.ambDuck.gain, game.paused ? 0.6 : ambTarget, ambTarget < 1 ? 0.25 : 1.0);
+        eng.ramp(eng.sfxDuck.gain, game.paused ? 0.6 : sfxTarget, sfxTarget < 1 ? 0.25 : 1.0);
       } catch (e) { console.error('[audio] update:', e); }
     },
   };
