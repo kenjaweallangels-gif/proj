@@ -1,6 +1,6 @@
 // Свободная зрительская камера для сцен (приезд червя, пожирание харвестера).
 // Камера полностью отвязана от персонажа: WASD + мышь, Shift — быстро, Alt — медленно, Space/E — вверх, Q/Ctrl — вниз, колесо — скорость,
-// в пределах ~1 км от игрока. Персонаж остаётся на месте; пока камера «прикреплена» к нему — он управляется как обычно.
+// в пределах ~2,5 км от игрока. Персонаж остаётся на месте; пока камера «прикреплена» к нему — он управляется как обычно.
 // Игрок НИКОГДА не теряет управление принудительно: камера включается только клавишей F (в сценах — подсказка на экране).
 //
 // API (game.freecam):
@@ -25,7 +25,7 @@ export function create(game) {
   let savedLock = false, lockedByUs = false;
 
   const fc = {
-    active: false, radius: 1000, minAbove: 1.5,
+    active: false, radius: 2500, minAbove: 1.5,   // радиус от игрока, м: тело червя ~1,6 км — нужен общий план
     get available() { return scenes.size > 0 && game.space !== 'sietch'; },
     setScene(key, on) {
       const had = scenes.size > 0;
@@ -130,7 +130,7 @@ export function create(game) {
       const k = 1 - Math.exp(-7 * dt);
       vel.lerp(tmp, k);
       pos.addScaledVector(vel, dt);
-      // пределы: ~1 км от персонажа, не под землёй
+      // пределы: ~2,5 км от персонажа, не под землёй
       if (p) {
         const dx = pos.x - p.position.x, dz = pos.z - p.position.z, d = Math.hypot(dx, dz);
         if (d > fc.radius) { pos.x = p.position.x + dx / d * fc.radius; pos.z = p.position.z + dz / d * fc.radius; }

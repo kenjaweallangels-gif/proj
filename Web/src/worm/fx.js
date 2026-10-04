@@ -224,27 +224,36 @@ class Skirt {
     this.mesh.frustumCulled = false; this.mesh.visible = false; this.mesh.renderOrder = 2;
     this.contact = new Float32Array(n * 4);   // half, lx, lz, alpha
   }
-  update(sp, g, intensity, wid = 1) {
-    const n = this.n, P = sp.P, T = sp.Tan, pos = this.pos, col = this.col, ct = this.contact;
+  update(sp, g, intensity, wid = 1, cam = null) {
+    const n = this.n, P = sp.P, T = sp.Tan, pos = this.pos, col = this.col, ct = this.contact, GY = sp.GY;
     let any = false;
     for (let i = 0; i < n; i++) {
       const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2];
+      const R = RADIUS * sp.RS[i] - 0.8;
+      const gy = GY[i], hrel = y - gy;
+      const vis = smoothstep(-R + 0.5, -R + 7, hrel) * (1 - smoothstep(R - 4, R, hrel)) * intensity * smoothstep(0.1, 2, R);
+      ct[i * 4 + 3] = vis;
+      if (vis <= 0.02) {                                   // не у песка: невидимая точка (без heightAt)
+        ct[i * 4] = 0; ct[i * 4 + 1] = 1; ct[i * 4 + 2] = 0;
+        for (let o = i * 6; o < i * 6 + 6; o++) { pos[o * 3] = x; pos[o * 3 + 1] = gy; pos[o * 3 + 2] = z; col[o * 4 + 3] = 0; }
+        continue;
+      }
+      any = true;
       let lx = -T[i * 3 + 2], lz = T[i * 3];
       const ll = Math.hypot(lx, lz); if (ll > 1e-4) { lx /= ll; lz /= ll; } else { lx = 1; lz = 0; }
-      const R = RADIUS * sp.RS[i] - 0.8;
-      const gy = g(x, z), hrel = y - gy;
       const inside = Math.abs(hrel) < R;
       const half = inside ? Math.sqrt(Math.max(0, R * R - hrel * hrel)) : 0;
-      const vis = smoothstep(-R + 0.5, -R + 7, hrel) * (1 - smoothstep(R - 4, R, hrel)) * intensity * smoothstep(0.1, 2, R);
-      if (vis > 0.02) any = true;
-      ct[i * 4] = half; ct[i * 4 + 1] = lx; ct[i * 4 + 2] = lz; ct[i * 4 + 3] = vis;
+      ct[i * 4] = half; ct[i * 4 + 1] = lx; ct[i * 4 + 2] = lz;
+      // рельеф сбоку: вблизи камеры — настоящий heightAt (кэш у фокуса), далеко — высота под осью (поперёк 11 м разница мала)
+      const near = !cam || (x - cam.x) * (x - cam.x) + (z - cam.z) * (z - cam.z) < 220 * 220;
+      const lift = Math.sqrt((x - (cam ? cam.x : x)) ** 2 + (z - (cam ? cam.z : z)) ** 2) * 0.0012;   // z-fight на дальности: глубина 24 бит при far=12000
       for (let side = 0; side < 2; side++) {
         const sg = side === 0 ? -1 : 1;
         for (let c = 0; c < 3; c++) {
           const off = half - 0.4 + (c === 0 ? 0 : c === 1 ? 4.2 * wid : 11 * wid);
           const px = x + lx * sg * off, pz = z + lz * sg * off;
           const o = i * 6 + side * 3 + c;
-          pos[o * 3] = px; pos[o * 3 + 1] = g(px, pz) + (c === 0 ? 0.9 : c === 1 ? 0.8 : 0.2); pos[o * 3 + 2] = pz;
+          pos[o * 3] = px; pos[o * 3 + 1] = (near ? g(px, pz) : gy) + lift + (c === 0 ? 0.9 : c === 1 ? 0.8 : 0.2); pos[o * 3 + 2] = pz;
           const a = vis * (c === 0 ? 1.0 : c === 1 ? 0.75 : 0);
           const sh = c === 0 ? 0.82 : 1.0;
           col[o * 4] = sh; col[o * 4 + 1] = sh * 0.97; col[o * 4 + 2] = sh * 0.93; col[o * 4 + 3] = a;
@@ -277,7 +286,7 @@ export class WormFX {
     this.dust = new Pool(cfg.dust, this.shared);
     this.group.add(this.sand.mesh, this.dust.mesh);
 
-    this.mound = new Mound(cfg.grid, 110, '#c8a672');
+    this.mound = new Mound(cfg.grid, 170, '#c8a672');
     this.ripple = new Mound(cfg.grid, 130, '#c8a672');
     this.group.add(this.mound.mesh, this.ripple.mesh);
     this.skirt = new Skirt(N_PTS);
@@ -450,14 +459,16 @@ export class WormFX {
     // --- Над землёй: песок с колец, брызги на входе/выходе, тень ---
     if (ctx.exposed && ctx.spine) {
       const sp = ctx.spine;
-      // индексы, где центр выше песка
-      const P = sp.P;
+      // индексы, где центр выше песка и которые не дальше ~320 м от камеры (частицы с далёких колец не видны, а бюджет пула ограничен)
+      const P = sp.P, GY = sp.GY;
+      const cam = this.game.camera.position;
       const ex = ctx._ex || (ctx._ex = []);
       ex.length = 0;
-      for (let i = 0; i < N_PTS; i++) {
-        const px = P[i * 3], pz = P[i * 3 + 2], gy = g(px, pz);
-        const h = P[i * 3 + 1] - gy;
-        if (h > (ctx.tame ? -12 : 6)) ex.push(i);
+      const exLim = ctx.tame ? -12 : 6;
+      for (let i = Math.max(0, sp.exFirst); i <= sp.exLast; i++) {
+        const dx = P[i * 3] - cam.x, dz = P[i * 3 + 2] - cam.z;
+        if (i > 30 && dx * dx + dz * dz > 320 * 320) continue;
+        if (P[i * 3 + 1] - GY[i] > exLim) ex.push(i);
       }
       // песок с колец (водопады): стекает по бокам и из-под пластин
       const rate = (100 + 520 * ctx.live) * k;
@@ -482,9 +493,8 @@ export class WormFX {
       // пересечения с песком: центр пересекает уровень земли
       a.cross += ctx.tame ? 0 : dt * (60 + 700 * Math.min(1, ctx.speed / 30)) * k;
       let prevH = null; const crossIdx = [];
-      for (let i = 0; i < N_PTS; i++) {
-        const gy = g(P[i * 3], P[i * 3 + 2]);
-        const h = P[i * 3 + 1] - gy;
+      if (a.cross >= 1) for (let i = Math.max(0, sp.exFirst - 2); i <= Math.min(N_PTS - 1, sp.exLast + 2); i++) {
+        const h = P[i * 3 + 1] - GY[i];
         if (prevH !== null && ((prevH <= 0 && h > 0) || (prevH > 0 && h <= 0))) crossIdx.push(i);
         prevH = h;
       }
@@ -502,7 +512,8 @@ export class WormFX {
       // --- укрощённый червь: песчаная юбка, волна перед головой, шлейф с бортов ---
       const tm = ctx.tame;
       if (tm) {
-        if ((this.frame & 1) === 0 || !this.skirt.mesh.visible) this.skirt.update(sp, g, tm.skirt ?? 1, tm.skirtWid ?? 1);
+        this.skT = (this.skT || 0) - dt;
+        if (this.skT <= 0 || !this.skirt.mesh.visible) { this.skT = tm.speed > 1 ? 0.12 : 0.6; this.skirt.update(sp, g, tm.skirt ?? 1, tm.skirtWid ?? 1, cam); }
         const sf = Math.min(1, tm.speed / 12);
         // шлейф: песчинки и пыль сходят с линии контакта
         a.wake += dt * (14 + 160 * sf) * k;
@@ -510,7 +521,7 @@ export class WormFX {
         let gw = 0;
         while (a.wake >= 1 && gw++ < 60) {
           a.wake -= 1;
-          const i = (r() * N_PTS) | 0;
+          const i = ex.length ? ex[(r() * ex.length) | 0] : 0;
           const vis = ct[i * 4 + 3];
           if (vis < 0.3) continue;
           const sg = r() < 0.5 ? -1 : 1;
@@ -519,6 +530,15 @@ export class WormFX {
           const out = 0.6 + r() * (1.5 + 4.5 * sf);
           this.sand.emit(px, gy + 0.6, pz, lx * sg * out, 0.8 + r() * (1.5 + 4 * sf), lz * sg * out, t, 1.0 + r() * 1.6, 0.25 + r() * 0.5, r(), 2, gy - 0.3, 0.2, 2 + r() * 3);
           if (r() < 0.16 + 0.2 * sf) this.dust.emit(px, gy + 1, pz, lx * sg * (1 + r() * 2), 0.8 + r() * 1.6, lz * sg * (1 + r() * 2), t, 4 + r() * 4, 6 + r() * 9, r(), 1, gy, 0.8, 0.6 + r());
+        }
+        // пыльные клубы гиганта: крупные, медленные, живут ~20 с — столб виден за километры (у головы и вдоль первых ~300 м тела)
+        a.plume = (a.plume || 0) + dt * (0.25 + 3.4 * sf) * Math.min(1, 0.4 + k);
+        let gpl = 0;
+        while (a.plume >= 1 && gpl++ < 6) {
+          a.plume -= 1;
+          const i = Math.min(N_PTS - 1, Math.floor((r() < 0.5 ? r() * 70 : r() * 320) / SEG_LEN));
+          const px = P[i * 3] + (r() - 0.5) * 60, pz = P[i * 3 + 2] + (r() - 0.5) * 60, gy = g(px, pz);
+          this.dust.emit(px, gy + 4, pz, (r() - 0.5) * 3, 1 + r() * 3.5, (r() - 0.5) * 3, t, 16 + r() * 10, 40 + r() * 55, r(), 1, gy, 0.6, 1.2 + r() * 2.2);
         }
         // носовая волна: перед головой песок вздымается и разлетается в стороны
         if (sf > 0.05) {
@@ -536,9 +556,9 @@ export class WormFX {
         }
         // покой: тонкие струйки песка по кольцам, редкие осыпи
         if (tm.rest > 0) {
-          a.rest += dt * tm.rest * 7 * k;
+          a.rest += dt * tm.rest * 18 * k;
           let gr = 0;
-          while (a.rest >= 1 && gr++ < 20 && ex.length) {
+          while (a.rest >= 1 && gr++ < 40 && ex.length) {
             a.rest -= 1;
             const i = ex[(r() * ex.length) | 0];
             const s2 = i * SEG_LEN + r() * SEG_LEN, ang = (r() < 0.5 ? 1 : -1) * (0.3 + r() * 0.9);
@@ -551,7 +571,8 @@ export class WormFX {
       } else this.skirt.mesh.visible = false;
 
       // тень-лента
-      if (!this.shadow.visible || (this.frame & 1) === 0) this._shadow(ctx);
+this.shT = (this.shT || 0) - dt;
+      if (!this.shadow.visible || this.shT <= 0) { this.shT = ctx.speed > 1 ? 0.12 : 0.6; this._shadow(ctx); }
     } else { this.shadow.visible = false; this.skirt.mesh.visible = false; }
 
     // --- Камни ---
@@ -563,34 +584,44 @@ export class WormFX {
   _shadow(ctx) {
     const sp = ctx.spine, g = ctx.groundFn, L = ctx.sunDir;
     if (L.y < 0.08) { this.shadow.visible = false; return; }
-    const P = sp.P, pos = this.shPos, col = this.shCol;
+    const P = sp.P, GY = sp.GY, pos = this.shPos, col = this.shCol;
+    const cam = this.game.camera.position;
     const cen = this._cen || (this._cen = new Float32Array(N_PTS * 3));
+    const i0 = Math.max(0, sp.exFirst - 1), i1 = Math.min(N_PTS - 1, sp.exLast + 1);
     let any = false;
+    // «ближний» ли участок: настоящий heightAt (кэш у фокуса), дальний — высота под осью из кэша истории (дёшево, 1 км тела)
+    const isNear = (x, z) => (x - cam.x) * (x - cam.x) + (z - cam.z) * (z - cam.z) < 250 * 250;
     for (let i = 0; i < N_PTS; i++) {
-      const gy0 = g(P[i * 3], P[i * 3 + 2]);
-      const h = P[i * 3 + 1] - gy0;
-      const hh = Math.max(h, 0);
-      // проецируем вдоль солнца на песок
-      let x = P[i * 3] - (L.x / L.y) * hh, z = P[i * 3 + 2] - (L.z / L.y) * hh;
-      const gy = g(x, z);
-      cen[i * 3] = x; cen[i * 3 + 1] = gy + 0.3; cen[i * 3 + 2] = z;
+      const hh0 = P[i * 3 + 1] - GY[i];
+      if (i < i0 || i > i1) { cen[i * 3] = P[i * 3]; cen[i * 3 + 1] = GY[i]; cen[i * 3 + 2] = P[i * 3 + 2]; continue; }
+      const hh = Math.max(hh0, 0);
+      const x = P[i * 3] - (L.x / L.y) * hh, z = P[i * 3 + 2] - (L.z / L.y) * hh;
+      cen[i * 3] = x; cen[i * 3 + 1] = (isNear(x, z) ? g(x, z) : GY[i]); cen[i * 3 + 2] = z;
     }
     for (let i = 0; i < N_PTS; i++) {
+      const o3 = i * 3;
+      const px0 = cen[i * 3], pz0 = cen[i * 3 + 2];
+      if (i < i0 || i > i1) {
+        for (let c = 0; c < 3; c++) { const o = o3 + c; pos[o * 3] = px0; pos[o * 3 + 1] = cen[i * 3 + 1]; pos[o * 3 + 2] = pz0; col[o * 4 + 3] = 0; }
+        continue;
+      }
       const a = Math.max(i - 1, 0), b = Math.min(i + 1, N_PTS - 1);
       let dx = cen[b * 3] - cen[a * 3], dz = cen[b * 3 + 2] - cen[a * 3 + 2];
       let l = Math.hypot(dx, dz);
       if (l < 0.5) { dx = -L.x; dz = -L.z; l = Math.hypot(dx, dz) || 1; }
       dx /= l; dz /= l;
-      const h = P[i * 3 + 1] - g(P[i * 3], P[i * 3 + 2]);
+      const h = P[i * 3 + 1] - GY[i];
       const vis = ctx.tame ? smoothstep(-RADIUS * 0.85, -RADIUS * 0.25, h) : smoothstep(RADIUS * 0.1, RADIUS * 0.9, h);
       if (vis > 0.01) any = true;
       const w = RADIUS * 1.05;
       const al = 0.55 * vis;
+      const near = isNear(px0, pz0);
+      const lift = 0.3 + Math.hypot(px0 - cam.x, pz0 - cam.z) * 0.0012;   // z-fight на дальности (глубина 24 бит, far=12000)
       for (let c = 0; c < 3; c++) {
-        const o = (i * 3 + c);
+        const o = o3 + c;
         const side = (c - 1) * w;
-        const px = cen[i * 3] - dz * side, pz = cen[i * 3 + 2] + dx * side;
-        pos[o * 3] = px; pos[o * 3 + 1] = g(px, pz) + 0.3; pos[o * 3 + 2] = pz;
+        const px = px0 - dz * side, pz = pz0 + dx * side;
+        pos[o * 3] = px; pos[o * 3 + 1] = (near ? g(px, pz) : cen[i * 3 + 1]) + lift; pos[o * 3 + 2] = pz;
         col[o * 4] = 1; col[o * 4 + 1] = 1; col[o * 4 + 2] = 1; col[o * 4 + 3] = c === 1 ? al : 0;
       }
     }

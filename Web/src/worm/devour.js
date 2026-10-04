@@ -31,7 +31,8 @@ export const DEVOUR_TUNING = {
   vortexLead: 0.5, vortexRamp: 11, holeR: 30, rimH: 3.2, vortexR: 135,
   tiltDur: 8, tiltMax: 1.36,    // рад (≈78° носом вниз): харвестер сползает в воронку и встаёт почти вертикально
   noseAdvance: 8,               // м: ось пасти впереди носа харвестера
-  eruptDelay: 1.4, riseTime: 4.6, headRise: 12, flare: 2.3, flareLen: 90, openDelay: 0.9, openTime: 3.4,
+  eruptDelay: 1.4, riseTime: 4.6, headRise: 12, flare: 2.3, flareLen: 150, bodyScale: 1.5,   // bodyScale: радиус тела ×1.5 (Ø 60 м) — тело за пастью (Ø 92 м) того же гигантского масштаба, а не тонкая шея
+   openDelay: 0.9, openTime: 3.4,
   slideDelay: 2.4, slideTime: 7.5, slideAccel: 7, closeDelay: 8.5, closeTime: 2.8,
   retractTime: 11, retractDepth: 40,
   aftermathTime: 24, safeRadius: 120, knockSpeed: 22,
@@ -137,8 +138,8 @@ export class DevourDirector {
     this.api.clearForced();
     this.api.setTame(false);
     const sp2 = this.worm.spine;
-    sp2.sag = 0; sp2.sagHead = 0; sp2.spread = 1; sp2.flare = 1; sp2.headLift = 0;
-    this.worm.body.setOpen(0); this.worm.body.headScale = 1;
+    sp2.sag = 0; sp2.sagHead = 0; sp2.spread = T.bodyScale; sp2.flare = 1; sp2.headLift = 0;
+    this.worm.body.setOpen(0); this.worm.body.headScale = T.bodyScale;
     const p0 = this.pathAt(0);
     this.api.placeHead(p0.x, p0.z, Math.atan2(this.w.z, this.w.x), T.depth);
     K.pos.set(p0.x, p0.y, p0.z);
@@ -300,9 +301,9 @@ export class DevourDirector {
     const rise = smoothstep(this.tErupt - 1.5, this.tRise1 - 0.2, t);
     const closing = smoothstep(this.tClose0, this.tClose0 + T.closeTime, t);
     const open = smoothstep(this.tErupt + T.openDelay, this.tErupt + T.openDelay + T.openTime, t) * (1 - 0.97 * closing);
-    const flare = 1 + (T.flare - 1) * rise;
-    sp.flare = flare; sp.flareLen = T.flareLen;
-    body.headScale = lerp(1, T.flare, rise);
+    const flare = 1 + (T.flare / T.bodyScale - 1) * rise;     // шея раздаётся от радиуса тела (×bodyScale) до радиуса пасти (×flare)
+    sp.flare = flare; sp.flareLen = T.flareLen; sp.spread = T.bodyScale;
+    body.headScale = lerp(T.bodyScale, T.flare, rise);
     if (Math.abs(open - this.openLast) > 0.012 || (open === 0 && this.openLast !== 0)) { body.setOpen(open); this.openLast = open; }
     this.openNow = open;
 
@@ -656,7 +657,7 @@ export class DevourDirector {
   aftermath() {
     this.setPhase('aftermath');
     const { game } = this.api;
-    this.worm.body.setOpen(0); this.worm.body.headScale = 1;
+    this.worm.body.setOpen(0); this.worm.body.headScale = 1; this.worm.spine.spread = 1;
     this.worm.spine.flare = 1;
     this.terrainHole.clear(); this.holeR = 0;
     this.hv.alarm(false);
@@ -669,7 +670,7 @@ export class DevourDirector {
 
   hideWorm() {
     const { K } = this.api;
-    this.worm.spine.flare = 1; this.worm.body.headScale = 1;
+    this.worm.spine.flare = 1; this.worm.body.headScale = 1; this.worm.spine.spread = 1;
     K.scripted = false;
     this.api.hardDormant(true);
   }

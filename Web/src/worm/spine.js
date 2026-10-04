@@ -1,22 +1,31 @@
-// Позвоночник червя: история пути головы («поезд») → 91 точка тела через 4 м.
+// Позвоночник червя: история пути головы («поезд») → N_PTS точек тела через SEG_LEN метров.
 // Тело строится из истории: каждое кольцо лежит там, где несколько секунд назад прошла голова.
+// Размер червя задаётся ЗДЕСЬ (SEG_COUNT колец по SEG_LEN): всё остальное (шейдеры, коллайдеры, LOD сетки, эффекты) берёт его отсюда.
+// Большая часть тела лежит под песком; над поверхностью — спина, ребристые сегменты и голова.
+// Высота земли под каждой точкой истории кэшируется при записи (GY): heightAt стоит 30–150 мкс, перебирать его по сотням точек каждый кадр нельзя.
 import * as THREE from 'three';
 
-export const SEG_COUNT = 90;
+export const SEG_COUNT = 400;             // колец (было 90 → 360 м). 400 → 1600 м; Ø 40 м, кольцо 4 м не меняются
 export const SEG_LEN = 4;
-export const N_PTS = SEG_COUNT + 1;      // 0 — основание головы, 90 — кончик хвоста
-export const TEX_W = 96;
+export const N_PTS = SEG_COUNT + 1;      // 0 — основание головы, SEG_COUNT — кончик хвоста
+export const TEX_W = 512;                 // ширина текстуры позвоночника (>= N_PTS)
 export const LENGTH = SEG_COUNT * SEG_LEN;
 export const RADIUS = 20;
 
+export const TAIL_LEN = 160;              // м: сужение хвоста
 const STEP = 1.0;                         // шаг истории, м
-const CAP = 560;                          // 560 м истории
+const CAP = SEG_COUNT * SEG_LEN + 300;    // м истории (длина тела + запас на откат/сглаживание)
 
 const sm = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
 
 export class Spine {
   constructor() {
     this.pts = new Float32Array(CAP * 3);
+    this.gys = new Float32Array(CAP);     // высота земли под каждой записью истории
+    this.groundFn = null;
+    this.GY = new Float32Array(TEX_W);    // высота земли под точками тела (из кэша истории)
+    this.EX = new Uint8Array(TEX_W);      // 1 — точка тела заметно над песком (виден хоть кусок кольца)
+    this.exCount = 0; this.exFirst = -1; this.exLast = -1;
     this.w = 0;                           // индекс следующей записи
     this.last = new THREE.Vector3();
     this.hp = new THREE.Vector3();
@@ -52,18 +61,27 @@ export class Spine {
     this._n = new THREE.Vector3(); this._bb = new THREE.Vector3();
   }
 
+  /** Функция высоты земли для кэша GY (вызывается при записи каждой точки истории, ~1 раз на метр пути). */
+  setGround(fn) { this.groundFn = fn; }
+
   /** Сброс: голова в headPos, тело тянется прямо назад по -dir (x,z), следуя рельефу на глубине depth. */
   reset(headPos, dirX, dirZ, groundFn, depth) {
     const l = Math.hypot(dirX, dirZ) || 1; dirX /= l; dirZ /= l;
     this.hp.copy(headPos);
     this.last.copy(headPos);
     this.e = 0;
+    this.groundFn = groundFn;
+    const GS = 8;                         // рельеф опрашиваем через 8 м и интерполируем (CAP записей × heightAt дали бы паузу)
+    const nS = Math.ceil(CAP / GS) + 2, S = new Float32Array(nS);
+    for (let j = 0; j < nS; j++) S[j] = groundFn(headPos.x - dirX * j * GS, headPos.z - dirZ * j * GS);
     for (let i = 0; i < CAP; i++) {
       const k = CAP - 1 - i;              // запись i = «k шагов назад»; самая новая — индекс CAP-1
       const x = headPos.x - dirX * k * STEP, z = headPos.z - dirZ * k * STEP;
-      const yg = groundFn(x, z) - depth;
+      const j = Math.floor(k / GS), gk = S[j] + (S[j + 1] - S[j]) * ((k - j * GS) / GS);
+      const yg = gk - depth;
       const y = k < 40 ? headPos.y + (yg - headPos.y) * (k / 40) : yg;
       this.pts[i * 3] = x; this.pts[i * 3 + 1] = y; this.pts[i * 3 + 2] = z;
+      this.gys[i] = gk;
     }
     this.w = 0;                           // следующая запись затрёт самую старую
   }
@@ -77,6 +95,7 @@ export class Spine {
       this.last.lerp(this.hp, STEP / e);
       const o = this.w * 3;
       this.pts[o] = this.last.x; this.pts[o + 1] = this.last.y; this.pts[o + 2] = this.last.z;
+      this.gys[this.w] = this.groundFn ? this.groundFn(this.last.x, this.last.z) : this.last.y;
       this.w = (this.w + 1) % CAP;
       e = this.hp.distanceTo(this.last);
     }
@@ -103,6 +122,14 @@ export class Spine {
     return out.set(p[a * 3] + (p[b * 3] - p[a * 3]) * t, p[a * 3 + 1] + (p[b * 3 + 1] - p[a * 3 + 1]) * t, p[a * 3 + 2] + (p[b * 3 + 2] - p[a * 3 + 2]) * t);
   }
 
+  /** Высота земли на расстоянии d назад от головы (из кэша истории). */
+  groundAt(d) {
+    const kk = Math.min(Math.max(d - this.e, 0), CAP - 2.001);
+    const i = Math.floor(kk), t = kk - i;
+    const a = ((this.w - 1 - i) % CAP + CAP) % CAP, b = ((this.w - 2 - i) % CAP + CAP) % CAP;
+    return this.gys[a] + (this.gys[b] - this.gys[a]) * t;
+  }
+
   /** Точка пути на расстоянии d назад от головы. */
   pointAt(d, out) {
     if (d <= this.e) {
@@ -122,6 +149,7 @@ export class Spine {
       const s = i * SEG_LEN;
       const lf = this.headLift !== 0 ? this.headLift * (1 - sm(0, this.liftLen, s)) : 0;
       P[i * 3] = v.x; P[i * 3 + 1] = v.y + lf - this.sag - this.sagHead * (1 - sm(0, this.liftLen, s)); P[i * 3 + 2] = v.z;
+      this.GY[i] = this.groundAt(s);
     }
     for (let i = 0; i < N_PTS; i++) {
       const a = Math.max(i - 1, 0), b = Math.min(i + 1, N_PTS - 1);
@@ -145,10 +173,18 @@ export class Spine {
       const s = i * SEG_LEN;
       const w = A * Math.sin(s * 0.07 - time * 1.1) * Math.min(1, s / 40);
       P[i * 3] += N[i * 3] * w; P[i * 3 + 1] += N[i * 3 + 1] * w; P[i * 3 + 2] += N[i * 3 + 2] * w;
-      { const u = Math.min(1, Math.max(0, (LENGTH - s) / 70)); RS[i] = Math.max(0.03, Math.sqrt(1 - (1 - u) * (1 - u))) * this.spread; }
+      { const u = Math.min(1, Math.max(0, (LENGTH - s) / TAIL_LEN)); RS[i] = Math.max(0.03, Math.sqrt(1 - (1 - u) * (1 - u))) * this.spread; }
       if (this.flare !== 1) RS[i] *= 1 + (this.flare - 1) * (1 - sm(0, this.flareLen, s));
       if (this.breath > 0) RS[i] *= 1 + this.breath * 0.022 * Math.sin(s * 0.055 - time * 0.85) * Math.min(1, s / 25);
     }
+    // видимость: центр + радиус заметно над песком (по кэшу рельефа, без вызовов heightAt)
+    let n = 0, f = -1, l = -1;
+    for (let i = 0; i < N_PTS; i++) {
+      const ex = P[i * 3 + 1] + RADIUS * RS[i] * 0.85 > this.GY[i] - 0.5 ? 1 : 0;
+      this.EX[i] = ex;
+      if (ex) { n++; if (f < 0) f = i; l = i; }
+    }
+    this.exCount = n; this.exFirst = f; this.exLast = l;
     const d = this.data;
     for (let i = 0; i < TEX_W; i++) {
       const k = Math.min(i, N_PTS - 1);

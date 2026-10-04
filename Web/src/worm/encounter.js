@@ -14,17 +14,19 @@ import * as THREE from 'three';
 import { clamp, lerp, smoothstep, rng } from '../core/util.js';
 import { GOLDEN_PATH } from '../core/layout.js';
 import { colliders } from '../core/colliders.js';
-import { choosePath } from './path.js';
+import { choosePath, RIDGE_CLEAR } from './path.js';
+import { ridgeQuery, RQR } from '../core/ridge.js';
 import { RADIUS } from './spine.js';
 
 export const DIALOGUE_ID = 'DLG_A2_RIDER_01';
 
 /** Все числа сцены (метры, секунды, радианы). */
 export const ENCOUNTER_TUNING = {
-  vCruise: 36, aAcc: 3.0, aBrake: 2.2, tiredFrom: 0.55,    // к концу дуги голова еле ползёт (устал)
+  vCruise: 40, aAcc: 3.0, aBrake: 2.2, tiredFrom: 0.55,    // к концу дуги голова еле ползёт (устал)
   ossWalk: 3.0, ossRun: 4.6, ossClimb: 4.2, ossBackWalk: 2.4, talkDist: 4.0,
-  collapseTime: 9.5, sagBody: 3.2, sagHead: 2.6, spread: 0.045, restRate: 0.32, mouthRest: 0.1,
+  collapseTime: 14, sagBody: 5.0, sagHead: 3.5, spread: 0.06, restRate: 0.32, mouthRest: 0.1,
   dismountDelay: { Ossana: 0.4, Rider3: 1.6, Rider4: 2.4, Rider5: 3.1, Rider1: 4.0 },
+  exposedLen: 900, riseLen: 150, shakeArrive: 0.12, shakeCollapse: 0.06, stationReach: 24, keepOut: 84,   // длина тела над песком в конце; участок всплытия; дрожь (мягкая, только вблизи)
   sitDistance: 5.5, avoidMargin: 12, talkFallback: 6, talkGuard: 180, callEvery: 9,
 };
 
@@ -67,7 +69,14 @@ export class EncounterDirector {
     const tmp = new THREE.Vector3();
     const clear = (x, z, extra = 0) => {
       tmp.set(x, ground(x, z), z);
-      return game.collide(tmp, RADIUS + T.avoidMargin + extra, { ignore: 'worm', height: 3 }) ? [tmp.x, tmp.z] : null;
+      if (game.collide(tmp, RADIUS + T.avoidMargin + extra, { ignore: 'worm', height: 3 })) return [tmp.x, tmp.z];
+      // хребет: выталкиваем от основания массива
+      const rd = ridgeQuery(x, z);
+      if (rd < RIDGE_CLEAR + extra) { const k = RIDGE_CLEAR + extra - rd; return [x + RQR.ox * k, z + RQR.oz * k]; }
+      // группа: голова — не ближе T.keepOut от игрока (иначе обход валунов прижимает длинное тело к людям)
+      const dx = x - G.x, dz = z - G.z, d = Math.hypot(dx, dz);
+      if (d < T.keepOut && d > 1e-3) return [G.x + dx / d * T.keepOut, G.z + dz / d * T.keepOut];
+      return null;
     };
     this.path = choosePath(G, preferred, { clear });
     const p0 = this.path.at(0);
@@ -195,7 +204,8 @@ export class EncounterDirector {
   }
 
   // ---------------------------------------------------------------- голова
-  baseLift(u) { return -55 + 52 * smoothstep(30, 200, u); }       // всплытие вдали: волна → бугор → кольца
+  // всплытие вдали: волна → бугор → кольца. Привязано к концу пути: к остановке над песком лежит ~exposedLen метров тела, остальное закопано.
+  baseLift(u) { const us = this.path.uStop - T.exposedLen; return -55 + 52 * smoothstep(us - T.riseLen, us, u); }
 
   placeHeadAt(u) {
     const { K, ground } = this.api;
@@ -249,7 +259,7 @@ export class EncounterDirector {
     this.v = 0;
   }
 
-  headLiftFor(v) { return lerp(1.2, 8.5, smoothstep(2, 22, v)); }
+  headLiftFor(v) { return lerp(1.6, 11, smoothstep(2, 24, v)); }
 
   // ---------------------------------------------------------------- цикл
   update(dt) {
@@ -269,9 +279,9 @@ export class EncounterDirector {
         const vUp = Math.sqrt(2 * T.aAcc * (this.u + 6));
         const vDown = Math.sqrt(2 * T.aBrake * Math.max(0, left)) + 0.5;
         this.moveHead(dt, Math.min(T.vCruise * tired, vUp, vDown), 3);
-        if (!this.surfaced && this.u > 150) {
+        if (!this.surfaced && this.u > path.uStop - T.exposedLen - T.riseLen * 0.4) {
           this.surfaced = true;
-          this.api.onBreach(0.55);
+          this.api.onBreach(0.9);
           bus.emit('worm:reveal', { phase: 'erupt' });
         }
         this.pryT = (this.pryT || 0) - dt;                       // передний наездник рычагом вскрывает шов кольца: из шва сыплется песок
@@ -282,7 +292,8 @@ export class EncounterDirector {
         }
         if (!this._passFx && this.u > path.o.approach - 60) { this._passFx = true; game.audio?.event?.('Worm.Pass', K.pos.clone()); }
         sp.headLift = lerp(sp.headLift, this.headLiftFor(this.v) * (0.55 + 0.45 * tired), 1 - Math.exp(-1.5 * dt));
-        game.shake = Math.max(game.shake || 0, 0.28 * smoothstep(260, 70, this.distToPlayer()) * smoothstep(5, 25, this.v));   // только вблизи: вдали земля не дрожит
+        this.shakeV = lerp(this.shakeV || 0, T.shakeArrive * smoothstep(200, 45, this.bodyDist()) * smoothstep(5, 28, this.v), 1 - Math.exp(-dt / 1.2));   // только вблизи тела и пока ползёт; медленно
+        if (this.shakeV > 0.008) game.shake = Math.max(game.shake || 0, this.shakeV);
         if (left < 0.4 && this.v < 0.9) { this.advanceTo(path.uStop); this.startCollapse(); }
         break;
       }
@@ -298,6 +309,7 @@ export class EncounterDirector {
     }
   }
 
+  bodyDist() { return this.worm.bodyDistance ? this.worm.bodyDistance() : this.distToPlayer(); }
   distToPlayer() { const p = this.api.game.player?.position, K = this.api.K; return p ? Math.hypot(K.pos.x - p.x, K.pos.z - p.z) : 999; }
   distToG() { const K = this.api.K; return Math.hypot(K.pos.x - this.G.x, K.pos.z - this.G.z); }
 
@@ -328,13 +340,13 @@ export class EncounterDirector {
     // длинный вздох песка: пыль и песок стекают по бокам, вдоль всего тела
     this.collapsePuff -= dt;
     if (this.collapsePuff <= 0 && pt < T.collapseTime - 1) {
-      this.collapsePuff = 0.45 + this.rand() * 0.5;
-      const s = 10 + this.rand() * 230;
+      this.collapsePuff = 0.18 + this.rand() * 0.25;
+      const s = 10 + this.rand() * (T.exposedLen - 20);     // осыпи вдоль всего видимого тела
       this.worm.spine.surfacePoint(s, (this.rand() < 0.5 ? -1 : 1) * (0.7 + this.rand() * 0.7), this._v, this._n, 0.1);
-      this.api.fx.puff(this._v.x, this._v.y, this._v.z, 0.7 + 0.5 * this.rand(), 'wide');
+      this.api.fx.puff(this._v.x, this._v.y, this._v.z, 0.45 + 0.35 * this.rand(), 'wide');
       if (this.rand() < 0.35) game.audio?.event?.('Worm.RingSandfall', this._v.clone());
     }
-    game.shake = Math.max(game.shake || 0, 0.1 * (1 - k1) * smoothstep(200, 50, this.distToPlayer()));
+    game.shake = Math.max(game.shake || 0, T.shakeCollapse * (1 - k1) * smoothstep(160, 40, this.bodyDist()));
     if (pt > T.collapseTime) this.startDismount();
     void K;
   }
@@ -368,7 +380,7 @@ export class EncounterDirector {
       let sBest = it.s, best = 1e9;
       if (it.name === 'Ossana') {
         const pl = this.playerPos();
-        for (let s = Math.max(30, it.s - 12); s <= it.s + 12; s += 2) {
+        for (let s = Math.max(30, it.s - T.stationReach); s <= it.s + T.stationReach; s += 2) {
           sp.surfacePoint(s, 0, P, N, 0);
           const d = Math.hypot(P.x - pl.x, P.z - pl.z);
           if (d < best) { best = d; sBest = s; }
