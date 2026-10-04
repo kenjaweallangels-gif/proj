@@ -32,7 +32,7 @@ URL-параметры: `?q=low|med|high` (качество; без параме
 ### Ядро (`src/core`)
 - `game` — `renderer, scene, camera, bus, input, settings{quality, lang, at, autotest}, data, time, dt, timeScale, paused, cinematic{active, owner}, lang, zone, space('desert'|'sietch'), t(ru,en), interactables[], shake, heightAt(x,z), surfaceAt(x,z), collide(pos,r), render()`.
 - `bus` — события (ниже). `input` — `axis()`, `look{x,y}`, `held(a)`, `pressed(a)`, `device('kbm'|'pad')`, `requestLock()`, `locked`, `enabled`.
-  Действия: Fwd/Back/Left/Right, Sprint, SandWalk, Stutter, Interact, ToggleCamera, Thumper, Pause, PhotoMode, Mask, Confirm, Skip.
+  Действия: Fwd/Back/Left/Right, Sprint, SandWalk, Stutter, Jump, Interact, Thumper, Pause, PhotoMode, Mask, Confirm, Skip.
   Escape при захваченном курсоре браузер не отдаёт — пауза открывается по событию потери pointer lock.
 - `makeFigure(opts)` (`core/figures.js`) — фигура в одежде пустыни с анимацией ходьбы; `PALETTES` архетипов.
 - `util.js` — `clamp, lerp, damp, smoothstep, rng(seed), noise2, fbm2`.
