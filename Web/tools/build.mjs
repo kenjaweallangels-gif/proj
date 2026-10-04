@@ -8,7 +8,9 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'dist');
 mkdirSync(dist, { recursive: true });
-const serve = process.argv.includes('--serve');
+const serveOnly = process.argv.includes('--serve-only');   // только раздать готовый dist (без сборки и слежения)
+const serve = serveOnly || process.argv.includes('--serve');
+const port = +((process.argv.find((a) => a.startsWith('--port=')) || '--port=8080').slice(7));
 const outName = (process.argv.find((a) => a.startsWith('--out=')) || '--out=rakis_demo.html').slice(6);
 
 async function bundle() {
@@ -31,13 +33,13 @@ async function bundle() {
   console.log(`dist/${outName} — ${(html.length / 1024 / 1024).toFixed(2)} МБ`);
 }
 
-await bundle();
+if (!serveOnly) await bundle();
 if (serve) {
   const { createServer } = await import('node:http');
   const { watch } = await import('node:fs');
-  let t; watch(join(root, 'src'), { recursive: true }, () => { clearTimeout(t); t = setTimeout(() => bundle().catch(console.error), 150); });
+  if (!serveOnly) { let t; watch(join(root, 'src'), { recursive: true }, () => { clearTimeout(t); t = setTimeout(() => bundle().catch(console.error), 150); }); }
   createServer((req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.end(readFileSync(join(dist, 'index.html')));
-  }).listen(8080, () => console.log('http://localhost:8080'));
+  }).listen(port, '127.0.0.1', () => console.log(`http://localhost:${port}`));
 }
