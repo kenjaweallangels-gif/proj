@@ -19,7 +19,8 @@ export function create(game) {
   // Сиетч бесшовный и повёрнут в мире: отладочные точки — через game.sietch.enter(point) (внутренний телепорт без затемнения).
   async function toSietch(point = 'B1') { await game.sietch?.enter?.(point); }
   const gardenSpot = () => {
-    const c = game.garden?.spawn ?? game.garden?.center ?? GARDEN.center;
+    // точка у лаза, в 8 м от устья (мир): дно сада на GARDEN.floorY (36 м), а не на уровне пустыни
+    const c = game.garden?.spawn ?? { x: GARDEN.portal.x + 8, z: GARDEN.portal.z + 1.5 };
     const y = game.garden?.heightAt?.(c.x, c.z) ?? GARDEN.floorY;
     return { x: c.x, z: c.z, y };
   };
@@ -48,6 +49,7 @@ export function create(game) {
           // у входной щели, лицом внутрь (щель смотрит на запад — идём с запада на восток)
           tp(ENTRY.cleft.x - 7, ENTRY.cleft.z, 0, ENTRY.cleft.y);
         } else if (name === 'garden') {
+          // дно высокой котловины, лицом к лазу (на запад): единственный вход — из туннеля сиетча
           const g = gardenSpot();
           tp(g.x, g.z, Math.PI, g.y);
         }

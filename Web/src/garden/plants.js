@@ -285,6 +285,61 @@ export function buildFlower(colorIdx = 0) {
   return b.build();
 }
 
+/** Суккулент: kind 'rosette' (розетка мясистых заострённых листьев, ~0.25 м, карточки с альфой) | 'barrel' (низкий ребристый шар-кактус ~0.18 м, без текстуры). */
+export function buildSucculent(kind = 'rosette', variant = 0) {
+  const R = rng(2100 + variant * 29 + (kind === 'barrel' ? 5 : 0));
+  const b = new GB(); b.segs = 1;
+  if (kind === 'rosette') {
+    const n = 15 + ((R() * 5) | 0);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 * 1.618 + R() * 0.4, tilt = 0.18 + 1.05 * Math.pow(i / n, 0.8) + R() * 0.1;     // внутренние листья — прямее
+      const L = (0.2 + 0.16 * (1 - i / n)) * (0.85 + R() * 0.3), w = 0.055 + R() * 0.02;
+      const sa = Math.sin(a), ca = Math.cos(a), st = Math.sin(tilt), ct = Math.cos(tilt);
+      const ux = st * ca, uy = ct, uz = st * sa, rx = -sa, rz = ca;
+      const nrm = [-ct * ca, st, -ct * sa];
+      const col = [0.82 + R() * 0.25, 0.85 + R() * 0.2, 0.8 + R() * 0.2];
+      card(b, [ux * L / 2, 0.02 + uy * L / 2, uz * L / 2], rx, 0, rz, ux, uy, uz, w, L / 2, nrm, col, 0, 0.08, 0.03 + R() * 0.03);
+    }
+  } else {
+    const rings = 7, ribs = 11, H = 0.15 + R() * 0.06, RAD = 0.1 + R() * 0.035;
+    const idx = [];
+    for (let j = 0; j <= rings; j++) {
+      const v = j / rings, ph = v * Math.PI * 0.5 * 0.96, ry = Math.cos(ph) * RAD, y = Math.sin(ph) * H;
+      const row = [];
+      for (let k = 0; k <= ribs * 2; k++) {
+        const a = (k / (ribs * 2)) * Math.PI * 2, rib = 1 + 0.11 * Math.cos(a * ribs);
+        const x = Math.cos(a) * ry * rib, z = Math.sin(a) * ry * rib;
+        const nl = Math.hypot(x, y * 0.8, z) || 1;
+        row.push(b.v(x, y, z, x / nl, y * 0.8 / nl, z / nl, k / (ribs * 2), v, [0.52 + 0.1 * Math.cos(a * ribs), 0.6 + 0.1 * Math.cos(a * ribs), 0.42], 0));
+      }
+      idx.push(row);
+    }
+    for (let j = 0; j < rings; j++) for (let k = 0; k < ribs * 2; k++) b.quad(idx[j][k], idx[j][k + 1], idx[j + 1][k + 1], idx[j + 1][k]);
+    // нижний «шов» с землёй: мелкие шипы-точки не рисуем (мелко), цветок — кольцо жёлто-розовых точек на макушке
+    const top = b.v(0, H, 0, 0, 1, 0, 0.5, 1, [0.9, 0.55, 0.5], 0);
+    const ring = [];
+    for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; ring.push(b.v(Math.cos(a) * 0.022, H * 0.99, Math.sin(a) * 0.022, 0, 1, 0, 0.5, 1, [0.95, 0.5, 0.55], 0)); }
+    for (let k = 0; k < 6; k++) b.tri(top, ring[(k + 1) % 6], ring[k]);
+  }
+  return b.build();
+}
+
+/** Пятно лишайника: плоский неровный диск с лёгким куполом (радиус ≈ 1 м → масштабируется инстансом), лежит в плоскости XZ, нормаль +Y. */
+export function buildLichen(variant = 0) {
+  const R = rng(3100 + variant * 13);
+  const b = new GB();
+  const n = 11;
+  const c0 = b.v(0, 0.012, 0, 0, 1, 0, 0.5, 0.5, WHITE, 0);
+  const mid = [], out = [];
+  for (let k = 0; k < n; k++) {
+    const a = (k / n) * Math.PI * 2, r = 0.7 + R() * 0.5 + 0.15 * Math.sin(a * 3 + variant);
+    mid.push(b.v(Math.cos(a) * r * 0.55, 0.008, Math.sin(a) * r * 0.55, 0, 1, 0, 0.5, 0.5, [0.92, 0.92, 0.9], 0));
+    out.push(b.v(Math.cos(a) * r, 0.0, Math.sin(a) * r, 0, 1, 0, 0.5, 0.5, [0.7, 0.7, 0.68], 0));
+  }
+  for (let k = 0; k < n; k++) { const k1 = (k + 1) % n; b.tri(c0, mid[k1], mid[k]); b.quad(mid[k], mid[k1], out[k1], out[k]); }
+  return b.build();
+}
+
 // ---------------------------------------------------------------- инстансы с чанковым LOD
 export class InstGroup {
   /** parts: [{geo, mat}] — меши делят инстансные матрицы. opts: {range, shadow, cell} */

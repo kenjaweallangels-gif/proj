@@ -12,7 +12,7 @@ const ENV = {
   A4_Crevice: { wind: 0.7, whistle: 0.8, drip: 0.15, rev: 'desert', lp: 20000 },
   A5_Trail: { wind: 0.85, whistle: 1, rev: 'desert', lp: 20000 },
   A6_Cleft: { wind: 0.6, whistle: 0.9, drip: 0.25, rev: 'desert', lp: 20000 },
-  C1_Garden: { wind: 0.22, garden: 1, rev: 'desert', lp: 20000 },
+  C1_Garden: { wind: 0.12, whistle: 0.35, garden: 1, rev: 'desert', lp: 20000 },   // высокая замкнутая котловина: ветер в камнях, редкие птицы высоко, насекомые; воды нет
   B1_Airlock: { wind: 0.05, hum: 0.5, murmur: 0.1, drip: 0.6, work: 0.1, rev: 'sietch', lp: 9000 },
   B2_Gallery: { wind: 0, hum: 0.8, murmur: 0.55, drip: 0.2, cloth: 0.6, work: 0.7, rev: 'sietch', lp: 11000 },
   B3_Passages: { wind: 0, hum: 0.5, murmur: 0.14, drip: 0.4, cloth: 0.7, work: 0.3, rev: 'sietch', lp: 8000 },
@@ -206,14 +206,12 @@ export function createAmbience(game, eng) {
       }
       // Сад
       const gd = env.garden;
-      layer('brook', 'brook', 0.28 * gd, { out, lp: 9000 }, 1.2, dt);
       eng.ramp(insG.gain, 0.05 * gd * (0.35 + 0.65 * night0), 1.5);
       if (gd > 0.05 && eng.samplesReady) {
         if (now > nextIns) { nextIns = now + rnd(2, 5); eng.ramp(insLFO.frequency, rnd(26, 44), 2); eng.ramp(insBP.frequency, rnd(4800, 6200), 2); }
         const day = 1 - night0;
-        if (day > 0.1 && now > nextBird) { play('bird', { gain: rnd(0.1, 0.25), rateVar: 0.15, pan: rnd(-0.9, 0.9), send: 0.35, when: now + 0.02 }); nextBird = now + rnd(0.7, 3.5) / (gd * (0.2 + 0.8 * day)); }
+        if (day > 0.1 && now > nextBird) { play('bird', { gain: rnd(0.1, 0.25), rateVar: 0.15, pan: rnd(-0.9, 0.9), send: 0.35, when: now + 0.02 }); nextBird = now + rnd(3, 11) / (gd * (0.2 + 0.8 * day)); }
         if (day > 0.1 && now > nextDove) { play('dove', { gain: 0.16, rateVar: 0.05, pan: rnd(-0.8, 0.8), send: 0.5, when: now + 0.02 }); nextDove = now + rnd(9, 22) / gd; }
-        if (now > nextPlop) { play('drip', { gain: rnd(0.08, 0.2), rate: rnd(0.55, 0.9), pan: rnd(-0.5, 0.5), send: 0.3, when: now + 0.01 }); nextPlop = now + rnd(0.5, 2.5) / gd; }
       }
       if (eng.samplesReady) {
         if (env.drip > 0.02 && now > nextDrip) { drip(now + 0.01, env.drip > 0.6); nextDrip = now + rnd(1.4, 5.5) / env.drip; }

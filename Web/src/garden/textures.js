@@ -81,6 +81,18 @@ export function foliageTexture(kind, seed = 1) {
   return tex(c);
 }
 
+/** Мясистый лист суккулента: заострённая каплевидная форма сине-зелёного цвета с красноватой кромкой и светлой жилкой. */
+export function succulentTexture(seed = 1) {
+  const R = rng(seed * 53 + 3);
+  const [c, g] = canvas(64, 128);
+  const col = jitter([112, 142, 112], 20, R);
+  g.fillStyle = rgb(...col);
+  g.beginPath(); g.moveTo(32, 127); g.quadraticCurveTo(2, 90, 6, 52); g.quadraticCurveTo(14, 20, 32, 1); g.quadraticCurveTo(50, 20, 58, 52); g.quadraticCurveTo(62, 90, 32, 127); g.closePath(); g.fill();
+  g.strokeStyle = rgb(176, 98, 84, 0.8); g.lineWidth = 3; g.stroke();
+  g.strokeStyle = rgb(col[0] + 34, col[1] + 30, col[2] + 26, 0.55); g.lineWidth = 2; g.beginPath(); g.moveTo(32, 120); g.lineTo(32, 10); g.stroke();
+  return tex(c);
+}
+
 /** Лист пальмы: вдоль вертикали карточки идёт ребро, по бокам — узкие листочки. */
 export function palmFrondTexture() {
   const R = rng(4242);

@@ -129,7 +129,7 @@ export function create(game) {
   ];
   try {
     game.world?.addRockHole?.({ x: ENTRY.cleft.x, y: ENTRY.cleft.y + 1.5, z: ENTRY.cleft.z, r: 2.3 });
-    game.world?.addRockHole?.({ x: GARDEN.portal.x, y: GARDEN.portal.y + 1.5, z: GARDEN.portal.z, r: 2.8 });
+    game.world?.addRockHole?.({ x: GARDEN.portal.x - 1.4, y: GARDEN.portal.y + 1.1, z: GARDEN.portal.z, r: 1.25 });   // низкий лаз ≈ 2.0 × 2.25 м в грани
     game.world?.addPassage?.({ points: [{ x: ENTRY.cleft.x, y: ENTRY.cleft.y, z: ENTRY.cleft.z }, { x: O.x, y: O.y, z: O.z }], r: 2.4 });
     game.world?.addPassage?.({ points: EXIT.nodes.map((n, i) => ({ n, i })).filter(({ i }) => EXIT.cum[i] > EXIT.length - EXIT.tail - 18 && EXIT.cum[i] <= EXIT.length - EXIT.tail + 1).map(({ n, i }) => { const w = toWorld(n[0], EXIT.ys[i], n[1]); return { x: w.x, y: w.y, z: w.z }; }), r: 2.6 });
   } catch (e) { console.warn('[sietch] rock holes', e); }

@@ -81,7 +81,7 @@ r = await page.evaluate(async () => {
   const beforeTrail = fired('SB_A5_02_Climb');
   hold(630, g.heightAt(630, 275) + 8, 275); const onTrail = await until(() => fired('SB_A5_02_Climb'));
   hold(645, 30, 251); const cleft = await until(() => fired('SB_A6_00_Cleft'));
-  hold(840, 4, 395); const garden = await until(() => fired('SB_C1_03_Plants'));
+  hold(832, 37.7, 398); const garden = await until(() => fired('SB_C1_03_Plants'));
   return { hasEll, cards, during, beforeTrail, onTrail, cleft, garden, cut: !!g.__cut, cin: g.cinematic.active };
 });
 ok(!r.hasEll, 'в StoryBeats нет действий Ellipsis');

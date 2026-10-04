@@ -50,7 +50,7 @@ function tailGeo(len, r0, r1, curve, c, tuft) {
   return merge(list);
 }
 
-export function createFauna(game, { ground, flora, walkable, root, quality, player }) {
+export function createFauna(game, { ground, flora, walkable, root, quality, player, ledges }) {
   const R = rng(8888);
   const qf = quality === 'low' ? 0.5 : quality === 'high' ? 1.3 : 1;
   const hours = () => game.weather?.hours ?? 12;
@@ -199,7 +199,7 @@ export function createFauna(game, { ground, flora, walkable, root, quality, play
       this.g.add(this.body, this.wL, this.wR); this.g.scale.setScalar(1.7);
       this.body.castShadow = this.wL.castShadow = this.wR.castShadow = quality !== 'low';
       root.add(this.g);
-      this.cx = C.x + (i ? 12 : -9); this.cz = C.z + (i ? -7 : 10); this.r = i ? 36 : 27; this.dir = i ? -1 : 1; this.phi = i * 2.4; this.alt = FLOOR_Y + (i ? 60 : 46);
+      this.cx = C.x + (i ? 6 : -4); this.cz = C.z + (i ? -5 : 6); this.r = i ? 17 : 12; this.dir = i ? -1 : 1; this.phi = i * 2.4; this.alt = FLOOR_Y + (i ? 36 : 27);   // кружат под гребнем: котловина узкая, стены 45–105 м
       this.v = 8.5; this.flap = 0; this.nextFlap = 4 + R() * 6; this.bank = 0; this.call = 6 + R() * 10; this.fade = 1;
     }
     update(dt, t) {
@@ -208,9 +208,9 @@ export function createFauna(game, { ground, flora, walkable, root, quality, play
       this.g.visible = this.fade > 0.05;
       if (!this.g.visible) return;
       this.phi += (this.v / this.r) * this.dir * dt;
-      const wob = Math.sin(t * 0.13 + this.dir) * 8;
+      const wob = Math.sin(t * 0.13 + this.dir) * 3;
       const x = this.cx + Math.cos(this.phi) * (this.r + wob), z = this.cz + Math.sin(this.phi) * (this.r + wob);
-      const y = this.alt + Math.sin(t * 0.21 + this.phi) * 4.5 + (1 - this.fade) * 40;
+      const y = this.alt + Math.sin(t * 0.21 + this.phi) * 3 + (1 - this.fade) * 40;
       const tx = -Math.sin(this.phi) * this.dir, tz = Math.cos(this.phi) * this.dir;
       this.g.position.set(x, y, z);
       const yaw = Math.atan2(tx, tz);
@@ -268,9 +268,11 @@ export function createFauna(game, { ground, flora, walkable, root, quality, play
       this.faceYaw = this.g.rotation.y; this.headYaw = 0; this.open = 0; this.blink = 0; this.mode = 'perch'; this.fl = null; this.nextHoot = 8; this.alt = null;
       this.t0 = R() * 10;
     }
-    perchAlt() { // запасная жердь: ближайшая акация/тамариск у гребня
-      const tr = flora.trees.filter((q) => q.kind === 'acacia');
-      return tr.length ? new V3(tr[0].x, tr[0].y + 3.2 * tr[0].s, tr[0].z) : this.perch.clone().add(new V3(6, -2, 0));
+    perchAlt() { // запасная жердь: другая полка на стене (или верх валуна)
+      const pool = (ledges || []).filter((q) => Math.hypot(q.x - this.perch.x, q.z - this.perch.z) > 8 && q.y < this.perch.y + 12);
+      if (pool.length) { const q = pool[(R() * pool.length) | 0]; return new V3(q.x, q.y + 0.02, q.z); }
+      const rk = flora.rocks.filter((r) => r.r > 0.8)[0];
+      return rk ? new V3(rk.x, rk.y + 0.3, rk.z) : this.perch.clone();
     }
     update(dt, t, P) {
       const night = isNight() || isDusk();
@@ -409,11 +411,11 @@ export function createFauna(game, { ground, flora, walkable, root, quality, play
         this.g = new THREE.Group(); this.g.name = 'KitFox'; this.t = new THREE.Mesh(torso, fm); this.tl = new THREE.Mesh(tail, fm); this.tl.position.set(0, 0.2, -0.17);
         this.legs = [[0.045, 0.14], [-0.045, 0.14], [0.045, -0.12], [-0.045, -0.12]].map(([x, z]) => { const l = new THREE.Mesh(legG, fm); l.position.set(x, 0.2, z); this.g.add(l); return l; });
         this.g.add(this.t, this.tl); this.g.scale.setScalar(1.3); root.add(this.g);
-        this.x = C.x + 30; this.z = C.z + 20; this.yaw = 0; this.goal = null; this.pause = 3; this.sit = 0; this.vis = 0; this.phase = 0; this.spd = 0;
+        this.x = C.x + 22; this.z = C.z + 14; this.yaw = 0; this.goal = null; this.pause = 3; this.sit = 0; this.vis = 0; this.phase = 0; this.spd = 0;
         this.t.castShadow = quality !== 'low';
       }
       pickGoal() {
-        for (let i = 0; i < 20; i++) { const a = R() * TAU, r = 14 + R() * 30; const x = C.x + Math.cos(a) * r, z = C.z + Math.sin(a) * r; if (walkable(x, z)) return { x, z }; }
+        for (let i = 0; i < 20; i++) { const a = R() * TAU, r = 8 + R() * 24; const x = C.x + Math.cos(a) * r, z = C.z + Math.sin(a) * r; if (walkable(x, z)) return { x, z }; }
         return { x: C.x + 20, z: C.z };
       }
       update(dt, t, P) {

@@ -1,4 +1,5 @@
-// Сквозной проход «живым» игроком (W + поворот к цели) в обе стороны: тропа → расщелина → шлюз → галерея → B3 → зал → выход → сад и обратно.
+// Сквозной проход «живым» игроком (W + поворот к цели) в обе стороны: тропа → расщелина → шлюз → галерея → B3 → зал → выход (слегка вверх, 30 → 36 м) → лаз → высокая котловина и обратно.
+// В саду: проверка «из сада не выйти» — игрок идёт (W) к целям за стенами в 4 сторонах и остаётся внутри кольца на уровне дна.
 // node tools/sietch_route.mjs [--file=sietch.html] [--q=low] [--leg=in|out|both] [--shots]
 // Печатает позицию/пространство/зону в контрольных точках; STUCK — если прогресс к цели остановился. Снимки: dist/shots/sietch_route/.
 import { chromium } from 'playwright';
@@ -40,6 +41,25 @@ async function walkTo(x, z, label, maxSec = 60, shot = false) {
   if (maxJump > 0.8) { bad++; console.log('  ! СКАЧОК высоты'); }
   if (shot || shots) await p.screenshot({ path: join(out, label.replace(/[^\w]+/g, '_') + '.png'), timeout: 600000 });
 }
+/** Из сада не выйти: W к цели за стеной (4 стороны), 12 игровых секунд; позиция остаётся в кольце, ноги не ниже дна. */
+async function gardenEscape() {
+  const C = await p.evaluate(() => window.__rakis.garden.center);
+  for (const [dx, dz, name] of [[0, -150, 'north'], [0, 150, 'south'], [150, 0, 'east'], [60, 130, 'southeast']]) {
+    await p.evaluate(([x, z]) => { const g = window.__rakis; const y = g.heightAt(x, z, 40); g.player.teleport(x, y, z, 0, false); }, [C.x, C.z]);
+    await p.keyboard.down('KeyW');
+    let t0 = null, gt = 0, minY = 1e9, over = -1e9;
+    while (true) {
+      const r = await p.evaluate(([tx, tz]) => { const g = window.__rakis, pl = g.player; const yaw = Math.atan2(tz - pl.position.z, tx - pl.position.x); if (pl.cam) pl.cam.yaw = yaw; pl.yaw = yaw; const G = g.garden; return [g.time, pl.position.y, Math.hypot(pl.position.x - G.center.x, pl.position.z - G.center.z) - G.ringRadius(pl.position.x, pl.position.z)]; }, [C.x + dx, C.z + dz]);
+      if (t0 === null) t0 = r[0]; gt = r[0] - t0; minY = Math.min(minY, r[1]); over = Math.max(over, r[2]);
+      if (gt > 12) break;
+      await p.waitForTimeout(300);
+    }
+    await p.keyboard.up('KeyW');
+    const ok = minY > 33 && over < -0.3;
+    console.log(`escape ${name}`.padEnd(26), `min y ${minY.toFixed(1)}, радиус − кольцо ${over.toFixed(2)} м`, ok ? 'OK (удержала стена)' : 'ВЫШЕЛ!');
+    if (!ok) bad++;
+  }
+}
 await p.evaluate(async (from) => { const g = window.__rakis; if (from === 'hall') await g.sietch.enter('exitStart'); else g.debug.goto(from === 'cleft' ? 'cleft' : 'trail'); g.timeScale = 2.5; }, from);
 await p.waitForTimeout(3000);
 const leg = arg('leg', 'both');
@@ -49,8 +69,9 @@ if (leg !== 'out' && from === 'hall') {
   // старт у выхода из зала: зал → туннель → сад (по оси туннеля)
   const ex = await p.evaluate(() => window.__rakis.sietch.exitPath.map((q) => [q.x, q.z]));
   for (let i = 1; i < ex.length; i += 2) await walkTo(ex[i][0], ex[i][1], `exit_${i}`, 60, i === ex.length - 1 || i === Math.floor(ex.length / 2));
-  await walkTo(808, 395, 'to_garden', 90, true);
-  await walkTo(830, 395, 'garden_in', 60, true);
+  await walkTo(804, 395, 'to_garden', 90, true);
+  await walkTo(830, 397, 'garden_in', 60, true);
+  await gardenEscape();
 } else if (leg !== 'out') {
   const pts0 = await p.evaluate(() => (window.__rakis.approach?.trail || []).map((q) => [q.x, q.z]));
   const pts = from === 'cleft' ? [] : pts0;
@@ -67,14 +88,15 @@ if (leg !== 'out' && from === 'hall') {
   const hall = await local([[172, -8], [184, -10]]);
   for (const h of hall) await walkTo(h[0], h[1], 'hall_to_exit', 60);
   for (let i = 1; i < ex.length; i += 2) await walkTo(ex[i][0], ex[i][1], `exit_${i}`, 60, i === ex.length - 1 || i === Math.floor(ex.length / 2));
-  await walkTo(808, 395, 'to_garden', 90, true);
-  await walkTo(830, 395, 'garden_in', 60, true);
+  await walkTo(804, 395, 'to_garden', 90, true);
+  await walkTo(830, 397, 'garden_in', 60, true);
+  await gardenEscape();
 }
 if (leg !== 'in') {
   // обратно: сад → устье → туннель → зал → шлюз → расщелина → тропа
   if (leg === 'out') await p.evaluate(() => { const g = window.__rakis; g.debug.goto('garden'); });
   await p.waitForTimeout(2500);
-  await walkTo(808, 395, 'garden_back', 90);
+  await walkTo(804, 395, 'garden_back', 90);
   const ex = await p.evaluate(() => window.__rakis.sietch.exitPath.map((q) => [q.x, q.z]));
   for (let i = ex.length - 1; i >= 0; i -= 2) await walkTo(ex[i][0], ex[i][1], `exit_back_${i}`, 60, i === ex.length - 1);
   const back = from === 'hall' ? await local([[172, -8]]) : await local([[172, -8], [160, 0], [146, 0], [126, 0.5], [104, 0.4], [96, 0], [76, 0], [60, 0.5], [44, 0], [36, -0.3], [24, 0], [12, 0], [2.4, 0], [-1.5, 3.5]]);

@@ -67,15 +67,12 @@ export async function run({ hours, cam, shot, want, page }) {
 
   if (want('garden')) {
     await hours(10.5);
-    await cam(814.5, 1.7, 397, 800, 3.0, 392, 62, 1100, true); await shot('g0_mouth');
-    await cam(806, 1.7, 392, 862, 1.2, 397, 66, 1100, true); await shot('g1_from_portal');
+    // высокая котловина (дно 36 м): подробные кадры — tools/garden_scenes.mjs; здесь только контрольные
+    await cam(808, 1.7, 396.5, 797, 1.2, 395, 66, 1100, true); await shot('g0_mouth');
+    await cam(803, 1.7, 395, 830, 1.0, 397, 70, 1100, true); await shot('g1_from_portal');
     await cam(812, 9, 372, 852, 0, 410, 62, 1100, true); await shot('g2_wide_high');
-    await cam(815, 1.7, 393, 807, 1.0, 400, 62, 1100, true); await shot('g3_spout_palms');
-    await cam(836, 1.7, 380, 852, 0.6, 392, 60, 1100, true); await shot('g4_beds_channels');
-    await cam(822, 1.7, 362, 816, 24, 338, 62, 1100, true); await shot('g5_windtrap');
-    await cam(878, 3, 428, 840, 3, 395, 70, 1100, true); await shot('g5b_east_view');
-    await cam(840, 70, 440, 840, 2, 395, 56, 1100); await shot('g5c_aerial');
-    await cam(860, 1.7, 399, 884, 0.8, 399.5, 60, 1100, true); await shot('g5d_pond');
+    await cam(832, 1.7, 398, 832, 14, 366, 66, 1100, true); await shot('g4_north_wall');
+    await cam(856, 70, 440, 832, 36, 398, 70, 1100); await shot('g5c_aerial');
     // звери
     await page.evaluate(() => { const g = window.__rakis, F = g.garden.fauna; F.mice.forEach((m) => { m.state = 'idle'; m.vis = 1; m.hiddenFor = 0; m.t = 3; }); });
     await follow('g.garden.fauna.mice[0]', { dist: 1.3, h: 0.45, side: 0.3, fov: 40 }); await shot('g6_mouse');
