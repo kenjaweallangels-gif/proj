@@ -8,7 +8,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
-from .db import Base, SessionLocal, engine
+from .db import SessionLocal, engine
+from .migrate import upgrade_to_head
 from .routers import auth, ecn, items, misc, planning, purchasing, stock
 from .seed import seed
 
@@ -17,7 +18,7 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Base.metadata.create_all(engine)
+    upgrade_to_head(engine)
     with SessionLocal() as db:
         seed(db, demo=settings.seed_demo)
     yield

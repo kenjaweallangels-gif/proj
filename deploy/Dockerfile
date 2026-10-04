@@ -12,6 +12,8 @@ WORKDIR /srv
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/app ./app
+COPY backend/alembic ./alembic
+COPY backend/alembic.ini ./
 COPY --from=web /web/dist ./frontend/dist
 ENV PLM_STATIC_DIR=../frontend/dist
 RUN useradd -r -u 1001 plm && chown -R plm /srv

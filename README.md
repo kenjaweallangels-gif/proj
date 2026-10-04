@@ -21,6 +21,18 @@ cd frontend && npm install && npm run dev        # UI: http://localhost:5173 (п
 cd backend && python -m pytest -q
 ```
 
+### Миграции БД (Alembic)
+
+Схема управляется миграциями в `backend/alembic/`; при старте приложение само выполняет `upgrade head`.
+После изменения моделей:
+
+```bash
+cd backend
+alembic revision --autogenerate -m "что изменилось"   # создать миграцию (проверьте diff!)
+alembic upgrade head                                   # применить
+alembic check                                          # убедиться, что модели и БД совпадают
+```
+
 Собранный фронтенд (`npm run build`) раздаётся самим бэкендом с `/`, так что для корп. сети
 достаточно одного процесса за nginx.
 
