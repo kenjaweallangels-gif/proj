@@ -11,6 +11,7 @@ import { buildClawGeometry } from '../desert/rock.js';
 import { heightAt as fieldH, solidSdf } from '../desert/field.js';
 import { buildWallTable } from './wall.js';
 import { createApproachScene, ZONE } from './scene.js';
+import { buildApproachMesh, NOTCH_X_MAX } from './mesh.js';
 import { createLevelRockMaterial, geometryFromMesh } from './rockmat.js';
 import { markMaterial } from './marks.js';
 import { makeHeightAt, makeCollide } from './physics.js';
@@ -41,38 +42,14 @@ export function create(game) {
 
   // ---------- сцена и сетка ----------
   let clawGeo = null;
-  scene.traverse((o) => { if (!clawGeo && o.isMesh && o.material?.customProgramCacheKey?.() === 'rk-rock' && o.geometry?.boundingSphere?.radius > 150) clawGeo = o.geometry; });
-  const wallX = buildWallTable(() => clawGeo || buildClawGeometry(quality), { z0: ZONE.z0, z1: ZONE.z1, yMax: ZONE.y1 }, quality);
+  const isClaw = (o) => o.isMesh && !o.isInstancedMesh && String(o.material?.customProgramCacheKey?.()).startsWith('rk-rock') && !o.material.userData?.levelRock && o.geometry?.boundingSphere?.radius > 150;
+  scene.traverse((o) => { if (!clawGeo && isClaw(o)) clawGeo = o.geometry; });
+  // таблица грани Когтя 0.5×0.5 м по реальному мешу (если он есть в сцене): стык пола со стеной ложится точно, без щелей
+  const wallX = buildWallTable(() => clawGeo || buildClawGeometry(quality), { z0: ZONE.z0, z1: ZONE.z1, yMax: ZONE.y1 }, quality, 'west', { dz: 0.5, dy: 0.5 });
   const S = createApproachScene({ base, wallX, quality });
   const vol = S.build();
-  const NOTCH_X_MAX = 652.4;       // дальше — внутренность сиетча (его коллизия/меш)
   const nz = ENTRY.cleft.z;
-
-  // обрезка граней: под ландшафтом и «лицо стены» (оно совпадает с мешем Когтя)
-  const wxPlane = (z, y) => wallX(z, y) - 0.55;
-  const cull = (x0, y0, z0, x1, y1, z1, x2, y2, z2, nxv, nyv, nzv) => {
-    const cx = (x0 + x1 + x2) / 3, cy = (y0 + y1 + y2) / 3, cz = (z0 + z1 + z2) / 3;
-    // под землёй
-    if (y0 < base(x0, z0) + 0.07 && y1 < base(x1, z1) + 0.07 && y2 < base(x2, z2) + 0.07) return true;
-    // за входом (внутри скалы) — сиетч рисует свой интерьер
-    if (cx > NOTCH_X_MAX && Math.abs(cz - nz) < 6 && cy > 24 && cy < 40) return true;
-    // «лицо» массы стены: совпадает с Когтем
-    if (nxv < -0.55) {
-      const dd = Math.hypot(cx - NOTCH_X_MAX, cz - nz);
-      const w0 = wxPlane(z0, y0), w1 = wxPlane(z1, y1), w2 = wxPlane(z2, y2);
-      if (Math.abs(x0 - w0) < 0.4 && Math.abs(x1 - w1) < 0.4 && Math.abs(x2 - w2) < 0.4 && Math.hypot(cz - nz, (cy - 32) * 0.7) > 6.5) return true;
-    }
-    return false;
-  };
-  const mark = (x, y, z, nxv, nyv, nzv, out) => {
-    const pd = S.pathDist(x, z);
-    let worn = 0;
-    if (nyv > 0.7 && Math.abs(y - pd.yp) < 0.55) worn = 1 - smoothstep(0.0, 1.1, pd.d);
-    if (pd.leg && pd.leg.slot) worn *= 0.8;
-    const drift = nyv > 0.6 ? clamp(0.5 * (0.5 + 0.5 * Math.sin(x * 0.9 + z * 0.7 + y)) * smoothstep(0.7, 1.0, nyv) * 0.6, 0, 1) : 0;
-    out[0] = worn; out[1] = drift;
-  };
-  const msh = vol.mesh({ cull, mark });
+  const msh = buildApproachMesh(S, vol, { base, wallX });
   const geo = geometryFromMesh(msh);
   const rockMat = createLevelRockMaterial();
   const rock = new THREE.Mesh(geo, rockMat);
@@ -174,7 +151,7 @@ export function create(game) {
     const P = trailPoint(leg, f), L = P.L;
     const a = L.line[Math.max(0, P.i - 1)], b = L.line[Math.min(L.line.length - 1, P.i + 1)];
     let dx = b[0] - a[0], dz = b[1] - a[1]; const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
-    const off = L.w + 0.55;
+    const off = (L.wid ? L.wid[P.i] : L.w) + 0.55;
     cairnPlaces.push({ x: P.x - dz * side * off, z: P.z + dx * side * off, y: P.y });
   }
   const stones = [];
@@ -200,6 +177,28 @@ export function create(game) {
     if (_g[1] < 0.55) continue;
     const r = 0.1 + Math.pow(R(), 2.2) * 0.4;
     stones.push({ x, y: y + r * 0.2, z, rx: r * (1 + R() * 0.5), ry: r * (0.6 + R() * 0.4), rz: r * (1 + R() * 0.4), yaw: R() * 6.28 });
+  }
+  // мелкие камни на самом полотне и у его кромок: щебень, «нанесённый» со склона (утоплены, низкие — шагу не мешают)
+  {
+    const nTread = quality === 'low' ? 90 : 190;
+    let put = 0;
+    const tr = [];
+    for (const L of S.LEGS) for (let i = 2; i < L.line.length - 2; i += 2) tr.push([L, i]);
+    for (let tries = 0; tries < nTread * 8 && put < nTread; tries++) {
+      const [L, i] = tr[(R() * tr.length) | 0];
+      const a = L.line[i - 1], b = L.line[i + 1];
+      let dx = b[0] - a[0], dz = b[1] - a[1]; const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
+      const lat = (R() * 2 - 1) * (L.wid[i] + 0.7) * (R() < 0.5 ? 1 : 0.55);
+      const x = L.line[i][0] - dz * lat, z = L.line[i][1] + dx * lat;
+      const y = vol.surfaceY(x, z, L.ys[i] + 0.6);
+      if (!Number.isFinite(y) || Math.abs(y - L.ys[i]) > 1.2) continue;
+      vol.grad(x, y + 0.2, z, _g);
+      if (_g[1] < 0.6) continue;
+      const outside = Math.abs(lat) > L.wid[i] * 0.9;
+      const r = outside ? 0.1 + R() * 0.2 : 0.045 + R() * 0.075;   // на полотне — мелочь (не мешает ходьбе), у края — покрупнее
+      stones.push({ x, y: y + r * 0.1, z, rx: r * (1 + R() * 0.6), ry: r * (0.45 + R() * 0.3), rz: r * (1 + R() * 0.5), yaw: R() * 6.28 });
+      put++;
+    }
   }
   const stoneMesh = new THREE.InstancedMesh(stoneGeo, rockMat, stones.length);
   {
@@ -307,7 +306,7 @@ export function create(game) {
   bus.on('space', (e) => { root.visible = e.space === 'desert'; });
   let atCleft = false, progressMax = 0;
   const api = {
-    root, rock, trail, trailLength, cleftPos, volume: vol, scene: S, zone: ZONE, hasNativeApi: nativePassage,
+    root, rock, trail, trailLength, cleftPos, volume: vol, scene: S, baseAt: base, wallAt: wallX, zone: ZONE, hasNativeApi: nativePassage,
     start: new V3(ENTRY.trailStart.x, base(ENTRY.trailStart.x, ENTRY.trailStart.z), ENTRY.trailStart.z),
     /** Лежит ли (x,z) в зоне подхода. */
     inZone: (x, z) => vol.inZone(x, z, 0),
@@ -346,7 +345,7 @@ export function create(game) {
 /** Запасной вариант без world.addRockHole: прорезать шейдер Когтя сферой (если шейдер понятен). */
 function patchClawHole(scene, h) {
   let claw = null;
-  scene.traverse((o) => { if (o.isMesh && o.material?.customProgramCacheKey?.() === 'rk-rock' && o.geometry?.boundingSphere && o.geometry.boundingSphere.radius > 150) claw = o; });
+  scene.traverse((o) => { if (o.isMesh && !o.isInstancedMesh && String(o.material?.customProgramCacheKey?.()).startsWith('rk-rock') && !o.material.userData?.levelRock && o.geometry?.boundingSphere && o.geometry.boundingSphere.radius > 150) claw = o; });
   if (!claw) return;
   const mat = claw.material, prev = mat.onBeforeCompile;
   const U = { value: new THREE.Vector4(h.x, h.y, h.z, h.r) };

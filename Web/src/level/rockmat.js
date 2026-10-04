@@ -16,9 +16,9 @@ export function createLevelRockMaterial(opts = {}) {
     vs = vs.replace('varying vec3 vWN;', 'varying vec3 vWN;\nattribute vec2 aMark;\nvarying vec2 vMark;');
     vs = vs.replace('vWN = normalize(mat3(modelMatrix) * rkN);', 'vWN = normalize(mat3(modelMatrix) * rkN);\n  vMark = aMark;');
     fs = fs.replace('varying vec3 vWN;', 'varying vec3 vWN;\nvarying vec2 vMark;');
-    // протоптанная полоса: меньше песка, светлее и глаже
-    fs = fs.replace('base = mix(base, uSandC * (0.9', 'sandA = clamp(sandA * 0.65 * (1.0 - 0.8 * vMark.x) + vMark.y * 0.25, 0.0, 1.0);\nbase = mix(base, uSandC * (0.9');
-    fs = fs.replace('diffuseColor.rgb = base;', 'base = mix(base, base * 1.22 + vec3(0.045, 0.036, 0.022), vMark.x * 0.7);\ndiffuseColor.rgb = base;');
+    // протоптанная полоса: под ногами выглаженный камень (текстура скалы остаётся), песок — только во впадинах (vMark.y) и у кромки пустыни
+    fs = fs.replace('base = mix(base, uSandC * (0.9', 'sandA = clamp(sandA * 0.5 * (1.0 - 0.9 * vMark.x) + vMark.y * 0.92, 0.0, 1.0);\nbase = mix(base, uSandC * (0.9');
+    fs = fs.replace('diffuseColor.rgb = base;', 'base = mix(base, base * 1.1 + vec3(0.02, 0.016, 0.01), vMark.x * 0.6);\ndiffuseColor.rgb = base;');
     shader.vertexShader = vs; shader.fragmentShader = fs;
   };
   mat.customProgramCacheKey = () => 'lv-rock';
