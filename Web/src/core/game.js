@@ -156,11 +156,12 @@ export function createGame(canvas, settings) {
   }
   function frame(now) {
     requestAnimationFrame(frame);
-    const rawDt = Math.min(0.05, (now - last) / 1000); // длинные кадры (компиляция шейдеров, фоновая вкладка) не взрывают симуляцию
+    const full = (now - last) / 1000;
+    const rawDt = Math.min(0.05, full); // длинные кадры (компиляция шейдеров, фоновая вкладка) не взрывают симуляцию
     last = now;
-    fpsAcc += rawDt; fpsN++;
+    fpsAcc += full; fpsN++;
     if (fpsAcc > 0.5) { game.stats.fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; }
-    game.drs.update(rawDt);
+    game.drs.update(full); // DRS видит реальную длину кадра (выбросы > 90 мс отбрасывает сам)
     tick(rawDt, true);
   }
   /**

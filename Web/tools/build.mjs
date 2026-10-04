@@ -14,7 +14,7 @@ const outName = (process.argv.find((a) => a.startsWith('--out=')) || '--out=raki
 async function bundle() {
   const res = await esbuild.build({
     entryPoints: [join(root, 'src', 'main.js')],
-    bundle: true, format: 'iife', minify: !serve, sourcemap: false, write: false,
+    bundle: true, format: 'iife', minify: !serve && !process.argv.includes('--nomin'), sourcemap: false, write: false,
     target: ['es2020'], legalComments: 'none', logLevel: 'warning',
     define: { 'process.env.NODE_ENV': '"production"' },
   });

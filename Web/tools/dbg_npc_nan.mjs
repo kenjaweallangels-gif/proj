@@ -1,0 +1,21 @@
+import { chromium } from 'playwright';
+import { root, arg, findChromium, GL } from './lib/harness.mjs';
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || findChromium(), args: GL.swiftshader });
+const page = await browser.newPage({ viewport: { width: 320, height: 180 } });
+await page.goto(`file://${root}/dist/${arg('file', 'cur2.html')}?autotest=1&q=low&lang=RU&drs=0&warm=0`);
+await page.waitForFunction(() => window.__rakis?.realTime > 1.5, null, { timeout: 900000, polling: 1000 });
+const r = await page.evaluate(async () => {
+  const g = window.__rakis;
+  await g.debug.goto('market'); g.paused = true;
+  const step = (dt) => { g.realTime += dt; g.dt = dt; g.time += dt; g.colliders.tick?.(); for (const { mod } of g.modules) { try { mod.update?.(dt, g.time); } catch (e) { /* */ } } for (const { mod } of g.modules) { try { mod.lateUpdate?.(dt, g.time); } catch (e) { /* */ } } g.input.endFrame?.(); };
+  const rows = [];
+  const check = (label) => { for (const n of g.sietch.crowd.npcs) { const bad = ['x', 'z', 'y', 'yaw', 'walkYaw', 'goalYaw'].filter((k) => n[k] !== undefined && !Number.isFinite(n[k])); const und = ['yaw', 'walkYaw', 'goalYaw'].filter((k) => n[k] === undefined); if (bad.length || (n.mode === 'walk' && und.length)) rows.push(`${label} npc ${n.id} ${n.arch} mode=${n.mode} lod=${n.lod} nonfinite=[${bad}] undefined=[${und}] yaw=${n.yaw} walkYaw=${n.walkYaw} goalYaw=${n.goalYaw}`); } };
+  for (let i = 0; i < 30; i++) step(1 / 60);
+  check('t0.5s');
+  for (let i = 0; i < 300; i++) step(1 / 60);
+  check('t5s');
+  const full = g.sietch.crowd.npcs.filter((n) => n.lod === 'full').map((n) => `${n.id}:${n.arch}:${n.mode}:rot=${n.fig.group.rotation.y}`);
+  return { rows: rows.slice(0, 12), n: g.sietch.crowd.npcs.length, full };
+});
+console.log(r.n, 'npcs'); for (const x of r.rows) console.log(x); console.log('full:', r.full.join(' | '));
+await browser.close();

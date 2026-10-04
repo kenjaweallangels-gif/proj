@@ -4,8 +4,16 @@ export const lerp = (a, b, t) => a + (b - a) * t;
 export const invLerp = (a, b, v) => clamp((v - a) / (b - a));
 export const smoothstep = (a, b, v) => { const t = invLerp(a, b, v); return t * t * (3 - 2 * t); };
 /** Экспоненциальное сглаживание, независимое от FPS. */
-export const damp = (a, b, lambda, dt) => lerp(a, b, 1 - Math.exp(-lambda * dt));
+// NaN-самовосстановление: если текущее значение стало NaN/∞ (например, курс NPC считали от undefined), оно не «залипает» навсегда
+// (раньше NaN-курс делал фигуру невидимой/мигающей: матрица NaN → объект отсекается), а подхватывает цель.
+export const damp = (a, b, lambda, dt) => {
+  if (!Number.isFinite(b)) return Number.isFinite(a) ? a : 0;
+  if (!Number.isFinite(a)) return b;
+  return a + (b - a) * (1 - Math.exp(-lambda * dt));
+};
 export const dampAngle = (a, b, lambda, dt) => {
+  if (!Number.isFinite(b)) return Number.isFinite(a) ? a : 0;
+  if (!Number.isFinite(a)) return b;
   let d = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI;
   if (d < -Math.PI) d += Math.PI * 2;
   return a + d * (1 - Math.exp(-lambda * dt));

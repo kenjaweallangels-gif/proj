@@ -15,7 +15,7 @@ const ALL = ['start', 'erg', 'worm', 'harvester', 'trail', 'cleft', 'market', 'h
 const points = arg('points', ALL.join(',')).split(',');
 const label = arg('label', '');
 const file = arg('file', 'rakis_demo.html');
-const warm = arg('warm', '0'); // 1 — с прогревом шейдеров (как у игрока): тогда число программ почти не растёт по ходу обхода
+const warm = arg('warm', '1'); // 1 — с прогревом шейдеров (как у игрока): тогда число программ почти не растёт по ходу обхода
 const PROF = arg('prof', '0') === '1'; // CDP-профиль CPU: топ функций по self-time в каждой точке
 
 const report = { when: new Date().toISOString(), label, viewport: [W, H], frames: FRAMES, results: {} };
@@ -58,16 +58,18 @@ for (const q of qs) {
       const { profile } = await cdp.send('Profiler.stop');
       const self = new Map(), idx = new Map(profile.nodes.map((n) => [n.id, n]));
       profile.samples.forEach((id, i) => { const n = idx.get(id), cf = n.callFrame; const k = `${cf.functionName || '(anon)'} ${cf.url.split('/').pop()}:${cf.lineNumber}`; self.set(k, (self.get(k) || 0) + (profile.timeDeltas[i] || 0)); });
-      const tot = [...self.values()].reduce((a, b) => a + b, 0) || 1;
+      const idle = (self.get('(idle) :-1') || 0) + (self.get('(program) :-1') || 0); self.delete('(idle) :-1'); self.delete('(program) :-1');
+      const tot = [...self.values()].reduce((a, b) => a + b, 0) || 1; // только «работающий» JS: без ожидания GPU (idle)
       topFns = [...self.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([k, v]) => ({ fn: k, ms: +(v / 1000).toFixed(1), pct: +(100 * v / tot).toFixed(1) }));
     }
     const snap = await page.evaluate(() => { const g = window.__rakis; return { ...g.perf.snapshot(), space: g.space, zone: g.zone, bodies: g.colliders.size }; });
     if (topFns) snap.topFns = topFns;
     report.results[q][name] = snap;
-    const top = Object.entries(snap.modulesMs).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k}=${v}`).join(' ');
+    const top = Object.entries(snap.modulesMedMs || snap.modulesMs).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k}=${v}`).join(' ');
+    if (snap.scene?.byRoot?.length) console.log('   meshes by root: ' + snap.scene.byRoot.join(' '));
     if (snap.scene?.heavy?.length) console.log('   heavy meshes: ' + snap.scene.heavy.slice(0, 4).map((h) => `${h.name} ${Math.round(h.tris / 1000)}k${h.inst > 1 ? ' x' + h.inst : ''}${h.shadow ? ' sh' : ''}${h.culled ? '' : ' nocull'}`).join(' | '));
     if (topFns) console.log('   top fns: ' + topFns.slice(0, 6).map((t) => `${t.fn}=${t.pct}%`).join(' | '));
-    console.log(`[${q}] ${name.padEnd(9)} cpu ${String(snap.cpuMs).padStart(6)}ms render ${String(snap.renderCpuMs).padStart(6)}ms | draw ${String(snap.calls).padStart(4)} tri ${String(Math.round(snap.triangles / 1000)).padStart(5)}k prog ${snap.programs} | casters ${snap.scene.shadowCasters}/${snap.scene.visible} | heap ${snap.heapMB}MB | ${top}`);
+    console.log(`[${q}] ${name.padEnd(9)} cpu ${String(snap.cpuMedMs ?? snap.cpuMs).padStart(6)}ms(med) p10 ${String(snap.cpuP10Ms ?? '-').padStart(5)} render ${String(snap.renderMedMs ?? snap.renderCpuMs).padStart(6)}ms | draw ${String(snap.calls).padStart(4)} tri ${String(Math.round(snap.triangles / 1000)).padStart(5)}k prog ${snap.programs} | casters ${snap.scene.shadowCasters}/${snap.scene.visible} | heap ${snap.heapMB}MB | ${top}`);
   }
   report.results[q].__errors = [...new Set(errors)].slice(0, 8);
   if (errors.length) console.log(`[${q}] errors:`, report.results[q].__errors);

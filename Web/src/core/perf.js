@@ -12,9 +12,9 @@ export function createPerf(game, enabled0) {
     scene: { objects: 0, visible: 0, shadowCasters: 0, lights: 0, shadowLights: 0 },
     res: 1,
     acc: { n: 0, frame: 0, cpu: 0, render: 0, frameMax: 0, long: 0 },
-    ring: new Float32Array(120), ri: 0,
+    ring: new Float32Array(120), ri: 0, cpuHist: [], renHist: [],
   };
-  const rec = (name) => { let m = mods.get(name); if (!m) { m = { u: 0, l: 0, uMax: 0, lMax: 0, uSum: 0, lSum: 0 }; mods.set(name, m); } return m; };
+  const rec = (name) => { let m = mods.get(name); if (!m) { m = { u: 0, l: 0, uMax: 0, lMax: 0, uSum: 0, lSum: 0, fr: 0, hist: [] }; mods.set(name, m); } return m; };
 
   // GPU-таймер (только если браузер даёт EXT_disjoint_timer_query_webgl2; в SwiftShader обычно нет)
   let gl2 = null, ext = null, q = null; const pend = [];
@@ -33,24 +33,27 @@ export function createPerf(game, enabled0) {
     if (pend.length > 6) gl2.deleteQuery(pend.shift());
   }
 
-  const heavy = [];
+  const heavy = []; let byRoot = {};
   /** Обход сцены: сколько объектов видимо, сколько отбрасывают тени, сколько источников света. Дорого — звать редко. */
   function countScene() {
     const s = st.scene; s.objects = s.visible = s.shadowCasters = s.lights = s.shadowLights = 0;
-    heavy.length = 0;
-    const walk = (o) => {
+    heavy.length = 0; byRoot = {};
+    const walk = (o, root) => {
       if (!o.visible) return;
       s.objects++;
+      if (o.parent === game.scene) root = o.name || o.type;
       if (o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || o.isPoints || o.isLine) {
         s.visible++; if (o.castShadow) s.shadowCasters++;
+        if (!o.isInstancedMesh || o.count > 0) { const b = byRoot[root || '?'] || (byRoot[root || '?'] = { meshes: 0, shadow: 0 }); b.meshes++; if (o.castShadow) b.shadow++; }
         const g = o.geometry; const n = g ? (g.index ? g.index.count : g.attributes?.position?.count || 0) / 3 : 0;
         const tris = n * (o.isInstancedMesh ? o.count : 1);
         if (tris > 20000) { let anc = o, path = o.name || o.type; for (let k = 0; k < 3 && anc.parent && anc.parent !== game.scene; k++) { anc = anc.parent; path = (anc.name || anc.type) + '/' + path; } heavy.push({ name: path, tris: Math.round(tris), inst: o.isInstancedMesh ? o.count : 1, shadow: !!o.castShadow, culled: o.frustumCulled }); }
       }
       if (o.isLight) { s.lights++; if (o.castShadow) s.shadowLights++; }
-      for (const c of o.children) walk(c);
+      for (const c of o.children) walk(c, root);
     };
-    walk(game.scene);
+    walk(game.scene, null);
+    s.byRoot = Object.entries(byRoot).sort((a, b) => b[1].meshes - a[1].meshes).slice(0, 10).map(([k, v]) => `${k}:${v.meshes}${v.shadow ? '/' + v.shadow + 'sh' : ''}`);
     heavy.sort((a, b) => b.tris - a.tris);
     s.heavy = heavy.slice(0, 8);
     return s;
@@ -94,15 +97,17 @@ export function createPerf(game, enabled0) {
     mods, countScene,
     overlay: true,
     enable(b) { st.on = !!b; if (st.on && !gl2) gpuInit(); setShown(st.on && st.overlay); },
-    reset() { mods.clear(); st.acc = { n: 0, frame: 0, cpu: 0, render: 0, frameMax: 0, long: 0 }; },
+    reset() { mods.clear(); st.cpuHist.length = 0; st.renHist.length = 0; st.acc = { n: 0, frame: 0, cpu: 0, render: 0, frameMax: 0, long: 0 }; },
     /** Среднее с последнего reset(): CPU мс/кадр по модулям + render info + состав сцены. */
     snapshot() {
       const a = st.acc, n = Math.max(1, a.n);
-      const per = {};
-      for (const [k, m] of mods) per[k] = +((m.uSum + m.lSum) / n).toFixed(3);
+      const per = {}, med = {};
+      const pct = (a, q) => { if (!a.length) return 0; const b = a.slice().sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(b.length * q))]; };
+      const median = (a) => pct(a, 0.5);
+      for (const [k, m] of mods) { per[k] = +((m.uSum + m.lSum) / n).toFixed(3); med[k] = +median(m.hist).toFixed(3); }
       return {
         frames: a.n, frameMs: +(a.frame / n).toFixed(2), frameMaxMs: +a.frameMax.toFixed(1), longFrames: a.long,
-        cpuMs: +(a.cpu / n).toFixed(2), renderCpuMs: +(a.render / n).toFixed(2), modulesMs: per,
+        cpuMs: +(a.cpu / n).toFixed(2), renderCpuMs: +(a.render / n).toFixed(2), modulesMs: per, modulesMedMs: med, cpuP10Ms: +pct(st.cpuHist, 0.1).toFixed(2), renderP10Ms: +pct(st.renHist, 0.1).toFixed(2), cpuMedMs: +median(st.cpuHist).toFixed(2), renderMedMs: +median(st.renHist).toFixed(2),
         ...st.info, scene: { ...countScene() }, res: st.res, gpuMs: +st.gpu.toFixed(2),
         heapMB: performance.memory ? +(performance.memory.usedJSHeapSize / 1048576).toFixed(0) : null,
       };
@@ -117,6 +122,7 @@ export function createPerf(game, enabled0) {
     modStart() { tm = now(); },
     modEnd(name, late) {
       const d = now() - tm, m = rec(name);
+      m.fr += d;
       if (late) { m.l += (d - m.l) * EMA; m.lSum += d; if (d > m.lMax) m.lMax = d; } else { m.u += (d - m.u) * EMA; m.uSum += d; if (d > m.uMax) m.uMax = d; }
     },
     renderStart() { tr = now(); gpuBegin(); },
@@ -124,6 +130,8 @@ export function createPerf(game, enabled0) {
       gpuEnd();
       const t = now(), r = t - tr; st.render += (r - st.render) * EMA; st.acc.render += r;
       const c = t - t0; st.cpu += (c - st.cpu) * EMA; st.acc.cpu += c;
+      for (const m of mods.values()) { if (m.hist.length < 600) m.hist.push(m.fr); m.fr = 0; }
+      if (st.cpuHist.length < 600) { st.cpuHist.push(c); st.renHist.push(r); }
       const inf = game.renderer.info;
       st.info.calls = inf.render.calls; st.info.triangles = inf.render.triangles; st.info.lines = inf.render.lines; st.info.points = inf.render.points;
       st.info.programs = inf.programs?.length ?? 0; st.info.geometries = inf.memory.geometries; st.info.textures = inf.memory.textures;

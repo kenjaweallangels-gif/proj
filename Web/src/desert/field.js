@@ -139,11 +139,20 @@ function cornerH(ix, iz) {
   cKx[h] = ix; cKz[h] = iz; cV[h] = v;
   return v;
 }
+// Кэш заполняется только вблизи «фокуса» (камера/игрок, ставит desertRoot.update): быстрые далёкие потребители (червь, харвестер, частицы)
+// каждый кадр попадали бы в новые ячейки — 4 вычисления узлов вместо одного прямого. Далеко от фокуса считаем напрямую.
+const FOCUS = { x: 0, z: 0 }, FAR2 = 90 * 90;
+export function setHeightFocus(x, z) { FOCUS.x = x; FOCUS.z = z; }
 export function heightAtCached(x, z) {
+  const dx = x - FOCUS.x, dz = z - FOCUS.z;
+  if (dx * dx + dz * dz > FAR2) return applyPatches(x, z, heightBase(x, z, 0));
   const fx = x * CINV, fz = z * CINV;
   const ix = Math.floor(fx), iz = Math.floor(fz);
   const u = fx - ix, v = fz - iz;
-  const h = (cornerH(ix, iz) * (1 - u) + cornerH(ix + 1, iz) * u) * (1 - v) + (cornerH(ix, iz + 1) * (1 - u) + cornerH(ix + 1, iz + 1) * u) * v;
+  const h00 = cornerH(ix, iz);
+  let h;
+  if (u === 0 && v === 0) h = h00;
+  else h = (h00 * (1 - u) + (u > 0 ? cornerH(ix + 1, iz) : h00) * u) * (1 - v) + ((v > 0 ? cornerH(ix, iz + 1) : h00) * (1 - u) + (u > 0 && v > 0 ? cornerH(ix + 1, iz + 1) : h00) * u) * v;
   return applyPatches(x, z, h);
 }
 function applyPatches(x, z, h) {
