@@ -14,6 +14,8 @@ const { browser, page, errors } = await openGame({ file: arg('file', 'worm.html'
 
 await page.evaluate(() => { const g = window.__rakis, r0 = g.render, info = g.renderer.info; info.autoReset = false; g.render = (dt) => { info.reset(); r0(dt); window.__ri = { calls: info.render.calls, tris: info.render.triangles }; }; });
 
+await page.evaluate(() => { const w = window.__rakis.worm, u0 = w.update, l0 = w.lateUpdate; window.__wms = 0; window.__wn = 0; w.update = (a, b) => { const t = performance.now(); u0(a, b); window.__wms += performance.now() - t; window.__wn++; }; w.lateUpdate = (a, b) => { const t = performance.now(); l0(a, b); window.__wms += performance.now() - t; }; });
+
 // ---- проба управления: W двигает персонажа, F отвязывает/привязывает камеру ----
 async function key(code, down) {
   await page.evaluate(([code, down]) => {
@@ -72,8 +74,8 @@ let idx = 0;
 const camSet = (name) => page.evaluate(([name, scene]) => {
   const g = window.__rakis, V = g.THREE.Vector3, fc = g.freecam, w = g.worm;
   let A, f, up = 0, rimY;
-  if (scene === 'devour') { const d = w.devourDirector; A = d.A; f = d.f; rimY = Math.max(d.gE + 10, w.headPos.y + 6.2 * w.body.headScale); up = rimY - d.gE; }
-  else { A = w.headPos; f = { x: Math.cos(w.K.yaw), z: Math.sin(w.K.yaw) }; rimY = A.y + 6; }
+  if (scene === 'devour') { const d = w.devourDirector; A = d.A; f = d.f; rimY = Math.max(d.gE + 10, w.K.pos.y + 6.2 * w.body.headScale); up = rimY - d.gE; }
+  else { A = w.K.pos; f = { x: Math.cos(w.K.yaw), z: Math.sin(w.K.yaw) }; rimY = A.y + 6; }
   const side = { x: -f.z, z: f.x };
   const gy = g.heightAt(A.x, A.z);
   const P = (dx, dy, dz) => new V(A.x + f.x * dz + side.x * dx, gy + dy, A.z + f.z * dz + side.z * dx);
@@ -117,13 +119,13 @@ for (const [name, tm] of marks) {
   if (only && !only.includes(name)) continue;
   const step = tm - cur;
   if (step > 0) {
-    const ms = await page.evaluate(([s, d]) => { const t0 = performance.now(); window.__step(s, d); return (performance.now() - t0) / Math.max(1, Math.round(s / d)); }, [step, dt]);
-    perf.push([name, +ms.toFixed(1)]);
+    const ms = await page.evaluate(([s, d]) => { const t0 = performance.now(); window.__wms = 0; window.__wn = 0; window.__step(s, d); return [(performance.now() - t0) / Math.max(1, Math.round(s / d)), window.__wms / Math.max(1, window.__wn)]; }, [step, dt]);
+    perf.push([name, +ms[0].toFixed(1), +ms[1].toFixed(2)]);
   }
   cur = Math.max(cur, tm);
   await shot(name);
 }
-console.log('sim ms/step (CPU, swiftshader-independent):', JSON.stringify(perf));
+console.log('CPU ms per sim step [all modules, worm only] (machine is shared/loaded, treat as upper bound):', JSON.stringify(perf));
 const mon = await page.evaluate(() => ({ cin: window.__rakis.cinematic.active, lock: window.__rakis.player.inputLocked, fcActive: window.__rakis.freecam.active }));
 console.log('end state:', JSON.stringify(mon), '| events:', (await page.evaluate(() => window.__events)).join(' | '));
 // возврат камеры к персонажу

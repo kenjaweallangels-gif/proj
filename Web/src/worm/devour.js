@@ -85,6 +85,7 @@ export class DevourDirector {
     const hv = game.harvester;
     if (!hv || game.space === 'sietch') return Promise.resolve({ skipped: true, devoured: false, reason: game.space === 'sietch' ? 'sietch' : 'no-harvester' });
     // чистая сцена: уходит отдыхающий приручённый червь, возвращается съеденный харвестер
+    game.freecam?.setScene('devour', true);              // раньше dismiss(): камера, уже летящая в сцене «Встреча», не должна возвращаться сама
     if (this.worm.director.active) this.worm.director.dismiss();
     if (hv.isDevoured) hv.restore();
     this.hv = hv;
@@ -93,7 +94,7 @@ export class DevourDirector {
     if (hv.state !== 'running') hv.debugSet('running');
     this.done = {}; this.debrisAcc = 0; this.sandAcc = 0; this.spiceAcc = 0; this.rainAcc = 0; this.breachDone = false; this.closeOpen = 0;
     this.u = 0; this.retractAcc = 0; this.crater = 0; this.openLast = -1; this.holeR = 0; this.pulseAcc = 0; this.rimAcc = 0; this.dustAcc = 0;
-    this.vAcc = 0; this.spin = 0; this.flowAcc = 0;
+    this.vAcc = 0; this.spin = 0; this.flowAcc = 0; this.craterDrawn = false; this.forceVortex = false;
     this.terrainHole.clear();
 
     // исходная геометрия
@@ -149,7 +150,6 @@ export class DevourDirector {
     this.carryallInit();
     this.pod.state = 'roof';
     this.setPhase('wormsign');
-    game.freecam?.setScene('devour', true);
     game.audio?.event?.('Worm.Pass', p0 ? new THREE.Vector3(p0.x, 0, p0.z) : undefined);
     return this.promise;
   }
@@ -463,14 +463,20 @@ export class DevourDirector {
     const v = this.vortex;
     this.spin += dt * (0.5 + 2.2 * smoothstep(this.tVortex0, this.tVortex0 + T.vortexRamp, t));
     this.vAcc += dt;
-    if (this.vAcc < 0.045 && this.crater <= 0) return;           // воронка обновляется ~22 Гц: сетка тяжёлая, а вращение плавное
+    if (this.craterDrawn) return;                                // кратер дорисован: больше ничего не пересчитываем
+    if (this.vAcc < 0.045 && !this.forceVortex) return;          // воронка обновляется ~22 Гц: сетка тяжёлая, а вращение плавное
     this.vAcc = 0;
     const cut = this.holeR > 0 ? this.holeR + 3 : 0;
     const k = smoothstep(this.tVortex0, this.tVortex0 + T.vortexRamp, t);
     if (this.phase === 'aftermath' || this.crater > 0) {
-      v.update(this.A.x, this.A.z, { k: 1, spin: this.spin, hole: T.holeR * (1 - 0.3 * this.crater), rimH: lerp(T.rimH, 1.6, this.crater), R: T.vortexR * lerp(1, 0.7, this.crater), crater: this.crater, cut: 0 });
+      // радиус сетки постоянный (кэш высот рельефа), «усадка» кратера — масштабом меша вокруг центра
+      v.update(this.A.x, this.A.z, { k: 1, spin: this.spin, hole: T.holeR * (1 - 0.3 * this.crater), rimH: lerp(T.rimH, 1.6, this.crater), R: T.vortexR, crater: this.crater, cut: 0 });
+      const sc = lerp(1, 0.7, this.crater);
+      v.mesh.scale.set(sc, 1, sc); v.mesh.position.set(this.A.x * (1 - sc), 0, this.A.z * (1 - sc));
+      if (this.crater >= 1) this.craterDrawn = true;
       return;
     }
+    v.mesh.scale.set(1, 1, 1); v.mesh.position.set(0, 0, 0);
     if (k <= 0.005) { v.mesh.visible = false; return; }
     // зев растёт, когда голова подходит; после раскрытия пасти вихрь затихает под колонной
     const grow = 0.55 + 0.45 * smoothstep(this.tTilt0, this.tErupt, t);
@@ -698,7 +704,7 @@ export class DevourDirector {
     this.terrainHole.clear(); this.holeR = 0;
     this.worm.sensing = true;
     this.crater = Math.max(this.crater, 1);
-    this.vAcc = 1; this.updateVortex(0, this.t);
+    this.forceVortex = true; this.updateVortex(0, this.t); this.forceVortex = false;
     game.freecam?.setScene('devour', false);
     this.setPhase('end');
     bus.emit('worm:devour', { phase: 'done' });

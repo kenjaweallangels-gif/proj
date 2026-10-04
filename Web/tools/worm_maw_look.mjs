@@ -18,6 +18,7 @@ await page.evaluate(([scale, H]) => {
   window.__A = { x: A.x, z: A.z, gy };
   window.__upd = (o) => { w.body.setOpen(o); w.spine.compute(0, 0); w.body.update(); };
 }, [scale, H]);
+if (arg('hq', '0') === '1') await page.evaluate(() => { const ok = window.__rakis.worm.setQuality('med'); console.log('setQuality(med):', ok); });
 let i = 0;
 for (const o of opens) {
   await page.evaluate((o) => window.__upd(o), o);

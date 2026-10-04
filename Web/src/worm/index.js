@@ -82,11 +82,15 @@ export function create(game) {
   };
 
   const worm = {
-    state: 'Dormant', threat: 0, headPos: K.pos, sensing: true, tuning: tune, look: U, K, spine, body, riders, gear, fx,
+    state: 'Dormant', threat: 0, sensing: true, tuning: tune, look: U, K, spine, body, riders, gear, fx,
     exposed: false, visible: false, noise: 0, suspicion: 0, tamed: false,
     quality, autoQuality: true,
   };
 
+  // headPos — «источник гула» для звука (audio/sfx.js гудит по расстоянию до headPos при любом состоянии, кроме Dormant). Лежащий отдыхающий червь
+  // тихий: пока он отдыхает, отдаём далёкую точку, иначе рядом с ним стоял постоянный низкий гул («как землетрясение из ниоткуда»).
+  const FAR = new THREE.Vector3(1e6, -1e6, 1e6);
+  Object.defineProperty(worm, 'headPos', { get: () => (worm.resting ? FAR : K.pos), enumerable: true });
   worm.colliderCount = COL_N;
   worm.colliders = wormCols;
   let stateT = 0, S = 0, quietT = 0, cooldown = 0, passT = 0, senseT = 0;
