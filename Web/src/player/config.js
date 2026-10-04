@@ -5,7 +5,7 @@ export const CFG = {
   stepUp: 0.5,     // максимальный уступ, на который можно шагнуть (м)
   height: 1.76,
   eye: 1.62,
-  speed: { walk: 3.0, run: 6.0, sandWalk: 1.8, sandWalkBase: 2.45 }, // sandWalkBase × огибающая ритма (ср. ≈0.7) ≈ 1.8 м/с
+  speed: { walk: 3.0, run: 6.0, sandWalk: 1.8, sandWalkBase: 2.45, sandEnvFloor: 0.5 }, // sandWalkBase × огибающая ритма (ср. ≈0.7) ≈ 1.8 м/с
   accelLambda: 7, decelLambda: 9, turnLambda: 10, groundLambda: 18,
   // Физика: фиксированный шаг + интерполяция отрисовки. Прыжок/падение: свободное движение, урона нет.
   phys: { step: 1 / 60, maxSteps: 8 },
@@ -26,12 +26,14 @@ export const CFG = {
     lowThreshold: 0.25, lowSprintFactor: 0.88, heatTau: 4,
   },
   thumper: { charges: 2, interval: 1.6, duration: 30, loudness: 1.0, ahead: 1.8, pickRadius: 1.8, shakeRange: 30, shake: 0.25 },
+  // Камера от первого лица (третьего лица больше нет). headRadius — сфера головы для столкновений (больше угла near-плоскости ≈0.19 м при FOV до 72°).
   camera: {
-    fov: 62, fovRun: 10, fovFP: 4,
-    tpDist: 3.2, tpDistRun: 3.7, shoulder: 0.45, tpHeight: 1.55, tpPitch0: 0.12,
-    tpPitchMin: -1.1, tpPitchMax: 0.9, fpPitchLimit: 1.45,
-    groundClearance: 0.5, followLambda: 16, followLambdaY: 14, armProbes: 6, dipK: 150, dipC: 15, armOutLambda: 3, blendLambda: 6,
-    bobAmp: 0.05, bobSway: 0.025, resyncSec: 1.3,
+    fov: 62, fovRun: 7, fpPitchLimit: 1.45, headRadius: 0.25,
+    groundClearance: 0.3, followLambdaY: 14, armOutLambda: 8, // armOutLambda — скорость возврата головы после упора в стену/потолок
+    dipK: 150, dipC: 15, resyncSec: 1.3,
+    turnLambda: 30, turnRoll: 0.004,                           // инерция поворота (1/с) и крен от скорости поворота
+    bobAmp: 0.026, bobSway: 0.011, bobRoll: 0.006, bobPitch: 0.004, // покачивание от шагов (м/рад), настройка «Покачивание головы»
+    sandSurge: 0.07, sandLurch: 0.02,                          // песок: подача вперёд/наклон вслед за огибающей рваного шага
     shakePos: 0.08, shakeRot: 0.025, shakeRoll: 0.03, shakeDecay: 2.0, rumbleScale: 0.4,
   },
   interact: { radius: 2.2, viewCos: 0.3 },

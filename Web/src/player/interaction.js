@@ -1,7 +1,7 @@
 // Выбор цели взаимодействия среди game.interactables: ближайшая в радиусе и в поле зрения.
 import { CFG } from './config.js';
 
-export function createInteraction(game, p, rig) {
+export function createInteraction(game, p, rig, hands) {
   p.focus = null;
   let acc = 0;
   function find() {
@@ -32,6 +32,8 @@ export function createInteraction(game, p, rig) {
       if (game.input.pressed('Interact') && p.focus) {
         const it = p.focus.item;
         p.focus = null;
+        // Руки от первого лица: пульт харвестера — «нажать», остальное — дотянуться (тампер: обе руки к земле)
+        if (hands && it.position && !it.noHands) hands.gesture(it.reachPoint || it.position, 0.9, /Harvester/.test(it.tag || '') ? 'press' : 'touch');
         it.onInteract?.();
         game.bus.emit('interact', { tag: it.tag });
       }

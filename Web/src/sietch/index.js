@@ -9,6 +9,7 @@ import { makeMaterials, U, MAX_PUSHERS } from './mats.js';
 import * as plan from './plan.js';
 import { loadCave } from './cave/runtime.js';
 import { CAVE_YAW, EXIT, ENTRY_MOUTH, ENTRY_CUT, CELLAR } from './cave/layout.js';
+import { createField } from './cave/field.js';
 import { createProbes } from './probes.js';
 import { Builder, refine } from './builder.js';
 import { buildProps } from './props.js';
@@ -241,6 +242,7 @@ export function create(game) {
   // ------------------------------------------------------------------ геометрия «внутри» ----
   const localOf = (pos, out) => toLocal(pos, out);
   const exM = EXIT.mouth, exD = EXIT.dir;
+  let airField = null; const _ad = new THREE.Vector3();
   function inCave(pos) {
     const lx = lxOf(pos.x, pos.z), lz = lzOf(pos.x, pos.z);
     if (!plan.hasAnyFloor(lx, lz)) return false;
@@ -296,6 +298,15 @@ export function create(game) {
     toWorld, toLocal,
     /** true, если точка (мировая) внутри пещер сиетча, включая входную расщелину и выходной туннель (до плоскости устья). */
     contains(pos) { return inCave(pos); },
+    /**
+     * Знаковое расстояние от мировой точки до камня пещеры (SDF, тот же, из которого запечён меш): < 0 — воздух (глубина внутри), > 0 — камень/вне пещеры.
+     * Для камеры от первого лица: сфера радиуса r свободна, если airDist(pos) < -r. Поле строится лениво (≈8 мс), запрос ≈ 40 мкс.
+     */
+    airDist(pos) {
+      airField ??= createField();
+      toLocal(pos, _ad);
+      return airField.air(_ad.x, _ad.y, _ad.z);
+    },
     heightAt(x, z, yh) {
       const lx = lxOf(x, z), lz = lzOf(x, z);
       return O.y + plan.heightAtLocal(lx, lz, (yh ?? (game.player?.position?.y ?? O.y)) - O.y);
