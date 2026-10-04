@@ -32,7 +32,7 @@ const res = await page.evaluate(async (wantShots) => {
     ['stair-mid', 0, 1.8], ['stair-top', -6.4, 1.8], ['hall', -9, 1.8], ['hall-n', -9, 8], ['hall-e', 8, 12.3], ['hall-door', 13.6, 12.3], ['passage', 18, 12.3], ['chart', 23.5, 12.3],
     ['chart-stair-base', 25.6, 17.2], ['chart-stair-mid', 30, 17.2], ['stair-top-e', 36.2, 16.9], ['bridge', 36, 14.5], ['bridge-front', 34, 11], ['bridge-back', 26.5, 12], ['stair-top-e2', 36.2, 16.9],
     ['back-stair', 33, 17.2], ['chart2', 24, 12.3], ['passage2', 18, 12.3], ['hall2', 8, 12.3], ['hall3', -9, 8], ['hall4', -9, 1.8], ['stair-top2', -6.4, 1.8], ['stair-down', 8.7, 1.8], ['gallery-w', 8.7, -1.5], ['corr-mouth2', 6.5, -1.5], ['corr', 0, -1.5], ['corr-west', -20, -1.0],
-    ['dorm-door', -25.0, 3.0], ['dorm-in', -25, 10.5], ['dorm-out', -25, 4.5], ['corr1', -25, 0.5], ['mess-door', -25.0, -3.0], ['mess-in', -22, -10.5], ['mess-out', -25, -4.5], ['corr2', -25, -1.0], ['engine-door', -29.0, 0], ['engine', -36, 0], ['engine-back', -29.0, 0], ['corr-east', -1, -1.0], ['lab-door', -1, -3.0], ['lab', 0, -10.0], ['lab-out', -1, -4.5], ['corr3', -1, -1.0], ['corr-e', 6, -1.0], ['gallery2', 11, 0], ['feed-door', 14.4, 0.0], ['feed', 20, 8.0],
+    ['dorm-door', -25.0, 3.0], ['dorm-in', -25, 7.5], ['dorm-out', -25, 4.5], ['corr1', -25, 0.5], ['mess-door', -25.0, -3.0], ['mess-in', -22, -10.5], ['mess-out', -25, -4.5], ['corr2', -25, -1.0], ['engine-door', -29.0, 0], ['engine', -36, 0], ['engine-back', -29.0, 0], ['corr-east', -1, -1.0], ['lab-door', -1, -3.0], ['lab', 0, -10.0], ['lab-out', -1, -4.5], ['corr3', -1, -1.0], ['corr-e', 6, -1.0], ['gallery2', 11, 0], ['feed-door', 14.4, 0.0], ['feed', 20, 8.0],
     ['gallery3', 11, 1], ['door2', 11.3, 19.5], ['landing2', 10.5, 24.0], ['ramp-top2', 15, 25.6], ['foot2', 38, 25.6],
   ];
   const p = g.player.position;
@@ -57,6 +57,7 @@ const res = await page.evaluate(async (wantShots) => {
       // как у игрока: считаем «застревание» по прогрессу
       if (i % 20 === 0) { if (Math.abs(last - dist) < 0.05) { stuck++; if (stuck > 8) break; } else stuck = 0; last = dist; }
       h.interior.update(0.05, i * 0.05, st, { build: false, visible: true });
+      if (i % 12 === 0) g.step(1, 0.1);   // обновление харвестера: шлюз открывается, когда игрок рядом
     }
     const dd = Math.hypot(tgt.x - p.x, tgt.z - p.z);
     const loc = (() => { const v = new T.Vector3(p.x, p.y, p.z).applyMatrix4(new T.Matrix4().copy(h.root.matrixWorld).invert()); return [v.x.toFixed(1), v.y.toFixed(1), v.z.toFixed(1)]; })();

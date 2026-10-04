@@ -4,7 +4,8 @@ import * as THREE from 'three';
 import { clamp, lerp, smoothstep, rng } from '../core/util.js';
 import { Parts } from './parts.js';
 import { createHullMaterial, createGlowMaterial, createDecalTexture, createDecalMaterial, buildDecals, createSandMaterial } from './material.js';
-import { SINK, DOOR, FA } from './layout.js';
+import { SINK, DOOR, FA, CC } from './layout.js';
+import { EXT_SOLIDS } from './plan_ext.js';
 import { createInterior } from './interior.js';
 import { createBerm } from './berm.js';
 import { buildHarvester, SCOOP_PIVOT, AUGER_POS, TOWERS, FANS, STACKS, KLAXON, BEACONS, BELT, CONSOLE_POS, SPILL, FLOODS, DIM, C } from './hull.js';
@@ -67,7 +68,10 @@ export function create(game) {
   })();
   const sandMesh = mk(G.sand, hullMat, root, false);   // наносы на кровлях (видны и издали)
   sandMesh.receiveShadow = shadows;
-  const berm = createBerm(createSandMaterial(quality));
+  // наносы: материал ландшафта (тот же шейдер → без шва по цвету/ряби), маски грунта — из поля пустыни; в студии без пустыни — запасной песок
+  const surfMat = game.world?.terrain?.makeSurfaceMaterial?.();
+  const fieldMasks = game.world?._field?.masks;
+  const berm = createBerm(surfMat || createSandMaterial(quality), { maskAt: fieldMasks ? (x, z, out) => fieldMasks(x, z, out) : null });
   root.add(berm.mesh);
   // интерьер (строится лениво, рисуется только когда камера у корпуса/внутри)
   const interior = createInterior(game, root, quality);
@@ -214,6 +218,8 @@ export function create(game) {
     const c = Math.cos(H.h), s = Math.sin(H.h);
     let lx = dx * c + dz * s, lz = -dx * s + dz * c;
     let hit = false;
+    // высота ступней в локальной системе (для боксов с вертикальным диапазоном: опоры трапа, пульт, балки)
+    const ly = pos.y - H.y;
     for (let it = 0; it < 2; it++) {
       for (const [x0, z0, x1, z1] of BOXES) {
         const cx = clamp(lx, x0, x1), cz = clamp(lz, z0, z1);
@@ -225,6 +231,15 @@ export function create(game) {
           const o = [lx - x0, x1 - lx, lz - z0, z1 - lz]; const m = Math.min(...o);
           if (m === o[0]) lx = x0 - r - 0.01; else if (m === o[1]) lx = x1 + r + 0.01; else if (m === o[2]) lz = z0 - r - 0.01; else lz = z1 + r + 0.01;
         }
+        hit = true;
+      }
+      for (const b of EXT_SOLIDS) {
+        if (b.y1 <= ly + 0.38 || b.y0 >= ly + 1.75) continue;
+        const cx = clamp(lx, b.x0, b.x1), cz = clamp(lz, b.z0, b.z1);
+        const ex = lx - cx, ez = lz - cz, d2 = ex * ex + ez * ez;
+        if (d2 >= r * r) continue;
+        if (d2 > 1e-8) { const d = Math.sqrt(d2); lx = cx + ex / d * (r + 0.01); lz = cz + ez / d * (r + 0.01); }
+        else { const o = [lx - b.x0, b.x1 - lx, lz - b.z0, b.z1 - lz]; const m = Math.min(...o); if (m === o[0]) lx = b.x0 - r - 0.01; else if (m === o[1]) lx = b.x1 + r + 0.01; else if (m === o[2]) lz = b.z0 - r - 0.01; else lz = b.z1 + r + 0.01; }
         hit = true;
       }
     }
@@ -241,6 +256,12 @@ export function create(game) {
     const id = colliders.add({ type: 'box', owner: 'harvester', c: new THREE.Vector3(), half: new THREE.Vector3((d.x1 - d.x0) / 2, d.h / 2, (d.z1 - d.z0) / 2), yaw: 0, tags: new Set(['harvester', d.name]) });
     return { def: d, e: colliders.get(id) };
   });
+  // Мелкие твёрдые элементы входа (пульт, опоры и настил трапа, ноги площадки, фонари): боксы того же реестра, всегда твёрдые.
+  // Игрок на борту (трап/интерьер) их игнорирует вместе с корпусом (ignore 'harvester' в game.collide).
+  const extCols = EXT_SOLIDS.map((b) => {
+    const id = colliders.add({ type: 'box', owner: 'harvester', c: new THREE.Vector3(), half: new THREE.Vector3((b.x1 - b.x0) / 2, (b.y1 - b.y0) / 2, (b.z1 - b.z0) / 2), yaw: 0, tags: new Set(['harvester', 'entrance']) });
+    return { b, e: colliders.get(id) };
+  });
   let colsEnabled = true;
   function syncColliders() {
     const c = Math.cos(H.h), s = Math.sin(H.h);
@@ -249,6 +270,12 @@ export function create(game) {
       e.c.set(H.x + lx * c - lz * s, H.y + def.h / 2 - 0.5, H.z + lx * s + lz * c);
       e.yaw = H.h;
       e.solid = colsEnabled && !H.occupied;
+    }
+    for (const { b, e } of extCols) {
+      const lx = (b.x0 + b.x1) / 2, lz = (b.z0 + b.z1) / 2;
+      e.c.set(lx, (b.y0 + b.y1) / 2, lz).applyMatrix4(root.matrixWorld);   // с учётом крена/тангажа машины на рельефе
+      e.yaw = H.h;
+      e.solid = colsEnabled;
     }
   }
 
@@ -270,12 +297,24 @@ export function create(game) {
   }
 
   // ------------------------------------------------------------ борт: «подпространство» харвестера (как сиетч): трап, интерьер
+  // Объём корпуса (локальные координаты): внутри него, пока игрок «на борту», он остаётся на борту, даже если на миг нет пола под ногами
+  // (шов комнат, прыжок, подоконник): без этого contains() мигало в false и игрока выталкивали наружу силуэтом корпуса.
+  const HULL_VOL = { x0: -51.5, x1: 38.0, z0: -20.0, z1: 20.0, y0: FA - 1.5, y1: CC + 1.0 };
+  let stickyIn = false;
+  const inHullVol = (v) => v.x > HULL_VOL.x0 && v.x < HULL_VOL.x1 && v.z > HULL_VOL.z0 && v.z < HULL_VOL.z1 && v.y > HULL_VOL.y0 && v.y < HULL_VOL.y1;
+  const nearPlayer = (pos) => { const pp = game.player?.position; return !!pp && (pos === pp || (Math.abs(pos.x - pp.x) < 0.8 && Math.abs(pos.z - pp.z) < 0.8 && Math.abs(pos.y - pp.y) < 1.6)); };
   function containsPos(pos) {
     if (!interior.ready) return false;
     const dx = pos.x - H.x, dz = pos.z - H.z;
     if (dx * dx + dz * dz > 85 * 85) return false;
     _lp.copy(pos).applyMatrix4(_inv);
-    return interior.contains(_lp.x, _lp.z, _lp.y);
+    const np = nearPlayer(pos);
+    if (interior.contains(_lp.x, _lp.z, _lp.y)) { if (np) stickyIn = true; return true; }
+    if (stickyIn && np) {
+      if (inHullVol(_lp)) return true;
+      stickyIn = false;
+    }
+    return false;
   }
   /** Игрок на борту, а машину подняли/потащили (сценарий): высаживаем у подножия трапа. */
   function evacuate() {
@@ -293,9 +332,33 @@ export function create(game) {
         _lp.set(x, y, z).applyMatrix4(_inv);
         const f = interior.floorAt(_lp.x, _lp.z, _lp.y);
         if (f && (interior.contains(_lp.x, _lp.z, _lp.y) || y - ground(x, z) > 1.5)) { _wp.set(_lp.x, f.y, _lp.z).applyMatrix4(root.matrixWorld); return _wp.y; }
+        // на борту, но под ногами на миг нет пола: стоим на месте (а не «падаем» на грунт сквозь корпус)
+        if (stickyIn && !f && inHullVol(_lp) && nearPlayer(_wp.set(x, y, z))) return y;
       }
     }
     return ground(x, z);
+  }
+  /** Высота пола борта под точкой (мир) или null, если точка не на борту. Для камеры (не уходит под пол). */
+  function boardFloorAt(x, z, y) {
+    if (!interior.ready) return null;
+    const dx = x - H.x, dz = z - H.z;
+    if (dx * dx + dz * dz > 85 * 85) return null;
+    _lp.set(x, y, z).applyMatrix4(_inv);
+    if (!interior.contains(_lp.x, _lp.z, _lp.y)) return null;
+    const f = interior.floorAt(_lp.x, _lp.z, _lp.y);
+    if (!f) return null;
+    _wp.set(_lp.x, f.y, _lp.z).applyMatrix4(root.matrixWorld); return _wp.y;
+  }
+  /** Нижняя поверхность плиты над головой (мир), Infinity — открыто. Работает, пока точка на борту. */
+  function ceilingAtBoard(x, z, y) {
+    if (!interior.ready) return Infinity;
+    const dx = x - H.x, dz = z - H.z;
+    if (dx * dx + dz * dz > 85 * 85) return Infinity;
+    _lp.set(x, y, z).applyMatrix4(_inv);
+    if (!interior.contains(_lp.x, _lp.z, _lp.y) && !(stickyIn && inHullVol(_lp))) return Infinity;
+    const c = interior.ceilingAt(_lp.x, _lp.z, _lp.y, 0);
+    if (c === Infinity) return Infinity;
+    _wp.set(_lp.x, c, _lp.z).applyMatrix4(root.matrixWorld); return _wp.y;
   }
   const _co = { x: 0, z: 0 };
   /** Столкновения на борту (стены, мебель, перила); снаружи — силуэт корпуса. true — было столкновение. */
@@ -345,7 +408,8 @@ export function create(game) {
   }
 
   // ------------------------------------------------------------ выбросы частиц
-  const acc = { spice: 0, sand: 0, lip: 0, smoke: 0, heat: 0 };
+  const acc = { spice: 0, sand: 0, lip: 0, smoke: 0, heat: 0, slide: 0 };
+  const _cs = { x: 0, y: 0, z: 0, dx: 0, dz: 0, slope: 0 };
   const rot = new THREE.Matrix3();
   function toWorld(lx, ly, lz, out) { return out.set(lx, ly, lz).applyMatrix4(root.matrixWorld); }
   function dirWorld(lx, ly, lz, out) { return out.set(lx, ly, lz).transformDirection(root.matrixWorld).multiplyScalar(Math.hypot(lx, ly, lz)); }
@@ -370,6 +434,18 @@ export function create(game) {
         toWorld(u.x + (rear ? -TRK.sprocketDX - 3 : TRK.sprocketDX + 3.5) + (rnd() - 0.5) * 3, SINK + 0.4, u.z + (rnd() - 0.5) * 6.5, pw);
         dirWorld(rear ? -(2 + rnd() * 5) : (1 + rnd() * 3), 2 + rnd() * 5, (rnd() - 0.5) * 5, vw);
         particles.emit(P_SAND, pw.x, pw.y, pw.z, vw.x, vw.y, vw.z, 1.6 + rnd() * 1.8, 1.6 + rnd() * 1.6, 0.4, 3, { wind: 0.7, buoy: 0, drag: 0.9 });
+      }
+    }
+    // песок сыплется по осыпям наноса у борта и пылит ветром с гребней (пока машина работает); без игрока рядом не считаем
+    if (S.state !== 'off' && S.eng > 0.3 && berm.ready && game.camera.position.distanceToSquared(root.position) < 160 * 160) {
+      acc.slide += dt * 16 * qf * S.eng;
+      while (acc.slide >= 1) {
+        acc.slide -= 1;
+        if (!berm.crestSample(rnd, _cs)) break;
+        // дрожь корпуса подрывает гребни: зерно скользит вниз по склону, часть уносится ветром (мелкая пыль вдоль гребня)
+        toWorld(_cs.x, _cs.y + 0.15, _cs.z, pw);
+        dirWorld(_cs.dx * (0.6 + rnd() * 1.4), -0.2, _cs.dz * (0.6 + rnd() * 1.4), vw);
+        particles.emit(P_SAND, pw.x, pw.y, pw.z, vw.x, vw.y, vw.z, 1.4 + rnd() * 1.4, 0.5 + rnd() * 0.6, 0.35, 2.2, { wind: 0.9, buoy: 0.05, drag: 1.4 });
       }
     }
     if (S.scoop > 0.7 && S.belt > 0.3) {
@@ -430,6 +506,18 @@ export function create(game) {
     }
   }
 
+
+  // Колея за гусеницами у СТОЯЩЕЙ машины: несколько штампов «позади» по дуге петли (у идущей — их ставит stampTracks). Один штамп-поза за кадр, когда игрок рядом.
+  const rut = { k: 0, n: 7, x: 0, z: 0, h: 0, done: false };
+  function stampRutPose() {
+    const w = game.world;
+    if (!w?.addFootprint) { rut.done = true; return; }
+    if (rut.k === 0) { rut.x = H.x; rut.z = H.z; rut.h = H.h; }
+    rut.x -= Math.cos(rut.h) * FOOT_STEP; rut.z -= Math.sin(rut.h) * FOOT_STEP; rut.h += FOOT_STEP / R_TURN;
+    const c = Math.cos(rut.h), s = Math.sin(rut.h), yaw = Math.atan2(c, s);
+    for (const u of UNITS) w.addFootprint(rut.x + u.x * c - u.z * s, rut.z + u.x * s + u.z * c, yaw, { type: 'worm', size: 4.3, depth: 0.7 });
+    if (++rut.k >= rut.n) rut.done = true;
+  }
 
   // ------------------------------------------------------------ сценарий «червь пожирает харвестер»: тревога, ракета, поза, обломки
   const _flareTex = (() => {
@@ -519,7 +607,7 @@ export function create(game) {
   const frustum = new THREE.Frustum(), pm = new THREE.Matrix4(), sph = new THREE.Sphere(new THREE.Vector3(), 78);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), yAx = new THREE.Vector3(0, 1, 0), xAx = new THREE.Vector3(1, 0, 0);
   let lastNight = 0;
-  const bermAt = { x: 1e9, z: 0, h: 0 };
+  const bermAt = { x: 1e9, z: 0, h: 0, w: 0 };
 
   function stageValues(dt) {
     S.t += dt;
@@ -572,13 +660,16 @@ export function create(game) {
     applyTransform(dt, false);
     syncColliders();
     // вал песка вокруг корпуса: привязка к рельефу порциями; при подвесе/сценарной позе — убирается
-    if (!scriptPose && (berm.busy || !berm.ready || Math.hypot(H.x - bermAt.x, H.z - bermAt.z) > 7 || Math.abs(H.h - bermAt.h) > 0.25)) {
-      if (!berm.busy) { bermAt.x = H.x; bermAt.z = H.z; bermAt.h = H.h; }
-      berm.conform(ground, root, 600);
+    const wd = game.weather?.windDir, wAng = wd ? Math.atan2(wd.z, wd.x) : 0;
+    let dW = Math.abs(wAng - bermAt.w); if (dW > Math.PI) dW = 2 * Math.PI - dW;
+    if (!scriptPose && (berm.busy || !berm.ready || Math.hypot(H.x - bermAt.x, H.z - bermAt.z) > 3 || Math.abs(H.h - bermAt.h) > 0.12 || dW > 0.35)) {
+      if (!berm.busy) { bermAt.x = H.x; bermAt.z = H.z; bermAt.h = H.h; bermAt.w = wAng; }
+      berm.conform(ground, root, 900, wd ? { x: wd.x, z: wd.z } : null);
     }
     const bermK = scriptPose ? 0 : 1 - smoothstep(0.3, 2.5, H.lift);
     berm.mesh.scale.y = Math.max(bermK, 0.001); berm.mesh.position.y = SINK * (1 - Math.max(bermK, 0.001));
     const camD = game.camera.position.distanceTo(root.position);
+    if (!rut.done && inDesert && camD < 90 && S.state === 'off' && !scriptPose) stampRutPose();
 
     // видимость и LOD
     pm.multiplyMatrices(game.camera.projectionMatrix, game.camera.matrixWorldInverse);
@@ -601,12 +692,22 @@ export function create(game) {
     _inv.copy(root.matrixWorld).invert();
     _cl.copy(game.camera.position).applyMatrix4(_inv);
     {
-      const inBox = _cl.x > -58 && _cl.x < 47 && _cl.z > -26 && _cl.z < 34 && _cl.y > SINK - 3 && _cl.y < 36;
-      interior.update(dt, time, S, { build: inDesert && camD < 170 && !scriptPose, visible: inDesert && inBox && !scriptPose, alarm: H.alarm });
-      const want = interior.ready && inDesert && _cl.distanceTo(doorC) < 24 ? 1 : 0;
+      // Интерьер рисуется, только когда камера ВНУТРИ объёма корпуса, либо снаружи у открытой двери (смотрит в проём).
+      // Снаружи при закрытой двери корпус непрозрачен и интерьер скрыт (visible=false): не просвечивает через швы и не тратит кадр.
+      const inHull = _cl.x > -52 && _cl.x < 38.5 && _cl.z > -20.7 && _cl.z < 20.7 && _cl.y > FA - 2 && _cl.y < CC + 2;
+      const atDoor = doorOpen > 0.02 && _cl.x > -8 && _cl.x < 32 && _cl.z > 19 && _cl.z < 46 && _cl.y > SINK - 3 && _cl.y < FA + 14;
+      interior.update(dt, time, S, { build: inDesert && camD < 170 && !scriptPose, visible: inDesert && (inHull || atDoor) && !scriptPose, alarm: H.alarm });
+      // шлюз открыт, пока игрок на борту или стоит у двери (трап/площадка); камера, «отъехавшая» от корпуса, дверь не открывает
+      const pp = game.player?.position;
+      let near = H.occupied;
+      if (!near && pp) { _wp.copy(pp).applyMatrix4(_inv); near = _wp.distanceTo(doorC) < 9; }
+      const want = interior.ready && inDesert && near && !scriptPose ? 1 : 0;
       doorOpen += (want - doorOpen) * (1 - Math.exp(-dt * 1.6));
       doorMesh.position.y = DOOR.y0 + doorH / 2 + doorOpen * (doorH + 0.3);
       doorMesh.visible = doorOpen < 0.995;
+      // створка твёрдая, пока шторка ниже роста игрока (проём закрыт); поднята — проход свободен
+      const db = interior.plan.doorBlock;
+      if (db) { const shut = doorOpen < 0.47; db.y0 = shut ? db.home.y0 : -1e9; db.y1 = shut ? db.home.y1 : -1e9; }
       if (interior.interactions[0]) {
         const it = interior.interactions[0];
         interactable2.position.set(it.c[0], it.c[1], it.c[2]).applyMatrix4(root.matrixWorld);
@@ -712,6 +813,9 @@ export function create(game) {
     contains(pos) { return containsPos(pos); },
     /** Высота пола в точке; y — высота ступней (обязателен, чтобы отличить «на трапе» от «под трапом»). Вне борта — грунт. */
     heightAt(x, z, y) { return heightAtBoard(x, z, y); },
+    /** Пол борта под точкой (мир) или null; потолок над головой (мир) или Infinity — для прыжка и камеры. */
+    boardFloorAt(x, z, y) { return boardFloorAt(x, z, y); },
+    ceilingAt(x, z, y) { return ceilingAtBoard(x, z, y); },
     surfaceAt(x, z, y) { return (y !== undefined && containsPos(_wp.set(x, y, z))) ? 'rock' : 'sand'; },
     /** Помещение под точкой (мир): {id, name} или null. */
     roomAt(pos) { _lp.copy(pos).applyMatrix4(_inv); const R = interior.roomAt(_lp.x, _lp.z, _lp.y); return R ? { id: R.id, name: R.name } : null; },
@@ -758,7 +862,7 @@ export function create(game) {
       else { Object.assign(S, { state: 'off', t: 0, eng: 0, scoop: 0, belt: 0, drive: 0, plume: 0, smoke: 0, heat: 0, klax: 0 }); emitState('off'); }
       updateInteractable();
     },
-    place(x, z, heading = 0) { H.x = x; H.z = z; H.h = heading; applyTransform(0, true); syncColliders(); },
+    place(x, z, heading = 0) { rut.k = 0; rut.done = false; H.x = x; H.z = z; H.h = heading; applyTransform(0, true); syncColliders(); },
     get blockedByWorm() { return H.blockedByWorm; },
     setVisible(b) { root.visible = b; },
   };
@@ -769,11 +873,13 @@ export function create(game) {
   applyTransform(0, true);
   H.y = sampleGround().y - SINK + 0.1;
   applyTransform(0, true);
-  berm.conform(ground, root, 1e9); bermAt.x = H.x; bermAt.z = H.z; bermAt.h = H.h;
+  { const wd0 = game.weather?.windDir; berm.conform(ground, root, 1e9, wd0 ? { x: wd0.x, z: wd0.z } : null); bermAt.x = H.x; bermAt.z = H.z; bermAt.h = H.h; bermAt.w = wd0 ? Math.atan2(wd0.z, wd0.x) : 0; }
   syncColliders();
   updateInteractable();
   emitState('off');
 
+  // потолок/пол борта для прыжка и камеры игрока (идемпотентно; не зависят от harvesterWired)
+  if (!game.__hvCeil) { game.__hvCeil = true; game.ceilingAt = (x, z, y) => ceilingAtBoard(x, z, y); game.boardFloorAt = (x, z, y) => boardFloorAt(x, z, y); }
   // Подключение к ядру. Если core сам выбирает землю по точке через game.harvester (contains/heightAt/surfaceAt/collide) —
   // выставьте game.harvesterWired = true до create(); иначе подменяем game.heightAt/surfaceAt/collide здесь (идемпотентно).
   harvester.autoWired = false;
