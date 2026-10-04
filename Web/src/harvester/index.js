@@ -670,7 +670,8 @@ export function create(game) {
     // тряска, шум, звук
     if (S.state !== 'off' && inDesert) {
       const d = Math.max(0, camD - 38);
-      const amp = (0.06 + 0.3 * S.drive) * S.eng * (1 - smoothstep(20, 150, d));
+      // лёгкая вибрация только вплотную к машине (раньше трясло до 150 м — «землетрясение»)
+      const amp = (0.015 + 0.05 * S.drive) * S.eng * (1 - smoothstep(5, 45, d));
       if (amp > 0.002) game.shake = Math.max(game.shake || 0, amp);
       H.noiseT -= dt;
       if (H.noiseT <= 0) {
