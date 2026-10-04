@@ -28,10 +28,11 @@ export const MOVE_CFG = {
   wallRange: 0.52,         // м: ближе к стене — отталкивание
   wallGain: 0.9,
   hardWall: 0.24,          // м: жёсткий минимум до стены (если не у конечной цели)
+  maxTurn: 3.6,            // рад/с: предел угловой скорости корпуса
   playerRadius: 0.4,
   hardSep: 0.78, playerHard: 0.45, sepMax: 0.08, // жёсткое расталкивание: доля суммы радиусов, м у камеры, макс. сдвиг за тик (м)
   slowAhead: 0.15,         // нижняя доля скорости за идущим/стоящим впереди
-  stuckSpeed: 0.12, stuckT: 2.4, replanT: 5.5, giveUpT: 12,
+  stuckSpeed: 0.12, stuckT: 1.2, replanT: 3.5, giveUpT: 12,
   farRange: 26,            // м: дальше — упрощённое движение (без избегания), редкий тик
 };
 
@@ -77,6 +78,8 @@ export function createMover(env) {
       if (!last && d < C.capture) { n.pi++; continue; }
       break;
     }
+    // сторож прогресса: у цели (≤2 м) за 2.5 с не приблизился на 0.15 м → пришёл (зажат людьми/реквизитом)
+    if (last && d < 2) { if (n.progD === undefined || d < n.progD - 0.15) { n.progD = d; n.progT = 0; } else if ((n.progT += dt) > 2.5) { n.progD = undefined; arrive(n); return; } } else n.progD = undefined;
     const vmax = n.speed * (n.speedBoost ?? 1) * speedMul * (n.irregular ? 0.6 + 0.8 * Math.abs(Math.sin(n.phase + env.time() * 3.7)) : 1);
     const inv = d > 1e-5 ? 1 / d : 0;
     let dirx = dx * inv, dirz = dz * inv;
@@ -117,12 +120,12 @@ export function createMover(env) {
         const o = npcs[i];
         if (o === n || o.lod === 'off' || (o.layer || 0) !== L || o.kind === 'sleep') continue;
         if (Math.abs(o.x - n.x) > C.avoidRange || Math.abs(o.z - n.z) > C.avoidRange) continue;
-        if (o === n.partner || (n.chat && o.chat === n.chat)) { // свои по разговору: избегаем только касания
+        if (o === n.partner || o === n.leader || o.leader === n || (n.chat && o.chat === n.chat)) { // свои по разговору: избегаем только касания
           const px = n.x - o.x, pz = n.z - o.z, dist = Math.hypot(px, pz), minD = rN + radiusOf(o) + 0.1;
           if (dist < minD && dist > 1e-4) { const k = (minD - dist) / minD * C.pushGain / dist; ax += px * k; az += pz * k; }
           continue;
         }
-        hard(o.x, o.z, (rN + radiusOf(o)) * C.hardSep, o.mode === 'walk' ? 0.5 : 1);
+        hard(o.x, o.z, (rN + radiusOf(o)) * C.hardSep * (n.arch === 'Child' && o.arch === 'Child' ? 0.7 : 1), o.mode === 'walk' ? 0.5 : 1);
         const sitting = o.mode === 'seat' || o.pose === 'sitFloor' || o.pose === 'sitBench' || o.pose === 'weave' || o.pose === 'pray';
         nbr(o.x, o.z, sitting ? radiusOf(o) * 0.9 : radiusOf(o), o.mode === 'walk' ? o.vx : 0, o.mode === 'walk' ? o.vz : 0, o.mode === 'walk');
       }
@@ -131,7 +134,7 @@ export function createMover(env) {
       for (const c of env.comps()) { nbr(c.x, c.z, 0.3, c.vx, c.vz, true); hard(c.x, c.z, 0.5, 1); }
       hard(env.plL.x, env.plL.z, C.playerHard, 1);
       // --- стены / реквизит
-      if (!(last && d < 1.2)) {
+      if (!(last && d < 1.2) && !n.noWall) {
         const wd = plan.wallDistLocal(n.x, n.z, L, wn);
         if (wd < C.wallRange) { const w = clamp((C.wallRange - wd) / 0.28, 0, 1); ax += wn.x * w * w * C.wallGain; az += wn.z * w * w * C.wallGain; }
       }
@@ -143,10 +146,20 @@ export function createMover(env) {
       const sp = Math.hypot(n.vx || 0, n.vz || 0);
       if (sp < C.stuckSpeed && d > 0.5 && vd > 0.3) n.blockedT += dt; else n.blockedT = Math.max(0, n.blockedT - dt * 2);
       if (n.slowIgnore > 0) n.slowIgnore -= dt;
+      if (n.blockedT > C.stuckT && last && d < 1.6) { arrive(n); return; }   // почти дошёл, но зажат людьми — считаем, что пришёл
       if (n.blockedT > C.stuckT && n.slowIgnore <= 0) { n.slowIgnore = 2.2; }
       if (n.blockedT > C.replanT) { n.blockedT = 0; n.stuckCount = (n.stuckCount || 0) + 1; if (n.stuckCount > 2 || !n.goal) { env.onGiveUp?.(n); return; } replan(n); return; }
     }
 
+    // --- предел поворота вектора скорости (плавные дуги, без мгновенных разворотов): гистерезис цели
+    if (!far) {
+      const cs = Math.hypot(n.vx || 0, n.vz || 0), as = Math.hypot(ax, az);
+      if (cs > 0.45 && as > 0.1) {
+        let da = Math.atan2(az, ax) - Math.atan2(n.vz, n.vx); da = Math.atan2(Math.sin(da), Math.cos(da));
+        const lim = C.maxTurn * dt;
+        if (Math.abs(da) > lim) { const a2 = Math.atan2(n.vz, n.vx) + Math.sign(da) * lim; ax = Math.cos(a2) * as; az = Math.sin(a2) * as; }
+      }
+    }
     // --- динамика скорости
     const acc = (n.arch === 'Child' ? C.accelChild : n.arch === 'Elder' ? C.accelElder : C.accel) * (n.speedBoost > 1.5 ? 2 : 1);
     let dvx = ax - (n.vx || 0), dvz = az - (n.vz || 0);
@@ -163,7 +176,7 @@ export function createMover(env) {
     if (last && sp * dt > d) { nxp = wp[0]; nzp = wp[1]; }
     n.x = nxp; n.z = nzp;
     if (!far && (sepx || sepz)) { const sl = Math.hypot(sepx, sepz), m = Math.min(sl, C.sepMax); n.x += sepx / sl * m; n.z += sepz / sl * m; }
-    if (!far && !(last && d < 1.0)) { pp.x = n.x; pp.z = n.z; if (plan.collideLocal(pp, C.hardWall, n.layer || 0)) { n.x = pp.x; n.z = pp.z; } }
+    if (!far && !n.noWall && !(last && d < 1.25)) { pp.x = n.x; pp.z = n.z; if (plan.collideLocal(pp, C.hardWall, n.layer || 0)) { n.x = pp.x; n.z = pp.z; } }
     n.speedNow = sp;
     if (sp > C.minYawSpeed) n.walkYaw = Math.atan2(n.vx, n.vz);
   }

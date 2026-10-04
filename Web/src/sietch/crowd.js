@@ -264,8 +264,11 @@ export function createCrowd(ctx) {
     const A = n.arena;
     if (A && A.line) { const x = A.x0 + R() * (A.x1 - A.x0); return [x, pathZ(PATHS.C, x) + (R() - 0.5) * 0.9]; }
     const cx = A ? A.x : 47, cz = A ? A.z : -0.3, rr = A ? A.r : 2.6;
-    for (let k = 0; k < 4; k++) {
+    const hx = Math.sin(n.walkYaw), hz = Math.cos(n.walkYaw);
+    for (let k = 0; k < 8; k++) { // цели впереди по ходу (дуги), не ближе 1 м — без мгновенных разворотов
       const a = R() * TAU, r = (0.25 + 0.75 * R()) * rr, x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r * 0.9;
+      const dx = x - n.x, dz = z - n.z, dl = Math.hypot(dx, dz);
+      if (k < 6 && (dl < 1.0 || (dx * hx + dz * hz) / (dl || 1) < -0.15)) continue;
       if (nav.walkable(x, z) && nav.clearanceAt(x, z) > 0.5) return [x, z];
     }
     const s = nav.snap(cx, cz, 3); return s ? [s.x, s.z] : [cx, cz];
@@ -289,14 +292,14 @@ export function createCrowd(ctx) {
     let tgt, boost = 1.9 + R() * 0.8;
     if ((n.role === 'chase' || n.role === 'chased') && n.buddy) {
       const bd = n.buddy;
-      if (n.role === 'chase') { tgt = [bd.x + (R() - 0.5) * 0.4, bd.z + (R() - 0.5) * 0.3]; if (Math.hypot(bd.x - n.x, bd.z - n.z) < 0.9) { n.role = 'chased'; bd.role = 'chase'; n.timer = 0.4; bd.timer = 0.2; n.talk = true; return; } boost = 2.3; }
+      if (n.role === 'chase') { tgt = [bd.x + (R() - 0.5) * 0.4, bd.z + (R() - 0.5) * 0.3]; if (Math.hypot(bd.x - n.x, bd.z - n.z) < 0.9) { n.role = 'chased'; bd.role = 'chase'; n.timer = 0.9; bd.timer = 0.7; n.talk = true; return; } boost = 2.3; }
       else { tgt = arenaPoint(n); boost = 2.5; }
     } else {
       tgt = arenaPoint(n);
       if (!n.arena && R() < 0.12) tgt = [52 + R() * 6, (R() - 0.5) * 5];
       if (n.role === 'worm') boost = 0.35;
     }
-    mover.goTo(n, tgt[0], tgt[1], () => { actAt(n, 'act', 'stand', (n.role === 'chase' || n.role === 'chased') ? 0.05 : 0.3 + R() * 1.6); }, { speed: boost, irregular: 1, direct: !!n.arena || Math.hypot(tgt[0] - n.x, tgt[1] - n.z) < 4 });
+    mover.goTo(n, tgt[0], tgt[1], () => { actAt(n, 'act', 'stand', (n.role === 'chase' || n.role === 'chased') ? 0.45 : 0.3 + R() * 1.6); }, { speed: boost, irregular: 1, direct: !!n.arena || Math.hypot(tgt[0] - n.x, tgt[1] - n.z) < 4 });
   }
 
   // стража погреба: у входа — стоит/сидит, патруль — ходит вдоль нефа
@@ -382,13 +385,18 @@ export function createCrowd(ctx) {
     const seatCb = () => { n.mode = 'seat'; n.pose = n.rit.seat.k > 3 && R() < 0.3 ? 'stand' : 'sitFloor'; n.goalYaw = Math.atan2(cx - n.x, cz - n.z); n.sway = R() * 6; out.seated++; if (out.seated === 24) game.bus.emit('sietch:seated', { count: out.seated }); };
     const go = () => mover.goTo(n, s.x, s.z, seatCb, { speed: 1.0 });
     // стоящие за прилавком/станком (другая компонента навигации) сперва выходят в проход кратчайшим путём
-    if (!n.canLeave && n.exitPortal) mover.goTo(n, n.exitPortal.x, n.exitPortal.z, go, { direct: true, speed: 0.9 }); else go();
+    if (!n.canLeave && n.exitPortal) {
+      // из-за прилавка выходят вдоль торца стойки (боковой проход), а не через неё
+      const P = n.exitPortal, sd = Math.sign(n.home.x - 70) || 1, sx = n.home.x + 1.55 * (n.stallSide ??= (nav.walkable(n.home.x + 3, P.z) ? 1 : -1) * 1), zA = n.home.z + (P.z - n.home.z) * 0.45;
+      n.noWall = true;
+      mover.goTo(n, sx, n.home.z, () => mover.goTo(n, sx, zA, () => mover.goTo(n, P.x, P.z, () => { n.noWall = false; go(); }, { direct: true, speed: 0.9 }), { direct: true, speed: 0.9 }), { direct: true, speed: 0.9 }); void sd;
+    } else go();
   }
 
   // ------------------------------------------------------------------ позы ----
   function applyPose(n, dt, t) {
     const f = n.fig, P = f.parts, L = P.limbs, s = n.scale;
-    const walkSp = n.mode === 'walk' ? n.speedNow : 0;
+    const walkSp = n.speedAnim > 0.05 ? n.speedAnim : 0;
     const ph = f.animate(walkSp, dt, n.irregular);
     const tt = t + n.phase;
     const sit = (h = 0.5, kn = 1.5) => { P.pelvis.position.y = (h + 0.1) / s * 1.0; L.L.hip.rotation.x = L.R.hip.rotation.x = -1.5; L.L.kn.rotation.x = L.R.kn.rotation.x = kn; P.spine.rotation.x = 0.05; };
@@ -562,6 +570,7 @@ export function createCrowd(ctx) {
       // замолкание разговоров рядом с игроком
       if (n.group >= 0 || n.kind === 'stall' || n.chat || n.sg) { if (dp < 3.4) n.silent = 5; else n.silent = Math.max(0, n.silent - sdt); }
       if (n.mode === 'wait') { if (n.timer <= 0) ritualDepart(n); }
+      const ox0 = n.x, oz0 = n.z;
       if (n.mode === 'walk') {
         const rit = n.rit && out.ritualState !== 'idle';
         mover.step(n, sdt, n.lod !== 'full' && n.d2 > 900, rit ? (camL.x > 100 && n.d2 > 625 ? 3.2 : 1.55) : 1);
@@ -572,9 +581,15 @@ export function createCrowd(ctx) {
           if (!social.tick(n, sdt) && !social.pauseTick(n)) { think(n, sdt, t); social.think(n, sdt); }
         } else think(n, sdt, t);
       }
-      if (n.mode !== 'walk') { n.speedNow = 0; n.vx = n.vz = 0; }
+      if (n.mode !== 'walk') { n.vx = n.vz = 0; }
+      // скорость анимации = измеренная скорость (с затуханием при остановке) → нет скольжения
+      if (!n.special) { const ms = sdt > 0 ? Math.hypot(n.x - ox0, n.z - oz0) / sdt : 0; n.speedAnim = damp(n.speedAnim || 0, Math.min(ms, 6), ms > (n.speedAnim || 0) ? 20 : 9, sdt); if (n.speedAnim < 0.04) n.speedAnim = 0; n.speedNow = n.speedAnim; }
+      else if (n.mode !== 'walk') n.speedNow = 0;
       if (!n.special && n.mode !== 'wait') social.react(n, sdt, dp, dxp, dzp);
-      n.yaw = dampAngle(n.yaw, n.mode === 'walk' ? n.walkYaw : n.goalYaw, n.mode === 'walk' ? MOVE_CFG.turnLambda : MOVE_CFG.idleTurnLambda, sdt);
+      { // курс: сглаживание + предел угловой скорости (анимированный поворот, без рывков)
+        const tg = n.mode === 'walk' ? n.walkYaw : n.goalYaw, lam = n.mode === 'walk' ? MOVE_CFG.turnLambda : MOVE_CFG.idleTurnLambda;
+        const ny = dampAngle(n.yaw, tg, lam, sdt); let dy = ny - n.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+        const mx = MOVE_CFG.maxTurn * Math.min(sdt, 0.15); n.yaw += Math.max(-mx, Math.min(mx, dy)); }
       if (n.lod === 'full' && n.mode === 'act' && (n.pose === 'weave' || n.pose === 'measure' || n.pose === 'repair') && dp < 12) {
         n.sfxT = (n.sfxT ?? R() * 2) - sdt;
         if (n.sfxT <= 0) { n.sfxT = n.pose === 'weave' ? 1.1 + R() * 0.6 : 5 + R() * 4; game.audio?.event?.(n.pose === 'weave' ? 'Loom.Clack' : n.pose === 'measure' ? 'Water.Measure' : 'Stillsuit.Repair', ctx.toWorld(n.x, n.y + 1.0, n.z)); }
