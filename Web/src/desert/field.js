@@ -132,11 +132,43 @@ export const FLAT_ZONE = { x: 330, z: -60, radius: 70, blend: 80, level: 5.4 };
 // Локальные переопределения рельефа (котловина сада, уступы тропы): {x,z,radius,height:(x,z,baseH)=>y|null}
 export const groundPatches = [];
 export function heightAt(x, z, spacing = 0) {
-  let h = heightBase(x, z, spacing);
+  return applyPatches(x, z, heightBase(x, z, spacing));
+}
+
+// Кэш высоты основы (без заплаток) для игровой логики: узлы сетки 0.25 м, прямое отображение в хэш-таблицу,
+// билинейная интерполяция. Аналитическое поле стоит 30–150 мкс на вызов, а игроки/ИИ/камера дёргают его десятки раз за кадр.
+// Меш ландшафта (клипмап) этим не пользуется — он зовёт heightAt(x, z, spacing) напрямую.
+const CS = 0.25, CINV = 1 / CS, CCAP = 1 << 17;
+const cKx = new Int32Array(CCAP).fill(0x7fffffff), cKz = new Int32Array(CCAP), cV = new Float32Array(CCAP);
+function cornerH(ix, iz) {
+  const h = (Math.imul(ix, 73856093) ^ Math.imul(iz, 19349663)) & (CCAP - 1);
+  if (cKx[h] === ix && cKz[h] === iz) return cV[h];
+  const v = heightBase(ix * CS, iz * CS, 0);
+  cKx[h] = ix; cKz[h] = iz; cV[h] = v;
+  return v;
+}
+// Кэш заполняется только вблизи «фокуса» (камера/игрок, ставит desertRoot.update): быстрые далёкие потребители (червь, харвестер, частицы)
+// каждый кадр попадали бы в новые ячейки — 4 вычисления узлов вместо одного прямого. Далеко от фокуса считаем напрямую.
+const FOCUS = { x: 0, z: 0 }, FAR2 = 90 * 90;
+export function setHeightFocus(x, z) { FOCUS.x = x; FOCUS.z = z; }
+export function heightAtCached(x, z) {
+  const dx = x - FOCUS.x, dz = z - FOCUS.z;
+  if (dx * dx + dz * dz > FAR2) return applyPatches(x, z, heightBase(x, z, 0));
+  const fx = x * CINV, fz = z * CINV;
+  const ix = Math.floor(fx), iz = Math.floor(fz);
+  const u = fx - ix, v = fz - iz;
+  const h00 = cornerH(ix, iz);
+  let h;
+  if (u === 0 && v === 0) h = h00;
+  else h = (h00 * (1 - u) + (u > 0 ? cornerH(ix + 1, iz) : h00) * u) * (1 - v) + ((v > 0 ? cornerH(ix, iz + 1) : h00) * (1 - u) + (u > 0 && v > 0 ? cornerH(ix + 1, iz + 1) : h00) * u) * v;
+  return applyPatches(x, z, h);
+}
+function applyPatches(x, z, h) {
   for (let i = 0; i < groundPatches.length; i++) {
     const p = groundPatches[i];
-    const d = hyp(x - p.x, z - p.z);
-    if (d >= p.radius) continue;
+    const px = x - p.x, pz = z - p.z;
+    if (px * px + pz * pz >= p.radius * p.radius) continue;
+    const d = Math.sqrt(px * px + pz * pz);
     const y = p.height(x, z, h);
     if (y == null) continue;
     const k = p.blend ? 1 - smoothstep(p.radius - p.blend, p.radius, d) : 1;

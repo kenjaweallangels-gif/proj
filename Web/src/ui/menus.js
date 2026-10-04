@@ -64,7 +64,7 @@ export function createMenus(game, root, ctx) {
       `<span>${K('W')}${K('A')}${K('S')}${K('D')} ${tr('движение', 'move')}</span>`,
       `<span>${K('C')} ${tr('режим походки: обычный / по песку', 'gait: normal / sand-walk')}</span>`,
       `<span>${K('Alt')} ${tr('походка по песку (удерживать)', 'sand-walk (hold)')}</span>`,
-      `<span>${K('Space')} ${tr('сбить ритм', 'break rhythm')}</span>`,
+      `<span>${K('Space')} ${tr('прыжок (в шаге пустыни — сбить ритм)', 'jump (sand-walk: break rhythm)')}</span>`,
       `<span>${K('E')} ${tr('действие', 'interact')}</span>`,
       `<span>${K('V')} ${tr('камера', 'camera')}</span>`,
       `<span>${K('F2')} ${tr('погода и время', 'weather & time')}</span>`,

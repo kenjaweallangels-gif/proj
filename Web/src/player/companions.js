@@ -38,7 +38,7 @@ export function create(game) {
       const figure = makeFigure(spec.figure);
       figure.onStep = (e) => onStep(c, e);
       game.scene.add(figure.group);
-      const c = { id, figure, spec, position: new V3(), yaw: 0, speed: 0, nextStep: 0, idleT: 0, glanceT: 1, glanceDir: 0, weight: 0, vel: new V3() };
+      const c = { id, figure, spec, position: new V3(), yaw: 0, speed: 0, nextStep: 0, idleT: 0, glanceT: 1, glanceDir: 0, weight: 0, vel: new V3(), vy: 0, groundY: 0, moving: false, walkDesert: false };
       c.bodyA = new V3(); c.bodyB = new V3(); c.owner = 'companion:' + id;
       c.bodyId = game.colliders?.add({ type: 'capsule', a: c.bodyA, b: c.bodyB, r: CFG.radius, owner: c.owner });
       list.push(c);
@@ -117,6 +117,15 @@ export function create(game) {
     }
   }
   const tgt = { x: 0, z: 0 };
+  const camDir = new V3();
+  /** В кадре ли спутник (грубо: впереди камеры и ближе ~60 м). */
+  function onScreen(c) {
+    const cam = game.camera;
+    cam.getWorldDirection(camDir);
+    const dx = c.position.x - cam.position.x, dy = c.position.y + 1 - cam.position.y, dz = c.position.z - cam.position.z;
+    const d = Math.hypot(dx, dy, dz) || 1;
+    return d < 60 && (dx * camDir.x + dy * camDir.y + dz * camDir.z) / d > 0.2;
+  }
   const tmp = new V3();
 
   // Касание стопой (из анимации): след, звук, шум (компаньоны шумят слабо; в походке по песку — почти нет).
@@ -149,8 +158,9 @@ export function create(game) {
         if (sampleTrail(sTarget, tgt)) {
           let dx = tgt.x - c.position.x, dz = tgt.z - c.position.z;
           const dist = Math.hypot(dx, dz);
-          if (dist > C.snapDist) { c.position.x = tgt.x; c.position.z = tgt.z; dx = dz = 0; }
-          const maxSp = clamp(Math.max(pl.speed * 1.3, 2.5), 0, C.maxSpeed);
+          // Телепорт — только если спутника не видно (за спиной/далеко); иначе догоняет бегом: без «выскакиваний» в кадре.
+          if (dist > C.snapDist && (dist > C.snapDist * 3 || !onScreen(c))) { c.position.x = tgt.x; c.position.z = tgt.z; c.vel.x = c.vel.z = 0; dx = dz = 0; c.vy = 0; c.position.y = game.heightAt(tgt.x, tgt.z, pl.position.y); }
+          const maxSp = clamp(Math.max(pl.speed * 1.3, 2.5) + Math.max(0, dist - C.spacing * 2) * 0.6, 0, dist > 8 ? C.maxSpeed * 1.6 : C.maxSpeed);
           const sp = dist < 0.15 ? 0 : clamp(dist * 2.5, 0, maxSp);
           const k = dist > 1e-4 ? 1 / dist : 0;
           c.vel.x = damp(c.vel.x, dx * k * sp, 8, dt);
@@ -163,8 +173,9 @@ export function create(game) {
       if (!cin) {
         c.position.x += c.vel.x * dt; c.position.z += c.vel.z * dt;
         // Мягкое расталкивание: отодвигаем спутника, но не игрока.
-        const others = [pl.position, ...list.filter((q) => q !== c).map((q) => q.position)];
-        for (const o of others) {
+        for (let oi = -1; oi < list.length; oi++) {
+          const o = oi < 0 ? pl.position : list[oi].position;
+          if (o === c.position) continue;
           const ddx = c.position.x - o.x, ddz = c.position.z - o.z, d = Math.hypot(ddx, ddz);
           if (d < C.minSep) {
             const push = (C.minSep - d) * Math.min(1, dt * 6);
@@ -174,14 +185,24 @@ export function create(game) {
         }
         game.collide(c.position, CFG.radius, { ignore: c.owner });
         // уступы: выше CFG.stepUp не лезем
-        if (game.heightAt(c.position.x, c.position.z, c.position.y) - c.position.y > CFG.stepUp) { c.position.x = ox; c.position.z = oz; c.vel.x = c.vel.z = 0; }
-        const gy = game.heightAt(c.position.x, c.position.z, c.position.y);
-        c.position.y = Math.abs(gy - c.position.y) > 1.2 ? gy : damp(c.position.y, gy, 16, dt);
+        let gy = game.heightAt(c.position.x, c.position.z, c.position.y);
+        if (gy - c.position.y > CFG.stepUp) { c.position.x = ox; c.position.z = oz; c.vel.x = c.vel.z = 0; gy = game.heightAt(ox, oz, c.position.y); }
+        const d = gy - c.position.y;
+        if (c.vy !== 0 || d < -0.5) {
+          // сошёл с уступа/спрыгнул следом за игроком — падает, а не «телепортируется» вниз
+          c.vy = Math.max(-30, c.vy - 19 * dt); c.position.y += c.vy * dt;
+          if (c.position.y <= gy) { c.position.y = gy; c.vy = 0; }
+        } else {
+          const mv = (3 + Math.abs(gy - (c.groundY ?? gy)) / Math.max(dt, 1e-3) * 1.15) * dt;
+          c.position.y += Math.max(-mv, Math.min(mv, d));
+        }
+        c.groundY = gy;
       }
       c.speed = damp(c.speed, dt > 0 ? Math.hypot(c.position.x - ox, c.position.z - oz) / dt : 0, 15, dt);
 
       // курс: по движению, в покое — к игроку
-      if (c.speed > 0.35) { c.yaw = dampAngle(c.yaw, Math.atan2(c.position.z - oz, c.position.x - ox), 9, dt); c.idleT = 0; }
+      c.moving = c.speed > (c.moving ? 0.2 : 0.4);
+      if (c.moving) { if (Math.hypot(c.position.x - ox, c.position.z - oz) > 1e-5) c.yaw = dampAngle(c.yaw, Math.atan2(c.position.z - oz, c.position.x - ox), 9, dt); c.idleT = 0; }
       else {
         c.idleT += dt;
         if (c.idleT > C.idleDelay) c.yaw = dampAngle(c.yaw, Math.atan2(pl.position.z - c.position.z, pl.position.x - c.position.x), 2.5, dt);
@@ -205,7 +226,9 @@ export function create(game) {
 
       sync(c);
       // Режим шага: повторяют игрока; в открытом эрге на малой скорости — тоже походка по песку.
-      const desert = pl.moveMode === 'desert' || (game.space === 'desert' && c.speed > 0.2 && c.speed < 2.7);
+      // гистерезис по скорости: режим шага не «моргает» около порога
+      c.walkDesert = game.space === 'desert' && c.speed > 0.2 && c.speed < (c.walkDesert ? 3.0 : 2.5);
+      const desert = pl.moveMode === 'desert' || c.walkDesert;
       c.figure.animate(c.speed, dt, desert ? 1 : 0, { desert, allowPause: false, wind: undefined, slope: 0 });
     }
   };

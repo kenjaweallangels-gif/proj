@@ -416,6 +416,13 @@ export function create(game) {
   function visualUpdate(dt, t) {
     const st = worm.state;
     const inDesert = game.space !== 'sietch';
+    // В сиетче червя нет: пропускаем всю визуальную часть (частицы, сетки холма/ряби, спина) — раньше это стоило 2–7 мс/кадр.
+    if (!inDesert && !director.active && !devour.active) {
+      if (body.group.visible) body.group.visible = false;
+      fx.group.visible = false; riders.group.visible = false; gear.group.visible = false;
+      syncColliders(false); worm.exposed = false;
+      return;
+    }
     const active = st === 'Pass' || st === 'Ridden' || worm.exposed || director.active || devour.active;
     const resting = tame && K.speed < 0.5;
     spine.waveAmp = tame ? (resting ? 0.35 : 0.9) : 0;
