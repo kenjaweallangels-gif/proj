@@ -111,9 +111,26 @@ export function create(game) {
   }
 
   // ---- Озвучка ----
-  // Реплики озвучивает game.audio.voice на вымышленном языке (nativeScript → арабский TTS либо формантный синтезатор по native).
+  // Реплики озвучивает game.audio.voice на вымышленном языке: запись Piper по ID (assets/vo.js, только Line_Native); TTS браузера и синтезатора нет.
   // Здесь только данные: в событие 'subtitle' уходят перевод (text), native и nativeScript. Русский/английский текст не озвучивается.
   const cancelSpeech = () => game.audio?.voice?.stop?.();
+
+  // ---- Темп беседы (Ред. 3): пауза после реплики зависит от характера разговора ----
+  // Перебивка (следующий говорящий злится/боится/спешит) — реплики накладываются (отрицательный зазор); задумчивые и шёпотные — длинная пауза;
+  // шутка — короткая «пауза на смех»; прочее — 0.3–0.6 с с детерминированным разбросом по ID.
+  let nextOverlap = false;
+  const hash01 = (str) => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return ((h >>> 0) % 1000) / 1000; };
+  function lineGap(r, nx) {
+    const j = hash01(r.id);
+    if (!nx) return 0.7;                                   // конец цепочки
+    const diff = nx.speaker !== r.speaker;
+    if (diff && /^(Angry|Afraid)$/.test(nx.emotion) && !/^(Whisper|Reverent)$/.test(r.emotion)) return -0.28 + j * 0.1;   // перебивает
+    if (diff && nx.emotion === 'Tense' && r.emotion === 'Tense') return -0.12;
+    if (/^(Whisper|Reverent)$/.test(r.emotion) || r.emotion === 'Sad') return 0.9 + j * 0.3;                        // задумчиво
+    if (/^(Wry|Amused|Joy)$/.test(r.emotion)) return diff ? 0.6 + j * 0.25 : 0.4;                                   // пауза на смех
+    if (/^(Calm|Warm)$/.test(r.emotion) && /^(Neutral|Calm|Warm)$/.test(nx.emotion)) return 0.5 + j * 0.3;
+    return 0.3 + j * 0.25;
+  }
 
   // ---- Цепочки ----
   function startLine(id, ignoreCond) {
@@ -132,9 +149,11 @@ export function create(game) {
     const isLore = r.speaker === 'Lore';
     // Длительность субтитра = длина записи озвучки (+ небольшая пауза между репликами); без записи — Duration из таблицы / оценка по тексту.
     const audioDur = isLore ? 0 : vo.duration(id);
-    const duration = audioDur > 0 ? audioDur + 0.4 : (r.duration > 0 ? r.duration : (isLore ? clamp(0.07 * text.length + 2, 4, 10) : autoDuration(text)));
+    const gap = audioDur > 0 ? lineGap(r, row(r.next)) : 0.4;
+    const duration = audioDur > 0 ? Math.max(0.6, audioDur + gap) : (r.duration > 0 ? r.duration : (isLore ? clamp(0.07 * text.length + 2, 4, 10) : autoDuration(text)));
     remaining = duration;
-    bus.emit('subtitle', { id, speaker: r.speaker, name: speakerName(r.speaker), text, native, nativeScript, galach, duration, kind: isLore ? 'lore' : 'line', emotion: r.emotion, chain: chainStart, audio: audioDur > 0 });
+    const overlap = nextOverlap; nextOverlap = gap < 0;
+    bus.emit('subtitle', { id, speaker: r.speaker, name: speakerName(r.speaker), text, native, nativeScript, galach, duration, kind: isLore ? 'lore' : 'line', emotion: r.emotion, chain: chainStart, audio: audioDur > 0, overlap });
   }
   function lineDone() {
     const id = curId;
@@ -191,6 +210,16 @@ export function create(game) {
       const nat = lineParts(r).native;
       bus.emit('subtitle', { id, speaker: 'Lore', name: '', text, native: nat, duration, kind: 'lore' });
     },
+    /** Одиночная озвученная реплика вне цепочки (комментарий спутника, окрик наездницы): субтитр + запись по ID. pos — Vector3 говорящего. */
+    say(id, pos) {
+      const r = row(id);
+      if (!r) return null;
+      const { text, native, nativeScript } = lineParts(r);
+      const ad = vo.duration(id);
+      const duration = ad > 0 ? ad + 0.3 : (r.duration > 0 ? r.duration : autoDuration(text));
+      bus.emit('subtitle', { id, speaker: r.speaker, name: speakerName(r.speaker), text, native, nativeScript, duration, kind: 'line', emotion: r.emotion, pos: pos || null, audio: ad > 0 });
+      return r;
+    },
     /** Лай толпы: pos — Vector3 говорящего; работает только в радиусе 10 м от игрока. */
     bark(archetype, context, pos) {
       if (!barks.length) return null;
@@ -214,7 +243,8 @@ export function create(game) {
       // Во время сюжетной реплики — не более одного лай-субтитра одновременно.
       if (playing && t < barkUntil) return chosen;
       const text = textOf(chosen);
-      const duration = clamp(autoDuration(text), 1.8, 5);
+      const bd = vo.duration(chosen.id);
+      const duration = bd > 0 ? bd + 0.3 : clamp(autoDuration(text), 1.8, 5);
       barkUntil = t + duration;
       bus.emit('subtitle', { id: chosen.id, speaker: '', name: '', text, duration, kind: 'bark', pos: pos || null, archetype: chosen.archetype });
       return chosen;

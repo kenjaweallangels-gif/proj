@@ -53,7 +53,7 @@ export function createMenus(game, root, ctx) {
       location.href = u.toString();
     });
     chips(opts, tr('Субтитры', 'Subtitles'), ['S', 'M', 'L'].map((s) => ({ id: s, label: s })), S.subSize, (s) => { S.subSize = s; saveSettings(game); ctx.applySubtitleSettings(); });
-    chips(opts, tr('Голос', 'Voice'), ['auto', 'synth', 'off'].map((m) => ({ id: m, label: voiceLabel(m) })), S.voiceMode === 'tts' ? 'auto' : S.voiceMode, (m) => setVoiceMode(game, m));
+    chips(opts, tr('Голос', 'Voice'), ['auto', 'off'].map((m) => ({ id: m, label: voiceLabel(m) })), S.voiceMode === 'off' ? 'off' : 'auto', (m) => setVoiceMode(game, m));
     if (ctx.actions.weather) {
       const g = el('div', 'opt', opts);
       const c = el('span', 'ch wxlink', g, tr('Погода и время', 'Weather & time')); c.title = 'F2';

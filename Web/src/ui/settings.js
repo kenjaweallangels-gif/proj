@@ -1,7 +1,7 @@
 // Пользовательские настройки (язык, субтитры, режим голоса, показ родной строки, громкость) — хранятся в localStorage.
 // Заполняют game.settings: subSize 'S'|'M'|'L', subBg, voice, volume{master,music,sfx,amb,vo}.
 const KEY = 'rakis.web.settings.v1';
-export const VOICE_MODES = ['auto', 'tts', 'synth', 'off'];
+export const VOICE_MODES = ['auto', 'off'];   // TTS браузера и формантный синтезатор в игре не используются (Ред. 3)
 const DEFAULT_VOLUME = { master: 0.9, music: 0.8, sfx: 1, amb: 1, vo: 1 };
 
 function readStore() {
