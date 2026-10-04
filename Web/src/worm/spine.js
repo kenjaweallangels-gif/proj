@@ -5,10 +5,10 @@
 // Высота земли под каждой точкой истории кэшируется при записи (GY): heightAt стоит 30–150 мкс, перебирать его по сотням точек каждый кадр нельзя.
 import * as THREE from 'three';
 
-export const SEG_COUNT = 400;             // колец (было 90 → 360 м). 400 → 1600 м; Ø 40 м, кольцо 4 м не меняются
+export const SEG_COUNT = 900;             // колец (было 90 → 360 м). 900 → 3600 м (×10); Ø 40 м, кольцо 4 м не меняются
 export const SEG_LEN = 4;
 export const N_PTS = SEG_COUNT + 1;      // 0 — основание головы, SEG_COUNT — кончик хвоста
-export const TEX_W = 512;                 // ширина текстуры позвоночника (>= N_PTS)
+export const TEX_W = 1024;                // ширина текстуры позвоночника (>= N_PTS)
 export const LENGTH = SEG_COUNT * SEG_LEN;
 export const RADIUS = 20;
 
@@ -71,7 +71,7 @@ export class Spine {
     this.last.copy(headPos);
     this.e = 0;
     this.groundFn = groundFn;
-    const GS = 8;                         // рельеф опрашиваем через 8 м и интерполируем (CAP записей × heightAt дали бы паузу)
+    const GS = 16;                        // рельеф опрашиваем через 8 м и интерполируем (CAP записей × heightAt дали бы паузу)
     const nS = Math.ceil(CAP / GS) + 2, S = new Float32Array(nS);
     for (let j = 0; j < nS; j++) S[j] = groundFn(headPos.x - dirX * j * GS, headPos.z - dirZ * j * GS);
     for (let i = 0; i < CAP; i++) {

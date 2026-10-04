@@ -14,19 +14,18 @@ import * as THREE from 'three';
 import { clamp, lerp, smoothstep, rng } from '../core/util.js';
 import { GOLDEN_PATH } from '../core/layout.js';
 import { colliders } from '../core/colliders.js';
-import { choosePath, RIDGE_CLEAR } from './path.js';
-import { ridgeQuery, RQR } from '../core/ridge.js';
+import { choosePath } from './path.js';
 import { RADIUS } from './spine.js';
 
 export const DIALOGUE_ID = 'DLG_A2_RIDER_01';
 
 /** Все числа сцены (метры, секунды, радианы). */
 export const ENCOUNTER_TUNING = {
-  vCruise: 40, aAcc: 3.0, aBrake: 2.2, tiredFrom: 0.55,    // к концу дуги голова еле ползёт (устал)
+  vCruise: 46, aAcc: 3.0, aBrake: 2.2, tiredFrom: 0.55,    // к концу дуги голова еле ползёт (устал)
   ossWalk: 3.0, ossRun: 4.6, ossClimb: 4.2, ossBackWalk: 2.4, talkDist: 4.0,
   collapseTime: 14, sagBody: 5.0, sagHead: 3.5, spread: 0.06, restRate: 0.32, mouthRest: 0.1,
   dismountDelay: { Ossana: 0.4, Rider3: 1.6, Rider4: 2.4, Rider5: 3.1, Rider1: 4.0 },
-  exposedLen: 900, riseLen: 150, shakeArrive: 0.12, shakeCollapse: 0.06, stationReach: 24, keepOut: 84,   // длина тела над песком в конце; участок всплытия; дрожь (мягкая, только вблизи)
+  exposedLen: 1450, riseLen: 150, shakeArrive: 0.12, shakeCollapse: 0.06, stationReach: 24, keepOut: 84,   // длина тела над песком в конце; участок всплытия; дрожь (мягкая, только вблизи)
   sitDistance: 5.5, avoidMargin: 12, talkFallback: 6, talkGuard: 180, callEvery: 9,
 };
 
@@ -70,9 +69,7 @@ export class EncounterDirector {
     const clear = (x, z, extra = 0) => {
       tmp.set(x, ground(x, z), z);
       if (game.collide(tmp, RADIUS + T.avoidMargin + extra, { ignore: 'worm', height: 3 })) return [tmp.x, tmp.z];
-      // хребет: выталкиваем от основания массива
-      const rd = ridgeQuery(x, z);
-      if (rd < RIDGE_CLEAR + extra) { const k = RIDGE_CLEAR + extra - rd; return [x + RQR.ox * k, z + RQR.oz * k]; }
+      // хребет не выталкиваем (сдвиги вдоль нормали массива уводят путь на сотни метров): choosePath берёт курс, при котором путь допустим (valid: ridgeQuery)
       // группа: голова — не ближе T.keepOut от игрока (иначе обход валунов прижимает длинное тело к людям)
       const dx = x - G.x, dz = z - G.z, d = Math.hypot(dx, dz);
       if (d < T.keepOut && d > 1e-3) return [G.x + dx / d * T.keepOut, G.z + dz / d * T.keepOut];
@@ -295,6 +292,7 @@ export class EncounterDirector {
         this.shakeV = lerp(this.shakeV || 0, T.shakeArrive * smoothstep(200, 45, this.bodyDist()) * smoothstep(5, 28, this.v), 1 - Math.exp(-dt / 1.2));   // только вблизи тела и пока ползёт; медленно
         if (this.shakeV > 0.008) game.shake = Math.max(game.shake || 0, this.shakeV);
         if (left < 0.4 && this.v < 0.9) { this.advanceTo(path.uStop); this.startCollapse(); }
+        else if (left < 220 && this.v < 0.3 && (this.blockT > 5 || (this.stallT || 0) > 5)) this.startCollapse();     // упёрлись в препятствие у цели — ложимся здесь (не зависаем)
         break;
       }
       case 'stop': this.updateCollapse(dt); break;

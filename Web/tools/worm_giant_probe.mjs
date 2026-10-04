@@ -13,7 +13,7 @@ await page.evaluate(() => { const w = window.__rakis.worm, u0 = w.update, l0 = w
 
 const stat = () => page.evaluate((scene) => {
   const g = window.__rakis, w = g.worm, sp = w.spine, P = sp.P, pl = g.player.position;
-  const N = sp.EX.length > 401 ? 401 : 401;
+  const N = sp.EX.length > 901 ? 901 : 901;
   let nan = 0; for (let i = 0; i < N * 3; i++) if (!Number.isFinite(P[i])) nan++;
   let dMin = 1e9, dHead = Math.hypot(P[0] - pl.x, P[2] - pl.z), dHarv = 1e9, ex = 0, hMax = -1e9;
   const hv = g.harvester?.position;
@@ -34,7 +34,7 @@ async function shots(label) {
   for (const v of views) {
     const c = await page.evaluate(([v, scene]) => {
       const g = window.__rakis, V = g.THREE.Vector3, w = g.worm, sp = w.spine, P = sp.P, pl = g.player.position, fc = g.freecam;
-      const ex = []; for (let i = 0; i < 401; i++) if (sp.EX[i]) ex.push(i);
+      const ex = []; for (let i = 0; i < 901; i++) if (sp.EX[i]) ex.push(i);
       const i0 = ex.length ? ex[0] : 0, i1 = ex.length ? ex[ex.length - 1] : 0, im = (i0 + i1) >> 1;
       const mid = new V(P[im * 3], P[im * 3 + 1], P[im * 3 + 2]), head = new V(P[0], P[1], P[2]);
       const span = Math.hypot(P[i0 * 3] - P[i1 * 3], P[i0 * 3 + 2] - P[i1 * 3 + 2]);
@@ -62,10 +62,11 @@ console.log('pre :', JSON.stringify(await stat()));
 const log = [];
 if (scene === 'arrival') {
   await page.evaluate(() => { window.__rakis.worm.playReveal(); });
+  console.log('path:', await page.evaluate(() => { const p = window.__rakis.worm.director.path; return JSON.stringify({ valid: p.valid(), avoided: +p.avoided.toFixed(0), heading: +p.heading.toFixed(2), log: window.__pathLog, start: [p.X[0], p.Z[0]].map(Math.round), len: Math.round(p.len), uStop: Math.round(p.uStop) }); }));
   await page.evaluate(() => { window.__rakis.freecam.detach?.(); });
   const got = new Set();
   let guard = 0, cpu = 0;
-  while (guard++ < 400) {
+  while (guard++ < Number(arg('maxsteps', 60))) {
     await step(2);
     const w = await page.evaluate(() => ({ ms: window.__wms / Math.max(1, window.__wn) }));
     cpu = Math.max(cpu, w.ms);
@@ -76,6 +77,7 @@ if (scene === 'arrival') {
     if (s.phase === 'dismount' && !got.has('dismount')) { got.add('dismount'); await step(8); await shots('dismount'); }
     if (s.phase === 'talk' || s.phase === 'rest') break;
   }
+  console.log('dir:', await page.evaluate(() => { const d = window.__rakis.worm.director; return JSON.stringify({ u: +d.u.toFixed(1), uStop: +d.path.uStop.toFixed(1), v: d.v, blockT: d.blockT, stallT: d.stallT, blocked: d.blockedAhead(), person: d.personAhead(), surfaced: d.surfaced }); }));
   const last = await stat();
   console.log('FINAL:', JSON.stringify(last), '| worm CPU max per step (ms, loaded machine):', cpu.toFixed(2));
   console.log('closest body-to-player over scene:', Math.min(...log.map((s) => s.dBody)), 'm; closest head:', Math.min(...log.map((s) => s.dHead)));

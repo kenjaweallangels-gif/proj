@@ -53,9 +53,9 @@ export function create(game) {
   scene.add(body.group, gear.group, riders.group, fx.group);
   body.group.visible = false;
 
-  // ---- твёрдое тело: цепочка капсул (owner 'worm'), по одной на COL_STEP колец (16 м); обновляется, пока тело над песком ----
+  // ---- твёрдое тело: цепочка капсул (owner 'worm'), по одной на COL_STEP колец (32 м); обновляется, пока тело над песком ----
   // Закопанные звенья не трогаем (припаркованы под землёй, solid=false): игрок не упирается в невидимое, а цена не растёт с длиной.
-  const COL_STEP = 4;
+  const COL_STEP = 8;
   const COL_N = Math.floor((N_PTS - 1) / COL_STEP);
   const wormCols = [];
   for (let i = 0; i < COL_N; i++) {
