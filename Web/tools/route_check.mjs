@@ -36,7 +36,10 @@ await p.evaluate(() => window.__rakis.sietch.enter('exit'));
 await p.waitForTimeout(2500);
 const ex = await p.evaluate(() => (window.__rakis.sietch.exitPath || []).map((q) => [q.x, q.z]));
 for (let i = 1; i < ex.length; i++) await walkTo(ex[i][0], ex[i][1], `exit_${i}`, 40, i === ex.length - 1);
-await walkTo(806, 395, 'to_garden', 120);
-await walkTo(830, 395, 'garden_in', 60);
+await walkTo(804, 395, 'to_garden', 120);        // лаз на восточной грани (дно сада 36 м)
+await walkTo(830, 397, 'garden_in', 60);
+// из сада наружу выхода нет: к цели далеко за стеной игрок упирается и остаётся на уровне дна
+await walkTo(832, 250, 'garden_wall_north', 20, false);
+console.log('after wall bump', JSON.stringify(await info()));
 console.log('errors', errs.length ? [...new Set(errs)].slice(0, 6) : 'none');
 await b.close();

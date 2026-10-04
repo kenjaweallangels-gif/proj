@@ -26,8 +26,8 @@ export const SEALS = [
 ];
 
 /**
- * Выходной туннель: от северо-восточной стены зала (ниже на 25 м) к устью котловины. ГЕОМЕТРИЯ ПОСТРОЕНА ОТ МИРОВОЙ ТОЧКИ УСТЬЯ
- * (core/layout.js: GARDEN.portal): последние 14 м идут строго на восток (мир +X), ровный пол на уровне устья сада, дальше — 3 м «хвоста»
+ * Выходной туннель: от северо-восточной стены зала (слегка вверх, +6 м) к устью высокой котловины. ГЕОМЕТРИЯ ПОСТРОЕНА ОТ МИРОВОЙ ТОЧКИ УСТЬЯ
+ * (core/layout.js: GARDEN.portal): последние 14 м идут строго на восток (мир +X), ровный пол на уровне дна сада (36 м; от зала путь слегка поднимается), дальше — 8 м «хвоста»
  * (меш обрезается плоскостью EXIT.cut, чтобы торец был открытым). Три галсов-змейки с плавными дугами, уклон ≤ 14°.
  * Пол — кусочно-линейный по оси (каждый сегмент трубы несёт СВОЮ плоскость пола: cave/field.js → subPrims).
  */
@@ -70,7 +70,7 @@ export const EXIT = (() => {
   }
   const cum = [0]; for (let i = 1; i < dense.length; i++) cum.push(cum[i - 1] + Math.hypot(dense[i][0] - dense[i - 1][0], dense[i][1] - dense[i - 1][1]));
   const length = cum[cum.length - 1];
-  const drop = -25;
+  const drop = GARDEN.portal.y - SIETCH_ORIGIN.y;      // +6: туннель к саду слегка поднимается от зала (30 м) к дну высокой котловины (36 м)
   // начало спуска — после того как путь вышел за стену зала (z < -19.5); конец — за FINAL+TAIL до торца
   let sA = 0; for (let i = 0; i < dense.length; i++) if (dense[i][1] < -19.5) { sA = cum[i]; break; }
   const sB = length - FINAL - TAIL;
@@ -79,8 +79,8 @@ export const EXIT = (() => {
   const easeY = (t, w = 0.14) => (t <= 0 ? 0 : t >= 1 ? 1 : t < w ? (t * t) / (2 * w * (1 - w)) : t > 1 - w ? 1 - ((1 - t) * (1 - t)) / (2 * w * (1 - w)) : (t - w / 2) / (1 - w));
   const floorAt = (sv) => drop * easeY((sv - sA) / (sB - sA));
   const ys = cum.map(floorAt);
-  // сечение: стандартное; на последних метрах — раструб, согласованный с рамой устья сада (3.0 × 4.3 м)
-  const sect = cum.map((sv) => { const k = Math.min(1, Math.max(0, (sv - (length - FINAL - TAIL - 2)) / 8)); return { rw: 1.5 + 0.25 * k, rh: 2.0 + 0.4 * k, h0: 0.95 + 0.25 * k }; });
+  // сечение: стандартное; к устью сужается до низкого лаза ≈ 1.8–2 м шириной и ≈ 2.3 м высотой (без раструба и рамы)
+  const sect = cum.map((sv) => { const k = Math.min(1, Math.max(0, (sv - (length - FINAL - TAIL - 12)) / 10)); return { rw: 1.5 - 0.5 * k, rh: 2.0 - 0.7 * k, h0: 0.95 }; });
   return { nodes: dense, ys, cum, length, drop, sect, mouth: M, dir: d, tail: TAIL, final: FINAL, sA, sB, floorAt, portalIndex: dense.length - 1, portalLen: length - TAIL,
     /** Плоскость обрезки: треугольники, у которых (p − mouth)·dir > cutT, не рисуются (открытый торец). */
     cutT: 0.35 };
@@ -219,7 +219,7 @@ export function planGlobePositions() {
   add('B5', 153, -1.7, 2.4, 0.8); add('B5', 153, 1.7, 2.4, 0.8);
   for (const z of [-2.8, 0, 2.8]) add('B5', 193.5, z, 5.8 + (z === 0 ? 0.6 : 0), 1.2);
   add('B5', 197, -4, 5.0, 1.0); add('B5', 197, 4, 5.0, 1.0);
-  { let nextS = 5; EXIT.nodes.forEach((n, i) => { if (EXIT.cum[i] >= nextS && EXIT.cum[i] < EXIT.length - EXIT.tail - 1) { add('B5', n[0], n[1], EXIT.ys[i] + 2.5, 1.0, { exit: 1 }); nextS += 6.5; } }); }
+  { let nextS = 5; EXIT.nodes.forEach((n, i) => { if (EXIT.cum[i] >= nextS && EXIT.cum[i] < EXIT.length - EXIT.tail - EXIT.final - 3) { add('B5', n[0], n[1], EXIT.ys[i] + 2.5, 1.0, { exit: 1 }); nextS += 6.5; } }); }
   // B6: водяной погреб — холодные тусклые шары: лестница, тамбур, неф, ниши-кладовые, станция измерения.
   for (const [z, y] of [[12.5, 0.6], [16.5, -1.4], [20.5, -3.2], [24.5, -5.2]]) add('B6', CELLAR.stairs.x, z, y, 0.6);
   add('B6', 101.6, 31.2, -5.6, 0.6); add('B6', 111, 31.4, -6.5, 0.5);

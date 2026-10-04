@@ -28,7 +28,7 @@ const page = await browser.newPage({ viewport: { width: Number(arg('w', 1280)), 
 const errors = [];
 page.on('console', (m) => { const t = m.text(); if ((m.type() === 'error' || m.type() === 'warning') && !/AudioContext|GPU stall|ReadPixels/.test(t)) errors.push(`${m.type()}: ${t}`); if (/\[approach\]|\[garden\]/.test(t)) console.log(t); });
 page.on('pageerror', (e) => errors.push(String(e)));
-await page.goto(`file://${join(root, 'dist', arg('file', 'level.html'))}?autotest=1&q=${q}&lang=RU`);
+await page.goto(`file://${join(root, 'dist', arg('file', 'level.html'))}?autotest=1&q=${q}&lang=RU`, { timeout: 600000 });
 await page.waitForFunction(() => window.__rakis && window.__rakis.approach && window.__rakis.realTime > 1.5, null, { timeout: 900000 });
 await page.evaluate(() => { const g = window.__rakis; g.cinematic.active = true; g.cinematic.owner = 'level_shots'; g.timeScale = 1; });
 

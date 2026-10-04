@@ -11,7 +11,7 @@ const ENV = {
   A4_Crevice: { wind: 0.7, drip: 0.15, rev: 'desert', lp: 20000 },
   A5_Trail: { wind: 0.85, rev: 'desert', lp: 20000 },
   A6_Cleft: { wind: 0.6, drip: 0.25, rev: 'desert', lp: 20000 },
-  C1_Garden: { wind: 0.22, garden: 1, rev: 'desert', lp: 20000 },
+  C1_Garden: { wind: 0.12, garden: 1, rev: 'desert', lp: 20000 },   // высокая замкнутая котловина: ветра почти нет, тишина, редкие птицы и насекомые (воды нет)
   B1_Airlock: { wind: 0.05, hum: 0.5, murmur: 0.1, drip: 0.6, rev: 'sietch', lp: 9000 },
   B2_Gallery: { wind: 0, hum: 0.8, murmur: 0.55, drip: 0.2, cloth: 0.6, rev: 'sietch', lp: 11000 },
   B3_Passages: { wind: 0, hum: 0.5, murmur: 0.14, drip: 0.4, cloth: 0.7, rev: 'sietch', lp: 8000 },
@@ -149,15 +149,11 @@ export function createAmbience(game, eng) {
     return x < 12 ? 1 - sm(4.6, 6.2, x) : sm(18.2, 19.8, x);
   }
 
-  // ---------- Сад: птицы, насекомые, ручей ----------
-  const brookSrc = eng.loopNoise('pink'), brookBP = eng.filter('bandpass', 1900, 1.1), brookG = eng.gain(0);
-  brookSrc.connect(brookBP); brookBP.connect(brookG); brookG.connect(out); eng.send(brookG, 0.15);
-  const gurSrc = eng.loopNoise('brown'), gurBP = eng.filter('bandpass', 420, 2.2), gurG = eng.gain(0);
-  gurSrc.connect(gurBP); gurBP.connect(gurG); gurG.connect(out);
+  // ---------- Сад: редкие птицы на скалах, насекомые, тихий гул камня (воды в саду нет — ручья и всплесков нет) ----------
   const insSrc = eng.loopNoise('white'), insBP = eng.filter('bandpass', 5400, 16), insAM = eng.gain(0.5), insG = eng.gain(0);
   const insLFO = ctx.createOscillator(), insLG = eng.gain(0.5); insLFO.frequency.value = 34; insLFO.connect(insLG); insLG.connect(insAM.gain); insLFO.start();
   insSrc.connect(insBP); insBP.connect(insAM); insAM.connect(insG); insG.connect(out);
-  let nextBird = 0, nextDove = 0, nextPlop = 0, nextIns = 0;
+  let nextBird = 0, nextDove = 0, nextIns = 0;
   function birdCall(t) {
     const pan = rnd(-0.9, 0.9), base = rnd(2300, 4300), n = 1 + ((Math.random() * 5) | 0), up = Math.random() < 0.5;
     for (let i = 0; i < n; i++) {
@@ -179,14 +175,6 @@ export function createAmbience(game, eng) {
       o.connect(g); g.connect(eng.stereoPan(out, pan)); eng.send(g, 0.5); o.start(tt); o.stop(tt + 0.4);
     }
   }
-  function waterPlop(t) {
-    const f = rnd(500, 1300), o = ctx.createOscillator(); o.type = 'sine';
-    o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 1.9, t + 0.06);
-    const g = eng.gain(0);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(rnd(0.03, 0.07), t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
-    o.connect(g); g.connect(eng.stereoPan(out, rnd(-0.5, 0.5))); eng.send(g, 0.3); o.start(t); o.stop(t + 0.15);
-  }
-
   // ---------- Проёмы: расстояние до ближайшего выхода наружу (щель-вход, туннель в сад) ----------
   // Модуль сиетча может дополнительно выставить game.sietch.openings = [{x,y,z,kind:'garden'|'desert'}].
   const OPENINGS = [{ ...ENTRY.cleft, kind: 'desert' }, { ...GARDEN.portal, kind: 'garden' }];
@@ -267,14 +255,12 @@ export function createAmbience(game, eng) {
       }
       // сад
       const gd = env.garden;
-      eng.ramp(brookG.gain, 0.2 * gd, 1.2); eng.ramp(gurG.gain, 0.16 * gd, 1.2);
       eng.ramp(insG.gain, 0.08 * gd * (0.35 + 0.65 * night0), 1.5);
       if (gd > 0.05) {
         if (now > nextIns) { nextIns = now + rnd(2, 5); eng.ramp(insLFO.frequency, rnd(26, 44), 2); eng.ramp(insBP.frequency, rnd(4800, 6200), 2); }
         const day = 1 - night0;
-        if (day > 0.1 && now > nextBird) { birdCall(now + 0.02); nextBird = now + rnd(0.5, 3.2) / (gd * (0.2 + 0.8 * day)); }
+        if (day > 0.1 && now > nextBird) { birdCall(now + 0.02); nextBird = now + rnd(3, 11) / (gd * (0.2 + 0.8 * day)); }
         if (day > 0.1 && now > nextDove) { doveCoo(now + 0.02); nextDove = now + rnd(9, 22) / gd; }
-        if (now > nextPlop) { waterPlop(now + 0.01); nextPlop = now + rnd(0.4, 2.2) / gd; }
       }
       if (env.drip > 0.02 && now > nextDrip) { drip(now + 0.01); nextDrip = now + rnd(1.4, 5.5) / env.drip; }
       if (env.cloth > 0.05 && now > nextCloth) { clothFlap(now + 0.01); nextCloth = now + rnd(5, 14) / env.cloth; }

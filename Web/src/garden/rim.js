@@ -1,131 +1,164 @@
-// Каменное кольцо котловины: гребни со всех сторон (на западе — сама восточная грань Когтя), SDF → surface nets.
-// Гребни сидят на реальном рельефе; изнутри — отвесные слоистые стены, снаружи — пологие осыпи. Площадки под ветроловушки,
-// полка для совы, валуны у подножия, проём устья туннеля в грани Когтя. Чистый JS (node-тестируемый).
-import { Volume, noise3, fbm3, smin, smooth, mix, clamp, sdEllipsoid, sdBox } from '../level/sdf.js';
+// Каменная «чаша» высокой котловины: оболочка, заданная в полярных координатах вокруг центра сада C.
+// Профиль каждой колонки (θ): ниже дна → отвесная стена со слоистыми полками (LEDGE_H) и вертикальной трещиноватостью →
+// округлый гребень (45–105 м над дном) → крутой внешний склон до пустыни (подошва чуть утоплена в песок).
+// Западная часть оболочки лежит внутри «Когтя» (там котловина доходит до самой грани), эти квадраты отбрасываются (cull).
+// Материал — тот же шейдер скалы, что у Когтя (createLevelRockMaterial): страты, триплапланарные текстуры, песок на полках.
+// Снаружи оболочка читается как цельный скальный массив, прислонённый к восточной грани Когтя; внутрь ни с какой стороны виден лишь край гребня.
+// Чистый JS (без THREE): работает и в node (тесты).
+import { noise3, fbm3, smooth, mix, clamp } from '../level/sdf.js';
+import { C, FLOOR_Y, ringIn, ringH, LEDGE_H, WALL_LEAN, ledgeDepth, owlLedge, floorHeight } from './layout.js';
 import { rng } from '../core/util.js';
-import { C, FLOOR_Y, MOUTH, RAVINE, polyDist, ang, ringIn, ringH, ridgePads, owlLedge, radius } from './layout.js';
 
-export const RIM_ZONE = { x0: 764, x1: 960, z0: 322, z1: 470, y0: -1.2, y1: 36, h: 0.8 };
+const TAU = Math.PI * 2;
 
-export function createRim({ base, faceX, h = RIM_ZONE.h }) {
-  const Z = { ...RIM_ZONE, h };
-  const R = rng(777);
-  const pads = ridgePads();
-  const ledge = owlLedge();
+/** Ряды профиля: h — «опорная» высота при H = 110 (отрицательные — абсолютные), cum — сколько полок уже пройдено, noQuad — не соединять со следующим рядом. */
+function innerRows() {
+  const rows = [];
+  const push = (h, cum, noQuad = false) => rows.push({ h, cum, noQuad });
+  const seg = (a, b, cum) => { const n = Math.max(1, Math.round((b - a) / (0.7 + 0.05 * Math.max(a, 0)))); for (let i = 1; i <= n; i++) push(a + ((b - a) * i) / n, cum); };
+  push(-3, 0);
+  let prev = -3;
+  for (let k = 0; k < LEDGE_H.length; k++) {
+    const e = LEDGE_H[k];
+    seg(prev, e - 0.001, k);                 // стена до полки (последний ряд — нижняя кромка полки)
+    rows[rows.length - 1].noQuad = true;     // разрыв нормалей: низ полки не сглаживается с площадкой
+    push(e, k, false);                       // начало площадки (то же положение)
+    push(e + 0.12, k + 1, true);             // конец площадки (вынос наружу на глубину полки)
+    push(e + 0.12, k + 1, false);            // начало стены над полкой (то же положение)
+    prev = e + 0.12;
+  }
+  seg(prev, 110, LEDGE_H.length);
+  return rows;
+}
 
-  // относительная высота гребня над дном
-  const rel = (r, th) => {
-    const d = r - ringIn(th), H = ringH(th);
-    if (d <= 0) return 0;
-    if (d < 10) { const t = d / 10; return H * (1 - (1 - t) ** 3); }
-    return H * (1 - smooth(0, 1, (d - 10) / (H * 2.9)));
+export function createRim({ faceX, desertAt, quality = 'med' }) {
+  const NT = quality === 'low' ? 360 : quality === 'high' ? 720 : 540;
+  const NO = quality === 'low' ? 18 : 26;             // рядов внешнего склона
+  const IR = innerRows();
+  const nIn = IR.length;
+  const nRows = nIn + 3 + NO + 1;                      // стена, гребень (3), склон, «юбка» под песком
+  const LEAN = WALL_LEAN;                              // наклон стены наружу (м на м высоты)
+
+  /** Шум скальной стены (м): крупные блоки, вертикальные трещины-«борозды»; у самого дна гасится. */
+  const wallNoise = (x, y, z, hrel) => {
+    const k = smooth(0.2, 5.5, hrel);
+    return k * (0.95 * fbm3(x * 0.16, y * 0.2, z * 0.16, 3) + 0.32 * noise3(x * 0.95, y * 0.32, z * 0.95) + 0.1 * noise3(x * 2.6, y * 0.9, z * 2.6));
   };
-  const crestAt = (th) => FLOOR_Y + ringH(th);
-  const footCache = new Float32Array(720).fill(NaN);
-  const footY = (th) => { const q = Math.round(((th + Math.PI * 4) % (Math.PI * 2)) / (Math.PI * 2) * 719); if (!(footCache[q] === footCache[q])) { const t = (q / 719) * Math.PI * 2, rin = ringIn(t); footCache[q] = base(C.x + Math.cos(t) * (rin + 0.3), C.z + Math.sin(t) * (rin + 0.3)); } return footCache[q]; };
 
-  // валуны у подножия (3D)
-  const BOUL = [];
-  for (let i = 0; i < 90; i++) {
-    const th = R() * Math.PI * 2, r = ringIn(th) + (R() - 0.35) * 5;
-    const x = C.x + Math.cos(th) * r, z = C.z + Math.sin(th) * r;
-    if (x < faceX(z, 8) + 2) continue;
-    if (Math.hypot(x - 806, z - 394) < 12) continue;
-    if (x > 850 && polyDist(RAVINE.pts, x, z).d < RAVINE.w + 3.5) continue;
-    const s = 0.9 + Math.pow(R(), 2) * 2.6;
-    BOUL.push({ x, y: base(x, z) + s * 0.1, z, rx: s * (0.9 + R() * 0.6), ry: s * (0.55 + R() * 0.35), rz: s * (0.8 + R() * 0.5), yaw: R() * 6.28 });
-  }
-  const BC = 6, bnx = Math.ceil((Z.x1 - Z.x0) / BC) + 1, bnz = Math.ceil((Z.z1 - Z.z0) / BC) + 1;
-  const bgrid = Array.from({ length: bnx * bnz }, () => []);
-  for (const b of BOUL) {
-    b.cy = Math.cos(b.yaw); b.sy = Math.sin(b.yaw); const Rm = Math.max(b.rx, b.ry, b.rz) + 1;
-    for (let k = Math.floor((b.z - Rm - Z.z0) / BC); k <= Math.floor((b.z + Rm - Z.z0) / BC); k++) for (let i = Math.floor((b.x - Rm - Z.x0) / BC); i <= Math.floor((b.x + Rm - Z.x0) / BC); i++) if (i >= 0 && k >= 0 && i < bnx && k < bnz) bgrid[i + bnx * k].push(b);
-  }
-  const boulderD = (x, y, z) => {
-    const ci = Math.floor((x - Z.x0) / BC), ck = Math.floor((z - Z.z0) / BC);
-    if (ci < 0 || ck < 0 || ci >= bnx || ck >= bnz) return 99;
-    let d = 99;
-    for (const b of bgrid[ci + bnx * ck]) {
-      const dx = x - b.x, dz = z - b.z;
-      const v = sdEllipsoid(dx * b.cy + dz * b.sy, y - b.y, -dx * b.sy + dz * b.cy, b.rx, b.ry, b.rz);
-      if (v < d) d = v;
+  /** Профиль колонки θ: массивы r[], y[] по рядам (мир: расстояние от C и высота). Заполняет предоставленные буферы. */
+  function column(th, rr, yy) {
+    const cs = Math.cos(th), sn = Math.sin(th);
+    const rin = ringIn(th), H = ringH(th);
+    const fx = C.x + cs * (rin + 0.3), fz = C.z + sn * (rin + 0.3);
+    const yb = floorHeight(fx, fz);                        // подножие стены (с осыпью)
+    const dep = []; for (let k = 0; k < LEDGE_H.length; k++) dep.push(ledgeDepth(th, k));
+    let rTop = 0, yTop = 0;
+    for (let j = 0; j < nIn; j++) {
+      const row = IR[j];
+      const hrel = row.h > 0 ? (row.h * H) / 110 : row.h;
+      let acc = 0; for (let k = 0; k < row.cum; k++) acc += dep[k];
+      const r0 = rin + 0.3 + LEAN * Math.max(hrel, 0) + acc;
+      const y = yb + hrel;
+      const n = wallNoise(C.x + cs * r0, y, C.z + sn * r0, hrel);
+      rr[j] = r0 + (n > 0 ? n : n * 0.35); yy[j] = y;     // внутрь стена «зарывается» слабо (проход игрока ограничен ringIn − 0.9)
+      rTop = rr[j]; yTop = y;
     }
-    return d;
-  };
-
-  // высота поверхности гребня в точке (карта высот) с площадками
-  const surf = (x, z) => {
-    const r = radius(x, z), th = ang(x, z);
-    const rl = rel(r, th);
-    // гребень растёт от «подошвы» в этом направлении (дно с террасами не плоское), а не от константы FLOOR_Y
-    let y = rl > 0 ? footY(th) + rl : -1e9;
-    for (const p of pads) {
-      const dd = Math.hypot(x - p.x, z - p.z);
-      if (dd < p.r + 5) { const lvl = footY(p.th ?? ang(p.x, p.z)) + ringH(p.th ?? ang(p.x, p.z)) - 0.8; y = mix(y, Math.max(lvl, 0), 1 - smooth(p.r, p.r + 5, dd)); }
+    // гребень: округлое плечо шириной ~5 м
+    const rc = [rTop + 0.9, rTop + 2.8, rTop + 5.2], yc = [yTop + 0.5, yTop + 0.85, yTop + 0.35];
+    for (let q = 0; q < 3; q++) { rr[nIn + q] = rc[q] + 0.5 * noise3(cs * 9 + q, yTop * 0.1, sn * 9); yy[nIn + q] = yc[q] + 0.4 * noise3(cs * 7, q, sn * 7); }
+    // внешний склон: до пустыни (подошва утоплена на 2.5 м)
+    const r5 = rr[nIn + 2], y5 = yy[nIn + 2];
+    let foot = r5 + 0.28 * (y5 - 6), yF = 0;
+    for (let it = 0; it < 3; it++) { yF = desertAt(C.x + cs * foot, C.z + sn * foot) - 2.5; foot = r5 + Math.max(10, 0.29 * (y5 - yF)); }
+    const run = foot - r5;
+    for (let m = 1; m <= NO; m++) {
+      const t = m / NO;
+      const e = 0.5 * t + 0.5 * Math.pow(t, 2.1);
+      const px = C.x + cs * (r5 + run * e), pz = C.z + sn * (r5 + run * e), py = y5 + (yF - y5) * t;
+      const bulge = Math.sin(Math.PI * Math.min(1, t * 1.15)) * 3.2 * fbm3(px * 0.05, py * 0.06, pz * 0.05, 3) + 0.9 * Math.sin(Math.PI * t) * noise3(px * 0.35, py * 0.3, pz * 0.35);
+      rr[nIn + 2 + m] = r5 + run * e + bulge; yy[nIn + 2 + m] = py;
     }
-    return Math.max(y, base(x, z));
-  };
-  // полка совы: ellipsoid-карниз, прижатый к внутренней стене
-  const ledgeD = (x, y, z) => {
-    const dx = x - ledge.x, dz = z - ledge.z;
-    if (Math.abs(dx) > 6 || Math.abs(dz) > 6) return 99;
-    // направление «наружу» (к стене) — по радиусу
-    const ux = Math.cos(ledge.th), uz = Math.sin(ledge.th);
-    const a = dx * ux + dz * uz, b = -dx * uz + dz * ux;
-    return sdEllipsoid(a + 0.3, y - (ledge.y - 0.55), b, 2.0, 0.55, 1.5);
-  };
-  // устье туннеля: полость вдоль +x от x0 до гребня грани, прямоугольное сечение со скруглением
-  const mouthD = (x, y, z) => {
-    const w = faceX(MOUTH.z, MOUTH.y + 2);
-    const len = (w + 10 - Z.x0) / 2;
-    return sdBox(x - (Z.x0 + len - 1), y - (MOUTH.y + MOUTH.h / 2 - 0.2), z - MOUTH.z, len, MOUTH.h / 2 + 0.4, MOUTH.w / 2 + 0.1, 0.5);
-  };
-  const wallD = (x, y, z) => {
-    if (x > 860) return 99;
-    const d = x - (faceX(z, y) + 0.55);
-    if (d > 6) return d;
-    return Math.max(d, -mouthD(x, y, z));
-  };
-
-  // выходной овраг: вырез над дном (борта слегка расходятся с высотой — V-образный каньон)
-  const cutTmp = { d: 0, s: 0 };
-  const ravineCut = (x, y, z) => {
-    if (x < 850) return 99;
-    const q = polyDist(RAVINE.pts, x, z);
-    const g = base(x, z);
-    const wy = RAVINE.w + 0.5 + 0.32 * Math.max(0, y - g) + 0.5 * noise3(x * 0.3, y * 0.2, z * 0.3);
-    return Math.max(q.d - wy, g - y);
-  };
-  function dfCheap(x, y, z) {
-    let d = (y - surf(x, z)) * 0.8;
-    { const c = ravineCut(x, y, z); if (c < 3) d = Math.max(d, -c); }
-    const b = boulderD(x, y, z); if (b < d) d = smin(d, b, 0.5);
-    const l = ledgeD(x, y, z); if (l < d) d = smin(d, l, 0.4);
-    const w = wallD(x, y, z); d = smin(d, w, 1.0);
-    // нависающий карниз внутренней стены: 3D-смещение зависит от высоты
-    return d;
-  }
-  function dfFull(x, y, z) {
-    const d = dfCheap(x, y, z);
-    if (d > 3.2 || d < -3.2) return d;
-    const r = radius(x, z), th = ang(x, z);
-    const dd = r - ringIn(th);
-    const wallK = smooth(-2, 3, dd) * (1 - smooth(10, 22, dd));      // сильнее на внутренней стене
-    const n = 0.7 * fbm3(x * 0.2, y * 0.25, z * 0.2, 3) + 0.3 * noise3(x * 0.9, y * 0.9, z * 0.9);
-    const sy = y * 0.52 + 0.9 * noise3(x * 0.05, y * 0.02, z * 0.05);
-    const fr = sy - Math.floor(sy);
-    const strata = smooth(0.78, 0.97, fr) - 0.55 * smooth(0, 0.25, fr);
-    // у самой земли шум гасим: пол должен быть ровным (его рисует и держит отдельная сетка), скала «вырастает» из него
-    // вдоль стенок оврага шум тоже гасим: иначе у кромки выреза остаются тонкие «плиты» без опоры
-    const rk = x > 850 ? smooth(0, 1.6, ravineCut(x, y, z)) : 1;
-    const gk = smooth(0.1, 2.8, y - base(x, z)) * rk;
-    return d + (n * (0.8 + 0.9 * wallK) + strata * 0.4 * wallK) * gk;
+    rr[nRows - 1] = foot + 1.2; yy[nRows - 1] = yF - 3;
+    return { rin, H, yb, foot };
   }
 
-  const nx = Math.round((Z.x1 - Z.x0) / h) + 1, nz = Math.round((Z.z1 - Z.z0) / h) + 1, ny = Math.round((Z.y1 - Z.y0) / h) + 1;
-  const volume = new Volume([Z.x0, Z.y0, Z.z0], [nx, ny, nz], h);
-  return {
-    ZONE: Z, volume, BOUL, ledge, pads, surf, dfCheap, dfFull, crestAt,
-    build() { volume.fill(dfCheap, dfFull, 4, 1.9); volume.buildColumns(3); return volume; },
-  };
+  const bufR = new Float64Array(nRows), bufY = new Float64Array(nRows);
+  const feet = new Float32Array(NT);                    // радиус подошвы внешнего склона по θ_i
+  /** Меш: {position, normal, mark, index}. cull(x,y,z) → true, если вершина лежит внутри Когтя. */
+  function build() {
+    const P = new Float32Array(nRows * NT * 3);
+    const isIn = new Uint8Array(nRows * NT);
+    for (let i = 0; i < NT; i++) {
+      const th = (i / NT) * TAU - Math.PI, cs = Math.cos(th), sn = Math.sin(th);
+      const col = column(th, bufR, bufY);
+      feet[i] = col.foot;
+      for (let j = 0; j < nRows; j++) {
+        const o = (j * NT + i) * 3;
+        const x = C.x + cs * bufR[j], z = C.z + sn * bufR[j];
+        P[o] = x; P[o + 1] = bufY[j]; P[o + 2] = z;
+        if (z > 324 && z < 468 && bufY[j] < 148) isIn[j * NT + i] = x < faceX(z, Math.max(bufY[j], 4)) - 1.2 ? 1 : 0;
+      }
+    }
+    // индексы: пропускаем квады между дублирующими рядами (noQuad) и целиком внутри Когтя
+    const idx = [];
+    const rowNo = (j) => (j < nIn ? IR[j].noQuad : false);
+    for (let j = 0; j < nRows - 1; j++) {
+      if (rowNo(j)) continue;
+      for (let i = 0; i < NT; i++) {
+        const i1 = (i + 1) % NT;
+        const a = j * NT + i, b = j * NT + i1, c = (j + 1) * NT + i1, d = (j + 1) * NT + i;
+        if (isIn[a] && isIn[b] && isIn[c] && isIn[d]) continue;
+        idx.push(a, b, c, a, c, d);
+      }
+    }
+    const N = new Float32Array(nRows * NT * 3);
+    for (let t = 0; t < idx.length; t += 3) {
+      const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+      const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2], vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2];
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      for (const o of [a, b, c]) { N[o] += nx; N[o + 1] += ny; N[o + 2] += nz; }
+    }
+    for (let o = 0; o < N.length; o += 3) { const l = Math.hypot(N[o], N[o + 1], N[o + 2]) || 1; N[o] /= l; N[o + 1] /= l; N[o + 2] /= l; }
+    // отметки для материала скалы: x — протоптанность (0), y — наносы песка: площадки полок и пологие участки, у дна
+    const mark = new Float32Array(nRows * NT * 2);
+    for (let v = 0; v < nRows * NT; v++) {
+      const ny = N[v * 3 + 1], yv = P[v * 3 + 1];
+      mark[v * 2 + 1] = clamp(0.3 * smooth(0.72, 1, ny) + 0.18 * (1 - smooth(0, 4, yv - FLOOR_Y)), 0, 0.5);
+    }
+    return { position: P, normal: N, mark, index: new Uint32Array(idx), NT, nRows };
+  }
+
+  // ---------- точки на стене (лишайники, присады птиц) ----------
+  const tmpR = new Float64Array(nRows), tmpY = new Float64Array(nRows);
+  /** Точка на внутренней стене в направлении θ на высоте hRel над подножием (≤ H): {x,y,z,nx,nz}; нормаль — внутрь котловины. */
+  function wallPoint(th, hRel) {
+    const col = column(th, tmpR, tmpY);
+    const y = col.yb + hRel;
+    let r = tmpR[0];
+    for (let j = 0; j < nIn - 1; j++) {
+      if (IR[j].noQuad) continue;
+      if (tmpY[j] <= y && tmpY[j + 1] >= y) { const t = (y - tmpY[j]) / Math.max(1e-6, tmpY[j + 1] - tmpY[j]); r = mix(tmpR[j], tmpR[j + 1], t); break; }
+    }
+    const cs = Math.cos(th), sn = Math.sin(th);
+    return { x: C.x + cs * r, y, z: C.z + sn * r, nx: -cs, nz: -sn, th };
+  }
+  /** Площадки-полки для присад: n точек {x,y,z,th,k} на глубине полки (случайно, но детерминированно). */
+  function ledgePerches(n, seed = 91) {
+    const R = rng(seed), out = [];
+    for (let tries = 0; out.length < n && tries < n * 30; tries++) {
+      const th = R() * TAU - Math.PI, k = 1 + ((R() * 6) | 0);
+      const d = ledgeDepth(th, k); if (d < 0.9) continue;
+      const col = column(th, tmpR, tmpY);
+      let a = -1; for (let q = 0; q < nIn - 1; q++) if (IR[q].cum === k && !IR[q].noQuad && IR[q + 1].cum === k + 1) { a = q; break; }
+      if (a < 0) continue;
+      const r = mix(tmpR[a], tmpR[a + 1], 0.6), cs = Math.cos(th), sn = Math.sin(th);
+      out.push({ x: C.x + cs * r, y: tmpY[a] + 0.04, z: C.z + sn * r, th, k, H: col.H });
+    }
+    return out;
+  }
+
+  return { NT, nRows, build, wallPoint, ledgePerches, ledge: owlLedge(), footR: (th) => {
+    const q = ((((th + Math.PI) / TAU) % 1) + 1) % 1 * NT; const i = Math.floor(q) % NT, i1 = (i + 1) % NT, u = q - Math.floor(q);
+    return feet[i] * (1 - u) + feet[i1] * u;
+  }, feet, column };
 }
