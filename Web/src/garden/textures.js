@@ -85,14 +85,17 @@ export function foliageTexture(kind, seed = 1) {
 export function palmFrondTexture() {
   const R = rng(4242);
   const [c, g] = canvas(256, 512);
-  g.strokeStyle = rgb(120, 98, 52); g.lineWidth = 5; g.beginPath(); g.moveTo(128, 512); g.lineTo(128, 6); g.stroke();
-  for (let i = 0; i < 74; i++) {
-    const y = 500 - i * 6.6;
-    const len = 112 * Math.sin(Math.PI * Math.min(1, (i + 6) / 80)) + 14;
+  g.strokeStyle = rgb(112, 92, 48); g.lineWidth = 7; g.lineCap = 'round'; g.beginPath(); g.moveTo(128, 512); g.lineTo(128, 6); g.stroke();
+  // перистый лист: широкие длинные листочки, лежащие внахлёст (держатся при mip-уровнях и alpha-test), вершина — пучок
+  for (let i = 0; i < 52; i++) {
+    const y = 504 - i * 9.4;
+    const len = 118 * Math.sin(Math.PI * Math.min(1, (i + 5) / 56)) + 18;
     for (const sg of [-1, 1]) {
-      const col = jitter([96, 134, 62], 34, R);
-      g.strokeStyle = rgb(...col); g.lineWidth = 3.2;
-      g.beginPath(); g.moveTo(128, y); g.quadraticCurveTo(128 + sg * len * 0.55, y - 8 + R() * 6, 128 + sg * len, y + 12 + R() * 8); g.stroke();
+      const col = jitter([78, 132, 52], 30, R);
+      g.strokeStyle = rgb(...col); g.lineWidth = 6.5;
+      g.beginPath(); g.moveTo(128, y); g.quadraticCurveTo(128 + sg * len * 0.55, y - 14 + R() * 6, 128 + sg * len, y + 16 + R() * 8); g.stroke();
+      g.strokeStyle = rgb(col[0] + 24, col[1] + 26, col[2] + 14, 0.5); g.lineWidth = 1.6;
+      g.beginPath(); g.moveTo(128, y); g.quadraticCurveTo(128 + sg * len * 0.55, y - 14, 128 + sg * len * 0.96, y + 14); g.stroke();
     }
   }
   return tex(c);

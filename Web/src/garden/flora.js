@@ -5,7 +5,8 @@ import { rng, clamp, smoothstep } from '../core/util.js';
 import { createLevelRockMaterial } from '../level/rockmat.js';
 import { buildGrass, buildShrub, buildTree, buildPalm, buildFlower, InstGroup, makePlantMaterial } from './plants.js';
 import { grassTexture, foliageTexture, palmFrondTexture, flowerTexture, barkTexture } from './textures.js';
-import { C, FLOOR_Y, MOUTH, CHANNELS, BEDS, PLAZA, POND, BASIN, ringIn, nearChannel, inBed, ang, radius } from './layout.js';
+import { C, FLOOR_Y, MOUTH, CHANNELS, BEDS, PLAZA, POND, BASIN, RAVINE, polyDist, pathAt, ringIn, nearChannel, inBed, ang, radius } from './layout.js';
+import { WALL } from './ground.js';
 
 const V3 = THREE.Vector3;
 
@@ -43,8 +44,8 @@ export function createFlora(game, { ground, faceAt, root, quality, towerSites = 
 
   const grass = grassG.map((g) => mkGroup([{ geo: g, mat: grassMat }], 62, false, 14, 'grass'));
   const dune = duneG.map((g) => mkGroup([{ geo: g, mat: duneMat }], 80, false, 16, 'dunegrass'));
-  const creo = creoG.map((g) => mkGroup([{ geo: g.leaf, mat: creoMat }, { geo: g.wood, mat: woodMat }], 95, true, 20, 'creosote'));
-  const salt = saltG.map((g) => mkGroup([{ geo: g.leaf, mat: saltMat }, { geo: g.wood, mat: woodMat }], 95, true, 20, 'saltbush'));
+  const creo = creoG.map((g) => mkGroup([{ geo: g.leaf, mat: creoMat }, { geo: g.wood, mat: woodMat }], 95, false, 20, 'creosote'));
+  const salt = saltG.map((g) => mkGroup([{ geo: g.leaf, mat: saltMat }, { geo: g.wood, mat: woodMat }], 95, false, 20, 'saltbush'));
   const tama = tamaG.map((g) => mkGroup([{ geo: g.leaf, mat: tamaMat }, { geo: g.wood, mat: woodMat }], 170, true, 28, 'tamarisk'));
   const aca = acaG.map((g) => mkGroup([{ geo: g.leaf, mat: acaMat }, { geo: g.wood, mat: woodMat }], 170, true, 28, 'acacia'));
   const palms = palmG.map((g) => mkGroup([{ geo: g.trunk, mat: barkMat }, { geo: g.fronds, mat: palmMat }], 260, true, 40, 'palm'));
@@ -56,6 +57,8 @@ export function createFlora(game, { ground, faceAt, root, quality, towerSites = 
   const plazaK = (x, z) => x > MOUTH.x + 0.5 && x < MOUTH.x + 18 && Math.abs(z - MOUTH.z) < 9;
   const free = (x, z, { m = 0.9, bed = false, water = true } = {}) => {
     if (!inBasin(x, z)) return false;
+    if (x > 850 && polyDist(RAVINE.pts, x, z).d < RAVINE.w + 1.2) return false;
+    if (!bed && m > 0.6 && pathAt(x, z) > 0.12) return false;
     if (water && nearChannel(x, z, m)) return false;
     if (!bed && inBed(x, z, m)) return false;
     if (plazaK(x, z) && Math.hypot(x - PLAZA.x, (z - PLAZA.z) / 0.85) < PLAZA.r + 0.6) return false;
@@ -128,7 +131,7 @@ export function createFlora(game, { ground, faceAt, root, quality, towerSites = 
   BEDS.forEach((b, bi) => {
     const kind = bi % 3;
     for (let x = b.x - b.hx + 1; x < b.x + b.hx - 0.4; x += 1.4) for (let z = b.z - b.hz + 0.8; z < b.z + b.hz - 0.4; z += 1.15) {
-      const jx = x + (R() - 0.5) * 0.25, jz = z + (R() - 0.5) * 0.25, y = ground(jx, jz) + 0.16;
+      const jx = x + (R() - 0.5) * 0.25, jz = z + (R() - 0.5) * 0.25, y = ground(jx, jz) + WALL.bedSoil;
       const row = Math.floor((x - b.x + b.hx) / 1.4);
       if (kind === 0) { const s = 0.45 + R() * 0.2; pick(salt).add(jx, y, jz, R() * 6.28, s, s, colorVar(0.2)); }
       else if (kind === 1) { if (row % 2) { const s = 0.28 + R() * 0.12; pick(tama).add(jx, y, jz, R() * 6.28, s, s, colorVar(0.2)); } else { const s = 0.45; pick(creo).add(jx, y, jz, R() * 6.28, s, s, colorVar(0.2)); } }
@@ -192,6 +195,21 @@ export function createFlora(game, { ground, faceAt, root, quality, towerSites = 
     if (r > 0.5) col({ type: 'sphere', c: new V3(x, y + r * 0.2, z), r: r * 0.85, tags: new Set(['rock']) });
     if (big && out.lizardRocks.length < 6) out.lizardRocks.push({ x, y: y + r * 0.66, z, r });
     i++;
+  }
+  // галька и щебень по земле: мелкая россыпь (без коллайдеров), гуще у подножия гребней и у тропы
+  {
+    const pebGeo = (() => { const g = new THREE.IcosahedronGeometry(1, 1); const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const k = 1 + 0.2 * Math.sin(x * 5 + z * 3) * Math.cos(y * 4); p.setXYZ(i, x * k, y * k * 0.7, z * k); } g.computeVertexNormals(); return g; })();
+    const pebs = new InstGroup(root, [{ geo: pebGeo, mat: rockMat }], { range: 48, shadow: false, cell: 16, name: 'pebbles' }); out.groups.push(pebs);
+    const nPb = Math.round(900 * qf);
+    for (let i = 0, tries = 0; i < nPb && tries < nPb * 4; tries++) {
+      const th = R() * Math.PI * 2, rr = Math.sqrt(R()) * 53;
+      const x = C.x + Math.cos(th) * rr, z = C.z + Math.sin(th) * rr;
+      if (!inBasin(x, z, 1.5) || inBed(x, z, 0.5) || nearChannel(x, z, 0.3)) continue;
+      const edge = smoothstep(24, 50, rr), near = pathAt(x, z);
+      if (R() > 0.25 + 0.55 * edge + 0.3 * near) continue;
+      const s = 0.04 + Math.pow(R(), 2) * 0.16;
+      pebs.add(x, ground(x, z) + s * 0.1, z, R() * 6.28, s * (1 + R() * 0.6), s * (0.5 + R() * 0.4), colorVar(0.25, [0.95, 0.9, 0.82])); i++;
+    }
   }
   // гарантируем несколько «нагретых» плоских камней для ящериц на открытом месте
   for (const [x, z, r] of [[858, 372, 1.0], [868, 424, 1.1], [846, 436, 0.9], [872, 380, 0.85]]) {

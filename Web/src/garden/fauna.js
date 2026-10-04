@@ -34,7 +34,7 @@ function cyl(r0, r1, h, x, y, z, c, rot) {
   g.translate(x, y, z); return paint(g, hex(c));
 }
 const merge = (list) => { const g = mergeGeometries(list, false); list.forEach((x) => x.dispose()); g.computeBoundingSphere(); return g; };
-const mkMat = (key, o = {}) => fogPatch(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0, ...o }), key);
+const mkMat = (key, o = {}) => fogPatch(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0, envMapIntensity: 0.45, ...o }), key);
 
 /** Тонкий хвост из N сегментов вдоль -z с изгибом вверх; пивот в начале. */
 function tailGeo(len, r0, r1, curve, c, tuft) {
@@ -91,18 +91,18 @@ export function createFauna(game, { ground, flora, walkable, root, quality, play
     }
     update(dt, t, P) {
       const dx = this.x - P.x, dz = this.z - P.z, d = Math.hypot(dx, dz);
-      const awake = isNight() ? 1 : isDusk() ? 0.8 : 0.45;
+      const awake = isNight() ? 1 : isDusk() ? 0.9 : 0.75;
       if (this.state === 'hidden') {
         this.hiddenFor -= dt;
         this.vis = damp(this.vis, 0, 14, dt);
-        if (this.hiddenFor <= 0 && d > 9 && R() < awake * 0.4) { this.state = 'idle'; this.t = 0.6; this.x = this.home.x + (R() - 0.5) * 0.8; this.z = this.home.z + (R() - 0.5) * 0.8; }
+        if (this.hiddenFor <= 0 && d > 5 && R() < awake * 0.5) { this.state = 'idle'; this.t = 0.6; this.x = this.home.x + (R() - 0.5) * 0.8; this.z = this.home.z + (R() - 0.5) * 0.8; }
       } else {
         this.vis = damp(this.vis, 1, 10, dt);
       }
       this.g.visible = this.vis > 0.05;
       this.g.scale.setScalar(MS * Math.max(0.01, this.vis));
       if (this.state === 'hidden') { this.g.position.set(this.x, this.y, this.z); return; }
-      const fleeR = (P.speed > 4.2 ? 11 : 6.5);
+      const fleeR = (P.speed > 4.2 ? 8 : 3.8);
       const threatened = d < fleeR;
       if (this.hop) {
         const h = this.hop; h.t += dt / h.dur;
@@ -124,7 +124,7 @@ export function createFauna(game, { ground, flora, walkable, root, quality, play
           if (this.state === 'flee') {
             // к норе под ближайшим кустом, иначе прочь от игрока
             const hx = this.home.x - this.x, hz = this.home.z - this.z, hd = Math.hypot(hx, hz);
-            if (hd < 0.9) { this.state = 'hidden'; this.hiddenFor = 6 + R() * 8; this.t = 0; return; }
+            if (hd < 0.9) { this.state = 'hidden'; this.hiddenFor = 3 + R() * 4; this.t = 0; return; }
             let ax = dx / (d || 1), az = dz / (d || 1);
             const bias = hd < 14 ? 0.7 : 0.15;
             ax = ax * (1 - bias) + (hx / hd) * bias; az = az * (1 - bias) + (hz / hd) * bias;
@@ -159,7 +159,7 @@ export function createFauna(game, { ground, flora, walkable, root, quality, play
     for (let i = 0; i < n && shr.length; i++) {
       const s = shr[(R() * shr.length) | 0];
       const m = new Mouse(s.x + (R() - 0.5), s.z + (R() - 0.5), { x: s.x, z: s.z });
-      if (isDay() && R() < 0.55) { m.state = 'hidden'; m.hiddenFor = R() * 6; m.vis = 0; }
+      if (isDay() && R() < 0.12) { m.state = 'hidden'; m.hiddenFor = R() * 3; m.vis = 0; }
       out.mice.push(m); items.push(m);
     }
   }

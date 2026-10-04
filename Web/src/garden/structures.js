@@ -8,7 +8,8 @@ import { markMaterial } from '../level/marks.js';
 import { rng, clamp, smoothstep } from '../core/util.js';
 import { fogPatch, makePlantMaterial } from './plants.js';
 import { adobeTexture, flagstoneTexture, soilTexture, waterNormalTexture, louverTexture } from './textures.js';
-import { C, FLOOR_Y, MOUTH, FACE, CHANNELS, BASIN, POND, SPOUT, BEDS, PLAZA, windtrapSites, ringIn, floorHeight } from './layout.js';
+import { C, FLOOR_Y, MOUTH, CHANNELS, BASIN, POND, SPOUT, BEDS, PLAZA, windtrapSites, ringIn } from './layout.js';
+import { WALL } from './ground.js';
 
 const V3 = THREE.Vector3;
 
@@ -56,21 +57,22 @@ export function createStructures(game, { ground, rim, root, quality }) {
 
   // ---------------- материалы ----------------
   const stoneTex = adobeTexture(); stoneTex.repeat.set(1, 1);
-  const stoneMat = fogPatch(new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.93, color: 0xf0e0c6, vertexColors: true }), 'gd-stone');
-  const stonePlain = fogPatch(new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.93, color: 0xf0e0c6 }), 'gd-stone-plain');
+  const stoneMat = fogPatch(new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.95, envMapIntensity: 0.45, color: 0xf0e0c6, vertexColors: true }), 'gd-stone');
+  const stonePlain = fogPatch(new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.95, envMapIntensity: 0.45, color: 0xf0e0c6 }), 'gd-stone-plain');
   const flagTex = flagstoneTexture();
-  const flagMat = fogPatch(new THREE.MeshStandardMaterial({ map: flagTex, roughness: 0.9, color: 0xffffff, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), 'gd-flag');
+  const flagMat = fogPatch(new THREE.MeshStandardMaterial({ map: flagTex, roughness: 0.95, envMapIntensity: 0.4, color: 0xffffff, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), 'gd-flag');
   const soilTex = soilTexture();
-  const soilMat = fogPatch(new THREE.MeshStandardMaterial({ map: soilTex, roughness: 1, color: 0xd0c0b0, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }), 'gd-soil');
+  const soilMat = fogPatch(new THREE.MeshStandardMaterial({ map: soilTex, roughness: 1, envMapIntensity: 0.3, color: 0xd0c0b0, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }), 'gd-soil');
   const wnorm = waterNormalTexture(); wnorm.repeat.set(1, 1);
-  const waterMat = fogPatch(new THREE.MeshStandardMaterial({ color: 0x2f6c6a, roughness: 0.05, metalness: 0.0, transparent: true, opacity: 0.86, normalMap: wnorm, normalScale: new THREE.Vector2(0.5, 0.5), envMapIntensity: 1.4 }), 'gd-water');
+  const waterMat = fogPatch(new THREE.MeshStandardMaterial({ color: 0x2f6c6a, roughness: 0.03, metalness: 0.0, transparent: true, opacity: 0.88, normalMap: wnorm, normalScale: new THREE.Vector2(0.5, 0.5), envMapIntensity: 2.2 }), 'gd-water');
   const rockMat = createLevelRockMaterial({ band: 5.5, sand: 0.3 });
   const louverTex = louverTexture(); louverTex.wrapS = THREE.RepeatWrapping; louverTex.repeat.set(4, 1);
   const towerMat = fogPatch(new THREE.MeshStandardMaterial({ map: louverTex, roughness: 0.95, color: 0xffffff }), 'gd-tower');
   out.waterNormal = wnorm;
+  const snorm = wnorm.clone(); snorm.needsUpdate = true;          // отдельное смещение для падающей струи
 
   // ---------------- желоба ----------------
-  function channelMeshes(ch, { wall = 0.14, wh = 0.32, waterY = 0.17 } = {}) {
+  function channelMeshes(ch, { wall = WALL.channelT, wh = WALL.channel, waterY = 0.17 } = {}) {
     // дискретизация ломаной (0.5 м)
     const S = [];
     let s = 0;
@@ -86,7 +88,7 @@ export function createStructures(game, { ground, rim, root, quality }) {
       S[i].tx = tx; S[i].tz = tz; S[i].y = ch.yFn ? ch.yFn(S[i], i, S.length) : ground(S[i].x, S[i].z);
     }
     // стенки: плавно, чтобы лоток не «дрожал» на микрорельефе
-    for (let pass = 0; pass < 2; pass++) for (let i = 1; i < S.length - 1; i++) S[i].y = (S[i - 1].y + S[i].y * 2 + S[i + 1].y) / 4;
+    if (ch.yFn) for (let pass = 0; pass < 2; pass++) for (let i = 1; i < S.length - 1; i++) S[i].y = (S[i - 1].y + S[i].y * 2 + S[i + 1].y) / 4;
     const half = ch.w / 2;
     const P = [], N = [], U = [], I = [], Cc = [];
     const push = (x, y, z, nx, ny, nz, u, v) => { P.push(x, y, z); N.push(nx, ny, nz); U.push(u, v); return P.length / 3 - 1; };
@@ -149,7 +151,7 @@ export function createStructures(game, { ground, rim, root, quality }) {
         const nx = -q.tz, nz = q.tx;
         for (const [lat, a] of prof) {
           const x = q.x + nx * lat, z = q.z + nz * lat;
-          P.push(x, ground(x, z) + 0.05, z); N.push(0, 1, 0); Cc.push(0.2, 0.15, 0.1, a * 0.85);
+          P.push(x, ground(x, z) + 0.012, z); N.push(0, 1, 0); Cc.push(0.2, 0.15, 0.1, a * 0.85);
         }
       });
       for (let i = 0; i < S.length - 1; i++) for (let k = 0; k < prof.length - 1; k++) {
@@ -178,43 +180,69 @@ export function createStructures(game, { ground, rim, root, quality }) {
     out.drips.push({ x: x - w / 2 - 0.4, y: y + 0.6, z, h: 0.18 });
   }
   {
-    // пруд: неровный овал каменной кромки + вода
-    const { x, z, rx, rz } = POND, y = ground(x, z);
+    // пруд: котлован (в сетке пола), каменная кромка-галька по берегу + вода на уровне «берег − 12 см»
+    const { x, z, rx, rz } = POND, yShore = ground(x + rx + 2.2, z), yWater = yShore - 0.12;
     const list = [];
-    const n = 36;
+    const n = 40;
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2, wob = 1 + 0.08 * Math.sin(a * 3 + 1) + 0.04 * Math.sin(a * 7);
-      const px = x + Math.cos(a) * (rx + 0.25) * wob, pz = z + Math.sin(a) * (rz + 0.25) * wob;
-      const s = 0.55 + R() * 0.35;
-      list.push(boxGeo(px, y + 0.12, pz, s, 0.32 + R() * 0.2, s * 0.8, a + R(), [0.8 + R() * 0.3, 0.8 + R() * 0.3, 0.8 + R() * 0.3]));
+      const px = x + Math.cos(a) * (rx + 0.3) * wob, pz = z + Math.sin(a) * (rz + 0.3) * wob;
+      const s = 0.5 + R() * 0.35;
+      list.push(boxGeo(px, ground(px, pz) + 0.02, pz, s, 0.2 + R() * 0.12, s * 0.8, a + R(), [0.8 + R() * 0.3, 0.8 + R() * 0.3, 0.8 + R() * 0.3]));
     }
     add(finalize(list, stoneMat, 'PondRim'));
     const shape = new THREE.CircleGeometry(1, 40); shape.rotateX(-Math.PI / 2);
-    const pm = new THREE.Mesh(shape, waterMat); pm.scale.set(rx, 1, rz); pm.position.set(x, y + 0.1, z); pm.renderOrder = 2; add(pm); out.water.push(pm);
+    const pm = new THREE.Mesh(shape, waterMat); pm.scale.set(rx + 0.45, 1, rz + 0.45); pm.position.set(x, yWater, z); pm.renderOrder = 2; add(pm); out.water.push(pm);
+    out.pond = { x, z, rx, rz, y: yWater };
   }
 
-  // ---------------- грядки: почва + каменная кромка ----------------
+  // ---------------- грядки: почва + низкая каменная кромка (перешагивается; высоты — из WALL, как в физике) ----------------
+  // Кромка — лента, повторяющая землю (верх = G + WALL.bed), поэтому видимая стенка и «ступенька» в heightAt совпадают.
+  function lowWall(x0, z0, x1, z1, t, top = WALL.bed, bottom = 0.14) {
+    const len = Math.hypot(x1 - x0, z1 - z0), n = Math.max(1, Math.round(len / 0.5));
+    const dx = (x1 - x0) / len, dz = (z1 - z0) / len, nx = -dz, nz = dx;
+    const P = [], I = [], U = [], N = [];
+    for (let i = 0; i <= n; i++) {
+      const f = i / n, x = x0 + (x1 - x0) * f, z = z0 + (z1 - z0) * f, y = ground(x, z);
+      for (const sg of [-1, 1]) { const px = x + nx * sg * t / 2, pz = z + nz * sg * t / 2; P.push(px, y + top, pz, px, y - bottom, pz); U.push(f * len * 0.5, sg > 0 ? 1 : 0, f * len * 0.5, sg > 0 ? 0.6 : 0.4); }
+    }
+    // индексы: на сечение 4 вершины: [L top, L bottom, R top, R bottom]
+    for (let i = 0; i < n; i++) {
+      const a = i * 4, b = a + 4;
+      I.push(a, b, b + 2, a, b + 2, a + 2);              // верх
+      I.push(a + 1, b + 1, b, a + 1, b, a);              // левая сторона
+      I.push(a + 2, b + 2, b + 3, a + 2, b + 3, a + 3);  // правая сторона
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); g.setIndex(I);
+    const ng = g.toNonIndexed(); ng.computeVertexNormals();
+    // ориентация: верхние грани должны смотреть вверх — иначе переворачиваем все треугольники ленты
+    {
+      const pa = ng.attributes.position, na = ng.attributes.normal;
+      let up = 0, dn = 0; for (let i = 0; i < na.count; i += 3) { const y = na.getY(i); if (y > 0.9) up++; else if (y < -0.9) dn++; }
+      if (dn > up) { for (let i = 0; i < pa.count; i += 3) { const x = pa.getX(i + 1), y = pa.getY(i + 1), z = pa.getZ(i + 1); pa.setXYZ(i + 1, pa.getX(i + 2), pa.getY(i + 2), pa.getZ(i + 2)); pa.setXYZ(i + 2, x, y, z); } ng.computeVertexNormals(); }
+    }
+    bakeColor(ng, [0.92 + R() * 0.1, 0.9 + R() * 0.1, 0.86 + R() * 0.1]);
+    return ng;
+  }
   {
     const list = [], soilGeos = [];
     for (const b of BEDS) {
-      const y = ground(b.x, b.z) + 0.16;
       const g = new THREE.PlaneGeometry(b.hx * 2, b.hz * 2, Math.round(b.hx * 2), Math.round(b.hz * 2)); g.rotateX(-Math.PI / 2);
       const p = g.attributes.position;
-      for (let i = 0; i < p.count; i++) p.setY(i, ground(b.x + p.getX(i), b.z + p.getZ(i)) + 0.22 + 0.04 * Math.sin(p.getX(i) * 2.1));
+      for (let i = 0; i < p.count; i++) p.setY(i, ground(b.x + p.getX(i), b.z + p.getZ(i)) + WALL.bedSoil);
       g.translate(b.x, 0, b.z);
       const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * b.hx * 0.6, uv.getY(i) * b.hz * 0.6);
       soilGeos.push(g);
-      const t = 0.32, hh = 0.42;
-      list.push(boxGeo(b.x, y + 0.05, b.z - b.hz - t / 2, b.hx * 2 + 2 * t, hh, t));
-      list.push(boxGeo(b.x, y + 0.05, b.z + b.hz + t / 2, b.hx * 2 + 2 * t, hh, t));
-      list.push(boxGeo(b.x - b.hx - t / 2, y + 0.05, b.z, t, hh, b.hz * 2));
-      list.push(boxGeo(b.x + b.hx + t / 2, y + 0.05, b.z, t, hh, b.hz * 2));
-      col({ type: 'box', c: new V3(b.x, y + 0.1, b.z - b.hz - t / 2), half: new V3(b.hx + t, 0.25, t / 2), yaw: 0, tags: new Set(['bed']) });
-      col({ type: 'box', c: new V3(b.x, y + 0.1, b.z + b.hz + t / 2), half: new V3(b.hx + t, 0.25, t / 2), yaw: 0, tags: new Set(['bed']) });
-      col({ type: 'box', c: new V3(b.x - b.hx - t / 2, y + 0.1, b.z), half: new V3(t / 2, 0.25, b.hz), yaw: 0, tags: new Set(['bed']) });
-      col({ type: 'box', c: new V3(b.x + b.hx + t / 2, y + 0.1, b.z), half: new V3(t / 2, 0.25, b.hz), yaw: 0, tags: new Set(['bed']) });
+      const t = WALL.bedT;
+      list.push(lowWall(b.x - b.hx - t, b.z - b.hz - t / 2, b.x + b.hx + t, b.z - b.hz - t / 2, t));
+      list.push(lowWall(b.x - b.hx - t, b.z + b.hz + t / 2, b.x + b.hx + t, b.z + b.hz + t / 2, t));
+      list.push(lowWall(b.x - b.hx - t / 2, b.z - b.hz, b.x - b.hx - t / 2, b.z + b.hz, t));
+      list.push(lowWall(b.x + b.hx + t / 2, b.z - b.hz, b.x + b.hx + t / 2, b.z + b.hz, t));
     }
-    add(finalize(list, stoneMat, 'BedWalls'));
+    const wm = mergeGeometries(list.map((g) => g.index ? g.toNonIndexed() : g)); wm.computeVertexNormals();
+    worldUV(wm, 0.5);
+    const wmesh = new THREE.Mesh(wm, stoneMat); wmesh.name = 'BedWalls'; wmesh.castShadow = shadows; wmesh.receiveShadow = true; add(wmesh);
     const sg = mergeGeometries(soilGeos.map((g) => g.toNonIndexed())); sg.computeVertexNormals();
     const sm = new THREE.Mesh(sg, soilMat); sm.receiveShadow = true; sm.name = 'BedSoil'; add(sm);
   }
@@ -227,48 +255,13 @@ export function createStructures(game, { ground, rim, root, quality }) {
     for (let x = PLAZA.x - PLAZA.r - 1; x < PLAZA.x + PLAZA.r + 1; x += step) for (let z = PLAZA.z - PLAZA.r; z < PLAZA.z + PLAZA.r; z += step) {
       if (!inside(x + step / 2, z + step / 2) || x < MOUTH.x + 0.58 * (z - MOUTH.z) + 1.6) continue;
       const k = P.length / 3;
-      for (const [dx, dz] of [[0, 0], [step, 0], [step, step], [0, step]]) { const px = x + dx, pz = z + dz; P.push(px, ground(px, pz) + 0.035, pz); N.push(0, 1, 0); U.push(px * 0.45, pz * 0.45); }
+      for (const [dx, dz] of [[0, 0], [step, 0], [step, step], [0, step]]) { const px = x + dx, pz = z + dz; P.push(px, ground(px, pz) + 0.012, pz); N.push(0, 1, 0); U.push(px * 0.45, pz * 0.45); }
       I.push(k, k + 2, k + 1, k, k + 3, k + 2);
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); g.setIndex(I);
     const m = new THREE.Mesh(g, flagMat); m.receiveShadow = true; m.name = 'Plaza'; add(m);
   }
-
-  // ---------------- вход в пещеру на восточной грани: косяки, перемычка, ступени, знаки ----------------
-  const mouth = (() => {
-    const z0 = MOUTH.z, face = MOUTH.x;
-    const fx = (z) => FACE(z) + 1.1;                                // линия грани (+ вынос косяков)
-    const list = [];
-    const yFloor = MOUTH.y;
-    const jamb = (z, h) => { const g = chunkyBox(1.0, h, 1.5, 4, 11 + z, 0.1); g.translate(fx(z) + 0.9, yFloor + h / 2 - 0.05, z); return g; };
-    const hw = MOUTH.w / 2 + 0.55;
-    const jL = jamb(z0 - hw, MOUTH.h + 0.5), jR = jamb(z0 + hw, MOUTH.h + 0.5);
-    const lint = chunkyBox(1.3, 0.9, MOUTH.w + 2.4, 5, 19, 0.05); lint.translate(fx(z0) + 0.9, yFloor + MOUTH.h + 0.5, z0);
-    const m = new THREE.Group(); m.name = 'MouthFrame';
-    for (const g of [jL, jR, lint]) { const mesh = new THREE.Mesh(g, rockMat); mesh.castShadow = shadows; mesh.receiveShadow = true; m.add(mesh); }
-    // ступени: плиты вниз к двору
-    const steps = new THREE.Group();
-    for (let i = 0; i < 3; i++) {
-      const xx = fx(z0) + 1.4 + i * 1.05, zz = z0;
-      const yy = ground(xx, zz);
-      const g = chunkyBox(1.2, 0.5, MOUTH.w + 1.2 + i * 0.6, 3, 31 + i, 0.0); g.translate(xx, yy - 0.2, zz);
-      const mesh = new THREE.Mesh(g, rockMat); mesh.receiveShadow = true; mesh.castShadow = shadows; steps.add(mesh);
-    }
-    m.add(steps);
-    root.add(m); out.meshes.push(m);
-    // коллайдеры косяков
-    for (const z of [z0 - hw, z0 + hw]) col({ type: 'box', c: new V3(fx(z) + 0.9, yFloor + 2.5, z), half: new V3(0.55, 2.6, 0.75), yaw: 0, tags: new Set(['jamb']) });
-    // знаки на косяках: три зарубки и роспись возрожденцев поверх фрименской резьбы
-    const decal = (kind, z, y, size, rot) => {
-      const mm = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), markMaterial(kind));
-      mm.scale.set(size, size, 1); mm.position.set(fx(z) + 0.3, y, z - Math.sign(z - z0) * 0.0 + (z < z0 ? 0.76 : -0.76));
-      mm.rotation.y = z < z0 ? 0 : Math.PI; mm.rotation.z = rot; mm.renderOrder = 3; root.add(mm); out.meshes.push(mm);
-    };
-    decal('notches', z0 - hw, yFloor + 1.7, 0.7, 0.05);
-    decal('sigil', z0 + hw, yFloor + 1.6, 0.8, -0.1);
-    return { fx };
-  })();
 
   // ---------------- носик перелива цистерны ----------------
   {
@@ -287,13 +280,13 @@ export function createStructures(game, { ground, rim, root, quality }) {
     const wg = new THREE.PlaneGeometry(2.5, 2.0); wg.rotateX(-Math.PI / 2); wg.translate(sx + 1.0, poolY + 0.3, SPOUT.z);
     const wm = new THREE.Mesh(wg, waterMat); wm.renderOrder = 2; add(wm); out.water.push(wm);
     // сама струя — две перекрёстные ленты с бегущей нормалью
-    const sMat = new THREE.MeshStandardMaterial({ color: 0xcfe8ee, roughness: 0.1, transparent: true, opacity: 0.55, normalMap: wnorm, normalScale: new THREE.Vector2(0.6, 0.6), side: THREE.DoubleSide, depthWrite: false });
+    const sMat = new THREE.MeshStandardMaterial({ color: 0xcfe8ee, roughness: 0.1, transparent: true, opacity: 0.55, normalMap: snorm, normalScale: new THREE.Vector2(0.6, 0.6), side: THREE.DoubleSide, depthWrite: false });
     fogPatch(sMat, 'gd-stream');
     const hFall = sy - poolY - 0.2;
     const stream = new THREE.Group();
     for (const a of [0, Math.PI / 2]) { const pg = new THREE.PlaneGeometry(0.22, hFall, 1, 6); const mm = new THREE.Mesh(pg, sMat); mm.rotation.y = a; stream.add(mm); }
     stream.position.set(sx, poolY + 0.2 + hFall / 2, SPOUT.z); stream.renderOrder = 3; root.add(stream);
-    out.stream = { mat: sMat, tex: wnorm };
+    out.stream = { mat: sMat, tex: snorm };
     out.drips.push({ x: sx, y: sy - 0.1, z: SPOUT.z + 0.35, h: sy - poolY - 0.3 });
     col({ type: 'box', c: new V3(sx + 1.0, poolY + 0.3, SPOUT.z), half: new V3(1.5, 0.3, 1.2), yaw: 0, tags: new Set(['basin']) });
   }
@@ -357,11 +350,50 @@ export function createStructures(game, { ground, rim, root, quality }) {
     out.dropState = out.drips.map((d, i) => ({ ...d, t: R() * 3, period: 0.9 + R() * 1.6, fall: 0, ring: -1, gy: 0 }));
     out.dropsMesh = drops; out.ringsMesh = rings;
   }
+  // ---------------- фонари: ночью светятся (эмиссия + ореол; без реальных источников — не пересобирают шейдеры сцены) ----------------
+  {
+    const spots = [[806.3, 391.2], [806.3, 401.4], [821.5, 392.2], [836.4, 404.6], [856.0, 401.3], [876.4, 395.4], [877.0, 404.2], [846.6, 394.6]];
+    const post = [], glass = [];
+    for (const [x, z] of spots) {
+      const y = ground(x, z);
+      post.push(boxGeo(x, y + 0.9, z, 0.12, 1.8, 0.12, 0, [0.35, 0.27, 0.2]));
+      post.push(boxGeo(x, y + 1.82, z, 0.3, 0.05, 0.3, 0, [0.3, 0.23, 0.17]));
+      glass.push([x, y + 1.62, z]);
+    }
+    add(finalize(post, stoneMat, 'LampPosts'));
+    const lg = new THREE.BoxGeometry(0.2, 0.3, 0.2);
+    const lampMat = new THREE.MeshStandardMaterial({ color: 0xffe0a0, emissive: 0xffa040, emissiveIntensity: 0, roughness: 0.4 }); fogPatch(lampMat, 'gd-lamp');
+    const lamps = new THREE.InstancedMesh(lg, lampMat, glass.length);
+    const m4 = new THREE.Matrix4();
+    glass.forEach((q, i) => { m4.makeTranslation(q[0], q[1], q[2]); lamps.setMatrixAt(i, m4); });
+    lamps.frustumCulled = false; root.add(lamps); out.meshes.push(lamps);
+    const hg = new THREE.PlaneGeometry(1.6, 1.6);
+    const haloMat = new THREE.MeshBasicMaterial({ color: 0xffb060, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, map: (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,200,120,1)'); gr.addColorStop(0.35, 'rgba(255,160,70,0.35)'); gr.addColorStop(1, 'rgba(255,120,40,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })() });
+    haloMat.fog = false;
+    const halos = new THREE.InstancedMesh(hg, haloMat, glass.length);
+    glass.forEach((q, i) => { m4.makeTranslation(q[0], q[1], q[2]); halos.setMatrixAt(i, m4); });
+    halos.frustumCulled = false; halos.renderOrder = 5; root.add(halos); out.meshes.push(halos);
+    out.lamps = { mat: lampMat, halo: haloMat, mesh: halos, pos: glass, k: 0 };
+  }
   out.update = (dt, t, camPos) => {
     // течение: смещаем текстуру нормали (общая на всех водах)
-    wnorm.offset.x = (wnorm.offset.x + dt * 0.12) % 1; wnorm.offset.y = (wnorm.offset.y + dt * 0.03) % 1;
+    // вода течёт по ходу желоба (u растёт вдоль течения): узор сдвигается к большим u, значит смещение уменьшаем
+    wnorm.offset.x = (wnorm.offset.x - dt * 0.16 + 1) % 1; wnorm.offset.y = (wnorm.offset.y + dt * 0.02) % 1;
     if (out.stream) out.stream.tex.offset.y = (out.stream.tex.offset.y - dt * 1.4) % 1;
     for (const tw of out.towers) { tw.vane[0].rotation.y += dt * 0.35; tw.vane[1].rotation.y += dt * 0.35; }
+    if (out.lamps) {
+      const se = game.weather?.sunElev;
+      const k = se === undefined ? 0 : 1 - smoothstep(-3, 7, se);
+      if (Math.abs(k - out.lamps.k) > 0.004) {
+        out.lamps.k = k; out.lamps.mat.emissiveIntensity = 3.2 * k; out.lamps.halo.opacity = 0.75 * k; out.lamps.mesh.visible = k > 0.01;
+      }
+      if (out.lamps.mesh.visible) {
+        // ореолы смотрят в камеру
+        const mm = new THREE.Matrix4(), qq = new THREE.Quaternion().copy(game.camera.quaternion), pp = new V3(), sc = new V3(1, 1, 1);
+        out.lamps.pos.forEach((q, i) => { mm.compose(pp.set(q[0], q[1], q[2]), qq, sc); out.lamps.mesh.setMatrixAt(i, mm); });
+        out.lamps.mesh.instanceMatrix.needsUpdate = true;
+      }
+    }
     // капли
     const m4 = new THREE.Matrix4(), p = new V3(), q = new THREE.Quaternion(), sc = new V3(1, 1, 1), scR = new V3(1, 1, 1);
     let nd = 0, nr = 0;
@@ -383,6 +415,5 @@ export function createStructures(game, { ground, rim, root, quality }) {
     out.ringsMesh.count = nr; out.ringsMesh.instanceMatrix.needsUpdate = true;
     out.ringsMesh.material.opacity = 0.55;
   };
-  out.mouth = mouth;
   return out;
 }

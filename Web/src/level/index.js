@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { ENTRY, ROCK } from '../core/layout.js';
 import { smoothstep, lerp, rng, clamp } from '../core/util.js';
 import { buildClawGeometry } from '../desert/rock.js';
+import { heightAt as fieldH, solidSdf } from '../desert/field.js';
 import { buildWallTable } from './wall.js';
 import { createApproachScene, ZONE } from './scene.js';
 import { createLevelRockMaterial, geometryFromMesh } from './rockmat.js';
@@ -243,7 +244,49 @@ export function create(game) {
     };
   }
   const hasHole = typeof world.addRockHole === 'function';
-  world.collide = makeCollide(vol, prevCollide, { passagePts, nativePassage, xMax: NOTCH_X_MAX });
+  // Коридор тропы (≤ 10 м от оси): круглые препятствия пустыни (валуны dressing.js) здесь не применяются — они расставлены по исходному рельефу
+  // и перегораживают тропу «невидимыми стенами». Контур Когтя остаётся (кроме уступов выше рельефа > 2.5 м и самого прохода); сами валуны в коридоре
+  // скрываются (ниже), настоящие камни тропы — в SDF-сетке и сферах-коллайдерах подхода.
+  const CORR2 = 10 * 10;
+  const nearTrail = (x, z) => { for (let i = 0; i < trail.length; i += 2) { const q = trail[i], dx = q.x - x, dz = q.z - z; if (dx * dx + dz * dz < CORR2) return true; } return false; };
+  const inTrailPassage = (pos) => { const py = pos.y + 0.9; for (let i = 0; i < trail.length; i += 2) { const q = trail[i], dx = pos.x - q.x, dy = py - q.y, dz = pos.z - q.z; if (dx * dx + dy * dy + dz * dz < 9) return true; } return false; };
+  const corridorCollide = (pos, r) => {
+    if (!nearTrail(pos.x, pos.z)) return prevCollide(pos, r);
+    let hit = false;
+    if (pos.y !== undefined && pos.y - fieldH(pos.x, pos.z) > 2.5) return false;
+    if (inTrailPassage(pos)) return false;
+    for (let it = 0; it < 3; it++) {
+      const d = solidSdf(pos.x, pos.z); if (d >= r) break;
+      const e = 0.25; let gx = solidSdf(pos.x + e, pos.z) - solidSdf(pos.x - e, pos.z), gz = solidSdf(pos.x, pos.z + e) - solidSdf(pos.x, pos.z - e);
+      const gl = Math.hypot(gx, gz) || 1; gx /= gl; gz /= gl; pos.x += gx * (r - d + 0.01); pos.z += gz * (r - d + 0.01); hit = true;
+    }
+    return hit;
+  };
+  world.collide = makeCollide(vol, corridorCollide, { passagePts, nativePassage, xMax: NOTCH_X_MAX });
+  {
+    // скрыть валуны/гальку пустыни в коридоре тропы и снять их сферы-коллайдеры (владелец 'desert')
+    const m4 = new THREE.Matrix4(), zero = new THREE.Matrix4().makeScale(0, 0, 0);
+    let hid = 0, rem = 0;
+    scene.traverse((o) => {
+      if (!o.isInstancedMesh || o.parent === root || o.parent?.name === 'Garden') return;
+      const key = o.material?.customProgramCacheKey?.();
+      if (typeof key !== 'string' || !key.startsWith('rk-')) return;
+      let any = false;
+      for (let i = 0; i < o.count; i++) {
+        o.getMatrixAt(i, m4);
+        const x = m4.elements[12], z = m4.elements[14];
+        if (x < 575 || x > 670 || z < 225 || z > 325) continue;
+        if (nearTrail(x, z)) { o.setMatrixAt(i, zero); any = true; hid++; }
+      }
+      if (any) o.instanceMatrix.needsUpdate = true;
+    });
+    if (game.colliders?.all) {
+      const kill = [];
+      for (const e of game.colliders.all()) if (e.owner === 'desert' && e.type === 'sphere' && e.c && nearTrail(e.c.x, e.c.z)) kill.push(e.id);
+      for (const id of kill) { game.colliders.remove(id); rem++; }
+    }
+    console.log(`[approach] trail corridor: hidden ${hid} desert boulders/pebbles, ${rem} colliders removed`);
+  }
 
   // ---------- отверстие в скале у ниши (до интеграции desert — свой запасной вариант) ----------
   const holeC = { x: wallX(nz, 32) + 0.2, y: ENTRY.cleft.y + 2.0, z: nz, r: 2.5 };
