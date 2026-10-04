@@ -1,7 +1,7 @@
 // Пустыня Ракиса: ландшафт, песок, скала «Коготь Шайтана», небо, погода, атмосфера, пост-обработка.
 // Регистрирует game.world, game.weather, game.post.
 import * as THREE from 'three';
-import { heightAt, heightAtCached, setHeightFocus, normalAt, surfaceAt, solidSdf, masks, FLAT_ZONE, groundPatches } from './field.js';
+import { heightAt, heightAtCached, setHeightFocus, normalAt, surfaceAt, solidSdf, SOLID_BOUNDS, masks, FLAT_ZONE, groundPatches } from './field.js';
 import { ENV } from './env.js';
 import { createFootprints } from './footprints.js';
 import { createTerrain } from './terrain.js';
@@ -9,6 +9,7 @@ import { createSky } from './sky.js';
 import { createWeather } from './weather.js';
 import { createPost } from './post.js';
 import { createClaw } from './rock.js';
+import { createRidge } from './ridge.js';
 import { MAX_HOLES } from './rockMaterial.js';
 import { createDressing } from './dressing.js';
 import { createFx } from './fx.js';
@@ -72,6 +73,9 @@ export function create(game) {
   const weather = createWeather(game, sky, world);
   const claw = createClaw(game, world);
   parts.push({ setVisible(b) { claw.group.visible = b; } });
+  const ridge = createRidge(game, world, claw.rockMat);
+  parts.push(ridge);
+  world.ridge = ridge;
   const dressing = createDressing(game, world);
   parts.push(dressing);
   const fx = createFx(game, world, terrain, weather);
@@ -100,11 +104,11 @@ export function create(game) {
     let hit = false;
     // высота-осознанная коллизия Когтя: на уступах (выше рельефа > 2.5 м) и внутри проходов 2D-контур скалы не выталкивает
     let skipClaw = false;
-    if (pos.y !== undefined && pos.x > 540 && pos.x < 880) {
+    if (pos.y !== undefined && pos.x > SOLID_BOUNDS.x0 - 20 && pos.x < SOLID_BOUNDS.x1 + 20) {
       if (pos.y - heightAt(pos.x, pos.z) > 2.5) skipClaw = true;
       else if (passages.length) skipClaw = inPassage(pos);
     }
-    if (!skipClaw && pos.x > 540 && pos.x < 880 && pos.z > -90 && pos.z < 650) {
+    if (!skipClaw && pos.x > SOLID_BOUNDS.x0 - 20 && pos.x < SOLID_BOUNDS.x1 + 20 && pos.z > SOLID_BOUNDS.z0 - 10 && pos.z < SOLID_BOUNDS.z1 + 10) {
       for (let it = 0; it < 3; it++) {
         const d = solidSdf(pos.x, pos.z);
         if (d >= r) break;

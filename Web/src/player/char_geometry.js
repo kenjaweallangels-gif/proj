@@ -2,8 +2,9 @@
 // Все координаты — «абсолютные» в позе привязки (рост 1.75 м, +Z вперёд, +X — левая сторона фигуры = 'R' в именах API).
 // Атрибуты: region (материал), aux = (ребро-координата, сила рёбер, пыль/складка, угол для швов), skinIndex/skinWeight.
 import * as THREE from 'three';
-import { faceParams, buildHeadHi, buildHair, buildBeard } from './char_face.js';
+import { faceParams, faceSurface, buildHeadHi, buildHair, buildBeard } from './char_face.js';
 import { rng } from '../core/util.js';
+import { buildSash, buildWaterRings, buildWrap, buildCarry } from './char_extras.js';
 import { BUILDS, torsoTable, pchip, bodyRing, torsoBump, legBump, armBump, makeTorsoField, LEG_ROWS, ARM_ROWS } from './char_anatomy.js';
 
 // ---------------------------------------------------------------------------------------------- кости ----
@@ -211,7 +212,7 @@ function band(b, cx, cz, y, rx, rz, h, reg, stops, N, ang) {
 let curLod = 0;
 export function hose(b, ctrl, r0, skFn, o = {}) {
   const curve = new THREE.CatmullRomCurve3(ctrl.map((p) => new THREE.Vector3(...p)), false, 'centripetal');
-  const L = curve.getLength(), n = Math.max(curLod ? 4 : 6, Math.round(L / (curLod ? 0.03 : (o.step ?? 0.0055))));
+  const L = curve.getLength(), n = Math.max(curLod ? 4 : 6, Math.round(L / (curLod ? 0.03 : (o.step ?? 0.0085))));
   const pts = curve.getSpacedPoints(n).map((v) => [v.x, v.y, v.z]);
   const period = o.period ?? 0.011;
   tube(b, pts, (t) => r0 * (0.86 + 0.2 * Math.abs(Math.sin((t * L / period) * Math.PI))) * (t < 0.03 || t > 0.97 ? 0.92 : 1), o.reg ?? REG.HOSE, skFn, { seg: curLod ? 4 : (o.seg ?? 6), aux: [0, 0, 0.1, 0] });
@@ -233,7 +234,7 @@ export function* buildBodyG(o, lod) {
 
   // ---- торс (дистикомб): суперэллиптические сечения + мышцы/жир, шея и трапеции — одной поверхностью ---
   {
-    const Nt = [32, 18, 10][lod], ys = rowsY(0.74, 1.63, [0.02, 0.055, 0.12][lod]);
+    const Nt = [26, 18, 10][lod], ys = rowsY(0.74, 1.63, [0.03, 0.055, 0.12][lod]);
     const tb = torsoBump(B, age);
     const rings = ys.map((y) => {
       const rx = pchip(torso, y, 1), rz = pchip(torso, y, 2), cz = pchip(torso, y, 3), n = pchip(torso, y, 4);
@@ -242,7 +243,7 @@ export function* buildBodyG(o, lod) {
     });
     b.loft(rings, (j, i, p) => ({ reg: p[1] > 1.5 ? REG.SKIN : bodyReg, aux: [ribs(p[1])[0], p[1] > 1.5 ? 0 : ribAmt * zTor(p[1]), 0.15 * (1 - Math.abs(Math.cos((i / Nt) * 6.2832))), (i / Nt)], sk: skY(p[1], TORSO_SK) }), { capStart: true });
   }
-  const N = [16, 10, 6][lod];
+  const N = [14, 10, 6][lod];
   // воротник-«шейный затвор»
   if (!bare) {
     const rings = [1.44, 1.47, 1.5, 1.53].map((y, k) => ringY(y, 0, 0.0, [0.078, 0.074, 0.067, 0.064][k] * B.neck, [0.074, 0.07, 0.065, 0.062][k] * B.neck, N));
@@ -256,9 +257,9 @@ export function* buildBodyG(o, lod) {
   const legSK = (side) => [[1.0, BI.pelvis], [0.86, BI['hip' + side]], [0.55, BI['hip' + side]], [0.44, BI['kn' + side]], [0.16, BI['kn' + side]], [0.1, BI['foot' + side]]];
   for (const s of [-1, 1]) {
     const side = s < 0 ? 'L' : 'R', cx = 0.09 * s, stops = legSK(side);
-    const ys = rowsY(0.06, 0.98, [0.036, 0.085, 0.18][lod]);
+    const ys = rowsY(0.06, 0.98, [0.046, 0.085, 0.18][lod]);
     const lb = legBump(B, s);
-    const Nl = [18, 10, 6][lod];
+    const Nl = [16, 10, 6][lod];
     const rings = ys.map((y) => {
       const rx = pchip(LEG_ROWS, y, 1) * B.limb, rz = pchip(LEG_ROWS, y, 2) * B.limb, cz = pchip(LEG_ROWS, y, 3);
       const rib = hiRibs && !bare ? 0.0015 * zLeg(y) * Math.sin(y * 160) : 0;
@@ -317,8 +318,8 @@ export function* buildBodyG(o, lod) {
   for (const s of [-1, 1]) {
     const side = s < 0 ? 'L' : 'R', cx = 0.19 * s * B.sh;
     const stops = [[1.46, BI['sh' + side]], [1.2, BI['sh' + side]], [1.1, BI['el' + side]], [0.92, BI['el' + side]], [0.86, BI['hand' + side]]];
-    const ys = [...rowsY(0.86, 1.46, [0.03, 0.08, 0.2][lod]), ...(lod === 2 ? [1.5] : [1.475, 1.49, 1.5])];
-    const ab = armBump(B, s), Na = [16, 10, 6][lod];
+    const ys = [...rowsY(0.86, 1.46, [0.04, 0.08, 0.2][lod]), ...(lod === 2 ? [1.5] : [1.475, 1.49, 1.5])];
+    const ab = armBump(B, s), Na = [14, 10, 6][lod];
     const rings = ys.map((y) => {
       const top = y > 1.46 ? 1 - sstep(1.46, 1.51, y) : 1;
       const rx = pchip(ARM_ROWS, y, 1) * B.limb * Math.sqrt(Math.max(0.02, top)), rz = pchip(ARM_ROWS, y, 2) * B.limb * Math.sqrt(Math.max(0.02, top)), cz = pchip(ARM_ROWS, y, 3);
@@ -351,8 +352,8 @@ export function* buildBodyG(o, lod) {
           x += inw * Math.sin(ang) * len; y -= Math.cos(ang) * len; zz += fan[k] * len;
           pts.push([x, y, zz]);
         }
-        const dense = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(...p))).getPoints(9).map((v) => [v.x, v.y, v.z]);
-        tube(b, dense, (t) => (0.0092 - t * 0.0032) * (1 + 0.1 * Math.abs(Math.sin(t * Math.PI * 2.9))), hreg, () => hsk, { seg: 7, aux: [0.6, gloves ? 0.4 : 0, 0.25, 0] });
+        const dense = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(...p))).getPoints(7).map((v) => [v.x, v.y, v.z]);
+        tube(b, dense, (t) => (0.0092 - t * 0.0032) * (1 + 0.1 * Math.abs(Math.sin(t * Math.PI * 2.9))), hreg, () => hsk, { seg: 6, aux: [0.6, gloves ? 0.4 : 0, 0.25, 0] });
         const e = dense[dense.length - 1];
         if (!gloves) ellipsoid(b, [e[0] - inw * 0.002, e[1] + 0.006, e[2]], [0.0044, 0.0078, 0.0036], REG.SKIN, hsk, { u: 6, v: 4, rot: [0, 0, inw * 0.9], aux: [0, 0, 0, 0] });
       });
@@ -371,6 +372,7 @@ export function* buildBodyG(o, lod) {
 
   // ---- пояс, подсумки, трубки ----
   buildBelt(b, o, lod, torso, B);
+  if (o.carry) buildCarry(b, o, lod, torso);
   if (!bare && lod < 2 && !o.noTubes) buildSuitTubes(b, o, lod, torso);
   return b;
 }
@@ -400,6 +402,11 @@ function* buildHead(b, o, lod, B) {
     const rows = [-0.12, -0.05, 0.03, 0.105, 0.141];
     const rings = rows.map((y) => { const [rx, rz, cz] = headRow(y); return ringY(HEAD_Y + y * hs, 0, cz * hs + 0.005, rx * hs, rz * hs, N, null); });
     b.loft(rings, (j, i, p) => ({ reg: REG.SKIN, aux: [0, 0, 0, 0], sk: HSK }), { capStart: true, capEnd: true });
+    // дальний LOD сохраняет силуэт и цвет головы: «шапка» волос, пучок, борода (без карточек)
+    const P2 = o.faceP || faceParams(o);
+    const S2 = faceSurface(P2);
+    yield* buildHair(b, o, lod, B, P2, S2);
+    if (o.beard) yield* buildBeard(b, o, lod, B, P2, S2);
     return;
   }
   const P = o.faceP || faceParams(o);
@@ -465,7 +472,7 @@ function buildSuitTubes(b, o, lod, torso) {
       const a = (0.5 + Math.sin(k * 0.9) * 0.08 + k * 0.1) * s;
       pts.push([Math.sin(a) * (rx + 0.014), y, Math.cos(a) * (rz + 0.014) + cz]);
     });
-    hose(b, pts, 0.0105, (y) => skY(y, TORSO_SK), { seg: lod === 0 ? 6 : 5 });
+    hose(b, pts, 0.0105, (y) => skY(y, TORSO_SK), { seg: 5 });
   }
   // нагрудная панель-кокетка и спинной блок (видны на дистикомбе без одежды)
   if (o.robe === false && lod < 2) {
@@ -490,6 +497,8 @@ function buildBelt(b, o, lod, torso, B) {
   const rings = belt.map(([y, d]) => ringY(y, 0, 0, rx0 + d, rz0 + d, N));
   const bsk = [[1.05, BI.spine], [0.95, BI.spine]];
   b.loft(rings, (j, i, p) => ({ reg: REG.LEATHER, aux: [0, 0, 0.35, i / N], sk: [BI.spine, 1] }), { capStart: false });
+  if (o.sash) buildSash(b, o, lod, rx0, rz0, y0);
+  if (o.waterRings) buildWaterRings(b, o, lod, rx0, rz0, y0);
   if (lod === 2) return;
   // пряжка
   ellipsoid(b, [0, y0, rz0 + 0.018], [0.026, 0.02, 0.008], REG.METAL, [BI.spine, 1], { u: 8, v: 4, aux: [0, 0, 0.1, 0] });
@@ -548,7 +557,7 @@ function clothLayer(b, layer, lod, B, N, seed = 1) {
   const R = rng(seed);
   const fold = layer.fold ?? (style === 'heavy' ? 0.045 : 0.05), nf = layer.folds ?? 9;
   const pleat = makePleat(R, nf), sc = layer.scale ?? 1;
-  const nRings = [30, 10, 6][lod];
+  const nRings = [22, 14, 9][lod];
   const ys = []; for (let k = 0; k < nRings; k++) ys.push(lerp(hemY, topY, k / (nRings - 1)));
   const sk = (y) => skY(y, [[1.52, BI.neck], [1.43, BI.chest], [1.18, BI.chest], [1.05, BI.spine], [0.93, BI.pelvis]]);
   const hemSkew = layer.asym ?? 0, tear = layer.tear ?? 0;
@@ -677,14 +686,14 @@ export function* buildClothG(o, lod) {
   curLod = lod;
   const b = new GB();
   const B = BUILDS[o.build] || BUILDS.m;
-  const N = [64, 22, 12][lod];
+  const N = [52, 30, 20][lod];
   const hasRobe = o.robe !== false;
   const layers = o.layers || [];
   if (hasRobe) clothLayer(b, { build: o.build, age: o.faceP?.age ?? o.age, reg: REG.CLOTH2, style: o.robeStyle || 'jubba', hemTrim: o.hemTrim, frontTrim: o.frontTrim, asym: o.asym, tear: o.tear, lining: o.lining, collar: true, fold: o.fold, wear: o.wear }, lod, B, N, (o.seed | 0) + 3);
   layers.forEach((l, li) => clothLayer(b, { build: o.build, age: o.faceP?.age ?? o.age, ease: 0.012, wear: o.wear, ...l }, lod, B, N, (o.seed | 0) + 17 + li * 5));
   yield;
   if (hasRobe) sleeves(b, o, lod, B, Math.max(8, N / 3 | 0));
-  if (o.cowl !== false && o.hoodUp !== false && o.hood !== false) { clothHood(b, o, lod, B); if (lod < 2 && !o.noDrape) hoodDrape(b, o, lod, B, Math.max(10, N / 2 | 0)); }
+  if (o.cowl !== false && o.hoodUp !== false && o.hood !== false && !o.wrap) { clothHood(b, o, lod, B); if (!o.noDrape) hoodDrape(b, o, lod, B, Math.max(10, N / 2 | 0)); }
   if (o.scarf) scarf(b, o, lod, B);
   if (!b.n) { b.vert(0, 0, 0, 2, [0, 0, 0, 0], [0, 1]); b.vert(0.001, 0, 0, 2, [0, 0, 0, 0], [0, 1]); b.vert(0, 0.001, 0, 2, [0, 0, 0, 0], [0, 1]); b.idx.push(0, 1, 2); }
   return b;
@@ -695,6 +704,7 @@ export function* buildBodyFullG(o, lod) {
   const b = yield* buildBodyG(o, lod);
   const B = BUILDS[o.build] || BUILDS.m;
   if (o.cowl !== false && ((o.maskOn ?? (o.mask !== false)) || o.hood !== false) && !o.bare && lod < 3) buildCowl(b, o, lod, B);
+  if (o.wrap) buildWrap(b, o, lod, B);
   if (o.bare && o.maskless !== true) { /* без чехла */ }
   return b;
 }
