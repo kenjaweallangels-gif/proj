@@ -417,16 +417,27 @@ export class EncounterDirector {
     return w;
   }
 
+  /** Плавный поворот фигуры на земле (λ=6 1/с): без мгновенных разворотов при смене цели/позы. Возвращает сглаженный вектор курса. */
+  smoothFace(tk, f, dt) {
+    const sm = tk.fsm || (tk.fsm = new THREE.Vector3(f.x, 0, f.z));
+    const l = Math.hypot(f.x, f.z) || 1, fx = f.x / l, fz = f.z / l;
+    const k = 1 - Math.exp(-6 * Math.min(dt, 0.1));
+    sm.x += (fx - sm.x) * k; sm.z += (fz - sm.z) * k;
+    if (Math.hypot(sm.x, sm.z) < 0.05) { sm.x = fx; sm.z = fz; }   // разворот на 180°: не схлопываем вектор в ноль
+    sm.y = 0;
+    return sm;
+  }
+
   walkTo(tk, goal, speed, dt, face) {
     const { ground } = this.api;
     const rd = this.worm.riders, it = tk.it;
     const dx = goal.x - tk.pos.x, dz = goal.z - tk.pos.z, d = Math.hypot(dx, dz);
     let sp = 0;
-    if (d > 0.05) { sp = Math.min(speed, d / Math.max(dt, 1e-3)); tk.pos.x += (dx / d) * sp * dt; tk.pos.z += (dz / d) * sp * dt; tk.dir = tk.dir || new THREE.Vector3(); tk.dir.set(dx / d, 0, dz / d); }
+    if (d > 0.05) { sp = Math.min(speed, Math.max(0.35, d * 1.6), d / Math.max(dt, 1e-3)); tk.pos.x += (dx / d) * sp * dt; tk.pos.z += (dz / d) * sp * dt; tk.dir = tk.dir || new THREE.Vector3(); tk.dir.set(dx / d, 0, dz / d); }
     colliders.push(tk.pos, 0.5, { height: 1.8 });
     tk.pos.y = ground(tk.pos.x, tk.pos.z);
     it.fig.animate(sp, dt, 0.6);
-    const f = face || tk.dir || this._q.set(0, 0, 1);
+    const f = this.smoothFace(tk, face || tk.dir || this._q.set(0, 0, 1), dt);
     rd.placeFree(it, tk.pos, UP, f);
     return d;
   }
@@ -489,7 +500,7 @@ export class EncounterDirector {
           const spd = (d0 > 30 ? T.ossRun : T.ossWalk) * smoothstep(0, 0.6, tk.t);
           let d = d0;
           if (inDesert && d0 > T.talkDist) d = this.walkTo(tk, { x: pl.x, z: pl.z }, spd, dt, this._q.set(pl.x - tk.pos.x, 0, pl.z - tk.pos.z));
-          else { it.fig.animate(0, dt); rd.placeFree(it, tk.pos, UP, this._q.set(pl.x - tk.pos.x, 0, pl.z - tk.pos.z)); }
+          else { it.fig.animate(0, dt); rd.placeFree(it, tk.pos, UP, this.smoothFace(tk, this._q.set(pl.x - tk.pos.x, 0, pl.z - tk.pos.z), dt)); }
           if (d0 > 60) { tk.callT += dt; if (tk.callT > T.callEvery) { tk.callT = 0; this.call(tk); } }
           tk.waitT += dt;
           if (inDesert && d0 <= T.talkDist + 0.05) { tk.ph = 'talk'; tk.t = 0; this.oss.phase = 'talk'; this.startTalk(); }
@@ -500,7 +511,7 @@ export class EncounterDirector {
           const pl = this.playerPos();
           const dx = pl.x - tk.pos.x, dz = pl.z - tk.pos.z;
           it.fig.animate(0, dt);
-          rd.placeFree(it, tk.pos, UP, this._q.set(dx, 0, dz));
+          rd.placeFree(it, tk.pos, UP, this.smoothFace(tk, this._q.set(dx, 0, dz), dt));
           it.fig.lookAt?.(this._w.set(pl.x, pl.y + 1.5, pl.z));
           if (this.talkDone || this.leaveNow) { it.fig.setTalking?.(false); tk.ph = 'home'; tk.t = 0; this.finishTalk(); }
           break;
@@ -512,7 +523,7 @@ export class EncounterDirector {
         }
         case 'stand': {
           it.fig.animate(0, dt);
-          rd.placeFree(it, tk.pos, UP, tk.face);
+          rd.placeFree(it, tk.pos, UP, this.smoothFace(tk, tk.face, dt));
           break;
         }
         case 'toSpot': {
@@ -527,7 +538,7 @@ export class EncounterDirector {
           rd.poseSit(it, it.sitW, game.time, tk.touch);
           const lift = -0.0;
           this._w.copy(tk.pos); this._w.y += lift;
-          rd.placeFree(it, this._w, UP, tk.face);
+          rd.placeFree(it, this._w, UP, this.smoothFace(tk, tk.face, dt));
           break;
         }
         default: break;
