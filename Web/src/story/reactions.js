@@ -60,8 +60,11 @@ export function createReactions(game, story) {
     { id: 'DLG_B4_C01', gap: 10, hold: 0, test: () => inZone('B4_Cistern', 14) },
     // после зала: жизнь продолжается
     { id: 'DLG_PH_001', gap: 8, hold: 6, test: () => story.isCompleted('SB_B5_08_Ossana') },
-    // сад: высокая замкнутая котловина без воды, пальм, грядок и людей — реплики про мяту/садовников (DLG_C1_G*) и финик (DLG_C1_020) не играем
-    { id: 'DLG_C1_010', gap: 14, hold: 0, test: () => inZone('C1_Garden', 52) && story.isCompleted('SB_C1_04_Birds') },
+    // сад: высокая замкнутая котловина (без воды и людей). Вход — SB_C1_03/04 (DLG_C1_001/003), затем:
+    // насечки и память о фрименах → «как назвали бы жрецы» → Рэйн и креозот. Каждая следующая ждёт предыдущую или 40 с в зоне сверх порога.
+    { id: 'DLG_C1_G01', gap: 10, hold: 0, test: () => inZone('C1_Garden', 28) && story.isCompleted('SB_C1_04_Birds') },
+    { id: 'DLG_C1_010', gap: 14, hold: 0, test: () => inZone('C1_Garden', 52) && story.isCompleted('SB_C1_04_Birds') && (played.has('DLG_C1_G01') || zoneTime > 92) },
+    { id: 'DLG_C1_020', gap: 14, hold: 0, test: () => inZone('C1_Garden', 76) && played.has('DLG_C1_010') },
     // червь
     { id: 'DLG_WRM_L02', gap: 0, hold: 3, test: () => ws('Listening') && played.has('DLG_WRM_L01') },
     { id: 'DLG_WRM_L03', gap: 0, hold: 5, test: () => ws('Listening') },

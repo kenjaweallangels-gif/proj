@@ -639,47 +639,47 @@ S("DLG_PH_001", "Beat:SB_B5_08_Ossana", [
 # C1. Тайный сад
 # =====================================================================================================================
 S("DLG_C1_001", "", [
-    ("Ilva", "Calm", "Ḥayy yašubb hun, bayn an-ṣulūt. Maš tamm ḥayy ʿurr nuṭf.",
-     "Живое растёт здесь между камней. А без воды живого не бывает.", "Something alive grows here between the stones. And nothing lives without water."),
-    ("Rayn", "Wry", "Nuṭf… yaṭišš. Wakīd nuṭf? Ḍāhir? ʿurr qubw?!",
-     "Вода… плещется. Настоящая? Открытая? Без крышки?!", "Water… splashing. Real water? In the open? Without a lid?!"),
+    ("Ilva", "Calm", "Ḥayy yašubb hun, bayn an-ṣulūt — wa-maš nuṭfat ḥad.",
+     "Здесь растёт живое, между камней. И ни одной капли воды.", "Something alive grows here, between the stones. And not one drop of water."),
+    ("Rayn", "Wry", "Maš nuṭf, maš ḍumm, maš masrab ʿad an-ṣaḥr. Lišāl dassū hād?",
+     "Ни воды, ни людей, ни дороги в пустыню. Зачем такое прятать?", "No water, no people, no way out to the desert. Why hide a place like this?"),
 ])
 S("DLG_C1_003", "", [
-    ("Kair", "Wry", "Ṭuyūr. Ḥayy. Ḥā taḍbuṭ, yā Rayn. Wa-ḥā taḥṣur an-nuṭf bi-jahr.",
-     "Птицы. Живые. Не топай, Рэйн. И не считай воду вслух.", "Birds. Living ones. Don't stomp, Rayn. And don't count the water aloud."),
+    ("Kair", "Wry", "Būm fūq an-ḥarf, wa-ṣuqūr fūqah. Ḥā taḍbuṭ, yā Rayn — hun ḥattā an-firʾān yaṣnutū.",
+     "Сова на уступе, ястребы над ней. Не топай, Рэйн, — тут даже мыши слушают.", "An owl on the ledge, hawks above it. Don't stomp, Rayn — even the mice listen here."),
     ("Ilva", "Calm", "Hād tabr ayḍ — ġīr ʿurr ṣalt fūqah.",
      "Это тоже укрытие. Только без камня над головой.", "This is a refuge too — only with no rock above it."),
 ])
 S("DLG_C1_010", "", [
-    ("Kair", "Wry", "Kay ʿalaška šāl yalqut an-ḥanābin li-hād?",
-     "Знаете, как бы жрецы назвали этот сад?", "Do you know what the priests would call this garden?"),
-    ("Ilva", "Calm", "Ḍalāl.",
-     "Ересью.", "Heresy."),
-    ("Kair", "Wry", "Maš. Isrāf an-nuṭf. Hād ʿakir ajamm.",
-     "Нет. Расточением воды. Для них это хуже.", "No. Wasting water. To them that's worse."),
+    ("Kair", "Wry", "Kay ʿalaška šāl ġad yalqut an-ḥanābin li-hād?",
+     "Знаете, как жрецы назвали бы это место?", "Do you know what the priests would call this place?"),
+    ("Ilva", "Calm", "Ḍalāl?",
+     "Ересью?", "Heresy?"),
+    ("Kair", "Wry", "ʿAkir ajamm. Ḥayy ʿurr nuṭf wa-ʿurr ʿušr. Fa an-ṣaḥr maš yabġī an-ḥanābin.",
+     "Хуже. Живое без воды и без десятины. Значит, пустыне жрецы не нужны.", "Worse. Life without water and without a tithe. Meaning the desert doesn't need priests."),
 ])
 S("DLG_C1_020", "", [
-    ("Rayn", "Neutral", "Kay ṭāq aḥṭam tamra? Ḥadat.",
-     "Можно мне финик? Один.", "May I have a date? Just one."),
-    ("Kair", "Neutral", "Maš. Hādī maš tamrak. Hādī ʿašāʾ ḥad.",
-     "Нет. Это не твой финик. Это чей-то ужин.", "No. That's not your date. That's someone's supper."),
-    ("Rayn", "Wry", "Ānu ġad aḥluṣ!",
-     "Я заплачу!", "I'll pay!"),
+    ("Rayn", "Neutral", "Hād an-šajr yafūḥ jamm. Kay ṭāq adšinuh fu-Kīn?",
+     "Этот куст так пахнет… Его можно продать в Кине?", "This bush smells so strong… Could I sell it in Keen?"),
+    ("Kair", "Neutral", "Maš. Hād kurayz. Duḥ an-tirb hū aqdam mun Kīn.",
+     "Нет. Это креозот. Его корень старше Кина.", "No. That's creosote. Its root is older than Keen."),
+    ("Rayn", "Wry", "Fa ānu ġad aḥluṣ ajamm!",
+     "Тогда заплачу больше!", "Then I'll pay more!"),
     ("Kair", "Amused", "Li-hād maš. Hun maš kull šāl yuštarā.",
      "Именно поэтому — нет. Здесь не всё покупается.", "That's exactly why not. Not everything here can be bought."),
 ])
-# Сад: слова местных
+# Сад: память о старых фрименах; место возрожденцев (людей в котловине нет — говорят спутники)
 S("DLG_C1_G01", "", [
-    ("Elder", "Calm", "Ḥā tanzil fūq an-naʿnaʿ, yā ṣuġ. Hād an-ḥawš li-qahw an-ʿurs.",
-     "Не наступай на мяту, сорванец. Эта грядка — для свадебного кофе.", "Don't tread on the mint, little one. This bed is for the wedding coffee."),
-    ("Child", "Neutral", "Wa-lišāl an-naʿnaʿ yašubb, wa-Kīn yalqut: an-ṣaḥr yašubb tirb ġīr?",
-     "А почему мята растёт, если Кин говорит, что в пустыне растёт только песок?", "Then why does the mint grow, if Keen says only sand grows in the desert?"),
-    ("Elder", "Wry", "Kīn yalqut dī yaḥluṣ. Lin an-ṣaḥr akhḍar — li-mūn yaḥluṣ an-nuṭf li-an-ḥanābin?",
-     "Кин говорит то, что выгодно. Будь пустыня зелёной — зачем платить жрецам за воду?", "Keen says whatever pays. If the desert were green — why pay the priests for water?"),
-    ("Child", "Neutral", "Wa-an-Ḥūl maš yatūl hun?",
-     "А червь сюда не придёт?", "And the worm won't come here?"),
-    ("Elder", "Warm", "Lin yatūl — yanqaš an-naʿnaʿ li-mūn. Zūd an-nuṭf.",
-     "Если придёт — запомнит, чья тут мята. Иди, неси воду.", "If he comes — he'll note whose mint it is. Go on, fetch the water."),
+    ("Ilva", "Calm", "Iḥdaqū — ḥuzūz fu-an-jāl. Aqdam mun an-ʿuqūf fu-an-masrab.",
+     "Смотрите — насечки на стене. Старше крючьев на тропе.", "Look — notches in the wall. Older than the hooks on the trail."),
+    ("Kair", "Whisper", "Ajdād an-ṣaḥr. Ġarasū an-šajr hun — li-an-tirb maš yaḥṭam an-ṣalt.",
+     "Старые фримены. Сажали здесь кусты, чтобы песок не съел скалу.", "The old Fremen. They planted bushes here so the sand wouldn't eat the rock."),
+    ("Rayn", "Neutral", "Fu-Kīn yalqutū: hum ġabarū qadīm. Ġīr qiṣṣ wa-jild.",
+     "В Кине говорят, их давно нет. Остались сказки да костюмы.", "In Keen they say they're long gone. Only tales and stillsuits left."),
+    ("Ilva", "Calm", "Ġabarū. Bayd iḥdaqū: an-tirb ʿad an-šajr ṭarī. Ḥad yatūl hun.",
+     "Их нет. Но посмотрите: у корней свежий песок. Сюда кто-то ходит.", "They're gone. But look: the sand at the roots is fresh. Someone comes here."),
+    ("Kair", "Reverent", "An-nahḍiyyīn. Maš yaḥnabū hun bi-jahr. Hun yaṣnutū an-ajdād.",
+     "Возрожденцы. Вслух здесь не молятся. Здесь слушают предков.", "The revivalists. They don't pray aloud here. Here they listen to the ancestors."),
 ])
 
 

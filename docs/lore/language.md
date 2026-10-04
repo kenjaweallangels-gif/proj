@@ -865,6 +865,12 @@ Irdif-ū      an-ʿuqūf.
 | W-R-ʾ | wara | позади, за | behind |
 | S-T-R | sitr | занавеска | curtain |
 | ʿ-J-L | mustaʿjil | торопливый, нетерпеливый | hasty one |
+| Š-J-R | šajr | куст (собир.: кусты) | bush, shrubs |
+| — | kurayz | креозот (смолистый куст котловин) | creosote bush |
+| Ġ-R-S | ġaras (i) | сажать (растение) | to plant |
+| B-W-M | būm | сова | owl |
+| Ṣ-Q-R | ṣaqr, мн. ṣuqūr | ястреб | hawk |
+| F-R-ʾ | farʾ, мн. firʾān | мышь | mouse |
 
 ### 13.8 Конвейер озвучки (кратко)
 `Tools/tts/script_s1.py` (источник) → `gen_dialogue.py` → `Dialogue_S1.csv` → `piper_build.py` (Piper → ffmpeg: голос персонажа → Opus 16–20 кбит/с) → `Web/src/assets/vo.js`. Подробности — `docs/audio/voice_pipeline.md`.
