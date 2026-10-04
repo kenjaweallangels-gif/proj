@@ -14,7 +14,8 @@ import * as THREE from 'three';
 import { clamp, lerp, smoothstep, rng } from '../core/util.js';
 import { GOLDEN_PATH } from '../core/layout.js';
 import { colliders } from '../core/colliders.js';
-import { choosePath } from './path.js';
+import { choosePath, RIDGE_CLEAR } from './path.js';
+import { ridgeQuery, RQR } from '../core/ridge.js';
 import { RADIUS } from './spine.js';
 
 export const DIALOGUE_ID = 'DLG_A2_RIDER_01';
@@ -69,6 +70,9 @@ export class EncounterDirector {
     const clear = (x, z, extra = 0) => {
       tmp.set(x, ground(x, z), z);
       if (game.collide(tmp, RADIUS + T.avoidMargin + extra, { ignore: 'worm', height: 3 })) return [tmp.x, tmp.z];
+      // хребет: выталкиваем от основания массива
+      const rd = ridgeQuery(x, z);
+      if (rd < RIDGE_CLEAR + extra) { const k = RIDGE_CLEAR + extra - rd; return [x + RQR.ox * k, z + RQR.oz * k]; }
       // группа: голова — не ближе T.keepOut от игрока (иначе обход валунов прижимает длинное тело к людям)
       const dx = x - G.x, dz = z - G.z, d = Math.hypot(dx, dz);
       if (d < T.keepOut && d > 1e-3) return [G.x + dx / d * T.keepOut, G.z + dz / d * T.keepOut];
