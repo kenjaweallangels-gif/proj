@@ -6,7 +6,8 @@
 import { clamp } from './util.js';
 
 const SOFT = /swiftshader|llvmpipe|software|softpipe|microsoft basic|mesa offscreen/i;
-const WEAK = /intel\(r\)? (hd|uhd|iris)|intel .*graphics|mali-|adreno \(tm\) [2-5]\d\d|powervr|videocore|apple gpu$/i;
+// слабые: встроенная Intel (кроме Iris Xe/Arc), старые мобильные Mali/Adreno/PowerVR; Apple Silicon/дискретные — норм (DRS подстроит)
+const WEAK = /intel.*(hd graphics|uhd graphics|iris(?! xe)|iris plus|gma)|mali-|adreno \(tm\) [2-5]\d\d|powervr|videocore/i;
 
 export function gpuName() {
   try {
@@ -26,7 +27,7 @@ export function detectQuality() {
   const gpu = gpuName();
   if (SOFT.test(gpu)) return 'low';
   const cores = navigator.hardwareConcurrency || 4;
-  if (WEAK.test(gpu) && !/Arc|Iris Xe Max/i.test(gpu)) return 'low';
+  if (WEAK.test(gpu) && !/iris\(r\) xe|iris xe|arc/i.test(gpu)) return 'low';
   if (cores <= 2) return 'low';
   return 'med';
 }

@@ -64,6 +64,12 @@ function warmup() {
   scene.traverse((o) => { if (!o.visible && o !== scene) hidden.push(o); });
   for (const o of hidden) o.visible = true;
   try { game.render(0.016); } finally { for (const o of hidden) o.visible = false; }
+  // «глубоко в сиетче»: пустыня скрыта (и туман снят — это тоже ключ программы), видны только светошары интерьера
+  const sroot = game.sietch?.root, sWas = sroot?.visible, spWas = game.space;
+  if (sroot && game.world?.setVisible) {
+    try { game.world.setVisible(false); sroot.visible = true; game.space = 'sietch'; game.render(0.016); }
+    finally { game.world.setVisible(true); sroot.visible = sWas; game.space = spWas; }
+  }
   game.render(0.016);
   game.renderer.info.reset();
   console.info(`[warmup] ${(performance.now() - t0).toFixed(0)} ms, programs ${before} → ${game.renderer.info.programs?.length ?? 0}`);

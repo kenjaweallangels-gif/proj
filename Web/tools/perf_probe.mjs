@@ -15,6 +15,8 @@ const ALL = ['start', 'erg', 'worm', 'harvester', 'trail', 'cleft', 'market', 'h
 const points = arg('points', ALL.join(',')).split(',');
 const label = arg('label', '');
 const file = arg('file', 'rakis_demo.html');
+const warm = arg('warm', '0'); // 1 — с прогревом шейдеров (как у игрока): тогда число программ почти не растёт по ходу обхода
+const PROF = arg('prof', '0') === '1'; // CDP-профиль CPU: топ функций по self-time в каждой точке
 
 const report = { when: new Date().toISOString(), label, viewport: [W, H], frames: FRAMES, results: {} };
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || findChromium(), args: GL.swiftshader });
@@ -24,10 +26,12 @@ for (const q of qs) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('console', (m) => { if (m.type() === 'error' && !/AudioContext/.test(m.text())) errors.push(m.text()); });
-  await page.goto(`file://${root}/dist/${file}?autotest=1&q=${q}&lang=RU&perf=1&drs=${drs}`);
+  await page.goto(`file://${root}/dist/${file}?autotest=1&q=${q}&lang=RU&perf=1&drs=${drs}&warm=${warm}`);
   await page.waitForFunction(() => window.__rakis?.realTime > 1.5, null, { timeout: 900000, polling: 1000 });
   await page.evaluate(() => { const g = window.__rakis; g.perf.overlay = false; g.perf.enable(true); });
   report.results[q] = {};
+  const cdp = PROF ? await page.context().newCDPSession(page) : null;
+  if (cdp) await cdp.send('Profiler.enable');
   for (const name of points) {
     await page.evaluate(async (name) => {
       const g = window.__rakis;
@@ -47,10 +51,22 @@ for (const q of qs) {
       return s.same >= 5 && P.acc.n >= 8;
     }, null, { timeout: 600000, polling: 700 }).catch(() => {});
     await page.evaluate(() => window.__rakis.perf.reset());
+    if (cdp) await cdp.send('Profiler.start');
     await page.waitForFunction((n) => window.__rakis.perf.acc.n >= n, FRAMES, { timeout: 600000, polling: 500 });
+    let topFns = null;
+    if (cdp) {
+      const { profile } = await cdp.send('Profiler.stop');
+      const self = new Map(), idx = new Map(profile.nodes.map((n) => [n.id, n]));
+      profile.samples.forEach((id, i) => { const n = idx.get(id), cf = n.callFrame; const k = `${cf.functionName || '(anon)'} ${cf.url.split('/').pop()}:${cf.lineNumber}`; self.set(k, (self.get(k) || 0) + (profile.timeDeltas[i] || 0)); });
+      const tot = [...self.values()].reduce((a, b) => a + b, 0) || 1;
+      topFns = [...self.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([k, v]) => ({ fn: k, ms: +(v / 1000).toFixed(1), pct: +(100 * v / tot).toFixed(1) }));
+    }
     const snap = await page.evaluate(() => { const g = window.__rakis; return { ...g.perf.snapshot(), space: g.space, zone: g.zone, bodies: g.colliders.size }; });
+    if (topFns) snap.topFns = topFns;
     report.results[q][name] = snap;
     const top = Object.entries(snap.modulesMs).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k}=${v}`).join(' ');
+    if (snap.scene?.heavy?.length) console.log('   heavy meshes: ' + snap.scene.heavy.slice(0, 4).map((h) => `${h.name} ${Math.round(h.tris / 1000)}k${h.inst > 1 ? ' x' + h.inst : ''}${h.shadow ? ' sh' : ''}${h.culled ? '' : ' nocull'}`).join(' | '));
+    if (topFns) console.log('   top fns: ' + topFns.slice(0, 6).map((t) => `${t.fn}=${t.pct}%`).join(' | '));
     console.log(`[${q}] ${name.padEnd(9)} cpu ${String(snap.cpuMs).padStart(6)}ms render ${String(snap.renderCpuMs).padStart(6)}ms | draw ${String(snap.calls).padStart(4)} tri ${String(Math.round(snap.triangles / 1000)).padStart(5)}k prog ${snap.programs} | casters ${snap.scene.shadowCasters}/${snap.scene.visible} | heap ${snap.heapMB}MB | ${top}`);
   }
   report.results[q].__errors = [...new Set(errors)].slice(0, 8);

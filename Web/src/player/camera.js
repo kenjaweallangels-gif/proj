@@ -14,6 +14,7 @@ export function createCameraRig(game, p) {
   const dir = new THREE.Vector3(), right = new THREE.Vector3(), head = new THREE.Vector3(), want = new THREE.Vector3();
   const tpPos = new THREE.Vector3(), fpPos = new THREE.Vector3(), pos = new THREE.Vector3(), probe = new THREE.Vector3();
   const look = new THREE.Vector3(), wallQ = new THREE.Vector3();
+  const CAM_OWN = { ignore: new Set(['player', 'companion:Ilva', 'companion:Rayn', 'companion:Ossana']) }; // штанга не упирается в тело игрока и спутников (они прячутся у камеры сами)
   const snapPos = new THREE.Vector3(), snapQuat = new THREE.Quaternion(), tmpQ = new THREE.Quaternion();
   let armFrac = 1, fov = C.fov, bobPhase = 0, bobAmt = 0, resyncT = -1, wasFrozen = false, photo = false, breath = 0;
 
@@ -31,7 +32,7 @@ export function createCameraRig(game, p) {
   Object.assign(rig, {
     snap,
     /** Приземление: пружинная «вмятина» камеры вниз (impact — скорость удара, м/с). */
-    dip(impact) { dipVel -= Math.min(2.6, 0.45 + impact * 0.13); },
+    dip(impact) { dipVel -= Math.min(5, 0.8 + impact * 0.2); },
     setFirstPerson(b) { rig.fp = !!b; p.firstPerson = rig.fp; },
     toggle() { rig.setFirstPerson(!rig.fp); },
     /** Применяет ввод look (вызывается в update игрока). */
@@ -80,13 +81,23 @@ export function createCameraRig(game, p) {
       want.copy(head).addScaledVector(right, C.shoulder).addScaledVector(dir, -dist);
       let frac = 1;
       const NP = C.armProbes;
-      for (let i = 1; i <= NP; i++) {
-        const k = i / NP;
+      // Проба штанги на доле k: ниже земли или в стене? Первая «плохая» из NP проб уточняется бисекцией (3 шага) —
+      // длина штанги меняется непрерывно, без скачков по 1/NP при движении вдоль стены (раньше камера «дёргалась» в узких местах).
+      const bad = (k, first) => {
         probe.lerpVectors(head, want, k);
-        let bad = probe.y < game.heightAt(probe.x, probe.z) + C.groundClearance;
+        if (probe.y < game.heightAt(probe.x, probe.z) + C.groundClearance) return true;
+        if (first) return false;
         // Стены проверяем на уровне ступней игрока: многоуровневые полы (сиетч) выбирают этаж по y.
-        if (!bad && i > 1) { wallQ.set(probe.x, pivot.y + 0.1, probe.z); bad = game.collide(wallQ, 0.25); }
-        if (bad) { frac = Math.max(0.12, (i - 1) / NP); break; }
+        wallQ.set(probe.x, pivot.y + 0.1, probe.z);
+        return game.collide(wallQ, 0.25, CAM_OWN);
+      };
+      for (let i = 1; i <= NP; i++) {
+        if (bad(i / NP, i === 1)) {
+          let lo = (i - 1) / NP, hi = i / NP;
+          for (let it = 0; it < 3; it++) { const mid = (lo + hi) / 2; if (bad(mid, false)) hi = mid; else lo = mid; }
+          frac = Math.max(0.12, lo);
+          break;
+        }
       }
       armFrac = frac < armFrac ? frac : damp(armFrac, frac, C.armOutLambda, dt);
       tpPos.lerpVectors(head, want, armFrac);

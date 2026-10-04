@@ -7,6 +7,7 @@ import { createInput } from './input.js';
 import { colliders } from './colliders.js';
 import { createPerf } from './perf.js';
 import { createDRS } from './quality.js';
+import { createShadowThrottle } from './shadows.js';
 
 const _gp = { x: 0, y: 0, z: 0 };
 const _s0 = new THREE.Vector3(), _s1 = new THREE.Vector3();
@@ -108,6 +109,7 @@ export function createGame(canvas, settings) {
     game.perf.res = sc;
   };
   game.drs = createDRS(game, basePR);
+  const shadowThrottle = createShadowThrottle(game);
   game.perf = createPerf(game, new URLSearchParams(location.search).get('perf') === '1');
 
   addEventListener('resize', () => {
@@ -144,6 +146,7 @@ export function createGame(canvas, settings) {
       if (P) perf.modEnd(name, true);
     }
     if (doRender) {
+      shadowThrottle.update(game.drs.level, rawDt);
       renderer.info.reset();
       if (P) perf.renderStart();
       try { game.render(rawDt); } catch (e) { reportError('render', e); }
