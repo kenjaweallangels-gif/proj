@@ -13,7 +13,7 @@ const _gp = { x: 0, y: 0, z: 0 };
 const _s0 = new THREE.Vector3(), _s1 = new THREE.Vector3();
 
 export function createGame(canvas, settings) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: settings.quality !== 'low', powerPreference: 'high-performance', stencil: false });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false }); // вся сцена идёт через композер (MSAA — в его цели): MSAA канваса только тратил память и резолв
   const basePR = Math.min(devicePixelRatio, settings.quality === 'high' ? 2 : 1.25) * (settings.quality === 'low' ? 0.6 : 1);
   renderer.setPixelRatio(basePR);
   renderer.setSize(innerWidth, innerHeight, false);

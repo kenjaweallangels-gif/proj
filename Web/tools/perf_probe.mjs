@@ -28,6 +28,7 @@ for (const q of qs) {
   page.on('console', (m) => { if (m.type() === 'error' && !/AudioContext/.test(m.text())) errors.push(m.text()); });
   await page.goto(`file://${root}/dist/${file}?autotest=1&q=${q}&lang=RU&perf=1&drs=${drs}&warm=${warm}`);
   await page.waitForFunction(() => window.__rakis?.realTime > 1.5, null, { timeout: 900000, polling: 1000 });
+  console.log(`[${q}] warmup:`, JSON.stringify(await page.evaluate(() => window.__rakis.warmup || null)));
   await page.evaluate(() => { const g = window.__rakis; g.perf.overlay = false; g.perf.enable(true); });
   report.results[q] = {};
   const cdp = PROF ? await page.context().newCDPSession(page) : null;
