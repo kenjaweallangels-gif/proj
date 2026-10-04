@@ -16,7 +16,7 @@ const bx0 = ZONE.x0 - 4, bz0 = ZONE.z0 - 4, bn = Math.ceil(ZONE.x1 - ZONE.x0) + 
 const bg = new Float32Array(bn * bm);
 for (let k = 0; k < bm; k++) for (let i = 0; i < bn; i++) bg[i + bn * k] = fieldH(bx0 + i, bz0 + k);
 const base = (x, z) => { const fx = Math.min(bn - 1.001, Math.max(0, x - bx0)), fz = Math.min(bm - 1.001, Math.max(0, z - bz0)); const i = fx | 0, k = fz | 0, u = fx - i, v = fz - k, o = i + bn * k; return (bg[o] * (1 - u) + bg[o + 1] * u) * (1 - v) + (bg[o + bn] * (1 - u) + bg[o + bn + 1] * u) * v; };
-const wallX = buildWallTable(() => buildClawGeometry('med'), { z0: ZONE.z0, z1: ZONE.z1, yMax: ZONE.y1 });
+const wallX = buildWallTable(() => buildClawGeometry('med'), { z0: ZONE.z0, z1: ZONE.z1, yMax: ZONE.y1 }, 'med', 'west', { dz: 0.5, dy: 0.5 });
 const S = createApproachScene({ base, wallX });
 const vol = S.build();
 function prevCollide(pos, r) {
