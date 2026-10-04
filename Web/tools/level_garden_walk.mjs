@@ -21,8 +21,8 @@ await page.waitForFunction(() => window.__rakis?.garden && window.__rakis.player
 await page.evaluate(() => { const g = window.__rakis; g.timeScale = 3; g.weather?.setHours?.(10.5, true); });
 
 /** Бот: waypoints [[x,z],...], стартовая позиция/высота; возвращает итог. Шаги — по игровому времени. */
-async function walk(name, way, { start, yStart, maxStuck = 20, maxT = 600 } = {}) {
-  const res = await page.evaluate(([way, start, yStart, maxStuck, maxT]) => new Promise((resolve) => {
+async function walk(name, way, { start, yStart, maxStuck = 20, maxT = 600, tol = 1.6 } = {}) {
+  const res = await page.evaluate(([way, start, yStart, maxStuck, maxT, tol]) => new Promise((resolve) => {
     const g = window.__rakis, p = g.player;
     p.teleport(start[0], yStart, start[1], 0, false);
     let wi = 0, stuckT = 0, lastD = 1e9, t = 0, maxSlope = 0, falls = 0, lastY = p.position.y, minY = 1e9, maxY = -1e9;
@@ -40,13 +40,13 @@ async function walk(name, way, { start, yStart, maxStuck = 20, maxT = 600 } = {}
       const dtg = g.time - gt; if (dtg < 0.1) return; gt = g.time;
       t += dtg;
       const tg = way[wi], d = Math.hypot(tg[0] - p.position.x, tg[1] - p.position.z);
-      if (d < 1.6) { wi++; stuckT = 0; lastD = 1e9; if (wi >= way.length) { clearInterval(id); g.input.axis = ax; resolve({ done: true, t: +t.toFixed(0), maxSlope: +(p.slope || 0).toFixed(0), minY, maxY, pos: [+p.position.x.toFixed(1), +p.position.y.toFixed(1), +p.position.z.toFixed(1)] }); return; } }
+      if (d < tol) { wi++; stuckT = 0; lastD = 1e9; if (wi >= way.length) { clearInterval(id); g.input.axis = ax; resolve({ done: true, t: +t.toFixed(0), maxSlope: +(p.slope || 0).toFixed(0), minY, maxY, pos: [+p.position.x.toFixed(1), +p.position.y.toFixed(1), +p.position.z.toFixed(1)] }); return; } }
       if (d > lastD - 0.05) stuckT += dtg; else { stuckT = 0; lastD = d; }
       if (p.slope > maxSlope) maxSlope = p.slope;
       minY = Math.min(minY, p.position.y); maxY = Math.max(maxY, p.position.y);
       if (stuckT > maxStuck || t > maxT) { clearInterval(id); g.input.axis = ax; resolve({ done: false, wi, of: way.length, pos: [+p.position.x.toFixed(1), +p.position.y.toFixed(1), +p.position.z.toFixed(1)], t: +t.toFixed(0), maxSlope: +maxSlope.toFixed(0) }); }
     }, 100);
-  }), [way, start, yStart, maxStuck, maxT]);
+  }), [way, start, yStart, maxStuck, maxT, tol]);
   console.log(`${res.done ? 'OK  ' : 'FAIL'} ${name}:`, JSON.stringify(res));
   if (!res.done) process.exitCode = 1;
   return res;
@@ -96,7 +96,7 @@ if (only.includes('tunnel')) {
   } else console.log('no sietch.exitPath — skip');
 }
 if (only.includes('perf')) {
-  const r = await page.evaluate(() => { const p = window.__rakis.garden.perf; return { avgMs: +p.avg.toFixed(3), maxMs: +p.max.toFixed(2), firstMs: +p.first.toFixed(2), frames: p.n }; });
+  const r = await page.evaluate(() => { const p = window.__rakis.garden.perf; return { avgMs: +p.avg.toFixed(3), maxMs: +p.max.toFixed(2), firstMs: +p.first.toFixed(2), frames: p.n, firstFrameParts: Object.fromEntries(Object.entries(p.parts).map(([k, v]) => [k, +v.toFixed(1)])) }; });
   console.log('garden update() CPU:', JSON.stringify(r), 'render:', JSON.stringify(await page.evaluate(() => window.__rakis.garden.renderStats())));
 }
 if (only.includes('trail')) {
@@ -112,10 +112,10 @@ if (only.includes('trail')) {
   });
   console.log(`${clear.blocked ? 'FAIL' : 'OK  '} trail clearance:`, JSON.stringify(clear));
   if (clear.blocked) process.exitCode = 1;
-  const way = await page.evaluate(() => { const A = window.__rakis.approach; const out = []; for (let i = 0; i < A.trail.length; i += 6) out.push([A.trail[i].x, A.trail[i].z]); out.push([A.trail[A.trail.length - 1].x, A.trail[A.trail.length - 1].z]); return out; });
+  const way = await page.evaluate(() => { const A = window.__rakis.approach; const out = []; for (let i = 0; i < A.trail.length; i += 2) out.push([A.trail[i].x, A.trail[i].z]); out.push([A.trail[A.trail.length - 1].x, A.trail[A.trail.length - 1].z]); return out; });
   const st = await page.evaluate(() => { const A = window.__rakis.approach; return { x: A.trail[0].x, z: A.trail[0].z }; });
-  await walk('trail up', way, { start: [st.x, st.z], maxStuck: 25, maxT: 900 });
-  await walk('trail down', way.slice().reverse(), { start: way[way.length - 1], yStart: undefined, maxStuck: 25, maxT: 900 });
+  await walk('trail up', way, { start: [st.x, st.z], maxStuck: 25, maxT: 1200, tol: 0.9 });
+  await walk('trail down', way.slice().reverse(), { start: way[way.length - 1], yStart: undefined, maxStuck: 25, maxT: 1200, tol: 0.9 });
 }
 if (only.includes('mismatch')) {
   const r = await page.evaluate(() => {
@@ -136,7 +136,8 @@ if (only.includes('mismatch')) {
       const hp = g.world.heightAt(x, z, 1e3);          // «верх» колонки — только для точек в котловине без скал над головой
       const gy = G.groundAt(x, z);
       rc.set(new T.Vector3(x, gy + 3, z), dir); rc.far = 10;
-      const hit = rc.intersectObject(G.groundMesh, false)[0];
+      // видимая поверхность = самая высокая из (меш пола, меш скал/валунов) не выше ступней + 1.1 м (как выбирает heightAt)
+      const hit = rc.intersectObjects([G.groundMesh, G.rim], false).filter((h) => h.point.y <= gy + 1.1).sort((a, b) => b.point.y - a.point.y)[0];
       n++;
       terrainAbove = Math.max(terrainAbove, G.terrainAt(x, z) - gy);
       if (!hit) { miss++; continue; }

@@ -1,0 +1,18 @@
+import { heightAt as fieldH } from '../src/desert/field.js';
+import { buildClawGeometry } from '../src/desert/rock.js';
+import { buildWallTable } from '../src/level/wall.js';
+import { createGroundField, buildGrid } from '../src/garden/ground.js';
+import { createRim } from '../src/garden/rim.js';
+const faceX = buildWallTable(() => buildClawGeometry('med'), { z0: 322, z1: 470, yMax: 36 }, 'med', 'east');
+const faceAt = (z) => faceX(z, 4);
+const field = createGroundField({ desert: fieldH, faceAt });
+const grid = buildGrid(field);
+const baseG = (x, z) => { const g = grid.sample(x, z); return Number.isFinite(g) ? g : fieldH(x, z); };
+const rim = createRim({ base: baseG, faceX, h: 0.8 });
+const vol = rim.build();
+const [cx, cz] = process.argv.slice(2).map(Number);
+const g = grid.sample(cx, cz);
+console.log('g', g.toFixed(2), 'surfaces', [0, 1, 2, 5].map((dy) => vol.surfaceY(cx, cz, g + dy)).map((v) => v.toFixed(2)).join(' '));
+for (let z = cz - 3; z <= cz + 3; z++) console.log(z, [-3, -2, -1, 0, 1, 2, 3].map((o) => { const x = cx + o; const gg = grid.sample(x, z); return (vol.surfaceY(x, z, gg + 0.3) - gg).toFixed(2); }).join(' '));
+console.log('boulders near', rim.BOUL.filter((b) => Math.hypot(b.x - cx, b.z - cz) < 12).map((b) => [b.x.toFixed(1), b.z.toFixed(1), b.y.toFixed(1), b.rx.toFixed(1)].join(',')));
+console.log('ledge', rim.ledge);

@@ -164,12 +164,25 @@ export function create(game) {
     return hit;
   };
   const inMouthCorridor = (x, z) => x > MOUTH.x - MOUTH.lining - 3 && x < MOUTH.x + 3 && Math.abs(z - MOUTH.z) < 2.8;
+  // Выходной туннель сиетча (последние 6 узлов, как его addPassage): контур Когтя там не выталкивает (3D-капсулы r = 3 м вдоль ломаной)
+  const exitPts = (game.sietch?.exitPath || []).slice(-6).map((q) => ({ x: q.x, y: q.y, z: q.z }));
+  const inExitPassage = (pos) => {
+    if (exitPts.length < 2) return false;
+    const py = pos.y + 0.9;
+    for (let i = 0; i < exitPts.length - 1; i++) {
+      const a = exitPts[i], b = exitPts[i + 1], abx = b.x - a.x, aby = b.y - a.y, abz = b.z - a.z, l2 = abx * abx + aby * aby + abz * abz || 1;
+      const t = Math.max(0, Math.min(1, ((pos.x - a.x) * abx + (py - a.y) * aby + (pos.z - a.z) * abz) / l2));
+      const dx = pos.x - (a.x + abx * t), dy = py - (a.y + aby * t), dz = pos.z - (a.z + abz * t);
+      if (dx * dx + dy * dy + dz * dz < 9) return true;
+    }
+    return false;
+  };
   world.collide = (pos, r = 0.4) => {
     if (pos.x < Zr.x0 || pos.x > Zr.x1 || pos.z < Zr.z0 || pos.z > Zr.z1) return prevCollide(pos, r);
     let hit = false;
     if (inGarden(pos.x, pos.z)) {
       // свои правила: контур Когтя (кроме штольни устья и высоких уступов) + SDF гребней; препятствия пустыни здесь сняты
-      if (!inMouthCorridor(pos.x, pos.z) && !(pos.y !== undefined && pos.y - prevHeight0(pos.x, pos.z) > 2.5)) hit = clawPush(pos, r);
+      if (!inMouthCorridor(pos.x, pos.z) && !inExitPassage(pos) && !(pos.y !== undefined && pos.y - prevHeight0(pos.x, pos.z) > 2.5)) hit = clawPush(pos, r);
     } else hit = prevCollide(pos, r);
     if (pos.x > faceAt(pos.z) - 0.2) hit = vol.collide(pos, r) || hit;
     return hit;
@@ -185,7 +198,7 @@ export function create(game) {
   let inside = false, shelter = 0, worldForced = false;
   const camP = new V3();
   let flT = 0, firstRefresh = true;
-  const perf = { ms: 0, avg: 0, n: 0, max: 0, first: 0 };
+  const perf = { ms: 0, avg: 0, n: 0, max: 0, first: 0, parts: {} };
   const api = {
     root, rim: rimMesh, life, ground: groundBase, groundMesh: gm.mesh, structures, mouth, flora, fauna, people, volume: vol, FLOOR_Y, center: C, field, grid, perf,
     hasGroundPatch: true,
@@ -200,14 +213,16 @@ export function create(game) {
     surfaceKind: (x, z) => field.kind(x, z),
     /** Что сад отдаёт рендеру сейчас: вызовы отрисовки и треугольники (по видимым мешам корня, без учёта отсечения по пирамиде и теней). */
     renderStats() {
-      let calls = 0, tris = 0, inst = 0;
+      let calls = 0, tris = 0, inst = 0; const by = {};
       root.traverseVisible((o) => {
         if (!(o.isMesh || o.isInstancedMesh) || !o.geometry) return;
         const n = o.isInstancedMesh ? o.count : 1; if (!n) return;
         calls++; inst += o.isInstancedMesh ? n : 0;
-        const g = o.geometry; tris += (g.index ? g.index.count : g.attributes.position.count) / 3 * n;
+        const g = o.geometry, t = (g.index ? g.index.count : g.attributes.position.count) / 3 * n; tris += t;
+        const k = o.name || o.parent?.name || o.type; const e = by[k] || (by[k] = { calls: 0, tris: 0 }); e.calls++; e.tris += Math.round(t);
       });
-      return { calls, tris: Math.round(tris), instances: inst };
+      const top = Object.entries(by).sort((a, b) => b[1].tris - a[1].tris).slice(0, 12).map(([k, v]) => `${k}:${v.calls}/${v.tris}`);
+      return { calls, tris: Math.round(tris), instances: inst, top };
     },
     stats: { tris: mesh.index.length / 3, groundTris: gm.tris, instances: flora.total, buildMs: 0 },
     update(dt, t) {
@@ -237,15 +252,20 @@ export function create(game) {
         if (z && !inside) { inside = true; bus.emit('garden:enter', { x: p.x, z: p.z }); }
         else if (!z && inside) { inside = false; bus.emit('garden:leave', { x: p.x, z: p.z }); }
       }
+      // разбивка по частям — только для первых кадров (поиск разовых фризов)
+      const prof = perf.n < 3; let tq = prof ? performance.now() : 0;
+      const lap = (k) => { if (prof) { const n = performance.now(); perf.parts[k] = Math.max(perf.parts[k] || 0, n - tq); tq = n; } };
       flT -= dt;
       if (flT <= 0 || firstRefresh) { flT = 0.35; camP.copy(cam); flora.refresh(camP, firstRefresh); firstRefresh = false; }
-      structures.update(dt, t, cam);
-      fauna.update(dt, t);
-      people.update(dt, t, p || { x: 0, y: 0, z: 0 });
-      life.update(dt, t, cam, p, groundTop);
+      lap('flora');
+      structures.update(dt, t, cam); lap('structures');
+      fauna.update(dt, t); lap('fauna');
+      people.update(dt, t, p || { x: 0, y: 0, z: 0 }); lap('people');
+      life.update(dt, t, cam, p, groundTop); lap('life');
       const ms = performance.now() - tp;
       if (!perf.first) perf.first = ms;
-      perf.ms = ms; perf.n++; perf.avg += (ms - perf.avg) / Math.min(perf.n, 120); if (ms > perf.max) perf.max = ms;
+      perf.ms = ms; perf.n++;
+      if (perf.n > 1) { perf.avg += (ms - perf.avg) / Math.min(perf.n - 1, 120); if (ms > perf.max) perf.max = ms; }   // первый кадр — отдельно (perf.first)
     },
   };
   api.stats.buildMs = performance.now() - t0;
