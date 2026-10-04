@@ -1,0 +1,604 @@
+{
+ "when": "2026-10-04T02:29:52.209Z",
+ "file": "perf_baseline.html",
+ "q": "low",
+ "ticks": 240,
+ "reps": 3,
+ "points": {
+  "start": {
+   "totalMed": 1.1,
+   "totalP95": 2,
+   "totalMax": 4.3,
+   "mods": {
+    "weather": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "desertRoot": {
+     "med": 0,
+     "p95": 0.2
+    },
+    "sietch": {
+     "med": 0,
+     "p95": 0
+    },
+    "worm": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "harvester": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "approach": {
+     "med": 0,
+     "p95": 0
+    },
+    "garden": {
+     "med": 0,
+     "p95": 0
+    },
+    "player": {
+     "med": 0.8,
+     "p95": 1.3
+    },
+    "companions": {
+     "med": 0.2,
+     "p95": 0.4
+    },
+    "zones": {
+     "med": 0,
+     "p95": 0
+    },
+    "dialogue": {
+     "med": 0,
+     "p95": 0
+    },
+    "story": {
+     "med": 0,
+     "p95": 0
+    },
+    "audio": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "ui": {
+     "med": 0,
+     "p95": 0.1
+    }
+   },
+   "space": "desert",
+   "zone": "A1_Ridge",
+   "bodies": 429
+  },
+  "erg": {
+   "totalMed": 1.1,
+   "totalP95": 2.2,
+   "totalMax": 36.2,
+   "mods": {
+    "weather": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "desertRoot": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "sietch": {
+     "med": 0,
+     "p95": 0
+    },
+    "worm": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "harvester": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "approach": {
+     "med": 0,
+     "p95": 0
+    },
+    "garden": {
+     "med": 0,
+     "p95": 0
+    },
+    "player": {
+     "med": 0.8,
+     "p95": 1.6
+    },
+    "companions": {
+     "med": 0.2,
+     "p95": 0.4
+    },
+    "zones": {
+     "med": 0,
+     "p95": 0
+    },
+    "dialogue": {
+     "med": 0,
+     "p95": 0
+    },
+    "story": {
+     "med": 0,
+     "p95": 0
+    },
+    "audio": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "ui": {
+     "med": 0,
+     "p95": 0.1
+    }
+   },
+   "space": "desert",
+   "zone": "A2_Erg",
+   "bodies": 429
+  },
+  "trail": {
+   "totalMed": 1.3,
+   "totalP95": 2.5,
+   "totalMax": 5.4,
+   "mods": {
+    "weather": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "desertRoot": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "sietch": {
+     "med": 0.1,
+     "p95": 0.3
+    },
+    "worm": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "harvester": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "approach": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "garden": {
+     "med": 0.2,
+     "p95": 0.5
+    },
+    "player": {
+     "med": 0.6,
+     "p95": 1.1
+    },
+    "companions": {
+     "med": 0.2,
+     "p95": 0.5
+    },
+    "zones": {
+     "med": 0,
+     "p95": 0
+    },
+    "dialogue": {
+     "med": 0,
+     "p95": 0
+    },
+    "story": {
+     "med": 0,
+     "p95": 0
+    },
+    "audio": {
+     "med": 0,
+     "p95": 0.2
+    },
+    "ui": {
+     "med": 0,
+     "p95": 0.1
+    }
+   },
+   "space": "desert",
+   "zone": "A4_Crevice",
+   "bodies": 429
+  },
+  "cleft": {
+   "totalMed": 0.9,
+   "totalP95": 1.4,
+   "totalMax": 12.6,
+   "mods": {
+    "weather": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "desertRoot": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "sietch": {
+     "med": 0.1,
+     "p95": 0.2
+    },
+    "worm": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "harvester": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "approach": {
+     "med": 0,
+     "p95": 0
+    },
+    "garden": {
+     "med": 0.2,
+     "p95": 0.3
+    },
+    "player": {
+     "med": 0.3,
+     "p95": 0.4
+    },
+    "companions": {
+     "med": 0.2,
+     "p95": 0.5
+    },
+    "zones": {
+     "med": 0,
+     "p95": 0
+    },
+    "dialogue": {
+     "med": 0,
+     "p95": 0
+    },
+    "story": {
+     "med": 0,
+     "p95": 0
+    },
+    "audio": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "ui": {
+     "med": 0,
+     "p95": 0.1
+    }
+   },
+   "space": "desert",
+   "zone": "A3_Approach",
+   "bodies": 429
+  },
+  "market": {
+   "totalMed": 1,
+   "totalP95": 2.2,
+   "totalMax": 3.7,
+   "mods": {
+    "weather": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "desertRoot": {
+     "med": 0,
+     "p95": 0
+    },
+    "sietch": {
+     "med": 0.2,
+     "p95": 0.5
+    },
+    "worm": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "harvester": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "approach": {
+     "med": 0,
+     "p95": 0
+    },
+    "garden": {
+     "med": 0,
+     "p95": 0
+    },
+    "player": {
+     "med": 0.5,
+     "p95": 1.1
+    },
+    "companions": {
+     "med": 0.2,
+     "p95": 0.4
+    },
+    "zones": {
+     "med": 0,
+     "p95": 0
+    },
+    "dialogue": {
+     "med": 0,
+     "p95": 0
+    },
+    "story": {
+     "med": 0,
+     "p95": 0
+    },
+    "audio": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "ui": {
+     "med": 0,
+     "p95": 0.1
+    }
+   },
+   "space": "sietch",
+   "zone": "B2_Gallery",
+   "bodies": 429
+  },
+  "hall": {
+   "totalMed": 1.1,
+   "totalP95": 4.3,
+   "totalMax": 8.8,
+   "mods": {
+    "weather": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "desertRoot": {
+     "med": 0,
+     "p95": 0
+    },
+    "sietch": {
+     "med": 0.1,
+     "p95": 0.3
+    },
+    "worm": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "harvester": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "approach": {
+     "med": 0,
+     "p95": 0
+    },
+    "garden": {
+     "med": 0,
+     "p95": 0
+    },
+    "player": {
+     "med": 0.7,
+     "p95": 3.2
+    },
+    "companions": {
+     "med": 0.2,
+     "p95": 0.4
+    },
+    "zones": {
+     "med": 0,
+     "p95": 0
+    },
+    "dialogue": {
+     "med": 0,
+     "p95": 0
+    },
+    "story": {
+     "med": 0,
+     "p95": 0
+    },
+    "audio": {
+     "med": 0,
+     "p95": 0.2
+    },
+    "ui": {
+     "med": 0,
+     "p95": 0.1
+    }
+   },
+   "space": "sietch",
+   "zone": "B5_Hall",
+   "bodies": 429
+  },
+  "garden": {
+   "totalMed": 1.5,
+   "totalP95": 3.1,
+   "totalMax": 5.8,
+   "mods": {
+    "weather": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "desertRoot": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "sietch": {
+     "med": 0.1,
+     "p95": 0.2
+    },
+    "worm": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "harvester": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "approach": {
+     "med": 0,
+     "p95": 0
+    },
+    "garden": {
+     "med": 0.2,
+     "p95": 0.4
+    },
+    "player": {
+     "med": 0.8,
+     "p95": 1.5
+    },
+    "companions": {
+     "med": 0.2,
+     "p95": 0.4
+    },
+    "zones": {
+     "med": 0,
+     "p95": 0
+    },
+    "dialogue": {
+     "med": 0,
+     "p95": 0
+    },
+    "story": {
+     "med": 0,
+     "p95": 0
+    },
+    "audio": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "ui": {
+     "med": 0,
+     "p95": 0.1
+    }
+   },
+   "space": "desert",
+   "zone": "C1_Garden",
+   "bodies": 429
+  },
+  "worm": {
+   "totalMed": 2.1,
+   "totalP95": 3.8,
+   "totalMax": 35.8,
+   "mods": {
+    "weather": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "desertRoot": {
+     "med": 0,
+     "p95": 0.2
+    },
+    "sietch": {
+     "med": 0,
+     "p95": 0
+    },
+    "worm": {
+     "med": 0.9,
+     "p95": 1.9
+    },
+    "harvester": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "approach": {
+     "med": 0,
+     "p95": 0
+    },
+    "garden": {
+     "med": 0,
+     "p95": 0
+    },
+    "player": {
+     "med": 0.8,
+     "p95": 1.3
+    },
+    "companions": {
+     "med": 0.2,
+     "p95": 0.4
+    },
+    "zones": {
+     "med": 0,
+     "p95": 0
+    },
+    "dialogue": {
+     "med": 0,
+     "p95": 0
+    },
+    "story": {
+     "med": 0,
+     "p95": 0
+    },
+    "audio": {
+     "med": 0,
+     "p95": 0.2
+    },
+    "ui": {
+     "med": 0,
+     "p95": 0.1
+    }
+   },
+   "space": "desert",
+   "zone": "A2_Erg",
+   "bodies": 429
+  },
+  "harvester": {
+   "totalMed": 4.8,
+   "totalP95": 9.1,
+   "totalMax": 20.5,
+   "mods": {
+    "weather": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "desertRoot": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "sietch": {
+     "med": 0,
+     "p95": 0.1
+    },
+    "worm": {
+     "med": 3.3,
+     "p95": 6.3
+    },
+    "harvester": {
+     "med": 0.1,
+     "p95": 1.4
+    },
+    "approach": {
+     "med": 0,
+     "p95": 0
+    },
+    "garden": {
+     "med": 0,
+     "p95": 0
+    },
+    "player": {
+     "med": 0.9,
+     "p95": 2
+    },
+    "companions": {
+     "med": 0.3,
+     "p95": 0.5
+    },
+    "zones": {
+     "med": 0,
+     "p95": 0
+    },
+    "dialogue": {
+     "med": 0,
+     "p95": 0
+    },
+    "story": {
+     "med": 0,
+     "p95": 0
+    },
+    "audio": {
+     "med": 0,
+     "p95": 0.3
+    },
+    "ui": {
+     "med": 0,
+     "p95": 0.1
+    }
+   },
+   "space": "desert",
+   "zone": "A2_Erg",
+   "bodies": 429
+  }
+ },
+ "errors": []
+}
