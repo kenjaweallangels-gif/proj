@@ -27,5 +27,6 @@
 - `world.addRockHole` вызывается на нише (если нет — запасной вариант: `discard` в шейдере Когтя). Без `addPassage` перед нишей ставится тёмная заглушка.
 
 ## Тесты
+- `node tools/level_return_test.mjs` — обратный путь от ниши к подножию теми же `heightAt/collide`, «призрачные стены» (в чистом воздухе рядом с тропой `collide` ничего не выталкивает) и прыжки с уступов (в воздухе `heightAt` возвращает землю внизу, а не потолок).
 - `node tools/level_walk_test.mjs` — бот проходит тропу теми же `heightAt/collide` (логика шага игрока: скольжение >38°, замедление на подъёме).
 - `node tools/build.mjs --out=level.html && node tools/level_shots.mjs --only=approach` — скриншоты в `dist/shots/level/`.

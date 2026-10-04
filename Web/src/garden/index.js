@@ -89,7 +89,7 @@ export function create(game) {
   };
   const mark = (x, y, z, nx, ny, nz, out) => { out[0] = 0; out[1] = ny > 0.7 ? 0.25 * smoothstep(0.7, 1, ny) : 0; };
   const mesh = vol.mesh({ cull, mark });
-  const rockMat = createLevelRockMaterial({ band: 5.5, sand: 0.9 });
+  const rockMat = createLevelRockMaterial({ band: 5.5, sand: 0.5 });
   const rimMesh = new THREE.Mesh(geometryFromMesh(mesh), rockMat);
   rimMesh.name = 'GardenRim'; rimMesh.castShadow = shadows; rimMesh.receiveShadow = shadows;
   root.add(rimMesh);
@@ -137,6 +137,8 @@ export function create(game) {
   const mouth = createMouth(game, { root, faceAt, ground: groundBase, quality });
   const flora = createFlora(game, { ground: groundBase, faceAt, root, quality });
   const fauna = createFauna(game, { ground: groundTop, flora, walkable, root, quality });
+  // первая раскладка инстансов растений заранее (буферы выделены и заполнены до первого взгляда на сад — без фриза при входе)
+  flora.refresh(new V3(C.x, 0, C.z), true);
   const people = createPeople(game, { ground: groundTop, root, quality, walkable, fauna });
   const life = createLife(game, { root, flora, structures, quality });
 

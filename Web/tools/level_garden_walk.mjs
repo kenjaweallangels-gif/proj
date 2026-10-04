@@ -62,7 +62,34 @@ if (only.includes('garden')) {
   const c = await page.evaluate(() => { const g = window.__rakis; return { zone: g.zone, space: g.space, surf: g.world.surfaceAt(822, 396), surfBed: g.world.surfaceAt(843, 388) }; });
   console.log('state', JSON.stringify(c));
 }
+if (only.includes('tunnel')) {
+  // сиетч ↔ сад: из сада по выходному туннелю к залу и обратно (смена пространства desert ↔ sietch на ходу)
+  const path = await page.evaluate(() => (window.__rakis.sietch?.exitPath || []).map((p) => [p.x, p.z]));
+  if (path.length) {
+    const toHall = [[803, 395.8], [796, 395.8]].concat(path.slice().reverse());
+    const r1 = await walk('garden -> tunnel -> hall', toHall, { start: [812, 396], maxStuck: 25 });
+    const toGarden = path.concat([[796, 395.8], [803, 395.8], [812, 396]]);
+    await walk('hall -> tunnel -> garden', toGarden, { start: toHall[toHall.length - 1], maxStuck: 25 });
+    console.log('space/zone', JSON.stringify(await page.evaluate(() => ({ space: window.__rakis.space, zone: window.__rakis.zone }))));
+  } else console.log('no sietch.exitPath — skip');
+}
+if (only.includes('perf')) {
+  const r = await page.evaluate(() => { const p = window.__rakis.garden.perf; return { avgMs: +p.avg.toFixed(3), maxMs: +p.max.toFixed(2), firstMs: +p.first.toFixed(2), frames: p.n }; });
+  console.log('garden update() CPU:', JSON.stringify(r));
+}
 if (only.includes('trail')) {
+  // проходимость тропы «как в игре»: на каждой точке тропы game.collide не должен смещать позицию ступней (ни препятствия пустыни, ни коллайдеры)
+  const clear = await page.evaluate(() => {
+    const g = window.__rakis, A = g.approach, T = g.THREE; const bad = [];
+    for (let i = 0; i < A.trail.length; i += 2) {
+      const p = A.trail[i]; const pos = new T.Vector3(p.x, g.world.heightAt(p.x, p.z, p.y), p.z); const o = pos.clone();
+      g.collide(pos, 0.35); if (Math.hypot(pos.x - o.x, pos.z - o.z) > 0.02) bad.push([+p.x.toFixed(1), +p.y.toFixed(1), +p.z.toFixed(1), +Math.hypot(pos.x - o.x, pos.z - o.z).toFixed(2)]);
+    }
+    const desertCols = []; for (const e of g.colliders.all()) if (e.owner === 'desert' && e.c && e.c.x > 575 && e.c.x < 670 && e.c.z > 225 && e.c.z < 325) desertCols.push([+e.c.x.toFixed(1), +e.c.z.toFixed(1), +e.r.toFixed(1)]);
+    return { n: A.trail.length / 2 | 0, blocked: bad.length, bad: bad.slice(0, 10), desertCollidersInZone: desertCols.length };
+  });
+  console.log(`${clear.blocked ? 'FAIL' : 'OK  '} trail clearance:`, JSON.stringify(clear));
+  if (clear.blocked) process.exitCode = 1;
   const way = await page.evaluate(() => { const A = window.__rakis.approach; const out = []; for (let i = 0; i < A.trail.length; i += 6) out.push([A.trail[i].x, A.trail[i].z]); out.push([A.trail[A.trail.length - 1].x, A.trail[A.trail.length - 1].z]); return out; });
   const st = await page.evaluate(() => { const A = window.__rakis.approach; return { x: A.trail[0].x, z: A.trail[0].z }; });
   await walk('trail up', way, { start: [st.x, st.z], maxStuck: 25, maxT: 900 });
