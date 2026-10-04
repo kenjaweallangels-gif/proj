@@ -44,6 +44,9 @@ python3 orchestrator/orchestrator.py approve T-003        # ваше решен�
 
 Альтернатива без скрипта: откройте проект в Cursor, в терминале запустите `claude` и скажите: «Работай как orchestrator, возьми следующий спринт из orchestrator/tasks.yaml».
 
+## Локальное развёртывание на ПК
+Полная инструкция (требования, установка на Windows/macOS/Linux, пересборка голосов и музыки без ограничений размера, автотесты, разработка через Claude Code) — **`docs/07_local_deploy.md`**. Коротко: `bash scripts/setup_web.sh` или `powershell -ExecutionPolicy Bypass -File scripts\setup_web.ps1` → http://localhost:8080.
+
 ## Играть сразу, без установки
 - **Ссылка:** https://claude.ai/artifact/VXyAbup6nN6HFRMLRjet96 (браузерная версия, открывается сразу).
 - **Файл:** `Web/dist/rakis_demo.html` — скачайте и откройте двойным щелчком (Chrome/Edge/Firefox, работает офлайн).

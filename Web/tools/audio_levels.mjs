@@ -39,7 +39,7 @@ const measure = (name, setup, seconds = sec) => page.evaluate(async ([name, setu
 
 const rows = [];
 rows.push(await measure('ambience (wind 5 m/s, Silence)', "a.setMusic('Silence')", 4));
-for (const s of ['DesertCalm', 'DesertDrone', 'WormThreat', 'WormReveal', 'SietchLife', 'SietchNarrow', 'HallChorale']) {
+for (const s of ['DesertCalm', 'DesertDrone', 'Night', 'Garden', 'WormThreat', 'WormReveal', 'Devour', 'Encounter', 'SietchLife', 'SietchNarrow', 'HallChorale']) {
   // угроза червя включает и инфразвук SFX, поэтому для WormThreat замеряем музыку при threat 0.7, но «rumble» отдельным рядом
   rows.push(await measure(`music ${s}`, `g.worm.threat = ${s === 'WormThreat' ? 0.7 : 0}; g.worm.state='Dormant'; a.setMusic('${s}')`, s === 'WormReveal' ? 16 : sec + 3));
 }
