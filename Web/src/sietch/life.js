@@ -40,7 +40,7 @@ export function createLife(ctx, crowd) {
     if (pw) { const l = root.worldToLocal(new THREE.Vector3().copy(pw)); bodies.push({ x: l.x, y: l.y, z: l.z, h: 1.75 }); }
     for (const c of game.companions?.list || []) if (c.position) { const l = root.worldToLocal(new THREE.Vector3().copy(c.position)); bodies.push({ x: l.x, y: l.y, z: l.z, h: 1.7 }); }
     for (const n of crowd.npcs) {
-      if (n.lod !== 'full' || n.special) continue;
+      if (n.lod === 'off' || n.special) continue; // и групповой LOD (дальние) отбрасывает ту же пятно-тень, что полная фигура
       const sit = n.pose === 'sitFloor' || n.pose === 'pray' || n.mode === 'seat' || n.pose === 'sleep';
       bodies.push({ x: n.x, y: n.y, z: n.z, h: n.lk.height * (n.pose === 'sleep' ? 0.3 : sit ? 0.6 : 1) });
     }

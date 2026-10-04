@@ -102,6 +102,7 @@ const CLOTH_VERT_MAIN = /* glsl */`
 
 const FRAG_PARS = /* glsl */`
 uniform vec3 uSuit, uSkin, uCloth, uCloth2, uAccent, uLeather, uHair, uEye, uIris, uLining, uSunTone;
+uniform float uFade, uGrp;
 uniform float uDust, uWear, uEyeGlow, uAge, uStubble, uFreckle, uHs, uBrowK, uHairK;
 uniform vec4 uEyeC;
 uniform sampler2D uFabMap, uRubMap, uLeaMap;
@@ -124,6 +125,16 @@ float fadeAt(float freq){ return 1.0 - smoothstep(0.35, 1.0, length(fwidth(vBind
 `;
 
 const FRAG_COLOR = /* glsl */`
+if (uFade < 1.0) {
+  // дизер-растворение LOD: uFade>0 — показываем долю uFade пикселей, uFade<0 — дополнение (старая геометрия) — вместе покрывают каждый пиксель ровно раз
+  float ig = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+  if (uFade > 0.0 ? ig >= uFade : ig < -uFade) discard;
+}
+if (uGrp < 1.0) {
+  // растворение «полная фигура ↔ групповой LOD» (figure_crowd.js): uGrp<0 — доля -uGrp пикселей скрыта (комплемент к группе)
+  float ig2 = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+  if (uGrp > 0.0 ? ig2 >= uGrp : ig2 < -uGrp) discard;
+}
 #include <color_fragment>
 int rg = int(vRegion + 0.5);
 vec3 base = uCloth; float rough = 0.9; float metal = 0.0; float rh = 0.0; float dustK = 0.0; float bumpAmt = 0.0;
@@ -167,7 +178,9 @@ if (rg == 0) {
   vec3 sk = uSkin * (0.94 + 0.08 * nz2 + 0.06 * nz);
   float hd = step(1.495, vBind.y);                          // голова/шея
   float redness = 0.55 * G2(hax, hp.y, 0.052, -0.026, 0.042, 0.034) + 0.9 * G2(hax, hp.y, 0.008, -0.026, 0.016, 0.02) + 0.6 * G2(hax, hp.y, 0.082, -0.012, 0.012, 0.03);
-  sk = mix(sk, sk * vec3(1.14, 0.88, 0.84), clamp(redness, 0.0, 1.0) * 0.5 * hd);
+  sk = mix(sk, sk * vec3(1.1, 0.9, 0.86), clamp(redness, 0.0, 1.0) * 0.34 * hd);
+  sk = mix(sk, vec3(dot(sk, vec3(0.3, 0.59, 0.11))) * 1.06, 0.1);          // меньше «оранжевого» пластика
+  sk *= 1.0 - 0.1 * uWear * smoothstep(0.1, 0.7, vnoise(vBind * 38.0) + vnoise(vBind * 120.0) * 0.5) * (0.5 + hd * 0.5);   // выветренная, пятнистая кожа
   // крупные пятна тона (неравномерность кожи) и жёлтый оттенок лба
   sk *= 1.0 + 0.045 * vnoise(vBind * 17.0) * hd + 0.03 * vnoise(vBind * 6.0);
   sk = mix(sk, sk * vec3(1.04, 1.01, 0.9), G2(hax, hp.y, 0.0, 0.085, 0.07, 0.035) * 0.5 * hd);
@@ -238,12 +251,12 @@ if (rg == 0) {
   float thr = sin(wu * 6.2832) * 0.5 + 0.5, thv = sin(wv * 6.2832) * 0.5 + 0.5;
   float chk = mix(thr, thv, step(0.5, fract((floor(wu) + floor(wv)) * 0.5)));
   float weave = chk * wf;
-  base = cc * (1.0 + 0.1 * nz + 0.07 * nz2 + 0.05 * (weave - 0.5));
+  base = cc * (1.0 + 0.1 * nz + 0.07 * nz2 + 0.03 * (weave - 0.5));
   base *= (1.0 - 0.12 * vAux.x);
   if (uTexOn.x > 0.5) { vec3 tx = triMap(uFabMap, vBind, normalize(vBindN), uTexM.x); float l = dot(tx, vec3(0.333)); base *= 0.55 + 0.95 * l; rh += (l - 0.5) * 0.7 * wf; }
   // тень складок (глубина складки из геометрии)
   float fold = clamp(vAux.z, 0.0, 1.0);
-  aoK = mix(0.28, 1.0, pow(fold, 1.3));
+  aoK = mix(0.4, 1.0, pow(fold, 1.2));
   if (!gl_FrontFacing) { base = mix(uLining, cc * 0.7, 0.2) * (0.9 + 0.1 * nz); aoK *= 0.85; }
   rough = 0.9; dustK = 0.1 + vAux.x * 0.65 + uWear * 0.1;
   // грязь/песок к подолу, выгорание на плечах
@@ -258,8 +271,22 @@ if (rg == 0) {
   if (mx > 0.6) base *= 0.6 / mx * 0.35 + 0.65 * (1.0 - 0.0);
   base = min(base, vec3(0.62));
   bumpAmt = 0.00022 * wf + 0.0;
-  rh += (weave - 0.5) * 0.9 * wf;
+  rh += (weave - 0.5) * 0.5 * wf;
   sheenK = 1.0;
+  // выцветание красителя вертикальными полосами на солнечной стороне + заплаты со стежками
+  {
+    float streak = 0.5 + 0.5 * vnoise(vec3((vBind.x + vBind.z) * 7.0, vBind.y * 0.9, 3.0));
+    float fadeAmt = clamp(uWear * 0.5 + 0.2 * uDust, 0.0, 0.7) * streak * smoothstep(0.25, 1.5, vBind.y);
+    base = mix(base, vec3(dot(base, vec3(0.3, 0.59, 0.11))) * 1.22 + uSunTone * 0.035, fadeAmt * 0.5);
+    vec2 pc = vec2(atan(vBind.x, vBind.z) * 3.2, vBind.y * 4.6);
+    vec2 cell = floor(pc), fp = fract(pc);
+    float hp = hash11(dot(cell, vec2(12.9898, 78.233)) + 3.7);
+    float inP = step(1.0 - 0.035 * (0.4 + uWear * 2.0), hp) * step(0.12, vBind.y) * step(vBind.y, 1.3) * float(rg == 2);
+    float ed = min(min(fp.x, 1.0 - fp.x), min(fp.y, 1.0 - fp.y));
+    float stitch = (1.0 - smoothstep(0.035, 0.06, ed)) * step(0.5, fract((fp.x + fp.y) * 22.0));
+    vec3 pcol = mix(base, mix(uCloth2, uAccent, step(0.5, hash11(hp * 91.0))) * 0.8, 0.45) * (0.82 + 0.25 * hp);
+    base = mix(base, pcol * (0.9 + 0.2 * stitch), inP * 0.85);
+  }
 } else if (rg == 15) {
   // бахрома подола: нити с разной длиной, alpha-test
   float u = vAux.w, v = vAux.y, cell = floor(u * 560.0), fu = fract(u * 560.0);
@@ -299,7 +326,7 @@ if (rg == 0) {
     base = uHair * shade * mix(0.5, 1.0, smoothstep(0.0, 0.4, v)) * (0.9 + 0.2 * v);
     rough = 0.62;
   } else {
-    base = uHair * (0.4 + 0.18 * vnoise(vBind * 300.0)); rough = 0.8;
+    base = uHair * (id < -1.5 ? 0.82 + 0.16 * vnoise(vBind * 120.0) : 0.4 + 0.18 * vnoise(vBind * 300.0)); rough = 0.8;
   }
   aoK = 0.8;
 } else if (rg == 7) {
@@ -387,7 +414,7 @@ function skinLighting() {
 	float dotNLw = saturate( ( dotNLr + wrapK ) / ( 1.0 + wrapK ) );
 	vec3 irradiance = dotNLw * directLight.color;
 	float term = smoothstep( -0.45, 0.02, dotNLr ) * ( 1.0 - smoothstep( 0.02, 0.55, dotNLr ) );
-	irradiance += gSkin * term * directLight.color * vec3( 0.55, 0.1, 0.03 ) * 0.55;`);
+	irradiance += gSkin * term * directLight.color * vec3( 0.5, 0.12, 0.05 ) * 0.36;`);
 }
 
 function patch(mat, key, uniforms, cloth) {
@@ -432,7 +459,7 @@ export function makeUniforms(o) {
     uFabMap: { value: fab ? fab.map : DUMMY }, uRubMap: { value: rub ? rub.map : DUMMY }, uLeaMap: { value: lea ? lea.map : DUMMY },
     uTexOn: { value: new THREE.Vector3(fab ? 1 : 0, rub ? 1 : 0, lea ? 1 : 0) },
     uTexM: { value: new THREE.Vector3(fab?.meters || 0.5, rub?.meters || 0.5, lea?.meters || 0.5) },
-    uHairK: { value: 1 },
+    uHairK: { value: 1 }, uFade: { value: 1 }, uGrp: { value: 1 },
   };
 }
 // clone() у three не копирует onBeforeCompile — переопределяем, чтобы клонирование (например, в модуле червя) сохраняло шейдер.
