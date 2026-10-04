@@ -22,7 +22,10 @@ function tessBox(sx, sy, sz, step) {
   return g;
 }
 
+/** Аудит коллизий: если Parts.audit — массив, в него пишутся габариты боксов и цилиндров (только для tools/harvester_collide_audit.mjs; в игре null). */
 export class Parts {
+  static audit = null;
+  static auditTag = '';
   constructor(seed = 1) { this.list = []; this.R = rng(seed); this.count = 0; this.tess = 0; this.bake = null; }
 
   _push(geo, color, tag, jit, mat) {
@@ -49,6 +52,7 @@ export class Parts {
 
   /** Бокс с центром (cx,cy,cz), размерами (sx,sy,sz); o: {rx,ry,rz,jit} — вращение, разброс тона. */
   box(cx, cy, cz, sx, sy, sz, color, tag = 0, o = {}) {
+    if (Parts.audit) Parts.audit.push({ k: 'box', cx, cy, cz, sx, sy, sz, rx: o.rx || 0, ry: o.ry || 0, rz: o.rz || 0, tag, room: Parts.auditTag });
     _e.set(o.rx || 0, o.ry || 0, o.rz || 0, 'XYZ'); _q.setFromEuler(_e);
     _m.compose(_p.set(cx, cy, cz), _q, _s.set(sx, sy, sz));
     // деление граней: размеры в метрах → шаг tess (в единичном боксе доли 1/n; масштаб применяется матрицей)
@@ -62,6 +66,7 @@ export class Parts {
   }
   /** Цилиндр/конус: axis 'x'|'y'|'z'. */
   cyl(cx, cy, cz, rTop, rBot, h, color, tag = 0, o = {}) {
+    if (Parts.audit) Parts.audit.push({ k: 'cyl', cx, cy, cz, r: Math.max(rTop, rBot), h, axis: o.axis || 'y', rx: o.rx || 0, ry: o.ry || 0, rz: o.rz || 0, tag, room: Parts.auditTag });
     const g = new THREE.CylinderGeometry(rTop, rBot, h, o.seg || 16, 1, !!o.open);
     g.applyMatrix4(AXIS[o.axis || 'y']);
     _e.set(o.rx || 0, o.ry || 0, o.rz || 0, 'XYZ'); _q.setFromEuler(_e);
