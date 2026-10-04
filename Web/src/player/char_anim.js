@@ -340,10 +340,13 @@ const smin = (a, b, k) => { const hh = Math.max(k - Math.abs(a - b), 0) / k; ret
     const run = S.wRun;
 
     // --- параметры шага ---
-    const fq = clamp(1.3 + 0.42 * veEff - 0.016 * veEff * veEff, 1.2, 3.4) * style.tempo;
-    G.f = fq; G.Tc = 2 / fq; // style.stride масштабирует длину шага ниже
     const dsT = lerp(0.64, 0.36, sstep(2.2, 5.5, ve));
     G.ds = clamp(spring(K.ds, dsT, 3, dt), 0.34, 0.66); G.run = run;
+    // Каденс: не только «по росту», но и с ограничением длины опоры. Стопа в опоре проходит ve·ds·(2/f);
+    // если это больше ~0.75 м (ходьба) / ~1.0 м (бег), IK приходится опускать таз — фигуры шли «вприсядку».
+    const span = lerp(0.74, 1.0, run);
+    const fq = clamp(Math.max((1.3 + 0.42 * veEff - 0.016 * veEff * veEff) * style.tempo, veEff * G.ds * 2 / span), 1.2, 4.4);
+    G.f = fq; G.Tc = 2 / fq; // style.stride масштабирует длину шага ниже
     const stepScale = style.stride * (1 - 0.32 * run);
 
     // --- подшаги ходьбы ---
