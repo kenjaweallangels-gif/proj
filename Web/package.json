@@ -9,7 +9,9 @@
     "bake": "node tools/sietch_bake.mjs",
     "build": "node tools/build_data.mjs && node tools/sietch_bake.mjs --if-stale && node tools/build.mjs",
     "dev": "node tools/build_data.mjs && node tools/sietch_bake.mjs --if-stale && node tools/build.mjs --serve",
-    "test": "node tools/smoke.mjs"
+    "test": "node tools/smoke.mjs",
+    "serve": "node tools/build.mjs --serve-only",
+    "check": "node tools/route_free.mjs"
   },
   "dependencies": {
     "three": "0.180.0"
@@ -18,5 +20,8 @@
     "esbuild": "0.25.10",
     "playwright": "1.56.1",
     "sharp": "^0.35.5"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

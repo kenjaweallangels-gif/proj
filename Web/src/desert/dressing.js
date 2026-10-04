@@ -6,7 +6,7 @@ import { SAFE_ISLANDS, A3_PLATES, clawCenter, clawHalfWidth, GOLDEN_PATH } from 
 import { heightAt, solidSdf, plateQuery } from './field.js';
 import { createRockMaterial, createPropMaterial } from './rockMaterial.js';
 
-function boulderGeo(seed, detail = 3) {
+export function boulderGeo(seed, detail = 3) {
   const g = new THREE.IcosahedronGeometry(1, detail);
   const p = g.getAttribute('position');
   for (let i = 0; i < p.count; i++) {
@@ -23,6 +23,30 @@ function boulderGeo(seed, detail = 3) {
   const merged = mergeVertices(g, 1e-3);
   merged.computeVertexNormals();
   return merged;
+}
+
+/** Угловатый обломок породы (плита/блок/клин): подразбитый куб со сколотыми рёбрами и смещением по нормали; низ плоский. kind: 'block' | 'slab' | 'wedge'. */
+export function rockChunkGeo(seed, kind = 'block', seg = 3) {
+  let g = new THREE.BoxGeometry(1, 1, 1, seg, seg, seg);
+  g.deleteAttribute('uv'); g.deleteAttribute('normal');
+  g = mergeVertices(g, 1e-4);
+  const p = g.getAttribute('position');
+  const sy = kind === 'slab' ? 0.38 : kind === 'wedge' ? 0.8 : 0.75;
+  for (let i = 0; i < p.count; i++) {
+    let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const ax = Math.abs(x) * 2, ay = Math.abs(y) * 2, az = Math.abs(z) * 2;
+    const corner = Math.max(0, ax + ay + az - 1.9);            // сколы углов: вершины у рёбер втягиваются
+    const k = 1 - 0.22 * corner;
+    x *= k; y *= k; z *= k;
+    const n = noise2(x * 2.1 + seed, y * 1.9 + z * 2.3) * 0.16 + noise2(z * 5.3 + seed * 3, x * 4.7 + y * 3.9) * 0.06;
+    x += x * n * 2; z += z * n * 2; y += y * n * 1.2;
+    if (kind === 'wedge') { const t = y + 0.5; x *= 1 - 0.55 * t; z *= 1 - 0.25 * t; }
+    y = y * sy * 2 * 0.5 * (kind === 'slab' ? 1 : 1.3);
+    if (y < -sy * 0.45) y = -sy * 0.45;                         // плоская подошва
+    p.setXYZ(i, x * (1.0 + 0.25 * noise2(seed, i * 0.01)), y, z);
+  }
+  g.computeVertexNormals();
+  return g;
 }
 
 function scatter(mesh, items) {
@@ -48,7 +72,7 @@ export function createDressing(game, world) {
   const obstacles = (x, z, r) => world.addObstacle(x, z, r);
 
   // ---------- валуны ----------
-  const variants = [boulderGeo(1.1), boulderGeo(5.7), boulderGeo(9.3)];
+  const variants = [rockChunkGeo(1.1, 'block'), rockChunkGeo(5.7, 'slab'), rockChunkGeo(9.3, 'wedge')];
   const lists = [[], [], []];
   const pebbleList = [];
   const addBoulder = (x, z, size, flat = 1) => {
@@ -107,7 +131,7 @@ export function createDressing(game, world) {
 
   // галька: только там, где её приносит геология — осыпь у подножия Когтя и кромки каменных островов.
   // Открытый эрг и плиты A3 — чистый песок (ветер выдувает и погребает мелочь).
-  const pebGeo = boulderGeo(3.3, 1);
+  const pebGeo = rockChunkGeo(3.3, 'block', 1);
   const pebs = [];
   const nP = Math.round((q === 'low' ? 150 : q === 'med' ? 700 : 1300));
   for (let i = 0; i < nP; i++) {
