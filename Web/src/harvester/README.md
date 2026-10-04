@@ -105,5 +105,7 @@
 `index.js` (состояния, движение, интерактив, свет, борт, частицы) · `layout.js` (раскладка: палубы, дверь, трап) · `hull.js` (внешняя геометрия) · `berm.js` (песчаные валы) ·
 `tracks.js` (гусеницы) · `material.js` (шейдеры корпуса, песка, декали) · `fx.js` (частицы, лучи) · `carryall.js` · `parts.js` (сборщик геометрии) ·
 `interior.js` · `ibuild.js` (построитель комнат, схема проходимости) · `rooms_a.js`, `rooms_b.js` (помещения) · `imaterial.js` (материалы интерьера, атласы).
+Инструменты: `tools/harvester_studio_*.mjs` (лёгкая студия без игры: снимки снаружи/внутри/переносчика, `--run=1` — в работе, `--stats=1` — draw calls/треугольники), `tools/harvester_walk.mjs` (виртуальный игрок: трап → шлюз → коридор → трап → зал → переход → штурманская → мостик → кубрик/кают-компания/машинное/лаборатория/приёмный зал, правила шага 0,5 м и телепорта >1,2 м),
+`tools/harvester_game_test.mjs` (то же в настоящей игре с `game.heightAt/collide`, снимки и draw calls), `tools/harvester_tris.mjs`, `tools/harvester_int_prof.mjs` (профиль сборки комнат).
 Тесты (быстрые, без полной игры): `node tools/harvester_studio_build.mjs && node tools/harvester_studio_shots.mjs --set=ext|int|carry [--run=1]`,
 прогулка по маршруту: `node tools/harvester_walk.mjs`. Полная игра: `node tools/build.mjs --out=harvester.html && node tools/harvester_shots.mjs`.

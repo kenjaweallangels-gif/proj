@@ -130,7 +130,7 @@ const FRAG_COLOR = /* glsl */`
   vec3 spiceC = mix(sand, vec3(0.62, 0.32, 0.14), 0.35 * smoothstep(0.4, 0.8, n1));
   base = mix(base, spiceC * (0.85 + 0.3 * n3), top * 0.6 * (tag == 2 ? 0.5 : 1.0));
 
-  gH = (-seam * 0.02 + riv * 0.02 + (n1 - 0.5) * 0.004 * lod);
+  gH = (-seam * 0.016 * (0.3 + 0.7 * lod) + riv * 0.011 + (n1 - 0.5) * 0.004 * lod);
   gR = mix(0.5, 0.92, clamp(dirt + top + scour, 0.0, 1.0));
   gR = mix(gR, 0.28, oil * 0.8);
   if (tag == 2) gR = 0.9;

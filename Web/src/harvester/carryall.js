@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { Parts } from './parts.js';
 import { C } from './hull.js';
 import { buildDecals } from './material.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const _m = new THREE.Matrix4();
 const KHAKI = '#a99b78', KHAKI2 = '#8d7f5f', TAN = '#a88a5a', TAN2 = '#8f7448', DARK = '#2a2c2e', STEEL = '#85847f', GREEN = '#4d5f57', OLIVE = '#5c6152';
@@ -80,7 +81,12 @@ function fuselage() {
     P.box(x, 3.3, z * 0.7, 1.4, 1.5, 1.8, KHAKI2, 0);
     P.box(x + 0.4, 1.0, s * 5.6, 0.5, 2.6, 0.5, STEEL, 1, { rx: s * 0.7 });
   }
-  return P.merge();
+  const hull = P.merge();
+  const parts = [hull];
+  for (const [x, y, z, sd] of [[5, 0.2, 8.2, 1], [5, 0.2, -8.2, -1], [-5.5, 0.2, 8.2, 1], [-5.5, 0.2, -8.2, -1]]) {
+    const d = ductHousing(sd); d.translate(x, y, z); parts.push(d);
+  }
+  return mergeGeometries(parts, false);
 }
 
 /** Кольцевой подъёмный вентилятор (неподвижный кожух + опорная пилонная связь). */
@@ -206,25 +212,21 @@ export function createCarryall(game, hullMat, glowMat, lampMat, quality, decalMa
     return { root, j1, j2, sd, x };
   });
 
-  // ----- подъёмные кольцевые вентиляторы (по одному под внутренним звеном каждого крыла)
+  // ----- подъёмные кольцевые вентиляторы (по одному под внутренним звеном каждого крыла): кожухи — в геометрию фюзеляжа, лопасти — один InstancedMesh
   const ductPos = [[5, 0.2, 8.2, 1], [5, 0.2, -8.2, -1], [-5.5, 0.2, 8.2, 1], [-5.5, 0.2, -8.2, -1]];
-  const ductGeo = { 1: ductHousing(1), '-1': ductHousing(-1) };
   const fanGeo = ductFan();
-  const fans = ductPos.map(([x, y, z, sd]) => {
-    const h = new THREE.Mesh(ductGeo[sd], hullMat); h.position.set(x, y, z); h.frustumCulled = false; body.add(h);
-    const f = new THREE.Mesh(fanGeo, hullMat); f.position.set(x, y - 0.1, z); f.frustumCulled = false; body.add(f);
+  const fans = new THREE.InstancedMesh(fanGeo, hullMat, 4);
+  fans.frustumCulled = false; fans.instanceMatrix.setUsage(THREE.DynamicDrawUsage); body.add(fans);
+  for (const [x, y, z] of ductPos) {
     const gl = new THREE.Mesh(new THREE.CircleGeometry(2.1, 20), new THREE.MeshBasicMaterial({ color: 0xff8a40, transparent: true, opacity: 0.14, depthWrite: false, side: THREE.DoubleSide }));
     gl.rotation.x = Math.PI / 2; gl.position.set(x, y - 0.95, z); body.add(gl);
-    return f;
-  });
+  }
 
-  // ----- убирающиеся опоры
+  // ----- убирающиеся опоры: один InstancedMesh, матрицы по степени выпуска
   const legGeoM = legGeo();
-  const legs = [[6.5, -4.7, 3.7, 1], [6.5, -4.7, -3.7, -1], [-9.5, -4.7, 3.4, 1], [-9.5, -4.7, -3.4, -1]].map(([x, y, z, sd]) => {
-    const g = new THREE.Group(); g.position.set(x, y, z); body.add(g);
-    const m = new THREE.Mesh(legGeoM, hullMat); m.frustumCulled = false; g.add(m);
-    return { g, sd };
-  });
+  const LEGP = [[6.5, -4.7, 3.7, 1], [6.5, -4.7, -3.7, -1], [-9.5, -4.7, 3.4, 1], [-9.5, -4.7, -3.4, -1]];
+  const legs = new THREE.InstancedMesh(legGeoM, hullMat, 4);
+  legs.frustumCulled = false; legs.instanceMatrix.setUsage(THREE.DynamicDrawUsage); body.add(legs);
 
   // ----- навигационные огни: зелёный/красный на законцовках передних крыльев, белые стробы на хвосте, красный маяк в брюхе
   const navGeo = new THREE.SphereGeometry(0.3, 8, 6);
@@ -239,7 +241,7 @@ export function createCarryall(game, hullMat, glowMat, lampMat, quality, decalMa
   mkNav(navMats.amber, body, 14.8, 3.6, 0); mkNav(navMats.red, body, -3, -5.0, 0);
 
   // ----- анимация и сценарный режим
-  const q = new THREE.Quaternion(), pos = new THREE.Vector3(), _p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+  const q = new THREE.Quaternion(), _p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), yAxF = new THREE.Vector3(0, 1, 0), legE = new THREE.Euler();
   const state = { a: Math.random() * 6.28, hd: 0, x: 0, z: 0 };
   const script = { on: false, pos: new THREE.Vector3(), yaw: 0, pitch: 0, roll: 0, flap: 12, strain: 0, hidden: false };
   const hover = { orbit: 0, flap: 0, fan: 0, gear: 0 };
@@ -324,12 +326,25 @@ export function createCarryall(game, hullMat, glowMat, lampMat, quality, decalMa
       w.root.rotation.y = -w.sd * 0.04 * Math.sin(ph * 0.5);      // лёгкий поворот по ветру
     }
     hover.fan += dt * (26 + 10 * strain);
-    for (let i = 0; i < 4; i++) fans[i].rotation.y = hover.fan * (i % 2 ? -1 : 1);
+    for (let i = 0; i < 4; i++) {
+      const [x, y, z] = ductPos[i];
+      q.setFromAxisAngle(yAxF, hover.fan * (i % 2 ? -1 : 1));
+      _m.compose(_p.set(x, y - 0.1, z), q, one);
+      fans.setMatrixAt(i, _m);
+    }
+    fans.instanceMatrix.needsUpdate = true;
     // шасси: убраны на высоте, выпущены у земли (нужна высота над грунтом)
     const alt = group.position.y - (game.world?.heightAt?.(group.position.x, group.position.z) ?? 0);
     const gk = alt < 40 ? 1 : alt < 70 ? 1 - (alt - 40) / 30 : 0;
     hover.gear += (gk - hover.gear) * (1 - Math.exp(-dt * 1.4));
-    for (const l of legs) { l.g.rotation.z = (1 - hover.gear) * 1.25; l.g.rotation.x = l.sd * (1 - hover.gear) * 0.25; }
+    for (let i = 0; i < 4; i++) {
+      const [x, y, z, sd] = LEGP[i];
+      legE.set(sd * (1 - hover.gear) * 0.25, 0, (1 - hover.gear) * 1.25);
+      q.setFromEuler(legE);
+      _m.compose(_p.set(x, y, z), q, one);
+      legs.setMatrixAt(i, _m);
+    }
+    legs.instanceMatrix.needsUpdate = true;
     // огни
     const bl = Math.pow(0.5 + 0.5 * Math.sin(time * 4.5), 6);
     navMats.white.color.setScalar(0.15 + 0.85 * bl);

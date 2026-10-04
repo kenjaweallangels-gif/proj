@@ -37,6 +37,7 @@ async function cam(name, p, t, fov = 60, frame = 'H') {
     g.player.position.copy(a); g.player.position.y -= 1.62;
   }, [p, t, fov, frame]);
   const url = await page.evaluate(() => { window.__rakis.step(6, 0.05); return window.__rakis.shot(); });
+  if (arg('stats', '0') === '1') console.log(name, JSON.stringify(await page.evaluate(() => { const g = window.__rakis, ri = g.renderer.info; ri.autoReset = false; ri.reset(); g.render(); const r = ri.render; ri.autoReset = true; return { calls: r.calls, tris: r.triangles }; })));
   writeFileSync(join(outDir, `${name}.png`), Buffer.from(url.split(',')[1], 'base64'));
   console.log('shot', name);
 }
