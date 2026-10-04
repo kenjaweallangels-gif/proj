@@ -8,6 +8,7 @@ import { clamp, damp, dampAngle, smoothstep } from '../core/util.js';
 import { CFG, stepInterval } from './config.js';
 import { createPuffs } from './fx.js';
 import { createCameraRig } from './camera.js';
+import { createViewHands } from './viewhands.js';
 import { createNoise } from './noise.js';
 import { createHydration } from './hydration.js';
 import { createThumpers } from './thumper.js';
@@ -45,7 +46,7 @@ export function create(game) {
 
   const p = {
     position, velocity, figure,
-    yaw: start.yaw, speed: 0, gait: 'idle', slope: 0, firstPerson: false, inputLocked: false,
+    yaw: start.yaw, speed: 0, gait: 'idle', slope: 0, firstPerson: true, inputLocked: false,
     stepIntervalNow: 0.5, moveMode: 'normal', sandWalking: false,
     /** Vector3|null — мировая точка, к которой тянется правая рука (занавес/полог). Ставится модулем сиетча; также подхватывается автоматически у interactable с reachPoint. */
     reachTarget: null,
@@ -87,10 +88,12 @@ export function create(game) {
   const rig = createCameraRig(game, p);
   rig.snap(start.yaw);
   const gaitMod = createNoise(game, p, fx);
-  figure.onStep = (e) => gaitMod.footPlant(game.time, e);
+  // Фигуры героя на экране нет (вид от первого лица), но она анимируется скрыто: шаги (ритм/шум/следы) и покачивание головы идут от неё.
+  figure.onStep = (e) => { gaitMod.footPlant(game.time, e); rig.step(e); };
+  const hands = createViewHands(game, p); p.hands = hands;
   const hydro = createHydration(game, p);
   const thumpers = createThumpers(game, p, fx);
-  const interaction = createInteraction(game, p, rig);
+  const interaction = createInteraction(game, p, rig, hands);
   p.cam = rig;
 
   const slide = new V3();
@@ -132,8 +135,6 @@ export function create(game) {
   Object.assign(p, {
     head() { return new V3(renderPos.x, renderPos.y + CFG.eye, renderPos.z); },
     setInputLocked(b) { p.inputLocked = !!b; if (b) { velocity.set(0, 0, 0); } },
-    setFirstPerson(b) { rig.setFirstPerson(b); },
-    toggleCamera() { rig.toggle(); },
     /** Телепорт: ступни в (x, y, z); y=undefined → высота земли. yaw — курс (atan2(dz,dx)). Камера и спутники переезжают следом. */
     teleport(x, y, z, yaw, withCompanions = true) {
       position.set(x, Number.isFinite(y) ? y : game.heightAt(x, z), z);
@@ -155,7 +156,6 @@ export function create(game) {
 
       let wantJump = false;
       if (!frozen) {
-        if (inp.pressed('ToggleCamera')) rig.toggle();
         if (inp.pressed('Mask')) hydro.toggleMask();
         if (inp.pressed('Thumper')) thumpers.deploy();
         pollPad();
@@ -178,7 +178,8 @@ export function create(game) {
       const sprint = !frozen && !altHeld && inp.held('Sprint') && mag > 0.1;
       if (sprint) desertToggle = false;
       const sandHeld = !frozen && (desertToggle || altHeld);
-      const envNow = sandHeld ? figure.gait.env : 1;
+      // Огибающая рваного ритма песка задаёт скорость, но не ниже пола: «замирания» стопы не останавливают игрока (раньше скорость падала до ~0.1 м/с на 0.4–1.1 с)
+      const envNow = sandHeld ? Math.max(figure.gait.env, CFG.speed.sandEnvFloor) : 1;
       let base = sandHeld ? CFG.speed.sandWalkBase * envNow : sprint ? CFG.speed.run : CFG.speed.walk;
       if (sprint && p.moisture < CFG.hydration.lowThreshold) base *= CFG.hydration.lowSprintFactor;
       p.gait = mag < 0.1 ? 'idle' : sandHeld ? 'sandwalk' : sprint ? 'run' : 'walk';
@@ -219,9 +220,7 @@ export function create(game) {
       }
 
       // --- курс (по кадрам; гистерезис: не «дребезжит» вокруг порога скорости) ---
-      if (rig.fp) p.yaw = rig.yaw;
-      else if (wish.lengthSq() > 0 && p.speed > (turning ? 0.25 : 0.45)) { turning = true; p.yaw = dampAngle(p.yaw, Math.atan2(wish.z, wish.x), CFG.turnLambda, dt); }
-      else turning = false;
+      p.yaw = rig.yaw; // курс тела = взгляд
 
       // --- шаги/шум/влага/тампер/взаимодействие ---
       p.stepIntervalNow = stepInterval(p.speed);
@@ -242,10 +241,11 @@ export function create(game) {
       setFigureWind(game.space === 'desert' && weather ? weather.windDir : null, weather ? weather.windSpeed : 0);
       // в воздухе ноги «не шагают»: скорость анимации гасим, чтобы не бежать по воздуху
       const animSpeed = p.grounded ? p.speed : p.speed * 0.25;
-      figure.animate(animSpeed, dt, sandHeld ? 1 : 0, { slope: slopeAlong, sliding: clamp(slideSpeed / 4, 0, 1), allowPause: true, desert: sandHeld });
-      figure.group.visible = rig.blend < 0.55;
+      figure.animate(animSpeed, dt, sandHeld ? 1 : 0, { slope: slopeAlong, sliding: clamp(slideSpeed / 4, 0, 1), allowPause: mag < 0.1, desert: sandHeld });
+      figure.group.visible = false; // героя не видно; свободная камера (core/freecam.js) включает его сама после этого кадра
       syncBody();
-      { const rt = frozen && !p.reachTarget ? null : pickReach(); figure.reachTo(rt, 'R', rt ? 1 : 0, { sweep: 0.2 }); }
+      { const rt = frozen && !p.reachTarget ? null : pickReach(); figure.reachTo(rt, 'R', rt ? 1 : 0, { sweep: 0.2 }); hands.setReach(rt); }
+      hands.update(dt);
 
       // приземление: вмятина камеры + лёгкое «приседание» фигуры
       if (p.landImpact > 0) {
@@ -254,7 +254,7 @@ export function create(game) {
         rig.dip(imp);
       }
     },
-    lateUpdate(dt, t) { rig.apply(dt, t); setFigureView(game.camera.position); },
+    lateUpdate(dt, t) { rig.apply(dt, t); hands.lateUpdate(); setFigureView(game.camera.position); },
   });
 
   /** Один шаг физики: горизонталь (разгон, склон, коллизии, уступы) + вертикаль (земля / гравитация / прыжок). */

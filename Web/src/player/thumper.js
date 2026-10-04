@@ -22,6 +22,7 @@ function makeStake() {
   return { group: g, head, pole };
 }
 
+const tmpHand = new THREE.Vector3();
 export function createThumpers(game, p, fx) {
   const C = CFG.thumper;
   p.thumperCharges = C.charges;
@@ -56,6 +57,7 @@ export function createThumpers(game, p, fx) {
       const surf = game.surfaceAt(x, z);
       if ((CFG.noise.surface[surf] ?? 0) <= 0) { game.ui?.hint?.(game.t('Тампер нужен песок, не камень.', 'A thumper needs sand, not rock.')); return false; }
       p.thumperCharges--;
+      p.hands?.gesture(tmpHand.set(x, game.heightAt(x, z), z), 1.1, 'plant'); // обе руки к земле перед игроком
       const y = game.heightAt(x, z);
       const mesh = makeStake();
       mesh.group.position.set(x, y - 0.05, z);

@@ -66,7 +66,6 @@ export function createMenus(game, root, ctx) {
       `<span>${K('Alt')} ${tr('походка по песку (удерживать)', 'sand-walk (hold)')}</span>`,
       `<span>${K('Space')} ${tr('прыжок (в шаге пустыни — сбить ритм)', 'jump (sand-walk: break rhythm)')}</span>`,
       `<span>${K('E')} ${tr('действие', 'interact')}</span>`,
-      `<span>${K('V')} ${tr('камера', 'camera')}</span>`,
       `<span>${K('F2')} ${tr('погода и время', 'weather & time')}</span>`,
       `<span>${K('Esc')} ${tr('пауза', 'pause')}</span>`,
     ].join('');
@@ -111,6 +110,7 @@ export function createMenus(game, root, ctx) {
       { id: 'wx', label: tr('Погода и время', 'Weather & time'), act: () => ctx.actions.weather?.() },
       { id: 'voice', label: tr('Голос', 'Voice'), val: () => voiceLabel(S.voiceMode), step: (d) => cycleVoice(d) },
       { id: 'native', label: tr('Родная строка в субтитрах', 'Native line in subtitles'), val: () => (S.showNative ? tr('вкл', 'on') : tr('выкл', 'off')), step: toggleNative },
+      { id: 'bob', label: tr('Покачивание головы', 'Head bob'), val: () => (S.headBob === false ? tr('выкл', 'off') : tr('вкл', 'on')), step: () => { S.headBob = S.headBob === false; saveSettings(game); } },
       { id: 'vo', label: tr('Громкость голосов', 'Voices volume'), ...volBar('vo') },
       { id: 'vol', label: tr('Громкость', 'Volume'), ...volBar('master') },
       { id: 'music', label: tr('Музыка', 'Music'), ...volBar('music') },

@@ -18,6 +18,7 @@ export function loadSettings(game) {
   // Голос: 'auto' | 'tts' | 'synth' | 'off'. По умолчанию включён (в автотесте выключен). s.voice — производный флаг (режим ≠ off).
   s.voiceMode = s.autotest ? 'off' : (VOICE_MODES.includes(saved.voiceMode) ? saved.voiceMode : (saved.voice === false ? 'off' : 'auto'));
   s.voice = s.voiceMode !== 'off';
+  s.headBob = saved.headBob ?? true;            // покачивание головы от первого лица (по шагам)
   s.showNative = saved.showNative ?? true;      // строка на языке мира над переводом в субтитрах
   s.hintsSeen = { ...(saved.hintsSeen || {}) };
   s.volume = { ...DEFAULT_VOLUME, ...(saved.volume || {}) };
@@ -30,7 +31,7 @@ export function saveSettings(game) {
   if (game.settings.autotest) return;
   const s = game.settings;
   try {
-    localStorage.setItem(KEY, JSON.stringify({ lang: game.lang, subSize: s.subSize, subBg: s.subBg, voiceMode: s.voiceMode, showNative: s.showNative, hintsSeen: s.hintsSeen, volume: s.volume }));
+    localStorage.setItem(KEY, JSON.stringify({ lang: game.lang, subSize: s.subSize, subBg: s.subBg, voiceMode: s.voiceMode, showNative: s.showNative, headBob: s.headBob, hintsSeen: s.hintsSeen, volume: s.volume }));
   } catch { /* приватный режим — не критично */ }
 }
 

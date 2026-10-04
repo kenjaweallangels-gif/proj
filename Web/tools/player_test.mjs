@@ -109,15 +109,13 @@ check('mask toggles', (await ev(() => window.__rakis.player.maskSealed)) === !h0
 const mA = await ev(() => window.__rakis.player.moisture); await wait(3); const mB = await ev(() => window.__rakis.player.moisture);
 check('moisture drains in sun', mB < mA, `${mA.toFixed(4)} -> ${mB.toFixed(4)}`);
 
-// 6. Камера: FP/TP
-await page.keyboard.press('KeyV'); await wait(1.5);
-check('first person', await ev(() => window.__rakis.player.firstPerson && !window.__rakis.player.figure.group.visible));
+// 6. Камера: только первое лицо (V больше ничего не переключает), героя не видно
+await page.keyboard.press('KeyV'); await wait(0.5);
+check('first person only, hero hidden', await ev(() => window.__rakis.player.firstPerson && !window.__rakis.player.figure.group.visible));
 await page.screenshot({ path: join(outDir, '6_fp.png') });
 await page.keyboard.down('KeyW'); await wait(1.5);
 await page.screenshot({ path: join(outDir, '7_fp_walk.png') });
 await page.keyboard.up('KeyW');
-await page.keyboard.press('KeyV'); await wait(1.5);
-check('back to third person', await ev(() => !window.__rakis.player.firstPerson && window.__rakis.player.figure.group.visible));
 
 // 7. Кат-сцена: камеру не трогаем
 const camBefore = await ev(() => window.__rakis.camera.position.toArray());

@@ -5,11 +5,11 @@ const KEYMAP = {
   KeyA: 'Left', ArrowLeft: 'Left', KeyD: 'Right', ArrowRight: 'Right',
   ShiftLeft: 'Sprint', ShiftRight: 'Sprint',
   AltLeft: 'SandWalk', AltRight: 'SandWalk', KeyC: 'SandWalk',
-  Space: ['Jump', 'Stutter'], KeyE: 'Interact', KeyF: 'Interact', KeyV: 'ToggleCamera', KeyT: 'Thumper',
+  Space: ['Jump', 'Stutter'], KeyE: 'Interact', KeyF: 'Interact', KeyT: 'Thumper',
   Escape: 'Pause', KeyP: 'PhotoMode', KeyM: 'Mask', Enter: 'Confirm', Tab: 'Skip',
 };
 // Стандартная раскладка геймпада (W3C): 0=A 1=B 2=X 3=Y 4=LB 5=RB 8=View 9=Start 11=RS
-const PADMAP = { 0: ['Jump', 'Stutter'], 2: 'Interact', 3: 'Thumper', 4: 'SandWalk', 10: 'Sprint', 11: 'ToggleCamera', 9: 'Pause', 8: 'PhotoMode', 1: 'Skip' };
+const PADMAP = { 0: ['Jump', 'Stutter'], 2: 'Interact', 3: 'Thumper', 4: 'SandWalk', 10: 'Sprint', 9: 'Pause', 8: 'PhotoMode', 1: 'Skip' };
 
 export function createInput(canvas) {
   const down = new Set();
