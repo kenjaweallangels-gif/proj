@@ -16,7 +16,7 @@ COPY backend/alembic ./alembic
 COPY backend/alembic.ini ./
 COPY --from=web /web/dist ./frontend/dist
 ENV PLM_STATIC_DIR=../frontend/dist
-RUN useradd -r -u 1001 plm && chown -R plm /srv
+RUN mkdir -p /srv/data/models && useradd -r -u 1001 plm && chown -R plm /srv
 USER plm
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--proxy-headers", "--forwarded-allow-ips", "*"]

@@ -40,6 +40,9 @@ services:
       # секреты коннекторов (имена задаются в конфиге коннектора через *_env)
       ONEC_PASSWORD: ${ONEC_PASSWORD:-}
       ERP_DB_URL: ${ERP_DB_URL:-}
+      PLM_MODELS_DIR: /srv/data/models
+    volumes:
+      - models:/srv/data/models          # 3D-модели для виртуальной сборки
     expose: ["8000"]
     extra_hosts:
       - "host.docker.internal:host-gateway"   # доступ к LLM, запущенной на самом сервере/ПК (Linux)
@@ -83,3 +86,4 @@ services:
 volumes:
   pgdata:
   ollama:
+  models:

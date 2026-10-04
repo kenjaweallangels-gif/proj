@@ -7,3 +7,4 @@ node_modules/
 frontend/dist/
 deploy/certs/
 deploy/backups/
+backend/data/

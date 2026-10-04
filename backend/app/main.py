@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import get_settings
 from .db import SessionLocal, engine
 from .migrate import upgrade_to_head
-from .routers import auth, ecn, items, misc, planning, purchasing, simple, stock
+from .routers import assembly, auth, ecn, items, misc, planning, purchasing, simple, stock
 from .seed import seed
 
 settings = get_settings()
@@ -41,7 +41,7 @@ async def security_headers(request: Request, call_next):
 
 
 for r in (auth.router, auth.admin, items.router, items.wc, ecn.router, planning.router, stock.router, purchasing.router,
-          misc.analytics_r, misc.import_r, misc.integr_r, misc.ai_r, simple.router):
+          misc.analytics_r, misc.import_r, misc.integr_r, misc.ai_r, simple.router, assembly.router):
     app.include_router(r)
 
 

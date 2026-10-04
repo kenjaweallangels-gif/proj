@@ -476,9 +476,29 @@ class KitLine(Base):
     required_qty: Mapped[Decimal] = mapped_column(Qty, default=1)
     issued_qty: Mapped[Decimal] = mapped_column(Qty, default=0)  # укомплектовано
     done: Mapped[bool] = mapped_column(Boolean, default=False)  # собрано / получено полностью
+    skipped: Mapped[bool] = mapped_column(Boolean, default=False)  # шаг пропущен сборщиком
+    done_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    done_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     note: Mapped[str] = mapped_column(String(300), default="")
     kit: Mapped[Kit] = relationship(back_populates="lines")
     item: Mapped[Item] = relationship(lazy="joined")
+    done_by: Mapped[User | None] = relationship()
+
+
+class ItemModel(Base):
+    """3D-модель изделия/детали для виртуальной сборки (хранится как GLB на диске)."""
+
+    __tablename__ = "item_models"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"), unique=True, index=True)
+    filename: Mapped[str] = mapped_column(String(300))  # исходное имя файла
+    source_format: Mapped[str] = mapped_column(String(16))  # step | glb | gltf | stl | obj
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    path: Mapped[str] = mapped_column(String(500))  # путь к GLB на диске
+    node_count: Mapped[int] = mapped_column(Integer, default=0)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    uploaded_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    item: Mapped[Item] = relationship()
 
 
 class WorkOrder(TimestampMixin, Base):

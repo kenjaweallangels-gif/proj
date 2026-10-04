@@ -96,6 +96,7 @@ export default function Order() {
         <div className="row">
           <a className="btn" href={`/api/simple/orders/${id}/export.xlsx`} onClick={async (e) => { e.preventDefault(); const blob = await fetch(`/api/simple/orders/${id}/export.xlsx`, { headers: { Authorization: `Bearer ${localStorage.getItem("plm.access")}` } }).then((r) => r.blob()); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Комплектация ${data.number}.xlsx`; a.click(); }}>⬇ Ведомость в Excel</a>
           <button onClick={() => window.print()}>🖨 Печать</button>
+          <Link to={`/orders/${id}/assemble`}><button className="primary">🔧 Сборка по шагам</button></Link>
           {editable && data.status === "assembled" && <button className="primary" onClick={() => setStatus("shipped")}>Отгружен ✓</button>}
           {editable && data.status === "shipped" && <button onClick={() => setStatus("in_work")}>Вернуть в работу</button>}
         </div>

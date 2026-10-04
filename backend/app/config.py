@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     cors_origins: str = "*"
     seed_demo: bool = True
     static_dir: str = "../../frontend/dist"
+    models_dir: str = "./data/models"  # хранилище 3D-моделей (GLB)
+    max_model_mb: int = 300
 
     # ИИ: локальная модель (Ollama / vLLM / LM Studio — OpenAI-совместимый API)
     local_llm_url: str = "http://localhost:11434/v1"

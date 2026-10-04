@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, del, dt, fmt, get, patch, post, TYPE_ICON, type ItemType } from "../api";
+import { useRef } from "react";
 import { Badge, Field, Help, Modal, Status, TYPE_RU, useAuth, useData, useToast } from "../ui";
 import { CreateOrder } from "./Orders";
 
@@ -65,6 +66,7 @@ export default function Spec() {
           <Link to={`/items/${data.item.id}`}><button>Подробная карточка</button></Link>
         </div>
       </div>
+      <ModelBlock itemId={data.item.id} editable={can("items:write")} />
       {data.has_draft && (
         <div className="sticky-actions">
           <b>Есть несохранённые изменения состава.</b><span className="muted">Заказы пока используют редакцию {data.released_rev ?? "—"}.</span>
@@ -133,5 +135,39 @@ function AddLine({ parentId, onClose, onDone }: { parentId: number; onClose: () 
         <div className="row"><button className="primary" disabled={!f.code.trim()}>Добавить</button><button type="button" onClick={onClose}>Отмена</button></div>
       </form>
     </Modal>
+  );
+}
+
+
+interface ModelInfo { exists: boolean; filename?: string; format?: string; size?: number; nodes?: number; uploaded_at?: string; url?: string }
+
+function ModelBlock({ itemId, editable }: { itemId: number; editable: boolean }) {
+  const toast = useToast();
+  const info = useData(() => get<ModelInfo>(`/api/assembly/models/${itemId}`), [itemId]);
+  const [busy, setBusy] = useState(false);
+  const [nodes, setNodes] = useState<string[] | null>(null);
+  const inp = useRef<HTMLInputElement>(null);
+  const upload = async (f: File) => {
+    const fd = new FormData(); fd.append("file", f);
+    setBusy(true);
+    try { const r = await api<{ nodes: number; format: string }>(`/api/assembly/models/${itemId}`, { method: "POST", form: fd }); toast("ok", `Модель загружена (${r.format.toUpperCase()}, узлов: ${r.nodes})`); info.reload(); setNodes(null); }
+    catch (e) { toast("err", (e as Error).message); } finally { setBusy(false); }
+  };
+  const m = info.data;
+  return (
+    <div className="card" style={{ display: "grid", gap: 8 }}>
+      <div className="row">
+        <b>🎬 3D-модель для виртуальной сборки</b>
+        {m?.exists ? <Badge tone="green">загружена · {m.format?.toUpperCase()} · {Math.round((m.size ?? 0) / 1024 / 1024 * 10) / 10} МБ · узлов {m.nodes}</Badge> : <Badge>нет</Badge>}
+        <span className="right row">
+          {editable && <><input ref={inp} type="file" hidden accept=".step,.stp,.glb,.gltf,.stl,.obj" onChange={(e) => { if (e.target.files?.[0]) upload(e.target.files[0]); e.target.value = ""; }} />
+            <button className={m?.exists ? "" : "primary"} disabled={busy} onClick={() => inp.current?.click()}>{busy ? "⏳ Обработка…" : m?.exists ? "Заменить модель" : "＋ Загрузить STEP / GLB"}</button></>}
+          {m?.exists && <button className="sm" onClick={async () => setNodes((await get<{ nodes: string[] }>(`/api/assembly/models/${itemId}/nodes`)).nodes)}>Имена деталей в модели</button>}
+          {m?.exists && editable && <button className="sm danger" onClick={async () => { if (confirm("Удалить 3D-модель?")) { await del(`/api/assembly/models/${itemId}`); info.reload(); } }}>Удалить</button>}
+        </span>
+      </div>
+      <div className="muted small">Экспортируйте сборку из CAD в <b>STEP</b> (сервер сам переведёт в веб-формат) или GLB/glTF. Чтобы детали анимировались по шагам, их имена в модели должны содержать обозначения из спецификации (например «РЧ-100.01.001 Корпус»). Несопоставленные детали просто остаются на месте.</div>
+      {nodes && <div className="small" style={{ maxHeight: 160, overflow: "auto" }}>{nodes.length ? nodes.map((n) => <Badge key={n}>{n}</Badge>) : <span className="muted">Имён не найдено — модель без структуры (например, один сплошной меш).</span>}</div>}
+    </div>
   );
 }

@@ -313,7 +313,7 @@ def quick_import(file: UploadFile = File(...), db: Session = Depends(get_db), me
 
 # ------------------------------------------------------------------ заказы --
 def _line_status(lines_by_parent: dict[int | None, list[KitLine]], ln: KitLine) -> str:
-    if ln.done or ln.issued_qty >= ln.required_qty:
+    if ln.done or ln.skipped or ln.issued_qty >= ln.required_qty:
         return "ready"
     kids = lines_by_parent.get(ln.id, [])
     if kids:

@@ -1,9 +1,10 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { Suspense, lazy, useEffect, useState, type FormEvent } from "react";
 import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { get, login, logout, TYPE_ICON, type Item } from "./api";
 import { useAuth, useToast } from "./ui";
 import Orders from "./pages/Orders";
 import Order from "./pages/Order";
+const Assembly = lazy(() => import("./pages/Assembly")); // three.js грузится только на странице сборки
 import Specs from "./pages/Specs";
 import Spec from "./pages/Spec";
 import Shortage from "./pages/Shortage";
@@ -102,9 +103,10 @@ export default function App() {
   const { user, can, reload } = useAuth();
   if (!user) return <Login />;
   const first = NAV.find((n) => can(n.perm))?.to ?? "/more";
+  const mini = new URLSearchParams(window.location.search).get("mini") === "1"; // компактное окно сборки без навигации
   return (
     <div className="shell">
-      <header className="top">
+      {!mini && <header className="top">
         <NavLink to="/" className="brand">📦 <span>Комплектация</span></NavLink>
         <nav className="topnav">
           {NAV.filter((n) => can(n.perm)).map((n) => <NavLink key={n.to} to={n.to} end={n.to === "/"} className={({ isActive }) => (isActive ? "active" : "")}>{n.icon} <span>{n.label}</span></NavLink>)}
@@ -115,11 +117,12 @@ export default function App() {
           <span className="who-n">{user.full_name}</span>
           <button className="sm" onClick={async () => { await logout(); await reload(); }}>Выйти</button>
         </div>
-      </header>
-      <main className="page">
+      </header>}
+      <main className={mini ? "" : "page"}>
         <Routes>
           <Route path="/" element={can("kits:read") ? <Orders /> : <Navigate to={first} />} />
           <Route path="/orders/:id" element={<Order />} />
+          <Route path="/orders/:id/assemble" element={<Suspense fallback={<div className="muted">Загрузка модуля сборки…</div>}><Assembly /></Suspense>} />
           <Route path="/specs" element={<Specs />} />
           <Route path="/specs/:id" element={<Spec />} />
           <Route path="/shortage" element={<Shortage />} />
