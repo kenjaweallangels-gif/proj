@@ -1,0 +1,91 @@
+BarkID,Line_Native
+BRK_TRD_Idle_01,Qumš Kīnī — maš. Qumš naḥ — hay. Iḥuss.
+BRK_TRD_Stranger_02,Mun an-Kīn? Li-tū tinā sawm. Maš ʿakir.
+BRK_TRD_Market_03,"Jild, ʿiṣb, ḥazz — kull ṣāf!"
+BRK_TRD_Market_04,"Qahw li-ġazl, ġazl li-qahw. An-luqt — ʿurr sawm."
+BRK_TRD_Water_05,Nuṭf — bi-nazr. Wa-ġīr — nalqut.
+BRK_TRD_Shiana_06,"ʿIṣb Šiyāna! Nīl, ka-ʿaynhā. Yalqutū."
+BRK_TRD_Kin_07,Fu-Kīn li-hād an-ḥazz — qull. Wa-ānu — ḍiḥka.
+BRK_TRD_WormNear_08,Kay ḥassak? Fāt duḥnā. Sawm ṣāf.
+BRK_TRD_Ritual_09,An-lawḥ yaṭmun. Wa-an-Mukarramāt — maš.
+BRK_TRD_Offworld_10,Sikk barrī? Iluḥaf… Maš. Hākā maš yaṭbul.
+BRK_TRD_Idle_11,Ġubr fūq an-luqt? Fa — ḥayy hun.
+BRK_ART_Idle_01,Sarb bi-sarb. Nuṭfat bi-nuṭfat.
+BRK_ART_Stranger_02,Bayyin jildak. …Mūn ḥāṭ hād — ʿaduww?
+BRK_ART_Stranger_03,Qinʿ ḥadr. Nāb ʿad. Hākā. Ḥā taškur.
+BRK_ART_Market_04,Ḍabṭ fu-adwās — ʿad ġurb. Bād — ānu aṣill.
+BRK_ART_Water_05,Jild ḥarq — sāriq ʿatar fūqak.
+BRK_ART_Shiana_06,Yalqutū: Šiyāna tasrub ʿurr jild. Ānu ġad aḥāṭ lahā ayḍ.
+BRK_ART_Kin_07,Fu-Kīn yaḥīṭū li-ʿarḍ. Maš li-tirb.
+BRK_ART_WormNear_08,Ḥašš. Dulā ḥatt an-ibra jahīr.
+BRK_ART_Ritual_09,An-ibra ḥaṭṭ. Hād al-layl an-ḥanbānat taḥīṭ bi-ṣawt.
+BRK_ART_Offworld_10,Qumš barrī maš yaḥūf. Wa-maš yanfil šāl.
+BRK_ART_Idle_11,Qasb ʿūd ṣakk. An-tirb yaʿkul kull.
+BRK_WAT_Idle_01,Qull ṭaqīl — yawm ṣāf.
+BRK_WAT_Idle_02,"Qull khāw yaṭbul, qull maliy yaḥšun. Ka-ḍumm."
+BRK_WAT_Water_03,"Mīrat — tinā aṣābiʿ. Maš ajamm, maš aqall."
+BRK_WAT_Water_04,Nuṭfat — ʿad lisn. Maš ʿad qāʿ.
+BRK_WAT_Stranger_05,"Ibʿad mun an-qull, barrī. Ṭullak yamṣuṣ."
+BRK_WAT_Market_06,Mūn ṭalab nuṭf li-qahw? Amrī.
+BRK_WAT_Kin_07,"Kīn yalḥaf nuṭf, wa-yanfil luqt."
+BRK_WAT_Shiana_08,Tayn Šiyāna fāt — an-tirb raṭb.
+BRK_WAT_WormNear_09,Iḥfaz an-qull. Lin an-qāʿ yarʿaš — maš taṭraḥ.
+BRK_WAT_Ritual_10,Mīrat ḥīr — li-an-ṭāsa. Wa-ġīr ġadw.
+BRK_WAT_Offworld_11,Barriyyīn yaṣkū ka-nuṭf yašubb fūq an-ṣulūt.
+BRK_CHL_Idle_01,"Ānu ḥūl! Tū rākib! Maš, dulā ānu rākib!"
+BRK_CHL_Idle_02,"Bumm! Bumm! Ānu miḍbaṭ! Iʿjal hun, yā ḥūl!"
+BRK_CHL_Stranger_03,Ahdākak maš nīl. Tū Kīnī?
+BRK_CHL_Stranger_04,"Yā Ummī, hū ṭāq yasrub fūq an-tirb?"
+BRK_CHL_Market_05,Zād tamra — ānu abayyin an-ṣulṭ al-abrad.
+BRK_CHL_Water_06,Ānu maš lamas! Ānu ḥadaq ġīr!
+BRK_CHL_Shiana_07,Ānu ġad aktar ka-Šiyāna. An-Ḥūl yaṣnut lī!
+BRK_CHL_WormNear_08,Kay ḥassak? An-qāʿ yakkik!
+BRK_CHL_Ritual_09,Ḥašš! An-ḥanbānat taġannī. Maš ḍiḥk. Bayd… qalīl.
+BRK_CHL_Kin_10,Aḥdāq ṣiġāġ Kīn ṣulb. Yaṭbulū!
+BRK_CHL_Offworld_11,Wa-fūq? Tayn nuṭf an-najm?
+BRK_CHL_Idle_12,Ānu ḥadaqt Ossāna! Hī waqafat fūqah! Wāqifa!
+BRK_GRD_Idle_01,Ḥadaq ʿad an-ṭull. An-ṭull maš yakdib.
+BRK_GRD_Idle_02,Sikk fu-ḥizm. ʿAyn ʿad an-sadd.
+BRK_GRD_Stranger_03,"Kaff bayyin, ḍayf."
+BRK_GRD_Stranger_04,Maš daʿūnā. Ilzam — sarb bi-hawn.
+BRK_GRD_Market_05,Ilkut ʿurr ṣawt. An-ṣawt — li-an-ṣaḥr.
+BRK_GRD_Water_06,Mun an-šabk. Maš ānu ḥadd tinā.
+BRK_GRD_Kin_07,Rīḥ Kīn. Bakhūr wa-ḥawf.
+BRK_GRD_WormNear_08,Hū qurb. Mun an-ḥīṭān — kull.
+BRK_GRD_Shiana_09,Šiyāna maš dīlnā. Maš dīl ḥad. Hākā aʾman.
+BRK_GRD_Ritual_10,ʿad an-qāʿa. Maš tadāfaʿ. Il maš yastaʿjil.
+BRK_GRD_Offworld_11,Lin kawk barrī yahbiṭ fūq al-ʿarq — an-tirb yaʿkul. ʿurr naḥ.
+BRK_GRD_Idle_12,Ossāna rajaʿat qubay an-ʿajj. Fa — ḍayf ġad yaṣil.
+BRK_PLG_Idle_01,Šalt layālī sarabt mun Kīn. An-adwās taʿlam kull.
+BRK_PLG_Idle_02,Il an-Mašṭūr — fa ġad yaṣibnī qiṭʿa.
+BRK_PLG_Shiana_03,Hī talqut sāb-Hū ka-bint sāb ab. Ānu ḥadaqt. Mun nāy.
+BRK_PLG_Shiana_04,Šiyāna… Bi-ḥašš ġīr. An-asmāʾ taṣnut ayḍ.
+BRK_PLG_Kin_05,An-ḥanābin bāʿū lī ḥirz. Wa-hun — wahabū.
+BRK_PLG_Stranger_06,Tū ġabart ʿanhum ayḍ? Ḥā tajīb. Mun an-ʿayn.
+BRK_PLG_Ritual_07,Qarīb taġannī. An-fuʾd ṣanat qad.
+BRK_PLG_WormNear_08,Hū qurb. Ḥā taḥūf minh — ḥāf mā fīk.
+BRK_PLG_Water_09,Ḥallat nuṭfī ʿad an-sadd. Ḥaffat.
+BRK_PLG_Market_10,An-muqaddasāt maš tubāʿ. Bayd hād an-ḥaṣāt — mun ḥarfhā. Qarīb ḥanān.
+BRK_PLG_Offworld_11,Al-mubaddadīn yarjiʿūn li-an-bayt. Wa-an-bayt maš hākā.
+BRK_ELD_Idle_01,Hād an-ṣalt ajdādī malasū bi-kaff. Iluṭf ayḍ tū.
+BRK_ELD_Idle_02,Naḥ maš fūrīmīn. Naḥ ṣadāhum. Bayd an-ṣadā ayḍ ṣawt.
+BRK_ELD_Idle_03,"An-ḍabṭ ʿaduww. Iḥfaz, ḥīn tū šābb."
+BRK_ELD_Stranger_04,"Tasrub ka-ḥaḍarī: ʿaqb-ṣabʿ, ʿaqb-ṣabʿ. Iksir. ʿūd. Hākā."
+BRK_ELD_Kin_05,Bāt Arrākīn. Ṣār Kīn. Ġad ġubr. An-asmāʾ maš ṭawīl.
+BRK_ELD_Water_06,Jaddī ʿalaš qaddi nuṭf fī kull. Ānu ʿalaš ġīr…
+BRK_ELD_Shiana_07,An-bint talqut sāb Šayṭān. Wa-naḥ ḥasabnā: naḥ nasīnā an-ṣanat.
+BRK_ELD_WormNear_08,"Ḥā tafšul. An-ḥukm qadīm, wa-kull yaḥūf."
+BRK_ELD_Ritual_09,"Iqʿud adnā, yā šābb. An-qubba tabġī an-ḥanya."
+BRK_ELD_Market_10,"Qahw bi-ṣuhb — tinā rašfāt. Li-ḥayā, li-tirb, wa-li-dī maš yaʿūd."
+BRK_ELD_Offworld_11,An-nujūm tasrub dulā. Hādī sufun. Qad bāt ahdaʾ.
+BRK_WEA_Idle_01,"Ḥayṭ bi-ḥayṭ, ḥaṭwa bi-ḥaṭwa. Hun ġīr an-ḍabṭ ṭāq."
+BRK_WEA_Idle_02,Ummī talqut: yanqaṭiʿ al-ḥayṭ — an-tirb yaṣnut. Ibṭiʾ.
+BRK_WEA_Idle_03,An-naqš aqdam mun an-tabr. Naḥ ġīr nadkur.
+BRK_WEA_Market_04,An-nīl ġālī. An-nīl — li-an-qāʿa. Li-kull yawm — ʿaṣfar.
+BRK_WEA_Stranger_05,"Ḥā talmas an-sadā, ḍayf. Hī maštūda bi-ṣabrnā."
+BRK_WEA_Shiana_06,Ānu aṭarriz ḥūl li-Šiyāna. Hī maš taḥdaq. Bayd — sāf.
+BRK_WEA_Kin_07,"Kīn yanṣij aʿlām, naḥ — sutūr. An-ʿalam maš yastur mun an-ʿajj."
+BRK_WEA_Water_08,Ḥayṭ raṭb — ḥayṭ ḍāʿ. An-ṣibġ hun bi-nuṭfat.
+BRK_WEA_WormNear_09,An-nawl yarʿaš. Hū qurb ʿūd. An-ʿuqda ṭāqat.
+BRK_WEA_Ritual_10,An-sitr fūq an-ṭāsa ḥāḍir. Ġīr an-nūr yaqaʿ sawī.
+BRK_WEA_Offworld_11,Tujjār an-samā ṭalabū naqšnā. An-naqš maš yubāʿ — yuġannā.

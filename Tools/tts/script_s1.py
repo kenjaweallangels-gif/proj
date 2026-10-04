@@ -220,8 +220,8 @@ S("DLG_WRM_P01", "", [
      "Дышите. Они остались с червём, а мы идём дальше.", "Breathe. They stayed with the worm, and we walk on."),
     ("Rayn", "Whisper", "Hū ṭaman bi-luqtahā. Maš ḥawḍ — maš fu-ḥawḍ—",
      "Он замер по её слову. Ни один чан… ни в одном чане такого не—", "It stopped at her word. No vat… no vat could ever—"),
-    ("Ilva", "Calm", G, "Чан, мастер Рэйн? Какой чан?", "Vat, Master Rayn? What vat?"),
-    ("Rayn", "Afraid", G, "Для воды. Чаны для воды. Торговое словечко.", "For water. Water vats. Trade talk."),
+    ("Ilva", "Calm", "Ḥawḍ, Bā-Rayn? Ayy ḥawḍ?", "Чан, мастер Рэйн? Какой чан?", "Vat, Master Rayn? What vat?"),
+    ("Rayn", "Afraid", "Li-an-nuṭf. Ḥawḍ an-nuṭf. Luqt sawm.", "Для воды. Чаны для воды. Торговое словечко.", "For water. Water vats. Trade talk."),
 ])
 S("DLG_THM_001", "Interact:Rakis.Thumper", [("Kair", "Tense", "An-miḍbaṭ yanfilnā ḥawfāt nazr. Iḥfuzū.",
     "Тампер даст нам несколько вдохов. Не больше. Идём.", "The thumper buys us a few breaths. No more. Move.")])
@@ -681,3 +681,21 @@ S("DLG_C1_G01", "", [
     ("Elder", "Warm", "Lin yatūl — yanqaš an-naʿnaʿ li-mūn. Zūd an-nuṭf.",
      "Если придёт — запомнит, чья тут мята. Иди, неси воду.", "If he comes — he'll note whose mint it is. Go on, fetch the water."),
 ])
+
+
+# =====================================================================================================================
+# Ред. 3: реплики, которые раньше были «зашиты» в код (worm/encounter.js) — теперь обычные строки с озвучкой.
+# Играются через game.dialogue.say(id, pos) (одиночные, без цепочки и без условий).
+# =====================================================================================================================
+S("DLG_WRM_H01", "", [("Ilva", "Calm", "Kay taṣnutū? An-tirb yaṭbul duḥ adwāsukum.",
+    "Слышите? Песок гудит под ногами.", "Do you hear it? The sand is humming.")])
+S("DLG_WRM_H02", "", [("Rayn", "Afraid", "Hnāy, fūq an-ḥarf! An-ḥawl yatūl ʿadnā sawī!",
+    "Там, на гребне! Вал идёт прямо на нас.", "There, on the crest! A swell, coming straight at us.")])
+S("DLG_WRM_H03", "", [("Ilva", "Calm", "Sawī jamm li-an-ṭalīq. Ḥā tafšul.",
+    "Слишком ровно для дикого. Не бегите.", "Too steady for a wild one. Do not run.")])
+S("DLG_WRM_H04", "", [("Rayn", "Whisper", "Hū… yarbaḍ. Maš ṭāq ʿūd.",
+    "Он… ложится. Он выдохся.", "He is... lying down. He is spent.")])
+S("DLG_A2_CALL_01", "", [("Ossana", "Neutral", "Yā Rayn! Hun. Hū maš ġad yaṭmun kull zamn.",
+    "Рэйн! Сюда. Он не будет ждать вечно.", "Rayn! Over here. He will not wait forever.")])
+S("DLG_A2_CALL_02", "", [("Ossana", "Neutral", "Iqrab — an-luqt qiṭ.",
+    "Подойдите ближе — разговор короткий.", "Come closer. This will be short.")])

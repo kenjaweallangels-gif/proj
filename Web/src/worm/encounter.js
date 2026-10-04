@@ -178,19 +178,20 @@ export class EncounterDirector {
     return this._p.set(K.pos.x, K.pos.y + 12, K.pos.z);
   }
 
-  bark(speaker, name, ru, en, dur = 3.4) {
-    const { game, bus } = this.api;
+  /** Реплика спутника из таблицы диалогов (Dialogue_S1.csv, DLG_WRM_H*): субтитр + озвучка Piper по ID. */
+  bark(speaker, id) {
+    const { game } = this.api;
     const c = game.companions?.list?.find((q) => q.id === speaker);
     const pos = c ? new THREE.Vector3(c.position.x, c.position.y + 1.7, c.position.z) : undefined;
-    bus.emit('subtitle', { speaker, name, text: game.t(ru, en), duration: dur, kind: 'bark', pos });
+    game.dialogue?.say?.(id, pos);
   }
 
   stageOmen() {
     this.watch(true);
     this.api.game.audio?.event?.('Worm.Heartbeat');
-    this.after(0.8, () => this.bark('Ilva', 'Илва', 'Слышите? Песок гудит под ногами.', 'Do you hear it? The sand is humming.'));
-    this.after(4.0, () => this.bark('Rayn', 'Райн', 'Там, на гребне! Вал идёт прямо на нас.', 'There, on the crest! A swell, coming straight at us.'));
-    this.after(9.0, () => this.bark('Ilva', 'Илва', 'Слишком ровно для дикого. Не бегите.', 'Too steady for a wild one. Do not run.'));
+    this.after(0.8, () => this.bark('Ilva', 'DLG_WRM_H01'));
+    this.after(4.0, () => this.bark('Rayn', 'DLG_WRM_H02'));
+    this.after(9.0, () => this.bark('Ilva', 'DLG_WRM_H03'));
   }
 
   // ---------------------------------------------------------------- голова
@@ -310,7 +311,7 @@ export class EncounterDirector {
     game.audio?.event?.('Worm.RingSandfall', K.pos.clone());
     this.collapsePuff = 0;
     this.riderHint = 0;
-    this.after(1.5, () => this.bark('Rayn', 'Райн', 'Он… ложится. Он выдохся.', 'He is... lying down. He is spent.'));
+    this.after(1.5, () => this.bark('Rayn', 'DLG_WRM_H04'));
   }
 
   updateCollapse(dt) {
@@ -556,13 +557,9 @@ export class EncounterDirector {
   }
 
   call(tk) {
-    const { game, bus } = this.api;
-    const lines = [
-      ['Оссана', 'Рэйн! Сюда. Он не будет ждать вечно.', 'Rayn! Over here. He will not wait forever.'],
-      ['Оссана', 'Подойдите ближе — разговор короткий.', 'Come closer. This will be short.'],
-    ];
-    const l = lines[(this.callN = ((this.callN || 0) + 1)) % lines.length];
-    bus.emit('subtitle', { speaker: 'Ossana', name: l[0], text: game.t(l[1], l[2]), duration: 3.2, kind: 'bark', pos: tk.pos.clone() });
+    const { game } = this.api;
+    const ids = ['DLG_A2_CALL_01', 'DLG_A2_CALL_02'];
+    game.dialogue?.say?.(ids[(this.callN = ((this.callN || 0) + 1)) % ids.length], tk.pos.clone());
   }
 
   startTalk(timeout = false) {

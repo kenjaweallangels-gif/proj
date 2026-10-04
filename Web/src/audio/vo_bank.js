@@ -1,4 +1,4 @@
-// Банк озвучки: реплики, собранные Tools/tts/piper_build.py (Piper ar_JO-kareem-medium → Opus) и встроенные в assets/vo.js как data-URI.
+// Банк озвучки: реплики и лай толпы, собранные Tools/tts/piper_build.py (Piper, голос на персонажа → Opus) и встроенные в assets/vo.js как data-URI.
 // Декодирование ленивое (decodeAudioData) с небольшим LRU-кэшем: весь банк в PCM занял бы ~90 МБ.
 // API: has(id), duration(id) — длительность из файла (с), decode(ctx, id) → Promise<AudioBuffer|null>, peek(id), barkCount(arch), barkPick(arch) → {key, uri, d}.
 import { VO, VO_DUR, BARKS } from '../assets/vo.js';
