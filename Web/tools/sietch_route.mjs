@@ -18,24 +18,28 @@ await p.goto(`file://${join(root, 'dist', arg('file', 'sietch.html'))}?autotest=
 await p.waitForFunction(() => window.__rakis?.realTime > 1.5, null, { timeout: 480000, polling: 1000 });
 const info = () => p.evaluate(() => { const g = window.__rakis, q = g.player.position; return { pos: [q.x, q.y, q.z].map((v) => +v.toFixed(1)), space: g.space, zone: g.zone }; });
 let bad = 0;
+const from = arg('from', 'trail');
 async function walkTo(x, z, label, maxSec = 60, shot = false) {
-  const t0 = Date.now();
   await p.keyboard.down('KeyW');
-  let best = 1e9, stuck = 0, minY = 1e9, maxY = -1e9, lastY = null, maxJump = 0;
-  while ((Date.now() - t0) / 1000 < maxSec * 6) {
-    const d = await p.evaluate(([x, z]) => { const g = window.__rakis, pl = g.player; g.sietch.crowd.guardReleased = true; const dx = x - pl.position.x, dz = z - pl.position.z; const yaw = Math.atan2(dz, dx); if (pl.cam) pl.cam.yaw = yaw; pl.yaw = yaw; return [Math.hypot(dx, dz), pl.position.y]; }, [x, z]);
-    const y = d[1]; if (lastY !== null) maxJump = Math.max(maxJump, Math.abs(y - lastY)); lastY = y; minY = Math.min(minY, y); maxY = Math.max(maxY, y);
-    if (d[0] < 1.3) break;
-    if (d[0] < best - 0.25) { best = d[0]; stuck = 0; } else if (++stuck > 36) { console.log('STUCK', label, d[0].toFixed(1), JSON.stringify(await info())); bad++; break; }
-    await p.waitForTimeout(250);
+  // прогресс считаем по ИГРОВОМУ времени (g.time): под нагрузкой кадры редкие, настенные часы не годятся
+  let best = 1e9, tBest = null, minY = 1e9, maxY = -1e9, last = null, maxJump = 0, tStart = null, guard = 0;
+  while (guard++ < 4000) {
+    const d = await p.evaluate(([x, z]) => { const g = window.__rakis, pl = g.player; g.sietch.crowd.guardReleased = true; const dx = x - pl.position.x, dz = z - pl.position.z; const yaw = Math.atan2(dz, dx); if (pl.cam) pl.cam.yaw = yaw; pl.yaw = yaw; return [Math.hypot(dx, dz), pl.position.y, g.time, pl.position.x, pl.position.z]; }, [x, z]);
+    const [dist, y, gt, px, pz] = d;
+    if (tStart === null) { tStart = gt; tBest = gt; }
+    if (last !== null) { const dxz = Math.hypot(px - last[0], pz - last[1]); maxJump = Math.max(maxJump, Math.abs(y - last[2]) - 0.4 * dxz); }
+    last = [px, pz, y]; minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    if (dist < 1.3) break;
+    if (dist < best - 0.3) { best = dist; tBest = gt; } else if (gt - tBest > 4) { console.log('STUCK', label, dist.toFixed(1), JSON.stringify(await info())); bad++; break; }
+    if (gt - tStart > maxSec) { console.log('TIMEOUT', label, dist.toFixed(1)); bad++; break; }
+    await p.waitForTimeout(400);
   }
   await p.keyboard.up('KeyW');
   const inf = await info();
-  console.log(label.padEnd(26), JSON.stringify(inf), `y ${minY.toFixed(1)}..${maxY.toFixed(1)}, макс. скачок за 0.25 с ${maxJump.toFixed(2)}`);
-  if (maxJump > 1.2) { bad++; console.log('  ! СКАЧОК высоты'); }
+  console.log(label.padEnd(26), JSON.stringify(inf), `y ${minY.toFixed(1)}..${maxY.toFixed(1)}, скачок сверх уклона ${Math.max(0, maxJump).toFixed(2)}`);
+  if (maxJump > 0.8) { bad++; console.log('  ! СКАЧОК высоты'); }
   if (shot || shots) await p.screenshot({ path: join(out, label.replace(/[^\w]+/g, '_') + '.png'), timeout: 600000 });
 }
-const from = arg('from', 'trail');
 await p.evaluate(async (from) => { const g = window.__rakis; if (from === 'hall') await g.sietch.enter('exitStart'); else g.debug.goto(from === 'cleft' ? 'cleft' : 'trail'); g.timeScale = 2.5; }, from);
 await p.waitForTimeout(3000);
 const leg = arg('leg', 'both');
