@@ -1,6 +1,6 @@
 // Устье туннеля на восточной грани Когтя: каменная рамка (косяки, перемычка, порог), облицовка-штольня вглубь скалы (арочное сечение
 // w × h, пол — плоский MOUTH.y), торцевая «тьма» (мягкий градиент, не чёрная заглушка), знаки на косяках, коллайдеры стенок.
-// Сиетч стыкуется по оси z = MOUTH.z на высоте пола MOUTH.y (см. layout.js: MOUTH). setCap(false) — убрать торец, когда туннель сиетча доведён до устья.
+// Сиетч стыкуется по оси z = MOUTH.z на высоте пола MOUTH.y (см. layout.js: MOUTH, PORTAL). Торец по умолчанию выключен (setCap(true) — запасная «тьма»).
 import * as THREE from 'three';
 import { chunkyBox } from '../desert/rock.js';
 import { createLevelRockMaterial } from '../level/rockmat.js';
