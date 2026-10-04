@@ -33,19 +33,28 @@ async function walkTo(x, z, label, maxSec = 60, shot = false) {
   const inf = await info();
   console.log(label.padEnd(26), JSON.stringify(inf), `y ${minY.toFixed(1)}..${maxY.toFixed(1)}, макс. скачок за 0.25 с ${maxJump.toFixed(2)}`);
   if (maxJump > 1.2) { bad++; console.log('  ! СКАЧОК высоты'); }
-  if (shot || shots) await p.screenshot({ path: join(out, label.replace(/[^\w]+/g, '_') + '.png') });
+  if (shot || shots) await p.screenshot({ path: join(out, label.replace(/[^\w]+/g, '_') + '.png'), timeout: 600000 });
 }
-await p.evaluate(() => { window.__rakis.debug.goto('trail'); window.__rakis.timeScale = 2.5; });
+const from = arg('from', 'trail');
+await p.evaluate(async (from) => { const g = window.__rakis; if (from === 'hall') await g.sietch.enter('exitStart'); else g.debug.goto(from === 'cleft' ? 'cleft' : 'trail'); g.timeScale = 2.5; }, from);
 await p.waitForTimeout(3000);
 const leg = arg('leg', 'both');
 const S = (fn, ...a) => p.evaluate(([f, a]) => window.__rakis.sietch[f](...a), [fn, a]);
 const local = async (pts) => p.evaluate((pts) => pts.map(([x, z]) => { const w = window.__rakis.sietch.toWorld(x, 0, z); return [w.x, w.z]; }), pts);
-if (leg !== 'out') {
-  const pts = await p.evaluate(() => (window.__rakis.approach?.trail || []).map((q) => [q.x, q.z]));
-  console.log('trail points', pts.length);
+if (leg !== 'out' && from === 'hall') {
+  // старт у выхода из зала: зал → туннель → сад (по оси туннеля)
+  const ex = await p.evaluate(() => window.__rakis.sietch.exitPath.map((q) => [q.x, q.z]));
+  for (let i = 1; i < ex.length; i += 2) await walkTo(ex[i][0], ex[i][1], `exit_${i}`, 60, i === ex.length - 1 || i === Math.floor(ex.length / 2));
+  await walkTo(808, 395, 'to_garden', 90, true);
+  await walkTo(830, 395, 'garden_in', 60, true);
+} else if (leg !== 'out') {
+  const pts0 = await p.evaluate(() => (window.__rakis.approach?.trail || []).map((q) => [q.x, q.z]));
+  const pts = from === 'cleft' ? [] : pts0;
+  console.log('trail points', pts0.length, 'walked', pts.length);
   const step = 6;
   for (let i = step; i < pts.length; i += step) await walkTo(pts[i][0], pts[i][1], `trail_${i}`, 30, false);
   const c = await p.evaluate(() => window.__rakis.approach.cleftPos);
+  await walkTo(c.x - 2.5, c.z, 'cleft_slot', 40);
   await walkTo(c.x + 3, c.z, 'cleft', 40, true);
   const route = await local([[-1.5, 3.5], [2.4, 0], [12, 0], [24, 0], [36, -0.3], [44, 0], [60, 0.5], [76, 0], [96, 0], [104, 0.4], [126, 0.5], [146, 0], [153, 0], [166, 0]]);
   for (let i = 0; i < route.length; i++) await walkTo(route[i][0], route[i][1], `sietch_${i}`, 60, i === 0);
@@ -64,10 +73,9 @@ if (leg !== 'in') {
   await walkTo(808, 395, 'garden_back', 90);
   const ex = await p.evaluate(() => window.__rakis.sietch.exitPath.map((q) => [q.x, q.z]));
   for (let i = ex.length - 1; i >= 0; i -= 2) await walkTo(ex[i][0], ex[i][1], `exit_back_${i}`, 60, i === ex.length - 1);
-  const back = await local([[172, -8], [160, 0], [146, 0], [126, 0.5], [104, 0.4], [96, 0], [76, 0], [60, 0.5], [44, 0], [36, -0.3], [24, 0], [12, 0], [2.4, 0], [-1.5, 3.5]]);
+  const back = from === 'hall' ? await local([[172, -8]]) : await local([[172, -8], [160, 0], [146, 0], [126, 0.5], [104, 0.4], [96, 0], [76, 0], [60, 0.5], [44, 0], [36, -0.3], [24, 0], [12, 0], [2.4, 0], [-1.5, 3.5]]);
   for (let i = 0; i < back.length; i++) await walkTo(back[i][0], back[i][1], `back_${i}`, 60, i === back.length - 1);
-  const c = await p.evaluate(() => window.__rakis.approach.cleftPos);
-  await walkTo(c.x - 8, c.z + 4, 'cleft_out', 60, true);
+  if (from !== 'hall') { const c = await p.evaluate(() => window.__rakis.approach.cleftPos); await walkTo(c.x - 8, c.z + 4, 'cleft_out', 60, true); }
 }
 console.log('ошибки страницы:', errs.length ? [...new Set(errs)].slice(0, 6) : 'нет', ' СБОЕВ:', bad);
 await b.close();
