@@ -498,7 +498,7 @@ export function create(game) {
   function shakeUpdate(dt) {
     const pl = game.player?.position;
     impulse = Math.max(0, impulse - dt / 0.9);
-    if (!pl || devour.active) return;           // при пожирании тряской ведает сценарий
+    if (!pl || devour.active || game.space !== 'desert') return;   // при пожирании тряской ведает сценарий; в скале не трясёт
     const dist = Math.hypot(pl.x - K.pos.x, pl.z - K.pos.z);
     const prox = nearF(dist, 340, 110);
     if (prox <= 0.001) return;                  // дальше ~340 м земля не дрожит вовсе

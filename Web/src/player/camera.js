@@ -42,7 +42,8 @@ export function createCameraRig(game, p) {
     /** Расчёт и применение к game.camera (lateUpdate). */
     apply(dt, t) {
       // Тряска: игрок применяет и гасит game.shake; гул червя добавляется.
-      const rumble = (game.worm?.threat ?? 0) * C.rumbleScale;
+      // Гул червя ощущается только в пустыне (в скале/сиетче/саду земля не дрожит).
+      const rumble = game.space === 'desert' ? (game.worm?.threat ?? 0) * (game.worm?.threat ?? 0) * C.rumbleScale : 0;
       const shake = clamp(game.shake + rumble, 0, 1.2);
       game.shake = Math.max(0, game.shake * Math.exp(-dt * C.shakeDecay) - dt * 0.05);
 
@@ -102,12 +103,12 @@ export function createCameraRig(game, p) {
       let dpitch = Math.sin(breath) * (p.parched ? 0.008 : 0.002) * b;
       if (shake > 0.001) {
         const s = shake;
-        pos.x += noise2(t * 17, 1.7) * C.shakePos * s;
-        pos.y += noise2(t * 19, 8.3) * C.shakePos * s;
-        pos.z += noise2(t * 15, 4.1) * C.shakePos * s;
-        dyaw += noise2(t * 13, 11.9) * C.shakeRot * s;
-        dpitch += noise2(t * 14, 21.3) * C.shakeRot * s;
-        roll += noise2(t * 11, 31.7) * C.shakeRoll * s;
+        pos.x += noise2(t * 3.1, 1.7) * C.shakePos * s;
+        pos.y += noise2(t * 3.7, 8.3) * C.shakePos * s;
+        pos.z += noise2(t * 2.9, 4.1) * C.shakePos * s;
+        dyaw += noise2(t * 2.3, 11.9) * C.shakeRot * s;
+        dpitch += noise2(t * 2.6, 21.3) * C.shakeRot * s;
+        roll += noise2(t * 1.9, 31.7) * C.shakeRoll * s;
       }
 
       cam.position.copy(pos);
