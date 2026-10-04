@@ -206,7 +206,7 @@ export class Station {
   /** Цель для плеера виртуальной сборки: реальных деталей и заготовок нет — изделие собирается из голограмм. */
   playerTarget() {
     const st = this;
-    let mirror = null, style = 'holo';
+    let mirror = null, style = 'glasses';            // по умолчанию — только в окне дисплея очков
     const flyIds = (i, f) => new Set(f > 0 && i < st.steps.length ? (st.steps[i].parts || []).map((id) => st.items.get(id) || st.machines?.get(id)).filter(Boolean) : []);
     return {
       name: `${st.short} · ${st.product}`,

@@ -35,24 +35,35 @@ void main(){
 
 const shared = { time: { value: 0 } };
 /** Материал голограммы (аддитивный, без света и теней). */
-export function holoFillMaterial(color = HOLO.part, opacity = 0.32) {
+export function holoFillMaterial(color = HOLO.part, opacity = 0.32, gain = 1) {
   return new THREE.ShaderMaterial({
     vertexShader: VS, fragmentShader: FS,
-    uniforms: { color: { value: new THREE.Color(color).multiplyScalar(2.2) }, opacity: { value: opacity }, time: shared.time },
+    uniforms: { color: { value: new THREE.Color(color).multiplyScalar(2.2 * gain) }, opacity: { value: opacity }, time: shared.time },
     transparent: true, depthWrite: false, blending: THREE.NormalBlending, side: THREE.DoubleSide,
   });
 }
-export function holoEdgeMaterial(color = HOLO.part, opacity = 0.7) {
-  return new THREE.LineBasicMaterial({ color: new THREE.Color(color).multiplyScalar(3.2), transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+export function holoEdgeMaterial(color = HOLO.part, opacity = 0.7, gain = 1) {
+  return new THREE.LineBasicMaterial({ color: new THREE.Color(color).multiplyScalar(3.2 * gain), transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
 }
 /** Время для строк развёртки — раз в кадр. */
 export function tickHolo(t) { shared.time.value = t; }
 
 const MAT = {};
-export const holoMats = () => (MAT.fill ??= {
-  fill: holoFillMaterial(HOLO.part, 0.42), edge: holoEdgeMaterial(HOLO.part, 1),
-  flyFill: holoFillMaterial(HOLO.fastener, 0.6), flyEdge: holoEdgeMaterial(HOLO.fastener, 1),
-});
+/**
+ * Материалы голограммы. 'glasses' — для слоя дисплея: значения — уровни пикселя дисплея (1 — максимум очков,
+ * 500–1500 нит по модели), заливка ≈ 15–35 %, рёбра ≈ 70 %; 'holo' — яркая модель во всё поле (вид симулятора).
+ */
+export function holoMats(style = 'holo') {
+  if (!MAT[style]) {
+    const g = style === 'glasses' ? 0.09 : 1, ge = style === 'glasses' ? 0.22 : 1;   // в очках — уровни дисплея ≤ 1
+    MAT[style] = {
+      fill: holoFillMaterial(HOLO.part, 0.42, g), edge: holoEdgeMaterial(HOLO.part, 1, ge),
+      flyFill: holoFillMaterial(HOLO.fastener, 0.6, g), flyEdge: holoEdgeMaterial(HOLO.fastener, 1, ge),
+    };
+    for (const [k, m] of Object.entries(MAT[style])) m.userData.holoKey = k;
+  }
+  return MAT[style];
+}
 
 /** Только позиция и нормаль, всегда с индексом — чтобы любые геометрии сливались. */
 function pn(geo) {
@@ -96,7 +107,12 @@ export function holoObject({ fill, edge }, fly = false) {
 
 /** Слой голограммы: видна всем или только в окне дисплея очков. */
 export function setHoloLayer(obj, style) {
-  obj.traverse((o) => o.layers.set(style === 'glasses' ? LAYER_HOLO : LAYER_REAL));
+  const M = holoMats(style === 'glasses' ? 'glasses' : 'holo');
+  obj.traverse((o) => {
+    o.layers.set(style === 'glasses' ? LAYER_HOLO : LAYER_REAL);
+    const k = o.material?.userData?.holoKey;
+    if (k) o.material = M[k];
+  });
 }
 
 /**
@@ -119,7 +135,7 @@ export function cornerGeometry(k = 0.28) {
 export class HoloMirror {
   constructor(sources) {
     const M = holoMats();
-    this.pairs = [];
+    this.pairs = []; this.style = 'holo';
     this.roots = [];
     this.frames = [];
     for (const src of sources) {
@@ -152,7 +168,7 @@ export class HoloMirror {
   }
   /** Перенести вид реальных деталей на голограммы, реальные — скрыть. */
   sync(fly = new Set()) {
-    const M = holoMats();
+    const M = holoMats(this.style);
     for (const [o, x] of this.pairs) {
       x.position.copy(o.position); x.quaternion.copy(o.quaternion); x.scale.copy(o.scale); x.visible = o.visible;
       if (o.isMesh && x.geometry !== o.geometry) x.geometry = o.geometry;
@@ -173,6 +189,6 @@ export class HoloMirror {
       fr.material = fly.has(this.roots[k][0]) ? M.flyEdge : M.edge;
     });
   }
-  setStyle(style) { for (const [, c] of this.roots) setHoloLayer(c, style); for (const [, fr] of this.frames) setHoloLayer(fr, style); }
+  setStyle(style) { this.style = style === 'glasses' ? 'glasses' : 'holo'; for (const [, c] of this.roots) setHoloLayer(c, style); for (const [, fr] of this.frames) setHoloLayer(fr, style); }
   hide() { for (const [, c] of this.roots) c.visible = false; for (const [, fr] of this.frames) fr.visible = false; }
 }

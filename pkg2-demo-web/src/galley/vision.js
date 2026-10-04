@@ -283,19 +283,23 @@ vec4 eyeView(float s){
   float wm = dispOn * glassesOn * inLens * (1.0 - smoothstep(-0.2 - edgeSoft, 0.2 + edgeSoft, wsd));
   if (wm > 0.0) {
     float edge = smoothstep(0.55, 1.0, length(ac / disp.zw));
-    vec2 ca = ac * edge * 0.012 * edgeSoft;                              // хроматизм у края окна
+    vec2 ca = ac * edge * 0.004 * edgeSoft;                              // лёгкий хроматизм у края окна
     vec3 h;
     if (gShared > 0.5 && ipdErr == 0.0 && gHoloOk > 0.5) h = gHolo;
     else {
       h.r = holoAt(aH + ca, gRH).r; h.g = holoAt(aH, gRH).g; h.b = holoAt(aH - ca, gRH).b;
-      h += holoAt(aH + vec2(0.0, -0.22), gRH + 0.08) * ghostK;                       // вторичное отражение призмы
-      h += holoAt(vec2(aH.x, 2.0 * disp.y - aH.y), gRH + 0.3) * ghostK * 0.35;     // зеркальный «призрак» окна
+      // «призраки» оптики (смещённое вторичное отражение и зеркальная копия окна) убраны: на экране они
+      // читались как сдвоенное изображение; от отражений остаётся лишь слабая дымка по яркости окна
       vec3 hb = holoAt(aH, gRH + 0.11);
       h = max(h + sharpen * (h - hb), 0.0);
+      h = min(h, vec3(1.0));                                              // пиксель дисплея не ярче максимума очков
       gHolo = h; gHoloOk = 1.0;
     }
     // нит дисплея — в единицах мира: свет дисплея не проходит через затемнение и складывается со светом цеха
+    // яркость — как у настоящих очков: 1,0 в слое голограмм = максимум дисплея этой модели (нит к глазу,
+    // по характеристикам), свет дисплея складывается со светом цеха, прошедшим через затемнённые линзы
     h *= dispNits / cdPerUnit * dispBright * (1.0 - 0.55 * edgeSoft * edge) * bootFade;
+    h += vec3(dot(h, vec3(0.333))) * ghostK * 0.15;                      // дымка отражений — без сдвоенного контура
     lin += h * gExpo * wm;
   }
   vec3 c = toSRGB(aces(lin));
@@ -586,7 +590,7 @@ export class VisionRenderer {
     this.u.frameA.value.set(ap.rim, ap.frameT, ap.templeY, ap.templeH);
     this.u.dispDistD.value = 1 / d.distM;
     // одинаковые 1920 пикс на более широкое поле — мельче детали: меньше подъём резкости
-    this.u.sharpen.value = 0.45 * Math.min(1.2, (d.res[0] / this.win.h) / 42);
+    this.u.sharpen.value = 0.15 * Math.min(1.2, (d.res[0] / this.win.h) / 42);   // мягко: сильный подъём давал ореол-«двойник»
   }
 
   setSize(w, h, pr) {

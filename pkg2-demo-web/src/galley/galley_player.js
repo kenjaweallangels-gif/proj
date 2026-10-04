@@ -39,7 +39,7 @@ export function galleyTarget(world, viz, { onBegin, onEnd } = {}) {
   const states = [];
   const stAt = (i) => (states[i] ??= stateFrom(i, new Set()));
   const center = new THREE.Vector3(0, 1000, S.G.D / 2);
-  let style = 'holo';
+  let style = 'glasses';                         // по умолчанию — только в окне дисплея очков, как в AR
   let H = null;                                  // голограмма: { root, groups: [{ vec, obj }], perItem: Map, ids }
   let lastI = -1;
   const kitWas = new Map();

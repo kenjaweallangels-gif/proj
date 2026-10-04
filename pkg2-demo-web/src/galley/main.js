@@ -1010,7 +1010,7 @@ async function main() {
     $('pl_rev').setAttribute('aria-pressed', String(asm.dir < 0));
     $('pl_t').max = asm.n; $('pl_t').value = asm.t;
     $('pl_speed').value = String(asm.speed);
-    $('pl_style').textContent = asm.target.style === 'glasses' ? 'Вид: только в очках' : 'Вид: голограмма';
+    $('pl_style').textContent = asm.target.style === 'glasses' ? 'Вид: только в очках' : 'Вид: видна целиком';
     $('pl_step').textContent = i >= asm.n ? `Готово: ${asm.n}/${asm.n} — изделие собрано` : `${step.id} · ${step.title} — ${Math.round(f * 100)} % · ${i + 1}/${asm.n}`;
   }
   asm.on(() => { playerUi(); pushState(true); });
