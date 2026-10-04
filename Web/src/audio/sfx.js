@@ -215,11 +215,11 @@ export function createSfx(game, eng) {
     if (occ) hnear = 1;
     const lvl = harv.level < 0.01 ? 0 : harv.level * hnear;
     // петля двигателя живёт только пока слышна
-    if (lvl > 0.01 && !harv.eng) harv.eng = eng.textureLoop('engine_loop', { out: harv.inp, gain: 1, xf: 0.12, coherent: true, rate: 0.7 });
+    if (lvl > 0.01 && !harv.eng) harv.eng = eng.textureLoop('engine_loop', { out: harv.inp, gain: 1, xf: 0.12, coherent: true, rate: 0.85, hp: 75 });
     if (harv.eng && lvl <= 0.005 && !harv.on) { harv.eng.stop(0.5); harv.eng = null; }
     if (harv.eng && lvl <= 0.005) harv.eng.setGain(0, 0.3); else harv.eng?.setGain(1, 0.3);
     eng.ramp(harv.inp.gain, lvl < 0.005 ? 0 : lvl * (occ ? 0.75 : 1), 0.25);
-    harv.eng?.setRate(0.68 + 0.5 * harv.level, 0.4);
+    harv.eng?.setRate(0.85 + 0.35 * harv.level, 0.4);
     eng.ramp(harv.hg.gain, 0.03 + 0.05 * (H?.S?.belt ?? harv.level), 0.5);
     if (hp && Number.isFinite(hp.x + (hp.y ?? 0) + hp.z)) {
       eng.setPos(harv.pn, hp, 0.1);
