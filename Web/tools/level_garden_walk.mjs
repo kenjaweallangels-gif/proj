@@ -16,7 +16,7 @@ const page = await browser.newPage({ viewport: { width: 480, height: 270 } });
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error' && !/AudioContext|GPU stall|ReadPixels/.test(m.text())) errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
-await page.goto(`file://${join(root, 'dist', arg('file', 'garden.html'))}?autotest=1&q=${arg('q', 'low')}&lang=RU&skip=1`);
+await page.goto(`file://${join(root, 'dist', arg('file', 'garden.html'))}?autotest=1&q=${arg('q', 'low')}&lang=RU&skip=1`, { timeout: 0 });
 await page.waitForFunction(() => window.__rakis?.garden && window.__rakis.player && window.__rakis.realTime > 1.5, null, { timeout: 1200000 });
 await page.evaluate(() => { const g = window.__rakis; g.timeScale = 3; g.weather?.setHours?.(10.5, true); });
 
