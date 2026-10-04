@@ -76,6 +76,7 @@ export function createMouth(game, { root, faceAt, quality }) {
   });
   const lining = new THREE.Mesh(lg, liningMat);
   lining.name = 'MouthLining'; lining.receiveShadow = shadows;
+  lining.visible = false;   // меш туннеля сиетча сам доходит до грани; облицовка давала «висящий лоскут» в проёме
   out.group.add(lining);
 
   // ---- коллайдеры: боковые стенки лаза (в нём контур Когтя отключён проходом) ----
