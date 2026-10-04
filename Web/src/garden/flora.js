@@ -198,7 +198,8 @@ export function createFlora(game, { ground, faceAt, root, quality, towerSites = 
   }
   // галька и щебень по земле: мелкая россыпь (без коллайдеров), гуще у подножия гребней и у тропы
   {
-    const pebs = new InstGroup(root, [{ geo: stoneGeo, mat: rockMat }], { range: 48, shadow: false, cell: 16, name: 'pebbles' }); out.groups.push(pebs);
+    const pebGeo = (() => { const g = new THREE.IcosahedronGeometry(1, 1); const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const k = 1 + 0.2 * Math.sin(x * 5 + z * 3) * Math.cos(y * 4); p.setXYZ(i, x * k, y * k * 0.7, z * k); } g.computeVertexNormals(); return g; })();
+    const pebs = new InstGroup(root, [{ geo: pebGeo, mat: rockMat }], { range: 48, shadow: false, cell: 16, name: 'pebbles' }); out.groups.push(pebs);
     const nPb = Math.round(900 * qf);
     for (let i = 0, tries = 0; i < nPb && tries < nPb * 4; tries++) {
       const th = R() * Math.PI * 2, rr = Math.sqrt(R()) * 53;

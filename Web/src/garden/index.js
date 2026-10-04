@@ -141,11 +141,22 @@ export function create(game) {
   flora.refresh(new V3(C.x, 0, C.z), true);
   const people = createPeople(game, { ground: groundTop, root, quality, walkable, fauna });
   const life = createLife(game, { root, flora, structures, quality });
+  // разовые затраты первого вызова (анимация фигур, первые матрицы) — на загрузке, а не при первом взгляде на сад
+  { const far = new V3(C.x, -500, C.z); try { people.update(1 / 60, 0, far); fauna.update(1 / 60, 0); structures.update(1 / 60, 0, far); life.update(1 / 60, 0, far, far, groundTop); } catch (e) { console.warn('[garden] warmup', e); } }
 
   // ---------- проходы и отверстия в скале ----------
+  // Путь выходного туннеля сиетча с настоящей высотой пола (у sietch.exitPath y — константа дна портала, а пол туннеля поднимается к залу)
+  const exitPts = (game.sietch?.exitPath || []).map((q) => {
+    let y = q.y;
+    try { const h = game.sietch.heightAt?.(q.x, q.z, 30); if (Number.isFinite(h) && h > 0.5 && h < 60) y = h; } catch (e) { /* оставляем y узла */ }
+    return { x: q.x, y, z: q.z };
+  });
   const nativePassage = typeof world.addPassage === 'function';
   if (nativePassage) {
     try { world.addPassage({ points: [{ x: MOUTH.x - MOUTH.lining - 2, y: MOUTH.y, z: MOUTH.z }, { x: MOUTH.x + 2.5, y: MOUTH.y, z: MOUTH.z }], r: 2.6 }); } catch (e) { console.warn('[garden] addPassage', e); }
+  }
+  if (nativePassage && exitPts.length > 1) {
+    try { world.addPassage({ points: exitPts, r: 3.0 }); } catch (e) { console.warn('[garden] addPassage(exit)', e); }
   }
   if (typeof world.addRockHole === 'function') {
     // сфера чуть больше проёма арки (w × h); кромку закрывает рамка
@@ -164,8 +175,9 @@ export function create(game) {
     return hit;
   };
   const inMouthCorridor = (x, z) => x > MOUTH.x - MOUTH.lining - 3 && x < MOUTH.x + 3 && Math.abs(z - MOUTH.z) < 2.8;
-  // Выходной туннель сиетча (последние 6 узлов, как его addPassage): контур Когтя там не выталкивает (3D-капсулы r = 3 м вдоль ломаной)
-  const exitPts = (game.sietch?.exitPath || []).slice(-6).map((q) => ({ x: q.x, y: q.y, z: q.z }));
+  // Весь выходной туннель сиетча: контур Когтя там не выталкивает (3D-капсулы r = 3 м вдоль ломаной). Сиетч регистрирует проход только для последних 6 узлов —
+  // на «шве» (contains() мигает) игрока выбрасывало из туннеля наружу; поэтому регистрируем проход на весь путь и здесь, и в desert.
+
   const inExitPassage = (pos) => {
     if (exitPts.length < 2) return false;
     const py = pos.y + 0.9;

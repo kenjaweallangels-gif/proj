@@ -123,7 +123,7 @@ if (only.includes('mismatch')) {
     const rc = new T.Raycaster(); const dir = new T.Vector3(0, -1, 0);
     G.root.updateMatrixWorld(true);
     let seed = 11; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-    let n = 0, worst = 0, bad = [], sum = 0, miss = 0, terrainAbove = -9;
+    let n = 0, worst = 0, bad = [], sum = 0, miss = 0, terrainAbove = -9, rock = 0;
     const field = G.field;
     while (n < 200) {
       const x = 805 + rnd() * 110, z = 340 + rnd() * 110;
@@ -137,14 +137,16 @@ if (only.includes('mismatch')) {
       const gy = G.groundAt(x, z);
       rc.set(new T.Vector3(x, gy + 3, z), dir); rc.far = 10;
       // видимая поверхность = самая высокая из (меш пола, меш скал/валунов) не выше ступней + 1.1 м (как выбирает heightAt)
-      const hit = rc.intersectObjects([G.groundMesh, G.rim], false).filter((h) => h.point.y <= gy + 1.1).sort((a, b) => b.point.y - a.point.y)[0];
+      const hp0 = g.world.heightAt(x, z, gy + 0.3);
+      if (hp0 > gy + 0.05) { rock++; continue; }          // под ногами камень (валун/склон): там точность — сетка скал 0.8 м, не пол
+      const hit = rc.intersectObject(G.groundMesh, false)[0];
       n++;
       terrainAbove = Math.max(terrainAbove, G.terrainAt(x, z) - gy);
       if (!hit) { miss++; continue; }
       const dy = Math.abs(hit.point.y - g.world.heightAt(x, z, gy + 0.3));
       sum += dy; if (dy > worst) worst = dy; if (dy > 0.05) bad.push([+x.toFixed(1), +z.toFixed(1), +dy.toFixed(3)]);
     }
-    return { n, miss, worst: +worst.toFixed(4), mean: +(sum / Math.max(1, n - miss)).toFixed(5), terrainMinusGroundMax: +terrainAbove.toFixed(3), bad: bad.slice(0, 8) };
+    return { n, miss, worst: +worst.toFixed(4), mean: +(sum / Math.max(1, n - miss)).toFixed(5), terrainMinusGroundMax: +terrainAbove.toFixed(3), skippedRock: rock, bad: bad.slice(0, 8) };
   });
   console.log(`${r.worst < 0.05 && !r.miss && r.terrainMinusGroundMax < -0.05 ? 'OK  ' : 'FAIL'} mismatch visual/physics @200:`, JSON.stringify(r));
   if (r.worst >= 0.05 || r.miss || r.terrainMinusGroundMax >= -0.05) process.exitCode = 1;

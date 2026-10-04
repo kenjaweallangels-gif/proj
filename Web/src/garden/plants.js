@@ -56,7 +56,7 @@ vec3 transformed = vec3(position);
 
 // ---------------------------------------------------------------- построитель геометрии
 class GB {
-  constructor() { this.p = []; this.n = []; this.uv = []; this.c = []; this.s = []; this.i = []; }
+  constructor() { this.segs = 2; this.p = []; this.n = []; this.uv = []; this.c = []; this.s = []; this.i = []; }
   v(x, y, z, nx, ny, nz, u, v, col, sw) { const k = this.p.length / 3; this.p.push(x, y, z); this.n.push(nx, ny, nz); this.uv.push(u, v); this.c.push(col[0], col[1], col[2]); this.s.push(sw); return k; }
   tri(a, b, c) { this.i.push(a, b, c); }
   quad(a, b, c, d) { this.i.push(a, b, c, a, c, d); }
@@ -77,7 +77,7 @@ const WHITE = [1, 1, 1];
 /** Карточка (прямоугольник) с центром в (cx,cy,cz), осью «вверх» u и «вправо» r, нормалью n; sway задаётся (низ, верх). */
 function card(b, c, rx, ry, rz, ux, uy, uz, hw, hh, n, col, swBot, swTop, bend = 0) {
   // rx.. — направление «вправо» (единичное), ux.. — «вверх» (единичное)
-  const segs = 2;
+  const segs = b.segs || 2;
   const idx = [];
   for (let s = 0; s <= segs; s++) {
     const t = s / segs;
@@ -135,7 +135,7 @@ export function buildGrass(kind, variant = 0) {
 /** Куст из карточек-кластеров на полусфере + тонкие ветви. kind: creosote | saltbush. Возвращает {leaf, wood}. */
 export function buildShrub(kind, variant = 0) {
   const R = rng(900 + variant * 31 + (kind === 'saltbush' ? 7 : 0));
-  const leaf = new GB(), wood = new GB();
+  const leaf = new GB(), wood = new GB(); leaf.segs = 1;     // листовые карточки кустов/деревьев — один сегмент (вдвое меньше треугольников)
   const H = kind === 'creosote' ? 1.0 + R() * 0.5 : 0.7 + R() * 0.35, RAD = kind === 'creosote' ? 0.85 + R() * 0.3 : 0.7 + R() * 0.25;
   const nCards = kind === 'creosote' ? 22 : 18;
   for (let i = 0; i < nCards; i++) {
@@ -165,7 +165,7 @@ export function buildShrub(kind, variant = 0) {
 /** Деревце: kind 'tamarisk' (метёлки, свисающие плети) | 'acacia' (зонтичная крона). Возвращает {leaf, wood}. */
 export function buildTree(kind, variant = 0) {
   const R = rng(1300 + variant * 53 + (kind === 'acacia' ? 11 : 0));
-  const leaf = new GB(), wood = new GB();
+  const leaf = new GB(), wood = new GB(); leaf.segs = 1;
   const bark = kind === 'acacia' ? [0.26, 0.2, 0.15] : [0.34, 0.2, 0.15];
   const H = kind === 'acacia' ? 3.0 + R() * 0.9 : 3.4 + R() * 1.2;
   const stems = kind === 'acacia' ? 2 : 3;
