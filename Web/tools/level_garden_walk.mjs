@@ -26,6 +26,7 @@ async function walk(name, way, { start, yStart, maxStuck = 20, maxT = 600, tol =
     const g = window.__rakis, p = g.player;
     p.teleport(start[0], yStart, start[1], 0, false);
     let wi = 0, stuckT = 0, lastD = 1e9, t = 0, maxSlope = 0, falls = 0, lastY = p.position.y, minY = 1e9, maxY = -1e9;
+    const jumps = []; let lp = p.position.clone(); const hist = [];
     const ax = g.input.axis;
     const V = new g.THREE.Vector3();
     g.input.axis = () => {
@@ -39,12 +40,13 @@ async function walk(name, way, { start, yStart, maxStuck = 20, maxT = 600, tol =
     const id = setInterval(() => {
       const dtg = g.time - gt; if (dtg < 0.1) return; gt = g.time;
       t += dtg;
+      { const dj = Math.hypot(p.position.x - lp.x, p.position.z - lp.z); hist.push([+p.position.x.toFixed(1), +p.position.y.toFixed(1), +p.position.z.toFixed(1), g.space]); if (hist.length > 6) hist.shift(); if (dj > 2.2 && jumps.length < 3) jumps.push({ t: +t.toFixed(1), from: [+lp.x.toFixed(1), +lp.y.toFixed(1), +lp.z.toFixed(1)], to: [+p.position.x.toFixed(1), +p.position.y.toFixed(1), +p.position.z.toFixed(1)], space: g.space, hist: hist.slice() }); lp.copy(p.position); }
       const tg = way[wi], d = Math.hypot(tg[0] - p.position.x, tg[1] - p.position.z);
       if (d < tol) { wi++; stuckT = 0; lastD = 1e9; if (wi >= way.length) { clearInterval(id); g.input.axis = ax; resolve({ done: true, t: +t.toFixed(0), maxSlope: +(p.slope || 0).toFixed(0), minY, maxY, pos: [+p.position.x.toFixed(1), +p.position.y.toFixed(1), +p.position.z.toFixed(1)] }); return; } }
       if (d > lastD - 0.05) stuckT += dtg; else { stuckT = 0; lastD = d; }
       if (p.slope > maxSlope) maxSlope = p.slope;
       minY = Math.min(minY, p.position.y); maxY = Math.max(maxY, p.position.y);
-      if (stuckT > maxStuck || t > maxT) { clearInterval(id); g.input.axis = ax; resolve({ done: false, wi, of: way.length, pos: [+p.position.x.toFixed(1), +p.position.y.toFixed(1), +p.position.z.toFixed(1)], t: +t.toFixed(0), maxSlope: +maxSlope.toFixed(0) }); }
+      if (stuckT > maxStuck || t > maxT) { clearInterval(id); g.input.axis = ax; resolve({ done: false, wi, of: way.length, pos: [+p.position.x.toFixed(1), +p.position.y.toFixed(1), +p.position.z.toFixed(1)], t: +t.toFixed(0), maxSlope: +maxSlope.toFixed(0), jumps }); }
     }, 100);
   }), [way, start, yStart, maxStuck, maxT, tol]);
   console.log(`${res.done ? 'OK  ' : 'FAIL'} ${name}:`, JSON.stringify(res));
