@@ -13,11 +13,12 @@ export const RIDGE_CLEAR = 48;
 // Тело за головой — дуга и прямой участок слева от группы: игрок видит его вдоль взгляда; ближайшая к группе точка тела ≥ ~85 м.
 // Путь пересэмплирован с шагом 1 м, чтобы голова ехала по длине дуги u (м) независимо от формы.
 export const PATH_DEFAULTS = {
-  approach: 850,            // м прямого подхода до начала поворота
+  approach: 1300,           // м прямого подхода до начала поворота
   R0: 140,                  // боковой отступ линии подхода от группы, м
   turnR: 210,               // радиус дуги подхода, м (тело Ø 40 м гнётся мягко)
   psi: 1.22,                // рад: угол поворота к группе (~70°)
   dEnd: 100,                // м: расстояние голова ↔ группа в конце
+  relaxBack: 700,           // м до начала поворота, с которых путь подправляется от препятствий (дальше — только выбор курса)
   tail: 200,                // м прямого хвоста пути после остановки
 };
 
@@ -26,7 +27,7 @@ export const PATH_DEFAULTS = {
  * radius+extra. Сначала итерации с большим запасом и размытием смещения (плавный обход), затем жёсткая проверка без запаса.
  * Возвращает максимальное смещение, м.
  */
-function relaxPath(X, Z, clear, iters = 16, W = 28, extra = 26) {
+function relaxPath(X, Z, clear, iters = 16, W = 28, extra = 26, i0 = 0) {
   const m = X.length;
   const dx = new Float32Array(m), dz = new Float32Array(m), tx = new Float32Array(m), tz = new Float32Array(m);
   const blur = (w) => {
@@ -43,7 +44,7 @@ function relaxPath(X, Z, clear, iters = 16, W = 28, extra = 26) {
   };
   for (let it = 0; it < iters; it++) {
     let any = false;
-    for (let i = 0; i < m; i++) {
+    for (let i = i0; i < m; i++) {
       const x = X[i] + dx[i], z = Z[i] + dz[i];
       const c = clear(x, z, extra);
       if (c) { dx[i] += c[0] - x; dz[i] += c[1] - z; any = true; }
@@ -53,7 +54,7 @@ function relaxPath(X, Z, clear, iters = 16, W = 28, extra = 26) {
   }
   for (let it = 0; it < 4; it++) {                     // жёсткая проверка без запаса + лёгкое сглаживание стыков
     let any = false;
-    for (let i = 0; i < m; i++) {
+    for (let i = i0; i < m; i++) {
       const x = X[i] + dx[i], z = Z[i] + dz[i];
       const c = clear(x, z, 0);
       if (c) { dx[i] += c[0] - x; dz[i] += c[1] - z; any = true; }
@@ -103,7 +104,7 @@ export class EncounterPath {
       this.Z[i] = raw[k * 2 + 1] + (raw[k * 2 + 3] - raw[k * 2 + 1]) * t;
     }
     // обход препятствий (харвестер, Коготь, валуны): clear(x, z) → [x', z'] — позиция головы, вытолкнутая из тел; смещение сглаживается
-    this.avoided = o.clear ? relaxPath(this.X, this.Z, o.clear) : 0;
+    this.avoided = o.clear ? relaxPath(this.X, this.Z, o.clear, 16, 28, 26, Math.max(0, Math.floor(o.approach - o.relaxBack))) : 0;
     for (let i = 0; i < m; i++) {
       const a = Math.max(0, i - 2), b = Math.min(m - 1, i + 2);
       this.Y[i] = Math.atan2(this.Z[b] - this.Z[a], this.X[b] - this.X[a]);
@@ -136,24 +137,44 @@ export class EncounterPath {
   valid() {
     for (let i = 0; i < this.X.length; i += 10) {
       const x = this.X[i], z = this.Z[i];
-      if (x < -900 || x > 1500 || z < -1000 || z > 1400) return false;
-      if (x > 470 && z > -170 && z < 720) return false;
-      if (ridgeQuery(x, z) < RIDGE_CLEAR) return false;     // новый хребет ~3 км: путь и место остановки не должны входить в массивы
+      if (x < -900 || x > 1500 || z < -1000 || z > 1400) { this.why = `bounds ${x | 0},${z | 0}`; return false; }
+      if (x > 470 && z > -170 && z < 720) { this.why = `rock ${x | 0},${z | 0}`; return false; }
+      if (ridgeQuery(x, z) < RIDGE_CLEAR) { this.why = `ridge ${x | 0},${z | 0}`; return false; }     // новый хребет ~3 км: путь и место остановки не должны входить в массивы
     }
     return true;
   }
 }
 
-/** Подобрать курс: ближайший к желаемому, для которого маршрут допустим. */
+/**
+ * Подобрать курс: из направлений по всему кругу (шаг ~11°) берём допустимый (valid) путь с наименьшим числом столкновений с препятствиями
+ * (clear — харвестер, островки, валуны), при равенстве — ближайший к желаемому. Длинное тело нельзя «выталкивать» из препятствий сдвигом
+ * точек (сдвиг на сотни метров), поэтому препятствия обходятся выбором курса; relaxPath только подчищает остаток.
+ */
 export function choosePath(G, preferred = -1.35, opts = {}) {
-  const tries = [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05, 1.4, -1.4, 1.75, -1.75, 2.1, -2.1, 2.45, -2.45, 3.14];
+  choosePath.log = [];
+  const tries = [0]; for (let k = 1; k <= 16; k++) tries.push(k * 0.196, -k * 0.196);
+  const { clear, ...base } = opts;
+  const cand = [];
   for (const d of tries) {
-    const p = new EncounterPath(G, preferred + d, opts);
-    if (p.valid() && p.avoided < (opts.maxAvoid ?? 70)) return p;
+    const raw = new EncounterPath(G, preferred + d, base);
+    if (!raw.valid()) continue;
+    let hits = 0;
+    if (clear) for (let i = 0; i < raw.X.length; i += 8) if (Math.hypot(raw.X[i] - G.x, raw.Z[i] - G.z) > 140 && clear(raw.X[i], raw.Z[i], 0)) hits++;   // у самой группы мелкие препятствия обойдёт релаксация
+    cand.push({ d, hits });
   }
-  for (const d of tries) {                       // обход слишком велик — берём любой допустимый маршрут
-    const p = new EncounterPath(G, preferred + d, opts);
-    if (p.valid()) return p;
+  if (typeof window !== 'undefined') window.__pathLog = choosePath.log;
+  cand.sort((a, b) => a.hits - b.hits || Math.abs(a.d) - Math.abs(b.d));
+  let best = null;
+  for (const c of cand.slice(0, 5)) {                       // с релаксацией строим только лучших: она дорогая
+    const p = new EncounterPath(G, preferred + c.d, opts);
+    (choosePath.log ||= []).push({ d: +c.d.toFixed(2), hits: c.hits, avoided: Math.round(p.avoided), valid: p.valid(), why: p.why });
+    if (p.valid()) {
+      if (p.avoided < (opts.maxAvoid ?? 90)) return p;
+      if (!best || p.avoided < best.avoided) best = p;
+    }
   }
+  if (typeof window !== 'undefined') window.__pathLog = choosePath.log;
+  if (best) return best;
+  if (cand.length) return new EncounterPath(G, preferred + cand[0].d, base);   // релаксация портит путь — берём чистый курс с минимумом препятствий
   return new EncounterPath(G, preferred, opts);
 }

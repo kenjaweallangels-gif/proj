@@ -13,6 +13,8 @@ await page.evaluate(() => {
   window.__rakis.freecam?.detach?.();
 });
 const frames = [];
+if (arg('nofoot', '')) await page.evaluate(() => { window.__rakis.world.addFootprint = () => {}; });
+await page.evaluate((c) => { window.__cust = c; }, arg('cust', '0,600,0,0,0,0').split(',').map(Number));
 await page.evaluate((h) => { window.__topH = h; }, Number(arg('toph', 500)));
 if (arg('hide', '')) await page.evaluate((h) => { for (const n of h.split(',')) { const o = n.split('.').reduce((a, k) => a?.[k], window.__rakis); if (o) Object.defineProperty(o, 'visible', { get: () => false, set() {} }); } }, arg('hide', ''));
 if (stage === 'devour') {
@@ -25,13 +27,16 @@ if (stage === 'devour') {
 }
 await page.evaluate(() => window.__rakis.freecam?.detach?.());
 if (arg('lodstep', '')) await page.evaluate((h) => { const b = window.__rakis.worm.body; b.LOD.steps = [[1e9, h]]; b._lodDirty = true; }, Number(arg('lodstep', 4)));
-const info = await page.evaluate(() => { const g = window.__rakis, w = g.worm, sp = w.spine, P = sp.P; let ex = 0; for (let i = 0; i < 401; i++) if (sp.EX[i]) ex++; return { head: [P[0], P[1], P[2]].map((v) => +v.toFixed(0)), exposedM: ex * 4, hs: w.body.headScale, spread: sp.spread, rows: w.body.rows }; });
+if (arg('noshadow', '')) await page.evaluate(() => { const g = window.__rakis; g.renderer.shadowMap.enabled = false; g.scene.traverse((o) => { if (o.isLight) o.castShadow = false; }); g.scene.traverse((o) => { if (o.material) [].concat(o.material).forEach((m) => { m.needsUpdate = true; }); }); });
+if (arg('noenv', '')) await page.evaluate(() => { window.__rakis.scene.environment = null; });
+if (arg('off', '')) console.log(await page.evaluate((o) => { const g = window.__rakis, names = g.scene.children.map((c, i) => `${i}:${c.name || c.type}`); for (const k of o.split(',')) { if (k === 'fog') g.scene.fog = null; else if (k === 'bg') g.scene.background = null; else { const c = g.scene.children[+k]; if (c) Object.defineProperty(c, 'visible', { get: () => false, set() {} }); } } return names.join(' '); }, arg('off', '')));
+const info = await page.evaluate(() => { const g = window.__rakis, w = g.worm, sp = w.spine, P = sp.P; let ex = 0; for (let i = 0; i < 901; i++) if (sp.EX[i]) ex++; return { head: [P[0], P[1], P[2]].map((v) => +v.toFixed(0)), exposedM: ex * 4, hs: w.body.headScale, spread: sp.spread, rows: w.body.rows }; });
 console.log('scene:', JSON.stringify(info));
 let idx = 0;
 for (const v of views) {
   const ok = await page.evaluate(([v, stage]) => {
     const g = window.__rakis, V = g.THREE.Vector3, w = g.worm, sp = w.spine, P = sp.P, pl = g.player.position, fc = g.freecam;
-    const ex = []; for (let i = 0; i < 401; i++) if (sp.EX[i]) ex.push(i);
+    const ex = []; for (let i = 0; i < 901; i++) if (sp.EX[i]) ex.push(i);
     const i0 = ex.length ? ex[0] : 0, i1 = ex.length ? ex[ex.length - 1] : 0, im = (i0 + i1) >> 1;
     const mid = new V(P[im * 3], P[im * 3 + 1], P[im * 3 + 2]), head = new V(P[0], P[1], P[2]);
     const span = Math.hypot(P[i0 * 3] - P[i1 * 3], P[i0 * 3 + 2] - P[i1 * 3 + 2]);
@@ -47,6 +52,7 @@ for (const v of views) {
     else if (v === 'maw') { cam = head.clone().addScaledVector(dir, 140).addScaledVector(side, 90); cam.y = head.y + 35; look = head.clone().add(new V(0, 12, 0)); fov = 55; }
     else if (v === 'devour') { const d = w.devourDirector; cam = new V(d.A.x, 0, d.A.z).addScaledVector(new V(-d.f.z, 0, d.f.x), 260); cam.y = d.gE + 60; look = new V(d.A.x, d.gE + 30, d.A.z); fov = 60; }
     else if (v === 'devour_near') { const d = w.devourDirector; cam = new V(d.A.x, 0, d.A.z).addScaledVector(new V(-d.f.z, 0, d.f.x), 130).addScaledVector(d.f, -90); cam.y = d.gE + 30; look = new V(d.A.x, d.gE + 20, d.A.z); fov = 62; }
+    else if (v === 'custom') { const c = window.__cust; cam = new V(c[0], c[1], c[2]); look = new V(c[3], c[4], c[5]); fov = 60; }
     else if (v === 'high') { cam = new V(pl.x - 450, 650, pl.z); look = new V(pl.x, 0, pl.z); fov = 60; }
     if (!cam) return false;
     fc.place(cam, look); if (window.__hide) for (const n of window.__hide) { const o = n.split('.').reduce((a, k) => a?.[k], g); if (o) o.visible = false; } g.camera.fov = fov; g.camera.updateProjectionMatrix();
@@ -54,6 +60,8 @@ for (const v of views) {
   }, [v, stage]);
   if (!ok) continue;
   await page.evaluate(() => window.__step(0.1, 1 / 10));
+  if (arg('scan', '')) console.log(await page.evaluate(() => { const g = window.__rakis, out = new Set(); const bad = (v) => (typeof v === 'number' ? !Number.isFinite(v) : v && (v.isVector2 || v.isVector3 || v.isVector4 || v.isColor || v.isMatrix4 || v.isQuaternion) ? JSON.stringify(v.toArray ? v.toArray() : v).includes('null') : false); g.scene.traverse((o) => { if (o.matrixWorld && o.matrixWorld.elements.some((x) => !Number.isFinite(x))) out.add('MW:' + (o.name || o.type)); const ms = o.material ? [].concat(o.material) : []; for (const m of ms) { for (const [k, u] of Object.entries(m.uniforms || {})) if (bad(u.value)) out.add('U:' + (o.name || o.type) + ':' + k); if (m.userData?.shader) for (const [k, u] of Object.entries(m.userData.shader.uniforms || {})) if (bad(u.value)) out.add('SU:' + (o.name || o.type) + ':' + k); } if (o.isLight && (bad(o.position) || (o.shadow && o.shadow.camera.projectionMatrix.elements.some((x) => !Number.isFinite(x))))) out.add('LIGHT:' + o.type); }); return 'SCAN ' + [...out].join(' '); }));
+  if (arg('dbg', '')) console.log(await page.evaluate(() => { const g = window.__rakis; const bad = (a) => a.some((x) => !Number.isFinite(x)); return JSON.stringify({ cam: g.camera.position.toArray().map(Math.round), mw: bad(g.camera.matrixWorld.elements), pm: bad(g.camera.projectionMatrix.elements), mwi: bad(g.camera.matrixWorldInverse.elements), fog: g.scene.fog && g.scene.fog.density, exp: g.renderer.toneMappingExposure, hazeU: g.post?.haze?.uniforms ? Object.entries(g.post.haze.uniforms).filter(([k, u]) => typeof u.value === 'number' && !Number.isFinite(u.value)).map(([k]) => k) : null }); }));
   const r = await capture(page, outDir, `${String(idx++).padStart(2, '0')}_${v}`, { minLum: 10 });
   const ri = await page.evaluate(() => ({ calls: window.__rakis.renderer.info.render.calls, tris: window.__rakis.renderer.info.render.triangles }));
   frames.push({ ...r, ...ri, view: v });

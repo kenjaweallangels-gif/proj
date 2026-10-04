@@ -100,11 +100,16 @@ float rkFogAmount(vec3 wp, out vec3 v){
   v = d / max(L, 1e-3);
   float k = uFogFalloff;
   float a = k * d.y;
-  float integ = L * exp(-k * cameraPosition.y) * (abs(a) > 1e-4 ? (1.0 - exp(-a)) / a : 1.0);
+  // ∫ exp(-k h) вдоль луча = L (e^{-k h0} - e^{-k h1}) / (k dy). Прежняя запись e^{-k h0}·(1 - e^{-a})/a при взгляде вниз с высоты > ~450 м
+  // давала 0·Inf = NaN (e^{+88} переполняет float32) → NaN на весь кадр. Здесь обе экспоненты ограничены.
+  float integ = abs(a) > 1e-4 ? L * (exp(clamp(-k * cameraPosition.y, -80.0, 80.0)) - exp(clamp(-k * (cameraPosition.y + d.y), -80.0, 80.0))) / a
+                              : L * exp(clamp(-k * cameraPosition.y, -80.0, 80.0));
   float tau = uFogDensity * integ;
   // приземная дымка (масштаб высоты ~5 м)
   float km = 0.2, am = km * d.y;
-  float integM = L * exp(-km * max(cameraPosition.y, 0.0)) * (abs(am) > 1e-4 ? (1.0 - exp(-am)) / am : 1.0);
+  float cym = max(cameraPosition.y, 0.0);
+  float integM = abs(am) > 1e-4 ? L * (exp(clamp(-km * cym, -80.0, 80.0)) - exp(clamp(-km * (cym + d.y), -80.0, 80.0))) / am
+                                : L * exp(clamp(-km * cym, -80.0, 80.0));
   tau += uMist * integM;
   return 1.0 - exp(-tau);
 }

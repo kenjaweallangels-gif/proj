@@ -12,8 +12,8 @@ export { HEAD_LEN };
  * na — вершин по окружности, hq — тяжёлые детали шейдера (трещины, шрамы, наросты), teeth — кольца зубов.
  */
 export const QUALITY = {
-  low: { ns: 420, na: 56, hq: false, teethScale: 0.55 },
-  med: { ns: 800, na: 100, hq: true, teethScale: 1 },
+  low: { ns: 480, na: 56, hq: false, teethScale: 0.55 },
+  med: { ns: 900, na: 100, hq: true, teethScale: 1 },
   high: { ns: 1200, na: 136, hq: true, teethScale: 1.3 },
 };
 export const QUALITY_ORDER = ['low', 'med', 'high'];
