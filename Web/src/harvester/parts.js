@@ -12,9 +12,18 @@ const AXIS = {
   z: new THREE.Matrix4().makeRotationX(Math.PI / 2),
 };
 const BOX = new THREE.BoxGeometry(1, 1, 1);
+const _boxCache = new Map();
+/** Бокс 1x1x1 с делением граней под размер (для запекания света по вершинам крупных стен/полов). */
+function tessBox(sx, sy, sz, step) {
+  const nx = Math.min(64, Math.max(1, Math.ceil(Math.abs(sx) / step))), ny = Math.min(64, Math.max(1, Math.ceil(Math.abs(sy) / step))), nz = Math.min(64, Math.max(1, Math.ceil(Math.abs(sz) / step)));
+  const key = nx + ',' + ny + ',' + nz;
+  let g = _boxCache.get(key);
+  if (!g) { g = new THREE.BoxGeometry(1, 1, 1, nx, ny, nz); _boxCache.set(key, g); }
+  return g;
+}
 
 export class Parts {
-  constructor(seed = 1) { this.list = []; this.R = rng(seed); this.count = 0; }
+  constructor(seed = 1) { this.list = []; this.R = rng(seed); this.count = 0; this.tess = 0; this.bake = null; }
 
   _push(geo, color, tag, jit, mat) {
     const g = geo.index ? geo.toNonIndexed() : geo.clone();
@@ -24,7 +33,15 @@ export class Parts {
     _c.set(color);
     const k = 1 + (this.R() - 0.5) * 2 * jit;
     const col = new Float32Array(n * 3), tg = new Float32Array(n);
-    for (let i = 0; i < n; i++) { col[i * 3] = _c.r * k; col[i * 3 + 1] = _c.g * k; col[i * 3 + 2] = _c.b * k; tg[i] = tag; }
+    const bake = this.bake, pa = g.getAttribute('position'), na = g.getAttribute('normal');
+    for (let i = 0; i < n; i++) {
+      let mr = k, mg = k, mb = k;
+      if (bake) {
+        const bk = bake(pa.getX(i), pa.getY(i), pa.getZ(i), na.getX(i), na.getY(i), na.getZ(i));
+        if (typeof bk === 'number') { mr *= bk; mg *= bk; mb *= bk; } else { mr *= bk[0]; mg *= bk[1]; mb *= bk[2]; }
+      }
+      col[i * 3] = _c.r * mr; col[i * 3 + 1] = _c.g * mg; col[i * 3 + 2] = _c.b * mb; tg[i] = tag;
+    }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     g.setAttribute('aTag', new THREE.BufferAttribute(tg, 1));
     this.list.push(g); this.count++;
@@ -34,7 +51,9 @@ export class Parts {
   box(cx, cy, cz, sx, sy, sz, color, tag = 0, o = {}) {
     _e.set(o.rx || 0, o.ry || 0, o.rz || 0, 'XYZ'); _q.setFromEuler(_e);
     _m.compose(_p.set(cx, cy, cz), _q, _s.set(sx, sy, sz));
-    this._push(BOX, color, tag, o.jit ?? 0.07, _m);
+    // деление граней: размеры в метрах → шаг tess (в единичном боксе доли 1/n; масштаб применяется матрицей)
+    const step = o.tess ?? this.tess;
+    this._push(step ? tessBox(sx, sy, sz, step) : BOX, color, tag, o.jit ?? 0.07, _m);
     return this;
   }
   /** Бокс по двум углам (x0..x1, y0..y1, z0..z1). */
@@ -58,6 +77,35 @@ export class Parts {
     _e.set(o.rx || 0, o.ry || 0, o.rz || 0, 'XYZ'); _q.setFromEuler(_e);
     _m.compose(_p.set(o.ox || 0, o.oy || 0, cz - depth / 2 + (o.oz || 0)), _q, _s.set(1, 1, 1));
     this._push(g, color, tag, o.jit ?? 0.07, _m);
+    g.dispose();
+    return this;
+  }
+  /** Призма: контур pts [[z,y],...] в плоскости ZY, выдавлен по X от x0 до x1 (боковые скосы/обтекатели вдоль корпуса). */
+  prismX(pts, x0, x1, color, tag = 0, o = {}) {
+    const sh = new THREE.Shape(pts.map(([z, y]) => new THREE.Vector2(z, y)));
+    const g = new THREE.ExtrudeGeometry(sh, { depth: Math.abs(x1 - x0), bevelEnabled: false, steps: 1 });
+    g.rotateY(-Math.PI / 2);
+    _e.set(o.rx || 0, o.ry || 0, o.rz || 0, 'XYZ'); _q.setFromEuler(_e);
+    _m.compose(_p.set(Math.max(x0, x1), 0, 0), _q, _s.set(1, 1, 1));
+    this._push(g, color, tag, o.jit ?? 0.07, _m);
+    g.dispose();
+    return this;
+  }
+  /** Эллипсоид (песчаные наносы, купола, баки). */
+  ell(cx, cy, cz, rx, ry, rz, color, tag = 0, o = {}) {
+    const g = new THREE.SphereGeometry(1, o.seg || 12, o.segV || 8, 0, Math.PI * 2, 0, o.half ? Math.PI / 2 : Math.PI);
+    _e.set(o.rx || 0, o.ry || 0, o.rz || 0, 'XYZ'); _q.setFromEuler(_e);
+    _m.compose(_p.set(cx, cy, cz), _q, _s.set(rx, ry, rz));
+    this._push(g, color, tag, o.jit ?? 0.07, _m);
+    g.dispose();
+    return this;
+  }
+  /** Четырёхугольник по 4 точкам (CCW снаружи), плоский: окна, стекло, экраны. */
+  quad(a, b, c, d, color, tag = 0, o = {}) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute([...a, ...b, ...c, ...a, ...c, ...d], 3));
+    g.computeVertexNormals();
+    this._push(g, color, tag, o.jit ?? 0, null);
     g.dispose();
     return this;
   }

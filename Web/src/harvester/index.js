@@ -3,7 +3,10 @@
 import * as THREE from 'three';
 import { clamp, lerp, smoothstep, rng } from '../core/util.js';
 import { Parts } from './parts.js';
-import { createHullMaterial, createGlowMaterial, createDecalTexture, createDecalMaterial, buildDecals } from './material.js';
+import { createHullMaterial, createGlowMaterial, createDecalTexture, createDecalMaterial, buildDecals, createSandMaterial } from './material.js';
+import { SINK, DOOR, FA } from './layout.js';
+import { createInterior } from './interior.js';
+import { createBerm } from './berm.js';
 import { buildHarvester, SCOOP_PIVOT, AUGER_POS, TOWERS, FANS, STACKS, KLAXON, BEACONS, BELT, CONSOLE_POS, SPILL, FLOODS, DIM, C } from './hull.js';
 import { createTracks, TRK, UNITS } from './tracks.js';
 import { createParticles, createBeams, P_SPICE, P_SAND, P_SMOKE, P_HEAT } from './fx.js';
@@ -47,22 +50,54 @@ export function create(game) {
     m.frustumCulled = false; m.castShadow = shadow && shadows; m.receiveShadow = shadows;
     parent.add(m); return m;
   };
-  const mainMesh = mk(G.main, hullMat);
+  const mainMesh = mk(G.main, hullMat, near, false);
   const glowMesh = mk(G.glow, glowMat, near, false);
   const decalMesh = new THREE.Mesh(buildDecals(G.decals), decalMat);
   decalMesh.frustumCulled = false; decalMesh.renderOrder = 2; near.add(decalMesh);
   const farMesh = mk(G.far, hullMat, far, false);
+  // прокси-кастер теней: упрощённая геометрия (в десятки раз легче детального корпуса), не рисуется в основном проходе,
+  // чуть уменьшена (0.97), чтобы корпус не затенял сам себя
+  const shadowProxy = (() => {
+    const g = G.far.clone();
+    const S = new THREE.Matrix4().makeTranslation(0, 17, 0).multiply(new THREE.Matrix4().makeScale(0.97, 0.97, 0.97)).multiply(new THREE.Matrix4().makeTranslation(0, -17, 0));
+    g.applyMatrix4(S);
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
+    m.frustumCulled = false; m.castShadow = shadows; m.receiveShadow = false; m.name = 'HarvesterShadowProxy';
+    root.add(m); return m;
+  })();
+  const sandMesh = mk(G.sand, hullMat, root, false);   // наносы на кровлях (видны и издали)
+  sandMesh.receiveShadow = shadows;
+  const berm = createBerm(createSandMaterial(quality));
+  root.add(berm.mesh);
+  // интерьер (строится лениво, рисуется только когда камера у корпуса/внутри)
+  const interior = createInterior(game, root, quality);
+  // дверь-шторка у трапа: закрыта издали, поднимается, когда камера рядом
+  const doorW = DOOR.x1 - DOOR.x0, doorH = DOOR.y1 - DOOR.y0;
+  const doorMesh = (() => {
+    const P = new Parts(81);
+    P.box(0, 0, 0, doorW + 0.2, doorH + 0.1, 0.3, '#4b554f', 0);
+    P.box(0, 0, 0.17, doorW - 0.5, doorH - 0.5, 0.05, '#2c3234', 3);
+    for (let i = 0; i < 5; i++) P.box(0, -doorH / 2 + 0.35 + i * 0.7, 0.2, doorW - 0.3, 0.12, 0.05, '#c79a1c', 4);
+    P.box(doorW / 2 - 0.5, 0, 0.22, 0.12, 0.8, 0.1, '#8c8e8b', 1);
+    const m = new THREE.Mesh(P.merge(), hullMat);
+    m.frustumCulled = false; m.castShadow = false; m.receiveShadow = false;
+    m.position.set((DOOR.x0 + DOOR.x1) / 2, DOOR.y0 + doorH / 2, DOOR.z + 0.05);
+    root.add(m); return m;
+  })();
+  const doorC = new THREE.Vector3((DOOR.x0 + DOOR.x1) / 2, FA + 1.8, DOOR.z + 2);
+  let doorOpen = 0;
+  const _inv = new THREE.Matrix4(), _cl = new THREE.Vector3(), _lp = new THREE.Vector3(), _wp = new THREE.Vector3();
 
   // гусеницы
   const tracks = createTracks(game, hullMat, quality);
   near.add(tracks.group);
-  tracks.meshes.forEach((m) => { m.castShadow = shadows; m.receiveShadow = shadows; });
+  tracks.meshes.forEach((m) => { m.castShadow = false; m.receiveShadow = shadows; });
 
   // ковш + шнек
   const scoopGroup = new THREE.Group();
   scoopGroup.position.copy(SCOOP_PIVOT);
   near.add(scoopGroup);
-  const scoopMesh = mk(G.scoop, hullMat, scoopGroup);
+  const scoopMesh = mk(G.scoop, hullMat, scoopGroup, false);
   const augerMesh = mk(G.auger, hullMat, scoopGroup);
   const scoopDecalMesh = new THREE.Mesh(buildDecals(G.scoopDecals.map((d) => ({ ...d, c: [d.c[0] - SCOOP_PIVOT.x, d.c[1] - SCOOP_PIVOT.y, d.c[2] - SCOOP_PIVOT.z] }))), decalMat);
   scoopDecalMesh.frustumCulled = false; scoopDecalMesh.renderOrder = 2; scoopGroup.add(scoopDecalMesh);
@@ -73,7 +108,7 @@ export function create(game) {
   const fans = new THREE.InstancedMesh(G.fan, hullMat, 2);
   const radar = mk(G.radar, hullMat);
   radar.position.set(28, 32.6, 10);
-  for (const m of [drums, fans]) { m.frustumCulled = false; m.castShadow = shadows; m.receiveShadow = shadows; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); near.add(m); }
+  for (const m of [drums, fans]) { m.frustumCulled = false; m.castShadow = false; m.receiveShadow = shadows; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); near.add(m); }
 
   // перила (стойки), болты, рёбра радиатора, планки ленты
   const inst = (geo, list, fn, mat = hullMat, shadow = false) => {
@@ -120,16 +155,16 @@ export function create(game) {
     return l;
   });
   const workLight = new THREE.PointLight(0xffb060, 0, 55, 2);
-  workLight.position.set(50, 7.5, 0); root.add(workLight);
+  workLight.position.set(50, SINK + 7.5, 0); root.add(workLight);
   const consoleLight = new THREE.PointLight(0xffd9a0, 0, 26, 2);
-  consoleLight.position.set(CONSOLE_POS.x - 1.5, 5.0, CONSOLE_POS.z + 0.5); root.add(consoleLight);
+  consoleLight.position.set(CONSOLE_POS.x - 1.5, SINK + 4.0, CONSOLE_POS.z + 0.5); root.add(consoleLight);
 
   // частицы
   const particles = createParticles(game, Math.round(1100 * qf));
   scene.add(particles.mesh);
 
   // перевозчик (тяжёлый орнитоптер)
-  const carryall = createCarryall(game, hullMat, glowMat, lampMat, quality);
+  const carryall = createCarryall(game, hullMat, glowMat, lampMat, quality, decalMat);
   scene.add(carryall.group, carryall.cabMesh, carryall.pod);
   const wreck = createWreck(game);
   const stain = createStain(game);
@@ -140,7 +175,7 @@ export function create(game) {
   const S = { state: 'off', t: 0, eng: 0, scoop: 0, belt: 0, drive: 0, plume: 0, smoke: 0, heat: 0, klax: 0, klaxT: 0 };
   const H = {
     x: START.x, z: START.z, h: START.heading, v: 0, omega: 0, y: 0, pitch: 0, roll: 0,
-    beltPhase: 0, alarm: 0, alarmTarget: 0, flareT: -1, flareP: new THREE.Vector3(), flareV: new THREE.Vector3(), lift: 0, devoured: false, blockT: 0, brake: 0, blockedByWorm: false, drumA: 0, fanA: 0, augerA: 0, radarA: 0, klaxA: 0, footAcc: 0, footSide: 0, noiseT: 0, trackSpeed: [0, 0, 0, 0],
+    occupied: false, beltPhase: 0, alarm: 0, alarmTarget: 0, flareT: -1, flareP: new THREE.Vector3(), flareV: new THREE.Vector3(), lift: 0, devoured: false, blockT: 0, brake: 0, blockedByWorm: false, drumA: 0, fanA: 0, augerA: 0, radarA: 0, klaxA: 0, footAcc: 0, footSide: 0, noiseT: 0, trackSpeed: [0, 0, 0, 0],
   };
   const dir = new THREE.Vector3(), tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
   const consoleWorld = new THREE.Vector3();
@@ -150,6 +185,9 @@ export function create(game) {
     onInteract: () => harvester.toggle(),
   };
   game.interactables.push(interactable);
+  // второй пульт — на мостике (внутри): та же команда
+  const interactable2 = { position: new THREE.Vector3(1e6, 0, 0), radius: 2.4, tag: 'Rakis.Harvester', enabled: false, label: { RU: 'Завести харвестер', EN: 'Start the harvester' }, onInteract: () => harvester.toggle() };
+  game.interactables.push(interactable2);
 
   // ------------------------------------------------------------ управление
   const emitState = (st) => bus.emit('harvester', { state: st });
@@ -165,6 +203,7 @@ export function create(game) {
     const run = S.state === 'running', off = S.state === 'off';
     interactable.enabled = run || off;
     interactable.label = run ? { RU: 'Заглушить', EN: 'Shut down' } : { RU: 'Завести харвестер', EN: 'Start the harvester' };
+    interactable2.label = interactable.label;
   }
 
   // ------------------------------------------------------------ коллизия
@@ -195,7 +234,7 @@ export function create(game) {
 
   // Твёрдые тела в общем реестре (core/colliders.js): корпус и ковш — повёрнутые боксы (owner 'harvester'); обновляются по ходу движения.
   const COL_DEFS = [
-    { name: 'hull', x0: BOXES[0][0], z0: BOXES[0][1], x1: BOXES[0][2], z1: BOXES[0][3], h: 35 },
+    { name: 'hull', x0: BOXES[0][0], z0: BOXES[0][1], x1: BOXES[0][2], z1: BOXES[0][3], h: 38 },
     { name: 'scoop', x0: BOXES[1][0], z0: BOXES[1][1], x1: BOXES[1][2], z1: BOXES[1][3], h: 22 },
   ];
   const cols = COL_DEFS.map((d) => {
@@ -209,7 +248,7 @@ export function create(game) {
       const lx = (def.x0 + def.x1) / 2, lz = (def.z0 + def.z1) / 2;
       e.c.set(H.x + lx * c - lz * s, H.y + def.h / 2 - 0.5, H.z + lx * s + lz * c);
       e.yaw = H.h;
-      e.solid = colsEnabled;
+      e.solid = colsEnabled && !H.occupied;
     }
   }
 
@@ -222,12 +261,54 @@ export function create(game) {
     for (let k = 0; k <= 5; k++) {
       const c = Math.cos(h), s = Math.sin(h);
       for (const lx of WORM_PROBE_X) {
-        probe.c.set(x + lx * c, H.y + 6, z + lx * s);
+        probe.c.set(x + lx * c, H.y + SINK + 6, z + lx * s);
         if (colliders.overlaps(probe, { ignore: 'harvester' }).some((o) => o.entry.owner === 'worm')) return true;
       }
       for (let i = 0; i < 10; i++) { h -= om * 0.1; x += Math.cos(h) * v * 0.1; z += Math.sin(h) * v * 0.1; }
     }
     return false;
+  }
+
+  // ------------------------------------------------------------ борт: «подпространство» харвестера (как сиетч): трап, интерьер
+  function containsPos(pos) {
+    if (!interior.ready) return false;
+    const dx = pos.x - H.x, dz = pos.z - H.z;
+    if (dx * dx + dz * dz > 85 * 85) return false;
+    _lp.copy(pos).applyMatrix4(_inv);
+    return interior.contains(_lp.x, _lp.z, _lp.y);
+  }
+  /** Игрок на борту, а машину подняли/потащили (сценарий): высаживаем у подножия трапа. */
+  function evacuate() {
+    const pl = game.player;
+    if (!pl?.teleport) return;
+    const w = harvester.toWorld(CONSOLE_POS.x + 6, 0, CONSOLE_POS.z + 4, new THREE.Vector3());
+    pl.teleport(w.x, ground(w.x, w.z), w.z, undefined, false);
+    bus.emit('harvester:board', { inside: false });
+  }
+  /** Высота пола в точке (x, z), если игрок (ступни на y) находится на борту; иначе высота грунта. */
+  function heightAtBoard(x, z, y) {
+    if (interior.ready && y !== undefined) {
+      const dx = x - H.x, dz = z - H.z;
+      if (dx * dx + dz * dz < 85 * 85) {
+        _lp.set(x, y, z).applyMatrix4(_inv);
+        const f = interior.floorAt(_lp.x, _lp.z, _lp.y);
+        if (f && (interior.contains(_lp.x, _lp.z, _lp.y) || y - ground(x, z) > 1.5)) { _wp.set(_lp.x, f.y, _lp.z).applyMatrix4(root.matrixWorld); return _wp.y; }
+      }
+    }
+    return ground(x, z);
+  }
+  const _co = { x: 0, z: 0 };
+  /** Столкновения на борту (стены, мебель, перила); снаружи — силуэт корпуса. true — было столкновение. */
+  function collideBoard(pos, r) {
+    if (containsPos(pos)) {
+      _lp.copy(pos).applyMatrix4(_inv);
+      _co.x = _lp.x; _co.z = _lp.z;
+      if (!interior.collide(_co, _lp.y, r)) return false;
+      _wp.set(_co.x, _lp.y, _co.z).applyMatrix4(root.matrixWorld);
+      pos.x = _wp.x; pos.z = _wp.z;
+      return true;
+    }
+    return collideLocal(pos, r);
   }
 
   // ------------------------------------------------------------ посадка на рельеф
@@ -251,14 +332,16 @@ export function create(game) {
       root.position.set(scriptPose.x, scriptPose.y, scriptPose.z);
       root.rotation.set(scriptPose.roll || 0, -H.h, -scriptPose.pitch, 'YZX');
       root.updateMatrixWorld(true);
+      _inv.copy(root.matrixWorld).invert();
       return;
     }
     const g = sampleGround();
     const k = first ? 1 : 1 - Math.exp(-dt * 3);
-    H.y += (g.y - 0.25 - H.y) * k; H.pitch += (g.pitch - H.pitch) * k; H.roll += (g.roll - H.roll) * k;
+    H.y += (g.y - SINK + 0.1 - H.y) * k; H.pitch += (g.pitch - H.pitch) * k; H.roll += (g.roll - H.roll) * k;
     root.position.set(H.x, H.y + H.lift, H.z);
     root.rotation.set(H.roll, -H.h, H.pitch, 'YZX');
     root.updateMatrixWorld(true);
+    _inv.copy(root.matrixWorld).invert();
   }
 
   // ------------------------------------------------------------ выбросы частиц
@@ -284,7 +367,7 @@ export function create(game) {
       while (acc.sand >= 1) {
         acc.sand -= 1;
         const u = UNITS[Math.floor(rnd() * 4)], rear = rnd() < 0.55;
-        toWorld(u.x + (rear ? -TRK.sprocketDX - 3 : TRK.sprocketDX + 3.5) + (rnd() - 0.5) * 3, 0.4, u.z + (rnd() - 0.5) * 6.5, pw);
+        toWorld(u.x + (rear ? -TRK.sprocketDX - 3 : TRK.sprocketDX + 3.5) + (rnd() - 0.5) * 3, SINK + 0.4, u.z + (rnd() - 0.5) * 6.5, pw);
         dirWorld(rear ? -(2 + rnd() * 5) : (1 + rnd() * 3), 2 + rnd() * 5, (rnd() - 0.5) * 5, vw);
         particles.emit(P_SAND, pw.x, pw.y, pw.z, vw.x, vw.y, vw.z, 1.6 + rnd() * 1.8, 1.6 + rnd() * 1.6, 0.4, 3, { wind: 0.7, buoy: 0, drag: 0.9 });
       }
@@ -293,7 +376,7 @@ export function create(game) {
       acc.lip += dt * 28 * qf * S.belt;
       while (acc.lip >= 1) {
         acc.lip -= 1;
-        toWorld(55 + rnd() * 3, 0.4, (rnd() - 0.5) * 38, pw);
+        toWorld(55 + rnd() * 3, SINK + 0.4, (rnd() - 0.5) * 38, pw);
         dirWorld(3 + rnd() * 7, 3 + rnd() * 6, (rnd() - 0.5) * 4, vw);
         particles.emit(P_SAND, pw.x, pw.y, pw.z, vw.x, vw.y, vw.z, 1.8 + rnd() * 1.8, 2.2 + rnd() * 2, 0.4, 2.8, { wind: 0.7, buoy: 0, drag: 0.8 });
       }
@@ -401,6 +484,8 @@ export function create(game) {
     game.shake = Math.max(game.shake || 0, 0.05 * k * (1 - smoothstep(40, 260, game.camera.position.distanceTo(cs.pos))));
   }
   function devourNow() {
+    if (H.occupied && game.player?.position && containsPos(game.player.position)) evacuate();
+    H.occupied = false;
     H.devoured = true; H.alarmTarget = 0; H.alarm = 0;
     Object.assign(S, { state: 'devoured', t: 0, eng: 0, scoop: 0, belt: 0, drive: 0, plume: 0, smoke: 0, heat: 0, klax: 0 });
     scriptPose = null; colsEnabled = false; syncColliders();
@@ -421,7 +506,7 @@ export function create(game) {
     root.visible = false;
     particles.mesh.visible = inDesert;
     particles.flush(time);
-    carryall.update(dt, time, { x: H.x, y: H.y, z: H.z, h: H.h, running: false, eng: 0, night: lastNight });
+    carryall.update(dt, time, { x: H.x, y: H.y + SINK, z: H.z, h: H.h, running: false, eng: 0, night: lastNight });
     carryall.group.visible = inDesert && carryall.script.on && !carryall.script.hidden;
     carryall.cabMesh.visible = carryall.group.visible;
     carryallFx(dt, inDesert);
@@ -434,6 +519,7 @@ export function create(game) {
   const frustum = new THREE.Frustum(), pm = new THREE.Matrix4(), sph = new THREE.Sphere(new THREE.Vector3(), 78);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), yAx = new THREE.Vector3(0, 1, 0), xAx = new THREE.Vector3(1, 0, 0);
   let lastNight = 0;
+  const bermAt = { x: 1e9, z: 0, h: 0 };
 
   function stageValues(dt) {
     S.t += dt;
@@ -459,12 +545,23 @@ export function create(game) {
     stageValues(dt);
     H.alarm += (H.alarmTarget - H.alarm) * (1 - Math.exp(-dt * 4));
 
+    // игрок на борту (трап/интерьер): машина стоит, пока он там; твёрдость корпуса снимается (проходит по схеме интерьера)
+    {
+      const pp = game.player?.position;
+      let occ = !!(pp && interior.ready && containsPos(pp));
+      if (occ && (scriptPose || H.lift > 0.4)) { evacuate(); occ = false; }   // машину поднимают/уводят сценарием — игрока высаживаем
+      if (occ !== H.occupied) {
+        H.occupied = occ;
+        bus.emit('harvester:board', { inside: occ });
+        audio(occ ? 'Harvester.Board' : 'Harvester.Leave');
+      }
+    }
     // не ползти на червя: раз в 0.25 с проверяем, не заденет ли корпус (сейчас и через ~5 с по дуге) тело червя; тормозим и ждём
     H.blockT -= dt;
     if (H.blockT <= 0) { H.blockT = 0.25; H.blockedByWorm = S.drive > 0.05 && wormInTheWay(); }
     H.brake += ((H.blockedByWorm ? 1 : 0) - H.brake) * (1 - Math.exp(-dt * (H.blockedByWorm ? 2.5 : 0.8)));
     // кинематика: ползёт по большой петле влево (к -z)
-    H.v = (scriptPose || H.holdScript) ? 0 : V_MAX * S.drive * (1 - H.brake);
+    H.v = (scriptPose || H.holdScript || H.occupied) ? 0 : V_MAX * S.drive * (1 - H.brake);
     H.omega = H.v / R_TURN;
     if (H.v > 1e-4) {
       H.h -= H.omega * dt;
@@ -474,6 +571,13 @@ export function create(game) {
     }
     applyTransform(dt, false);
     syncColliders();
+    // вал песка вокруг корпуса: привязка к рельефу порциями; при подвесе/сценарной позе — убирается
+    if (!scriptPose && (berm.busy || !berm.ready || Math.hypot(H.x - bermAt.x, H.z - bermAt.z) > 7 || Math.abs(H.h - bermAt.h) > 0.25)) {
+      if (!berm.busy) { bermAt.x = H.x; bermAt.z = H.z; bermAt.h = H.h; }
+      berm.conform(ground, root, 600);
+    }
+    const bermK = scriptPose ? 0 : 1 - smoothstep(0.3, 2.5, H.lift);
+    berm.mesh.scale.y = Math.max(bermK, 0.001); berm.mesh.position.y = SINK * (1 - Math.max(bermK, 0.001));
     const camD = game.camera.position.distanceTo(root.position);
 
     // видимость и LOD
@@ -484,8 +588,7 @@ export function create(game) {
     root.visible = inView;
     const isNear = camD < 420;
     near.visible = isNear; far.visible = !isNear;
-    const shadowOn = shadows && camD < 260;
-    mainMesh.castShadow = scoopMesh.castShadow = shadowOn;
+    shadowProxy.visible = shadows && camD < 450;
     particles.mesh.visible = inDesert; carryall.group.visible = inDesert && !carryall.script.hidden;
     carryall.cabMesh.visible = inDesert && !carryall.script.hidden; wreck.group.visible = inDesert; stainGroup.visible = inDesert;
 
@@ -494,6 +597,22 @@ export function create(game) {
     interactable.position.set(consoleWorld.x, ground(consoleWorld.x, consoleWorld.z), consoleWorld.z);
     interactable.enabled = (S.state === 'running' || S.state === 'off') && inDesert;
 
+    // интерьер: строим заранее (камера ближе 170 м), показываем, когда камера у корпуса/внутри; дверь открывается вблизи
+    _inv.copy(root.matrixWorld).invert();
+    _cl.copy(game.camera.position).applyMatrix4(_inv);
+    {
+      const inBox = _cl.x > -58 && _cl.x < 47 && _cl.z > -26 && _cl.z < 34 && _cl.y > SINK - 3 && _cl.y < 36;
+      interior.update(dt, time, S, { build: inDesert && camD < 170 && !scriptPose, visible: inDesert && inBox && !scriptPose, alarm: H.alarm });
+      const want = interior.ready && inDesert && _cl.distanceTo(doorC) < 24 ? 1 : 0;
+      doorOpen += (want - doorOpen) * (1 - Math.exp(-dt * 1.6));
+      doorMesh.position.y = DOOR.y0 + doorH / 2 + doorOpen * (doorH + 0.3);
+      doorMesh.visible = doorOpen < 0.995;
+      if (interior.interactions[0]) {
+        const it = interior.interactions[0];
+        interactable2.position.set(it.c[0], it.c[1], it.c[2]).applyMatrix4(root.matrixWorld);
+        interactable2.enabled = (S.state === 'running' || S.state === 'off') && inDesert && interior.ready;
+      }
+    }
     // механика (только когда видно и рядом)
     const speeds = H.trackSpeed;
     const B = TRK.cz;
@@ -559,7 +678,7 @@ export function create(game) {
         bus.emit('noise', { x: H.x, z: H.z, loudness: clamp(0.35 + 0.65 * S.eng, 0, 1), source: 'Harvester' });
       }
     }
-    carryall.update(dt, time, { x: H.x, y: H.y, z: H.z, h: H.h, running: S.state !== 'off', eng: S.eng, night });
+    carryall.update(dt, time, { x: H.x, y: H.y + SINK, z: H.z, h: H.h, running: S.state !== 'off', eng: S.eng, night });
     carryallFx(dt, inDesert);
     wreck.update(dt);
     harvester.rpm = S.eng;
@@ -587,7 +706,17 @@ export function create(game) {
     },
     toggle() { return S.state === 'off' ? this.start() : this.stop(); },
     /** Выталкивает pos (Vector3) из силуэта корпуса/ковша. true — было столкновение. */
-    collide(pos, r = 0.4) { return collideLocal(pos, r); },
+    collide(pos, r = 0.4) { return collideBoard(pos, r); },
+    /** true — точка (ступни, мир) на борту: трап/посадочная площадка/комнаты. Как game.sietch.contains для ядра выбора земли. */
+    contains(pos) { return containsPos(pos); },
+    /** Высота пола в точке; y — высота ступней (обязателен, чтобы отличить «на трапе» от «под трапом»). Вне борта — грунт. */
+    heightAt(x, z, y) { return heightAtBoard(x, z, y); },
+    surfaceAt(x, z, y) { return (y !== undefined && containsPos(_wp.set(x, y, z))) ? 'rock' : 'sand'; },
+    /** Помещение под точкой (мир): {id, name} или null. */
+    roomAt(pos) { _lp.copy(pos).applyMatrix4(_inv); const R = interior.roomAt(_lp.x, _lp.z, _lp.y); return R ? { id: R.id, name: R.name } : null; },
+    /** Игрок на борту: машина стоит, твёрдость корпуса снята. */
+    get occupied() { return H.occupied; },
+    interior,
     /** 'devoured' — харвестер съеден (скрыт, без коллизий, интерактив отключён); 'off'|'running'|'starting' — отладочное состояние (снимает 'devoured'). */
     setState(st, t = 0) {
       if (st === 'devoured') { devourNow(); return true; }
@@ -637,10 +766,30 @@ export function create(game) {
   // Коллизия — через game.colliders (боксы выше); game.collide() выталкивает персонажей автоматически, обёртка world.collide не нужна.
 
   applyTransform(0, true);
-  H.y = sampleGround().y - 0.25;
+  H.y = sampleGround().y - SINK + 0.1;
   applyTransform(0, true);
+  berm.conform(ground, root, 1e9); bermAt.x = H.x; bermAt.z = H.z; bermAt.h = H.h;
   syncColliders();
   updateInteractable();
   emitState('off');
+
+  // Подключение к ядру. Если core сам выбирает землю по точке через game.harvester (contains/heightAt/surfaceAt/collide) —
+  // выставьте game.harvesterWired = true до create(); иначе подменяем game.heightAt/surfaceAt/collide здесь (идемпотентно).
+  harvester.autoWired = false;
+  if (!game.harvesterWired && !game.__hvWrapped) {
+    game.__hvWrapped = true; harvester.autoWired = true;
+    const h0 = game.heightAt.bind(game), s0 = game.surfaceAt.bind(game), c0 = game.collide.bind(game);
+    const tp = new THREE.Vector3();
+    const addIgnore = (ig, o) => { const st = new Set(); if (ig instanceof Set) ig.forEach((v) => st.add(v)); else if (ig) st.add(ig); st.add(o); return st; };
+    game.heightAt = (x, z, y) => {
+      if (y !== undefined && interior.ready) { const dx = x - H.x, dz = z - H.z; if (dx * dx + dz * dz < 85 * 85 && containsPos(tp.set(x, y, z))) return heightAtBoard(x, z, y); }
+      return h0(x, z, y);
+    };
+    game.surfaceAt = (x, z) => { const p = game.player?.position; if (p && Math.abs(x - p.x) < 2 && Math.abs(z - p.z) < 2 && containsPos(p)) return 'rock'; return s0(x, z); };
+    game.collide = (pos, r, opt) => {
+      if (containsPos(pos)) { const a = collideBoard(pos, r); const b = colliders.push(pos, r, { ...(opt || {}), ignore: addIgnore(opt?.ignore, 'harvester') }); return a || b; }
+      return c0(pos, r, opt);
+    };
+  }
   return harvester;
 }
