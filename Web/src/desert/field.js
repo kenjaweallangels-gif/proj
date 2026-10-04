@@ -5,6 +5,7 @@ import {
   WIND_DIR, A1_RIDGE, GOLDEN_PATH, SAFE_ISLANDS, A3_PLATES, ROCK, CORE_CENTER,
   clawCenter, clawHalfWidth, clawHeight,
 } from '../core/layout.js';
+import { ridgeQuery, RQR as RR, RIDGE_BOUNDS, apronWeight } from '../core/ridge.js';
 
 const Wx = WIND_DIR[0], Wz = WIND_DIR[1];
 /** Быстрая замена Math.hypot (в V8 hypot в разы медленнее; на горячем пути заливки клипмапа). */
@@ -58,13 +59,18 @@ const boxSdf = (x, z, cx, cz, hx, hz) => {
 
 /** SDF твёрдого тела скалы: скала − расщелина + «плавники» у входа. <0 — внутри. */
 export function solidSdf(x, z) {
-  if (x < 560 || x > 860 || z < -80 || z > 640) return 1e9;
+  if (x < 560 || x > 860 || z < -80 || z > 640) return ridgeQuery(x, z);   // вне Когтя — только хребет (корзины, 1e9 вдали)
   let d = rockQuery(x, z);
   const cleft = boxSdf(x, z, (CLEFT.x0 + CLEFT.x1) / 2, CLEFT.z, (CLEFT.x1 - CLEFT.x0) / 2, CLEFT.hw);
   d = Math.max(d, -cleft);
   for (const f of FINS) d = Math.min(d, boxSdf(x, z, f.cx, f.cz, f.hx, f.hz));
-  return d;
+  const rd = ridgeQuery(x, z);
+  return rd < d ? rd : d;
 }
+/** Прямоугольник, вне которого solidSdf гарантированно = 1e9 (для быстрых отсечек в коллизиях). */
+export const SOLID_BOUNDS = {
+  x0: Math.min(560, RIDGE_BOUNDS.x0), x1: Math.max(860, RIDGE_BOUNDS.x1), z0: Math.min(-80, RIDGE_BOUNDS.z0), z1: Math.max(640, RIDGE_BOUNDS.z1),
+};
 
 // ---------- Золотой путь ----------
 const PATH = GOLDEN_PATH.map((p) => [p.x, p.z]);
@@ -255,6 +261,8 @@ function heightRaw(x, z, spacing = 0, noIsl = false) {
     }
   }
 
+  h = ridgeApron(x, z, h, mouthK);
+
   // Каменные острова (купола): выход породы на уровне местной земли в центре острова (не «яма до нуля» посреди гряды),
   // вокруг — пологий фартук ~2.4 радиуса, без обрывов
   if (!noIsl) for (const s of SAFE_ISLANDS) {
@@ -269,6 +277,28 @@ function heightRaw(x, z, spacing = 0, noIsl = false) {
   // Плиты A3 (чуть приподняты)
   h += plateRaise(x, z);
   return h;
+}
+
+/** Хребет (core/ridge.js): осыпной фартук как у Когтя + наветренный намёт дюн (ветер дует по WIND_DIR, наветренная сторона — северо-западная). */
+function ridgeApron(x, z, h, mouthK) {
+  const d = ridgeQuery(x, z);
+  if (d >= 170) return h;
+  const aw = apronWeight(x, z);
+  if (aw <= 0) return h;
+  const h0 = h;
+  const H = RR.H;
+  if (d < 120) {
+    const q = smoothstep(0, 110, d);
+    const g = 0.85 + 0.15 * noise2(x / 22, z / 22);
+    const rise = baseRise(H) * Math.pow(1 - q, 1.7) * g + 2.5 * Math.pow(1 - q, 3) * noise2(x / 9, z / 9) * (1 - mouthK);
+    h = lerp(h, 0, clamp(1 - q, 0, 1) * 0.55) + rise;
+  }
+  const ww = smoothstep(-0.1, 0.55, -(RR.ox * Wx + RR.oz * Wz));
+  if (ww > 0) {
+    const k = 1 - smoothstep(0, 170, d > 0 ? d : 0);
+    h += ww * 0.10 * H * Math.pow(k, 1.7) * (0.8 + 0.2 * noise2(x / 37 + 5, z / 37));
+  }
+  return aw >= 1 ? h : h0 + (h - h0) * aw;
 }
 
 function clawHeightAt(t) { return clawHeight(clamp(t, -1, 1)); }
@@ -305,6 +335,10 @@ export function masks(x, z, out = { rock: 0, packed: 0 }) {
   if (x > 520 && x < 900 && z > -140 && z < 700) {
     const d = rockQuery(x, z);
     rock = Math.max(rock, (1 - smoothstep(4, 55, d)) * (0.55 + 0.45 * noise2(x / 6, z / 6)));
+  }
+  {
+    const rd = ridgeQuery(x, z);
+    if (rd < 55) rock = Math.max(rock, (1 - smoothstep(4, 55, rd)) * (0.55 + 0.45 * noise2(x / 6, z / 6)));
   }
   // плотный песок: межгрядья и «пан»
   const dp = pathDist(x, z);

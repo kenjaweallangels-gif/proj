@@ -119,9 +119,17 @@ base *= 0.72 + 0.5 * smoothstep(0.0, 0.25, bF) * (1.0 - 0.35 * smoothstep(0.86, 
 float streak = rkNoise(vec2((P.x + P.z) * 0.9, P.y * 0.035) + 4.0);
 base *= 1.0 - 0.28 * smoothstep(0.55, 0.85, streak);
 base *= 0.8 + 0.4 * clamp(bh * 1.6 + 0.4, 0.0, 1.0);
+// охра / ржавчина крупными пятнами (окисление пластов)
+float oxm = rkNoise(P.xz * 0.006 + vec2(P.y * 0.012, 3.1));
+base = mix(base, base * vec3(1.2, 0.84, 0.66), smoothstep(0.5, 0.8, oxm) * 0.5);
+base = mix(base, base * vec3(1.1, 1.03, 0.82), smoothstep(0.35, 0.1, oxm) * 0.4);
+// трещины и швы: тёмные вертикальные щели (затенение/AO), ближе к камере — резче
+float crk = 1.0 - smoothstep(0.0, 0.03, abs(rkNoise(vec2((P.x + P.z) * 0.22, P.y * 0.03) + 7.0) - 0.5));
+crk *= 1.0 - smoothstep(180.0, 800.0, dist);
+base *= 1.0 - 0.5 * crk;
 // песок на уступах и подножии
 float up = smoothstep(0.48, 0.86, Np.y + 0.18 * (rkNoise(P.xz * 0.35) - 0.5));
-float sandA = clamp(up * (0.55 + 0.45 * ledge) * uSandAmt + smoothstep(0.7, 0.98, N.y) * 0.5, 0.0, 1.0);
+float sandA = clamp(up * (0.55 + 0.45 * ledge) * uSandAmt + smoothstep(0.7, 0.98, N.y) * 0.5 + crk * 0.22 * uSandAmt, 0.0, 1.0);
 #ifdef RK_ROCK_TEX
 base *= tpMul;
 gSandA = sandA;
