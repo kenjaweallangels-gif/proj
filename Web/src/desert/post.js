@@ -248,7 +248,7 @@ export function createPost(game, weather, sky) {
   renderer.toneMapping = tmParam === 'agx' ? THREE.AgXToneMapping : THREE.ACESFilmicToneMapping;
   // тени: PCF с настраиваемым радиусом (мягче при низком солнце); PCFSoft радиус игнорирует
   if (renderer.shadowMap.enabled) renderer.shadowMap.type = THREE.PCFShadowMap;
-  const rtOpts = { type: THREE.HalfFloatType, samples: q === 'low' ? 0 : 4, depthBuffer: true };
+  const rtOpts = { type: THREE.HalfFloatType, samples: q === 'low' ? 0 : q === 'med' ? 2 : 4, depthBuffer: true };   // MSAA: med ×2 (меньше трафика HDR-буфера), high ×4
   if (useDepth) rtOpts.depthTexture = new THREE.DepthTexture(w, h);
   const rt = new THREE.WebGLRenderTarget(w, h, rtOpts);
   const composer = new EffectComposer(renderer, rt);

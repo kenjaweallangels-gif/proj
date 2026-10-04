@@ -543,7 +543,7 @@ export function createFx(game, world, terrain, weather) {
 
   // ---------- осыпание песка на склонах скольжения и порывы ----------
   const _n = new THREE.Vector3();
-  let slideT = 0, gustT = 0, gustPrev = 0, slideEvtT = 0;
+  let slideT = 0, gustT = 0, gustPrev = 0, slideEvtT = 0, thumpT = 40 + R() * 60;
   function updateAvalanche(dt) {
     slideT -= dt; slideEvtT -= dt;
     if (slideT > 0 || game.space === 'sietch') return;
@@ -582,6 +582,15 @@ export function createFx(game, world, terrain, weather) {
       game.bus.emit('desert:gust', { strength: clamp(weather.windSpeed / 20, 0, 1), speed: weather.windSpeed, wx: weather.windDir.x, wz: weather.windDir.z });
     }
     gustPrev = g;
+    // редкий далёкий стук тампера/тока дюн — событие для звука (без визуала): направление и расстояние
+    thumpT -= dt;
+    if (thumpT <= 0) {
+      thumpT = 70 + R() * 110;
+      if (weather.windSpeed < 8 && weather.storm < 0.3) {
+        const a = R() * Math.PI * 2, d = 900 + R() * 1400;
+        game.bus.emit('desert:distantthump', { x: camera.position.x + Math.cos(a) * d, z: camera.position.z + Math.sin(a) * d, dist: d });
+      }
+    }
   }
 
   const fx = {

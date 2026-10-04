@@ -152,7 +152,8 @@ vec3 rkHorizon(vec3 d, vec3 sky, vec3 sunLit){
     float seed = 7.0 + float(i)*13.7;
     float a0 = az + dot(uCamXZ, tg)/Dp;
     float h = rkSil(a0, i, seed);
-    float m = 1.0 - smoothstep(h - aa, h + aa, y);
+    float shim = uHeat * (0.0007 + 0.0005 * float(2 - i)) * (rkN1(az * 150.0 + uTime * 1.1 + float(i) * 7.0, 91.0) - 0.5) * smoothstep(0.0, 0.01, y + 0.01);   // зной: дрожание силуэтов
+    float m = 1.0 - smoothstep(h - aa, h + aa, y + shim);
     if (m < 0.002) continue;
     // освещение склона: наклон силуэта по азимуту + солнце
     float e = 0.0016;
@@ -253,7 +254,8 @@ void main(){
   float mu = max(dot(d, uSunDir), 0.0);
   float dustK = 0.55 + 1.3 * uDust + 0.6 * uStorm;
   float sunUp = smoothstep(-0.12, 0.08, uSunDir.y);
-  vec3 glow = tint * (pow(mu, 4.0) * 0.14 + pow(mu, 24.0) * 0.4 + pow(mu, 220.0) * 1.1 + pow(mu, 900.0) * 3.0) * dustK;
+  float lmu = log2(max(mu, 1e-4));
+  vec3 glow = tint * (exp2(lmu * 4.0) * 0.14 + exp2(lmu * 24.0) * 0.4 + exp2(lmu * 220.0) * 1.1 + exp2(lmu * 900.0) * 3.0) * dustK;
   glow *= mix(0.8, 1.4, lowSun);
   sky += glow * sunUp * smoothstep(-0.1, 0.1, y + 0.1) * (0.35 + 0.65 * length(uSunColor) / (length(uSunColor) + 0.5));
   // солнечный диск: потемнение к краю + корона в пыли
@@ -298,7 +300,7 @@ void main(){
     {
       vec2 cuv = cloudUV(d, 0.75) + w * uTime * 0.003;
       vec2 q = vec2(dot(cuv, w), dot(cuv, wp));
-      float c = rkFbm(vec2(q.x * 0.9, q.y * 4.2) + 3.0) * 0.8 + rkFbm(q * vec2(2.0, 8.0) + 11.0) * 0.4;
+      float c = rkFbm(vec2(q.x * 0.9, q.y * 4.2) + 3.0) * 0.8 + rkNoise(q * vec2(2.0, 8.0) + 11.0) * 0.45 + rkNoise(q * vec2(5.0, 19.0)) * 0.2;
       float cov = 0.22 + 0.7 * uClouds;
       float cl = smoothstep(0.92 - cov * 0.6, 1.3 - cov * 0.25, c) * up * 0.5;
       vec3 cc = (keyL * (0.30 + 0.9 * pow(mup, 5.0)) + cAmb * 0.8) * 0.85;
@@ -313,6 +315,7 @@ void main(){
       float n = rkFbm(wuv * 1.0 + 2.0) * 0.86 + 0.14 * rkNoise(wuv * 7.0);
       float thr = 0.74 - 0.5 * clamp(uClouds, 0.0, 1.0) - 0.16 * uStorm;
       float dn = smoothstep(thr, thr + 0.5, n);
+      if (dn > 0.004) {
       vec2 sl = normalize(uKeyDir.xz + vec2(1e-5)) * 0.09;
       float n2 = rkFbm((wuv + sl) + 2.0) * 0.86 + 0.14 * rkNoise((wuv + sl) * 7.0);
       float sh = clamp(0.62 + (n - n2) * 5.0, 0.0, 1.0);
@@ -324,6 +327,7 @@ void main(){
       lit = mix(lit, dustTone * (cAmb * 0.9 + keyL * 0.22 * (0.4 + 0.6 * sh)), dustMix);
       float a = dn * dn * (3.0 - 2.0 * dn) * smoothstep(0.012, 0.22, y) * (0.8 - 0.2 * uStorm);
       sky = mix(sky, lit * cNight, a);
+      }
     }
     // альтокумулюс («барашки»): мелкие ячеистые гряды выше кучевых, подсвеченные с солнечной стороны
     #ifndef SKY_LITE
@@ -334,6 +338,7 @@ void main(){
       float n = rkNoise(uv * 0.9 + 17.0) * 0.55 + rkNoise(uv * 2.6 + 3.0) * 0.3 + rkNoise(uv * 7.0) * 0.15;
       float band = smoothstep(0.30, 0.65, rkNoise(uv * vec2(0.22, 0.7) + 5.0));
       float dn = smoothstep(0.62 - 0.2 * cov, 0.86 - 0.12 * cov, n + (band - 0.5) * 0.3);
+      if (dn > 0.004) {
       vec2 sl = normalize(uKeyDir.xz + vec2(1e-5)) * 0.12;
       float n2 = rkNoise((uv + sl) * 2.6 + 3.0) * 0.55 + rkNoise((uv + sl) * 0.9 + 17.0) * 0.3 + rkNoise((uv + sl) * 7.0) * 0.15;
       float sh = clamp(0.65 + (n - n2) * 6.0, 0.0, 1.0);
@@ -343,6 +348,7 @@ void main(){
       lit += keyL * 0.2 * edge * (0.3 + 1.6 * pow(mup, 5.0)) + sunsetC * 0.65 * (0.4 + 0.6 * sh);
       lit = mix(lit, dustTone * (cAmb * 0.9 + keyL * 0.2), dustMix);
       sky = mix(sky, lit * cNight, a);
+      }
     }
     #endif
   }
