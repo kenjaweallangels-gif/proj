@@ -9,9 +9,12 @@ export function createCameraRig(game, p) {
   const cam = game.camera;
   const rig = { yaw: p.yaw, pitch: C.tpPitch0, fp: false, blend: 0, frozen: false };
   const pivot = new THREE.Vector3().copy(p.position);
+  const src = () => p.renderPos || p.position; // интерполированная позиция игрока
+  let dipPos = 0, dipVel = 0;
   const dir = new THREE.Vector3(), right = new THREE.Vector3(), head = new THREE.Vector3(), want = new THREE.Vector3();
   const tpPos = new THREE.Vector3(), fpPos = new THREE.Vector3(), pos = new THREE.Vector3(), probe = new THREE.Vector3();
-  const look = new THREE.Vector3();
+  const look = new THREE.Vector3(), wallQ = new THREE.Vector3();
+  const CAM_OWN = { ignore: new Set(['player', 'companion:Ilva', 'companion:Rayn', 'companion:Ossana']) }; // штанга не упирается в тело игрока и спутников (они прячутся у камеры сами)
   const snapPos = new THREE.Vector3(), snapQuat = new THREE.Quaternion(), tmpQ = new THREE.Quaternion();
   let armFrac = 1, fov = C.fov, bobPhase = 0, bobAmt = 0, resyncT = -1, wasFrozen = false, photo = false, breath = 0;
 
@@ -22,12 +25,14 @@ export function createCameraRig(game, p) {
   function snap(yaw) {
     if (yaw !== undefined) rig.yaw = yaw;
     rig.pitch = rig.fp ? 0 : C.tpPitch0;
-    pivot.copy(p.position); armFrac = 1; resyncT = -1;
+    pivot.copy(src()); armFrac = 1; resyncT = -1; dipPos = dipVel = 0;
     rig.blend = rig.fp ? 1 : 0;
   }
 
   Object.assign(rig, {
     snap,
+    /** Приземление: пружинная «вмятина» камеры вниз (impact — скорость удара, м/с). */
+    dip(impact) { dipVel -= Math.min(5, 0.8 + impact * 0.2); },
     setFirstPerson(b) { rig.fp = !!b; p.firstPerson = rig.fp; },
     toggle() { rig.setFirstPerson(!rig.fp); },
     /** Применяет ввод look (вызывается в update игрока). */
@@ -42,7 +47,8 @@ export function createCameraRig(game, p) {
     /** Расчёт и применение к game.camera (lateUpdate). */
     apply(dt, t) {
       // Тряска: игрок применяет и гасит game.shake; гул червя добавляется.
-      const rumble = (game.worm?.threat ?? 0) * C.rumbleScale;
+      // Гул червя ощущается только в пустыне (в скале/сиетче/саду земля не дрожит).
+      const rumble = game.space === 'desert' ? (game.worm?.threat ?? 0) * (game.worm?.threat ?? 0) * C.rumbleScale : 0;
       const shake = clamp(game.shake + rumble, 0, 1.2);
       game.shake = Math.max(0, game.shake * Math.exp(-dt * C.shakeDecay) - dt * 0.05);
 
@@ -52,13 +58,18 @@ export function createCameraRig(game, p) {
         wasFrozen = false;
         snapPos.copy(cam.position); snapQuat.copy(cam.quaternion);
         rig.yaw = p.yaw; rig.pitch = rig.fp ? 0 : C.tpPitch0;
-        pivot.copy(p.position); armFrac = 1; resyncT = 0;
+        pivot.copy(src()); armFrac = 1; resyncT = 0;
       }
       rig.blend = damp(rig.blend, rig.fp ? 1 : 0, C.blendLambda, dt);
       const b = smoothstep(0, 1, rig.blend);
-      pivot.x = damp(pivot.x, p.position.x, C.followLambda, dt);
-      pivot.z = damp(pivot.z, p.position.z, C.followLambda, dt);
-      pivot.y = p.position.y;
+      const pp = src();
+      pivot.x = damp(pivot.x, pp.x, C.followLambda, dt);
+      pivot.z = damp(pivot.z, pp.z, C.followLambda, dt);
+      // по вертикали — лёгкое сглаживание (ступеньки рельефа/сетки не дёргают камеру), при падении камера чуть отстаёт — ощущение скорости
+      pivot.y = Math.abs(pp.y - pivot.y) > 6 ? pp.y : damp(pivot.y, pp.y, C.followLambdaY, dt);
+      // пружина приземления (затухающая)
+      dipVel += (-C.dipK * dipPos - C.dipC * dipVel) * dt; dipPos += dipVel * dt;
+      if (Math.abs(dipPos) < 1e-4 && Math.abs(dipVel) < 1e-3) dipPos = dipVel = 0;
 
       const cp = Math.cos(rig.pitch), sp = Math.sin(rig.pitch);
       dir.set(cp * Math.cos(rig.yaw), sp, cp * Math.sin(rig.yaw));
@@ -70,13 +81,24 @@ export function createCameraRig(game, p) {
       head.copy(pivot); head.y += C.tpHeight;
       want.copy(head).addScaledVector(right, C.shoulder).addScaledVector(dir, -dist);
       let frac = 1;
-      for (let i = 1; i <= 10; i++) {
-        const k = i / 10;
+      const NP = C.armProbes;
+      // Проба штанги на доле k: ниже земли или в стене? Первая «плохая» из NP проб уточняется бисекцией (3 шага) —
+      // длина штанги меняется непрерывно, без скачков по 1/NP при движении вдоль стены (раньше камера «дёргалась» в узких местах).
+      const bad = (k, first) => {
         probe.lerpVectors(head, want, k);
-        let bad = probe.y < game.heightAt(probe.x, probe.z) + C.groundClearance;
+        if (probe.y < game.heightAt(probe.x, probe.z) + C.groundClearance) return true;
+        if (first) return false;
         // Стены проверяем на уровне ступней игрока: многоуровневые полы (сиетч) выбирают этаж по y.
-        if (!bad && i > 1) { const q = probe.clone(); q.y = pivot.y + 0.1; bad = game.collide(q, 0.25); }
-        if (bad) { frac = Math.max(0.12, (i - 1) / 10); break; }
+        wallQ.set(probe.x, pivot.y + 0.1, probe.z);
+        return game.collide(wallQ, 0.25, CAM_OWN);
+      };
+      for (let i = 1; i <= NP; i++) {
+        if (bad(i / NP, i === 1)) {
+          let lo = (i - 1) / NP, hi = i / NP;
+          for (let it = 0; it < 3; it++) { const mid = (lo + hi) / 2; if (bad(mid, false)) hi = mid; else lo = mid; }
+          frac = Math.max(0.12, lo);
+          break;
+        }
       }
       armFrac = frac < armFrac ? frac : damp(armFrac, frac, C.armOutLambda, dt);
       tpPos.lerpVectors(head, want, armFrac);
@@ -96,18 +118,19 @@ export function createCameraRig(game, p) {
         .addScaledVector(look.set(Math.cos(rig.yaw), 0, Math.sin(rig.yaw)), 0.12);
 
       pos.lerpVectors(tpPos, fpPos, b);
+      pos.y += dipPos;
 
       // --- Тряска (perlin) ---
       let dyaw = 0, roll = Math.sin(bobPhase) * 0.004 * bobAmt * b;
       let dpitch = Math.sin(breath) * (p.parched ? 0.008 : 0.002) * b;
       if (shake > 0.001) {
         const s = shake;
-        pos.x += noise2(t * 17, 1.7) * C.shakePos * s;
-        pos.y += noise2(t * 19, 8.3) * C.shakePos * s;
-        pos.z += noise2(t * 15, 4.1) * C.shakePos * s;
-        dyaw += noise2(t * 13, 11.9) * C.shakeRot * s;
-        dpitch += noise2(t * 14, 21.3) * C.shakeRot * s;
-        roll += noise2(t * 11, 31.7) * C.shakeRoll * s;
+        pos.x += noise2(t * 3.1, 1.7) * C.shakePos * s;
+        pos.y += noise2(t * 3.7, 8.3) * C.shakePos * s;
+        pos.z += noise2(t * 2.9, 4.1) * C.shakePos * s;
+        dyaw += noise2(t * 2.3, 11.9) * C.shakeRot * s;
+        dpitch += noise2(t * 2.6, 21.3) * C.shakeRot * s;
+        roll += noise2(t * 1.9, 31.7) * C.shakeRoll * s;
       }
 
       cam.position.copy(pos);

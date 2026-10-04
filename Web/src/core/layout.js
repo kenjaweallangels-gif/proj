@@ -92,7 +92,7 @@ export const ENTRY = {
 };
 export const GARDEN = {
   center: { x: 840, z: 395 }, radius: 58, floorY: 4,   // котловина за скалой, закрытая от песка гребнями
-  portal: { x: 790, y: 5, z: 392 },                    // выход из туннеля сиетча на восточной грани
+  portal: { x: 801.2, y: 5, z: 395 },                  // устье: выход из туннеля сиетча на восточной грани (= garden/layout.js MOUTH; туннель идёт на восток 14 м)
 };
 /** >0 внутри основания скалы на глубину больше margin (м). Приближение по осевой линии. */
 export function clawInside(x, z, margin = 0) {
@@ -107,7 +107,7 @@ export function clawInside(x, z, margin = 0) {
 export const ZONES = {
   A1_Ridge: 'A1_Ridge', A2_Erg: 'A2_Erg', A3_Approach: 'A3_Approach', A4_Crevice: 'A4_Crevice',
   B1_Airlock: 'B1_Airlock', B2_Gallery: 'B2_Gallery', B3_Passages: 'B3_Passages',
-  B4_Cistern: 'B4_Cistern', B5_Hall: 'B5_Hall',
+  B4_Cistern: 'B4_Cistern', B5_Hall: 'B5_Hall', B6_Cellar: 'B6_Cellar',
 };
 
 /** Пустынная зона по позиции (сиетч определяет свои зоны сам: game.sietch.zoneAt). */

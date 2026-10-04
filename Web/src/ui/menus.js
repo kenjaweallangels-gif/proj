@@ -15,7 +15,7 @@ export function createMenus(game, root, ctx) {
     [S.subSize, S.subBg] = SUB_STATES[i];
     saveSettings(game); ctx.applySubtitleSettings();
   }
-  const VOICE_LABEL = { auto: ['Авто', 'Auto'], tts: ['Арабский TTS', 'Arabic TTS'], synth: ['Синтезатор', 'Synth'], off: ['выкл', 'off'] };
+  const VOICE_LABEL = { auto: ['Живой голос', 'Natural voice'], tts: ['Арабский TTS', 'Arabic TTS'], synth: ['Синтезатор (запасной)', 'Synth (fallback)'], off: ['выкл', 'off'] };
   const voiceLabel = (m) => tr(...VOICE_LABEL[m]);
   function cycleVoice(dir) { const i = VOICE_MODES.indexOf(S.voiceMode); setVoiceMode(game, VOICE_MODES[(i + dir + VOICE_MODES.length) % VOICE_MODES.length]); }
   function toggleNative() { S.showNative = !S.showNative; saveSettings(game); }
@@ -64,7 +64,7 @@ export function createMenus(game, root, ctx) {
       `<span>${K('W')}${K('A')}${K('S')}${K('D')} ${tr('движение', 'move')}</span>`,
       `<span>${K('C')} ${tr('режим походки: обычный / по песку', 'gait: normal / sand-walk')}</span>`,
       `<span>${K('Alt')} ${tr('походка по песку (удерживать)', 'sand-walk (hold)')}</span>`,
-      `<span>${K('Space')} ${tr('сбить ритм', 'break rhythm')}</span>`,
+      `<span>${K('Space')} ${tr('прыжок (в шаге пустыни — сбить ритм)', 'jump (sand-walk: break rhythm)')}</span>`,
       `<span>${K('E')} ${tr('действие', 'interact')}</span>`,
       `<span>${K('V')} ${tr('камера', 'camera')}</span>`,
       `<span>${K('F2')} ${tr('погода и время', 'weather & time')}</span>`,

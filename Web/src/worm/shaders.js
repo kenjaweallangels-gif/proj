@@ -188,7 +188,9 @@ vec3 wormSurf(float s, float a, out vec3 C){
   float macro = (wfbm(vec2(s*0.04, a*1.3)) - 0.5)*1.6;
   float dent = smoothstep(0.80, 0.92, wvn(vec2(s*0.09 + 13.0, a*2.4)));          // рубцы-вмятины
   float belly = smoothstep(2.2,3.14,abs(mod(a+3.14159,6.28318)-3.14159));
-  float r = (uR + stp + 0.55*dome + 0.18*ridge + macro*(1.0-0.4*belly) - 1.1*dent) * max(P.w, 0.02);
+  float wDet = stp + 0.55*dome + 0.18*ridge + macro*(1.0-0.4*belly) - 1.1*dent;
+  float wPw = max(P.w, 0.02);
+  float r = uR*wPw + wDet*(wPw < 1.0 ? wPw : 1.0 + (wPw - 1.0)*0.35);      // у раструба шеи швы не растут вместе с радиусом (иначе тарелки с щелями)
   vec3 dir = cos(a)*N + sin(a)*B;
   C = P.xyz;
   return P.xyz + dir*r;
@@ -225,6 +227,20 @@ const FRAG_COLOR_BODY = /* glsl */`
     float lipEdge = smoothstep(0.62, 0.98, abs(vPet.y)) * (1.0 - smoothstep(0.5, 1.0, vPet.x)*0.6);
     if (gl_FrontFacing) { wH += 0.22*lipRib + 0.35*lipEdge; wAlb *= 1.0 - 0.18*lipRib; wCav = max(wCav, 0.4*lipRib); }
     wAlb *= 1.0 - 0.55*smoothstep(0.82,1.0,abs(vPet.y));          // швы между лепестками темнее
+  #elif WORM_MODE == 3
+    {
+      // губное кольцо и воронка пасти: снаружи хитиновые плиты тела, к внутреннему краю — розовая плоть с радиальными складками
+      vec3 wAlbS, wAlbF; float wRS, wRF, wHS, wHF;
+      wormSkin(vSA.x, vSA.y, wN, wPm, wAlbS, wRS, wHS, wCav);
+      wormFlesh(vSA.x, vSA.y, wFpm, wAlbF, wRF, wHF);
+      float wT0 = mix(0.55, 0.34, uOpen);
+      float wFm = wss(wT0, wT0 + 0.09, vPet.x);
+      float wRib = pow(0.5 + 0.5*sin(vSA.y*30.0 + 2.0*wvn(vec2(vPet.x*40.0, vSA.y*3.0))), 2.0);
+      if (gl_FrontFacing) {
+        wAlb = mix(wAlbS, wAlbF*(0.8 + 0.35*wRib), wFm); wRough = mix(wRS, wRF, wFm); wH = mix(wHS, wHF + 0.5*wRib, wFm);
+        wCav = mix(wCav, 0.35*wRib, wFm);
+      } else { wAlb = wAlbF; wRough = wRF; wH = wHF; wCav = 0.0; }
+    }
   #elif WORM_MODE == 2
     wormFlesh(vSA.x, vSA.y, wFpm, wAlb, wRough, wH);
   #else
@@ -313,11 +329,12 @@ export function patchChitin(material, mode, U, hq = true) {
         `)
         .replace('#include <begin_vertex>', `vec3 transformed = wWp; vSA = vec2(wSS, wAA); vShade = 1.0;`);
     } else {
+      const pet = mode === 1 || mode === 3;
       injectCommon(shader,
-        `varying vec2 vSA; varying float vShade;${mode === 1 ? 'attribute vec2 aPet; varying vec2 vPet;' : ''}`,
-        `varying vec2 vSA; varying float vShade;${mode === 1 ? 'varying vec2 vPet;' : ''}`);
+        `varying vec2 vSA; varying float vShade;${pet ? 'attribute vec2 aPet; varying vec2 vPet;' : ''}`,
+        `varying vec2 vSA; varying float vShade;${pet ? 'varying vec2 vPet;' : ''}`);
       shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>',
-        `#include <begin_vertex>\n vSA = uv; ${mode === 1 ? 'vPet = aPet; vShade = 1.0;' : 'vShade = mix(0.03, 1.0, exp(-uv.x*0.085));'}`);
+        `#include <begin_vertex>\n vSA = uv; ${mode === 1 ? 'vPet = aPet; vShade = 1.0;' : mode === 3 ? 'vPet = aPet; vShade = aPet.y;' : 'vShade = mix(0.03, 1.0, exp(-uv.x*0.085));'}`);
     }
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <color_fragment>', `#include <color_fragment>\n${FRAG_COLOR_BODY}`)
@@ -346,7 +363,7 @@ export function patchTeeth(material, U) {
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvDepth = aDepth; vTip = uv.y;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\nvarying float vDepth; varying float vTip; uniform vec3 uSunV;\n${NOISE}`)
-      .replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb *= mix(vec3(1.0,0.93,0.80), vec3(0.82,0.92,1.0), smoothstep(0.3,1.0,vTip));')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb *= mix(vec3(1.0,0.93,0.80), vec3(0.82,0.92,1.0), smoothstep(0.3,1.0,vTip)) * mix(vec3(0.42,0.30,0.24), vec3(1.0), smoothstep(0.0,0.45,vTip));')
       .replace('#include <emissivemap_fragment>', /* glsl */`
         #include <emissivemap_fragment>
         {

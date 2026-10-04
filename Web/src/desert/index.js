@@ -1,7 +1,7 @@
 // Пустыня Ракиса: ландшафт, песок, скала «Коготь Шайтана», небо, погода, атмосфера, пост-обработка.
 // Регистрирует game.world, game.weather, game.post.
 import * as THREE from 'three';
-import { heightAt, normalAt, surfaceAt, solidSdf, masks, FLAT_ZONE, groundPatches } from './field.js';
+import { heightAt, heightAtCached, setHeightFocus, normalAt, surfaceAt, solidSdf, masks, FLAT_ZONE, groundPatches } from './field.js';
 import { ENV } from './env.js';
 import { createFootprints } from './footprints.js';
 import { createTerrain } from './terrain.js';
@@ -28,7 +28,7 @@ export function create(game) {
     visible: true,
     exposureTrim: 1,
     sunDir: new THREE.Vector3(0.5, 0.5, 0.2).normalize(),
-    heightAt: (x, z) => heightAt(x, z),
+    heightAt: (x, z) => heightAtCached(x, z),
     normalAt(x, z, out) {
       const a = normalAt(x, z, [0, 1, 0]);
       if (out && out.set) return out.set(a[0], a[1], a[2]);
@@ -59,7 +59,7 @@ export function create(game) {
     /** Переопределение рельефа: {x,z,radius,blend?,height:(x,z,baseH)=>y|null}. Меш ландшафта перестраивается. */
     addGroundPatch(patch) {
       groundPatches.push(patch);
-      terrain.invalidate();
+      terrain.invalidate({ x: patch.x, z: patch.z, radius: patch.radius });
       return patch;
     },
     setVisible(b) { setVisible(b); },
@@ -188,15 +188,31 @@ export function create(game) {
   // Подготовка: заливка клипмапа вокруг стартовой позиции камеры
   terrain.prime(camera.position.x, camera.position.z);
 
+  // профилирование CPU: скользящее среднее мс/кадр на update() модуля пустыни (world.stats.updateMs, maxMs — пик за ~2 с)
+  const stats = { updateMs: 0, terrainMs: 0, fxMs: 0, maxMs: 0, frames: 0 };
+  world.stats = stats;
+  let peak = 0, peakT = 0;
   const root = {
     update(dt, t) {
       ENV.uniforms.uTime.value = t;
       if (!world.visible) return;
+      const t0 = performance.now();
       const cp = camera.position;
+      setHeightFocus(cp.x, cp.z);
       terrain.update(cp);
+      const t1 = performance.now();
       sky.update(cp);
       foot.update(dt, cp);
+      const t2 = performance.now();
       fx.update(dt, t);
+      const t3 = performance.now();
+      const all = t3 - t0;
+      stats.updateMs += (all - stats.updateMs) * 0.05;
+      stats.terrainMs += ((t1 - t0) - stats.terrainMs) * 0.05;
+      stats.fxMs += ((t3 - t2) - stats.fxMs) * 0.05;
+      stats.frames++;
+      peak = Math.max(peak, all); peakT += dt;
+      if (peakT > 2) { stats.maxMs = peak; peak = 0; peakT = 0; }
     },
     alwaysUpdate: false,
   };

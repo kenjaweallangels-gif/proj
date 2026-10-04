@@ -1,9 +1,12 @@
-// Голоса персонажей на вымышленном языке Ракиса.
-// Режимы (game.settings.voiceMode): 'auto' (арабский TTS браузера для nativeScript, если есть голос 'ar*', иначе синтезатор;
-// жрица, толпа и лай — всегда синтезатор), 'tts' (арабский TTS, при отсутствии голоса — синтезатор), 'synth', 'off'.
-// Синтезатор: глоттальный источник (периодическая волна) → 3 параллельные форманты + фиксированная 4-я (+ носовая) ← дорожки из speechplan.js;
-// фрикативы/взрывные — отдельный шумовой тракт. Позиционирование — PannerNode в точке говорящего. Русский/английский текст не озвучивается никогда.
+// Голоса персонажей на вымышленном языке Ракиса (Ред. 2).
+// ОСНОВНОЙ путь: встроенные записи нейросетевого TTS Piper (assets/vo.js, см. vo_bank.js): позиционный источник в точке говорящего
+// (спутник / ближайший житель сиетча подходящего архетипа), реверберация зоны, дакинг музыки и фона. Лай толпы — тихие безсловесные «бормотания».
+// ЗАПАСНЫЕ пути (только если у реплики нет записи): режимы (game.settings.voiceMode) 'auto' — арабский TTS браузера, иначе формантный синтезатор;
+// 'tts', 'synth' (принудительно синтезатор, для отладки), 'off'.
+// Синтезатор: глоттальный источник → форманты ← дорожки из speechplan.js; смягчён (тише) — это запасной вариант, а не основной голос.
+// Русский/английский текст не озвучивается никогда, кроме галаха (перевод голосом TTS браузера).
 import { planUtterance, FR, voiceOf, VOICES } from './speechplan.js';
+import * as bank from './vo_bank.js';
 
 const waveCache = new WeakMap();
 function glottal(ctx, tilt) {
@@ -114,12 +117,24 @@ export async function renderOffline(o = {}) {
 
 // ------------------------------------------------------------------ Интеграция с игрой
 const SYNTH_ONLY = new Set(['Priestess', 'Crowd', 'Child']);
+// Запасной синтезатор для жителей без собственной настройки.
+const SYNTH_ALIAS = { Trader: 'Kair', Carrier: 'Ilva', Weaver: 'Ilva', Mother: 'Ilva', Child: 'Child', Girl: 'Child', Elder: 'Harmat', Youth: 'Rayn', Pilgrim: 'Ilva' };
+const SYNTH_GAIN = 0.6;            // запасной синтезатор тише записей
+// Какие архетипы толпы подходят говорящему (для привязки голоса к реальному жителю сиетча).
+const NPC_ARCH = { Trader: ['Trader'], Carrier: ['WaterCarrier'], Weaver: ['Weaver', 'Artisan'], Mother: ['Weaver', 'WaterCarrier', 'Pilgrim'], Child: ['Child'], Girl: ['Child'],
+  Elder: ['Elder'], Youth: ['Artisan', 'Trader', 'Guard'], Pilgrim: ['Pilgrim'], Guard: ['Guard'], Crowd: [] };
+const BARK_GAIN = 0.34;
 
 export function createVoice(game, eng) {
   const { ctx } = eng;
   const S = game.settings;
-  let cur = null;                // {id, speaker, handles[], plan, plans[], startedAt, duration, pos, mode}
+  let cur = null;                // {id, speaker, handles[], startedAt, duration, pos, mode, tok, clip:{src,gain,panner}}
+  let tok = 0;
   let ttsVoices = [];
+  const barkVoices = new Set();  // активные лай-источники (чтобы не копились)
+  const lastBark = {};
+  const assigned = new Map();    // `${chain}:${speaker}` → житель
+  let assignedChain = null;
   const tts = typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined';
   if (tts) {
     const load = () => { try { ttsVoices = speechSynthesis.getVoices() || []; } catch { ttsVoices = []; } };
@@ -134,24 +149,107 @@ export function createVoice(game, eng) {
     return S.voice === false ? 'off' : 'auto';
   }
 
-  function posOf(speaker, hint) {
+  // ---- Позиции говорящих ----
+  function playerPos() { return game.player?.position || game.camera?.position || null; }
+  /** Ближайший к игроку житель сиетча подходящего архетипа; закрепляется за говорящим на время цепочки. */
+  function npcFor(speaker, chain) {
+    const crowd = game.sietch?.crowd, sctx = game.sietch?.ctx;
+    const arch = NPC_ARCH[speaker];
+    if (!crowd?.npcs || !sctx?.toWorld || game.space !== 'sietch') return null;
+    if (chain !== assignedChain) { assigned.clear(); assignedChain = chain; }
+    const key = `${chain}:${speaker}`;
+    const had = assigned.get(key);
+    if (had && crowd.npcs.includes(had)) return had;
+    const pp = playerPos();
+    if (!pp) return null;
+    const taken = new Set(assigned.values());
+    let best = null, bd = 22;
+    for (const q of crowd.npcs) {
+      if (q.special || taken.has(q)) continue;
+      if (arch && arch.length && !arch.includes(q.arch)) continue;
+      const w = sctx.toWorld(q.x, q.y, q.z);
+      const d = Math.hypot(w.x - pp.x, w.z - pp.z);
+      if (d < bd) { bd = d; best = q; }
+    }
+    if (best) assigned.set(key, best);
+    return best;
+  }
+  function npcWorld(n) {
+    const w = game.sietch.ctx.toWorld(n.x, n.y + (n.lk?.height ?? 1.7) * 0.93, n.z);
+    return { x: w.x, y: w.y, z: w.z };
+  }
+  /** Позиция голоса: явная → персонаж (спутник/особая фигура) → житель → точка рядом с игроком (слева/справа по хешу). */
+  function posOf(speaker, hint, chain) {
     if (hint) return hint;
     const g = game;
     const sp = (m) => { try { return m?.speakerPos?.(speaker) || null; } catch { return null; } };
+    const sp2 = (m, id) => { try { return m?.speakerPos?.(id) || null; } catch { return null; } };
     if (speaker === 'Rider' || speaker === 'Rider1' || speaker === 'Rider2') return sp(g.worm) || g.worm?.riderPos || null;
-    return g.space === 'sietch' ? (sp(g.sietch) || sp(g.companions)) : (sp(g.companions) || sp(g.sietch));
+    let named = g.space === 'sietch' ? (sp(g.sietch) || sp(g.companions)) : (sp(g.companions) || sp(g.sietch));
+    // страж у шлюза далеко от галереи: для сцен стражи в других залах берём ближайшего стража-жителя
+    if (named && NPC_ARCH[speaker]?.length && playerPos() && Math.hypot(named.x - playerPos().x, named.z - playerPos().z) > 28) named = null;
+    if (named) return named;
+    if (speaker === 'Ossana' && g.space === 'sietch') {   // в зале Оссана стоит рядом с наибом
+      const h = sp2(g.sietch, 'Harmat');
+      if (h) return { x: h.x + 1.4, y: h.y, z: h.z + 0.6 };
+    }
+    if (NPC_ARCH[speaker]) {
+      const n = npcFor(speaker, chain);
+      if (n) return npcWorld(n);
+      const pp = playerPos();
+      if (pp) { // нет подходящего жителя рядом: голос «из-за угла», 4–7 м от игрока
+        const h = (speaker.charCodeAt(0) * 7 + speaker.length * 13) % 360, ang = (g.player?.yaw ?? 0) + (h / 360) * Math.PI * 1.4 - 0.7 * Math.PI;
+        const r = 4 + (h % 4);
+        return { x: pp.x + Math.cos(ang) * r, y: (pp.y ?? 0) + 1.5, z: pp.z + Math.sin(ang) * r };
+      }
+    }
+    return null;
   }
 
   function stop(fade = 0.08) {
+    tok++;
     if (!cur) return;
-    for (const h of cur.handles) h.stop(fade);
+    for (const h of cur.handles || []) h.stop(fade);
+    if (cur.clip) {
+      const c = cur.clip, t = ctx.currentTime;
+      try { c.gain.gain.cancelScheduledValues(t); c.gain.gain.setValueAtTime(c.gain.gain.value, t); c.gain.gain.linearRampToValueAtTime(0, t + fade); c.src.stop(t + fade + 0.02); } catch { /* уже остановлен */ }
+      setTimeout(() => { try { c.gain.disconnect(); c.panner?.disconnect(); } catch { /* нет */ } }, (fade + 0.3) * 1000);
+    }
     if (cur.tts && tts) { try { speechSynthesis.cancel(); } catch { /* нет */ } }
     cur = null;
   }
 
+  function mkPanner(pos, out) {
+    const p = ctx.createPanner(); p.panningModel = 'HRTF'; p.distanceModel = 'inverse';
+    p.refDistance = 2.2; p.rolloffFactor = 1.35; p.maxDistance = 120;
+    setPan(p, pos);
+    p.connect(out);
+    return p;
+  }
+  function setPan(p, pos, smooth = false) {
+    const x = pos.x, y = pos.y ?? 0, z = pos.z, t = ctx.currentTime;
+    if (p.positionX) {
+      if (smooth) { p.positionX.setTargetAtTime(x, t, 0.08); p.positionY.setTargetAtTime(y, t, 0.08); p.positionZ.setTargetAtTime(z, t, 0.08); }
+      else { p.positionX.value = x; p.positionY.value = y; p.positionZ.value = z; }
+    } else p.setPosition(x, y, z);
+  }
+
+  // ---- Запись из банка ----
+  function startClip(buf, offset, pos, gainMul = 1, sendAmt = 0.22) {
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const g = ctx.createGain(); const t0 = ctx.currentTime + 0.01;
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(gainMul, t0 + 0.012);
+    src.connect(g);
+    let panner = null;
+    if (pos) { panner = mkPanner({ x: pos.x, y: pos.y ?? 0, z: pos.z }, eng.bus.vo); g.connect(panner); } else g.connect(eng.bus.vo);
+    eng.send(g, sendAmt);
+    src.start(t0, Math.min(Math.max(0, offset), Math.max(0, buf.duration - 0.05)));
+    return { src, gain: g, panner };
+  }
+
   function startSynth(o, offset = 0, pos = null) {
     const speaker = o.speaker || 'Kair';
-    const base = VOICES[speaker] ? speaker : 'Kair';
+    const base = VOICES[speaker] ? speaker : (SYNTH_ALIAS[speaker] || 'Kair');
     const layers = base === 'Crowd' ? [{ seed: 1, voice: { f0: 120 } }, { seed: 7, voice: { f0: 170, rate: 1.15 } }] : [{ seed: 0, voice: o.voice }];
     const dest = ctx.createGain(); dest.gain.value = 1;
     let node = dest;
@@ -166,21 +264,20 @@ export function createVoice(game, eng) {
     for (const L of layers) {
       const plan = planUtterance({ native: o.native, text: o.text, speaker: base, duration: o.duration, seed: L.seed, voice: L.voice });
       plans.push(plan);
-      handles.push(playPlan(ctx, dest, plan, { offset, gain: o.gain ?? 1 }));
+      handles.push(playPlan(ctx, dest, plan, { offset, gain: (o.gain ?? 1) * SYNTH_GAIN }));
     }
     handles.push({ stop(f = 0.08) { setTimeout(() => { try { dest.disconnect(); node.disconnect(); } catch { /* нет */ } }, (f + 0.2) * 1000); } });
     return { handles, plan: plans[0], plans };
   }
 
-  function startTTS(o, offset = 0) {
+  function startTTS(o) {
     const v = arVoice();
     if (!tts || !v || !o.nativeScript) return null;
     try {
       const u = new SpeechSynthesisUtterance(o.nativeScript);
       u.voice = v; u.lang = v.lang;
-      const vo = voiceOf(o.speaker);
+      const vo = voiceOf(SYNTH_ALIAS[o.speaker] || o.speaker);
       u.pitch = Math.max(0.2, Math.min(2, Math.pow(vo.f0 / 140, 0.75)));
-      const est = o.nativeScript.length / 12;
       u.rate = 0.9;
       u.volume = Math.max(0, Math.min(1, (S.volume?.vo ?? 1) * (S.volume?.master ?? 1)));
       u.onerror = () => {};
@@ -190,7 +287,7 @@ export function createVoice(game, eng) {
     } catch { return null; }
   }
 
-  /** Галах: перевод голосом языка игры (TTS); нет TTS-голоса — синтезатор-«бормотание» по слогам перевода. */
+  /** Галах: перевод голосом языка игры (TTS браузера); нет TTS-голоса — синтезатор-«бормотание» по слогам перевода. */
   function startGalach(o) {
     if (!tts) return null;
     try {
@@ -199,7 +296,7 @@ export function createVoice(game, eng) {
       if (!v) return null;
       const u = new SpeechSynthesisUtterance(o.text);
       u.voice = v; u.lang = v.lang; u.rate = 0.95;
-      u.pitch = Math.max(0.2, Math.min(2, Math.pow(voiceOf(o.speaker).f0 / 140, 0.75)));
+      u.pitch = Math.max(0.2, Math.min(2, Math.pow(voiceOf(SYNTH_ALIAS[o.speaker] || o.speaker).f0 / 140, 0.75)));
       u.volume = Math.max(0, Math.min(1, (S.volume?.vo ?? 1) * (S.volume?.master ?? 1)));
       u.onerror = () => {};
       speechSynthesis.cancel(); speechSynthesis.speak(u);
@@ -207,28 +304,68 @@ export function createVoice(game, eng) {
     } catch { return null; }
   }
 
+  function fallback(o, offset, pos) {
+    const m = mode();
+    const wantTTS = (m === 'tts' || (m === 'auto' && !SYNTH_ONLY.has(o.speaker))) && !!o.nativeScript;
+    let r = o.galach ? startGalach(o) : (wantTTS ? startTTS(o) : null);
+    if (!r) r = startSynth(o, offset, pos);
+    return r;
+  }
+
   function speak(o) {
     if (!o || !eng.running) return null;
     const m = mode();
     if (m === 'off') return null;
     if (o.exclusive !== false) stop(0.05);
-    const pos = posOf(o.speaker, o.pos);
-    const wantTTS = (m === 'tts' || (m === 'auto' && !SYNTH_ONLY.has(o.speaker))) && !!o.nativeScript;
-    let r = o.galach ? startGalach(o) : (wantTTS ? startTTS(o) : null);
-    if (!r) r = startSynth(o, 0, pos);
-    cur = { id: o.id, speaker: o.speaker, o, pos, startedAt: game.time, duration: o.duration || 3, ...r };
+    const pos = posOf(o.speaker, o.pos, o.chain);
+    const myTok = ++tok;
+    const useBank = m !== 'synth' && !o.galach && !!o.id && bank.has(o.id);
+    const dur = bank.duration(o.id) || o.duration || 3;
+    cur = { id: o.id, speaker: o.speaker, o, pos, startedAt: game.time, duration: dur, handles: [], tok: myTok, mode: useBank ? 'clip' : 'fallback' };
+    if (useBank) {
+      cur.pending = true;
+      bank.decode(ctx, o.id).then((buf) => {
+        if (!cur || cur.tok !== myTok) return;               // реплику уже сменили
+        cur.pending = false;
+        if (!buf) { Object.assign(cur, { mode: 'fallback' }, fallback(o, game.time - cur.startedAt, cur.pos)); return; }
+        const late = Math.max(0, game.time - cur.startedAt);
+        if (late > buf.duration - 0.15) return;
+        cur.clip = startClip(buf, late, cur.pos, 0.95, o.speaker === 'Priestess' ? 0.25 : 0.2);
+        cur.duration = buf.duration;
+        // прогрев: декодируем следующие реплики цепочки
+        let nid = game.dialogue?.row?.(o.id)?.next;
+        for (let k = 0; k < 2 && nid; k++) { bank.decode(ctx, nid); nid = game.dialogue?.row?.(nid)?.next; }
+      });
+    } else {
+      Object.assign(cur, fallback(o, 0, pos));
+    }
     return cur;
+  }
+
+  // ---- Лай толпы: тихое безсловесное бормотание ----
+  function bark(e) {
+    if (mode() === 'off' || !eng.running) return;
+    if (game.dialogue?.isStoryLinePlaying) return;
+    if (barkVoices.size >= 2) return;
+    const arch = e.archetype || 'Elder';
+    const pick = bank.barkPick(arch, lastBark[arch] ?? -1);
+    if (!pick) return;
+    lastBark[arch] = pick.idx;
+    const pos = e.pos ? { x: e.pos.x, y: e.pos.y, z: e.pos.z } : null;
+    bank.decodeBark(ctx, pick).then((buf) => {
+      if (!buf) return;
+      const clip = startClip(buf, 0, pos, BARK_GAIN, 0.3);
+      const h = { clip };
+      barkVoices.add(h);
+      clip.src.onended = () => { barkVoices.delete(h); try { clip.gain.disconnect(); clip.panner?.disconnect(); } catch { /* нет */ } };
+    });
   }
 
   // ---- События ----
   game.bus.on('subtitle', (e) => {
     if (!e || e.kind === 'lore') return;   // надписи не озвучиваем
-    if (e.kind === 'bark') {
-      if (cur && game.dialogue?.isStoryLinePlaying) return;
-      speak({ id: e.id, speaker: e.archetype === 'Child' ? 'Child' : 'Crowd', native: e.native, text: e.text, duration: e.duration, pos: e.pos, gain: 0.6, exclusive: false });
-      return;
-    }
-    speak({ id: e.id, speaker: e.speaker, native: e.native, nativeScript: e.nativeScript, galach: e.galach, text: e.text, duration: e.duration });
+    if (e.kind === 'bark') { bark(e); return; }
+    speak({ id: e.id, speaker: e.speaker, native: e.native, nativeScript: e.nativeScript, galach: e.galach, text: e.text, duration: e.duration, chain: e.chain });
   });
   game.bus.on('dialogue:stop', () => stop());
   game.bus.on('chain:end', () => { /* реплика доигрывает до конца сама */ });
@@ -238,7 +375,14 @@ export function createVoice(game, eng) {
       if (cur && !cur.tts) { resume = { o: cur.o, at: game.time - cur.startedAt, pos: cur.pos }; stop(0.05); }
       else if (cur?.tts && tts) { try { speechSynthesis.pause(); } catch { /* нет */ } }
     } else {
-      if (resume && resume.at < (resume.o.duration || 3) - 0.2) { const r = resume; resume = null; const s = startSynth(r.o, r.at, r.pos); cur = { id: r.o.id, speaker: r.o.speaker, o: r.o, pos: r.pos, startedAt: game.time - r.at, duration: r.o.duration || 3, ...s }; }
+      if (resume && resume.at < (bank.duration(resume.o.id) || resume.o.duration || 3) - 0.2) {
+        const r = resume; resume = null;
+        const myTok = ++tok;
+        const dur = bank.duration(r.o.id) || r.o.duration || 3;
+        cur = { id: r.o.id, speaker: r.o.speaker, o: r.o, pos: r.pos, startedAt: game.time - r.at, duration: dur, handles: [], tok: myTok, mode: 'clip' };
+        if (mode() !== 'synth' && bank.has(r.o.id)) bank.decode(ctx, r.o.id).then((buf) => { if (cur && cur.tok === myTok && buf) cur.clip = startClip(buf, game.time - cur.startedAt, cur.pos, 0.95); });
+        else Object.assign(cur, startSynth(r.o, r.at, r.pos));
+      }
       resume = null;
       if (tts) { try { speechSynthesis.resume(); } catch { /* нет */ } }
     }
@@ -247,11 +391,20 @@ export function createVoice(game, eng) {
   game.bus.on('photo', ({ active } = {}) => hold(!!active));
 
   return {
-    speak, stop, mode, renderOffline,
-    update() { if (cur && game.time - cur.startedAt > cur.duration + 1.2) { if (cur.tts && tts && !speechSynthesis.speaking) cur = null; else if (!cur.tts) cur = null; } },
+    speak, stop, mode, renderOffline, bank,
+    update() {
+      if (!cur) return;
+      // голос следует за говорящим (спутники идут, жители ходят)
+      if (cur.clip?.panner && cur.o) {
+        const np = posOf(cur.speaker, null, cur.o.chain);
+        if (np) { setPan(cur.clip.panner, np, true); cur.pos = np; }
+      }
+      if (game.time - cur.startedAt > cur.duration + 1.2) { if (cur.tts && tts && !speechSynthesis.speaking) cur = null; else if (!cur.tts) cur = null; }
+    },
     get hasArabic() { return !!arVoice(); },
     get active() { return !!cur; },
     get speaker() { return cur?.speaker ?? null; },
     get current() { return cur; },
+    get usingRecording() { return cur?.mode === 'clip'; },
   };
 }

@@ -72,23 +72,23 @@ const FRAG_COLOR = /* glsl */`
   float seam = (1.0 - smoothstep(0.0, 0.04, edge)) * step(float(tag), 3.5);
   if (tag == 2) seam *= 0.4;
   float riv = 0.0;
-  if (lod > 0.01 && tag != 2) {
+  if (lod > 0.01 && tag != 2 && tag != 7) {
     float r1 = length(vec2(e.x - 0.22, (fract(f.y / 0.45) - 0.5) * 0.45)) * step(0.15, e.y);
     float r2 = length(vec2(e.y - 0.22, (fract(f.x / 0.45) - 0.5) * 0.45)) * step(0.15, e.x);
     float r = min(e.x < 0.4 ? r1 : 9.0, e.y < 0.4 ? r2 : 9.0);
     riv = (1.0 - smoothstep(0.05, 0.075, r)) * lod;
   }
-  base *= (0.9 + 0.24 * ch) * 1.25;
+  base *= (0.95 + 0.12 * ch) * 1.12;
   // латаные листы: более светлые оливково-серые
   float patchK = step(0.9, ch2) * step(float(tag), 0.5);
   base = mix(base, vec3(0.30, 0.31, 0.26) * (0.8 + 0.4 * ch), patchK);
   base *= 1.0 - 0.45 * seam;
-  base += vec3(0.07) * riv * (1.0 - patchK * 0.5);
+  base += vec3(0.045) * riv * lod * (1.0 - patchK * 0.5);
 
   float n1 = 0.55, n2 = 0.5, n3 = 0.5, dirt = 0.35, chip = 0.0, oil = 0.0, scour = 0.0;
-  float low = smoothstep(14.0, 0.0, vLP.y);
+  float low = smoothstep(16.0, 5.0, vLP.y);
   vec3 sand = vec3(0.62, 0.46, 0.28);
-  if (dist < 320.0) {
+  if (dist < 170.0) {
   // --- грязь, масляные потёки, ржавчина
   n1 = rkFbm(uv * 0.45 + ax * 9.0 + vLP.x * 0.05);
   n2 = rkFbm(uv * 2.3 + 3.0 + ax * 5.0);
@@ -96,7 +96,7 @@ const FRAG_COLOR = /* glsl */`
   dirt = smoothstep(0.30, 0.85, n1) * (0.5 + 0.5 * uWear);
   base = mix(base, base * vec3(0.62, 0.54, 0.46), dirt * 0.55);
   float rustN = rkFbm(uv * 0.9 + 11.0 + ax * 3.0) + seam * 0.22 + (1.0 - smoothstep(0.0, 9.0, vLP.y)) * 0.12;
-  float rustK = (tag == 3 ? 1.7 : 0.8) * uWear;
+  float rustK = (tag == 3 ? 1.5 : 0.42) * uWear;
   float rust = smoothstep(0.56, 0.78, rustN) * clamp(rustK, 0.0, 1.0);
   vec3 rustC = mix(vec3(0.30, 0.11, 0.045), vec3(0.50, 0.22, 0.07), n2);
   if (tag != 2) base = mix(base, rustC, rust * 0.85);
@@ -112,10 +112,13 @@ const FRAG_COLOR = /* glsl */`
   // --- пескоструй: внизу краска стёрта, налёт песка
   scour = low * smoothstep(0.35, 0.75, n1 + n3 * 0.25);
   if (tag != 2) base = mix(base, vec3(0.38, 0.34, 0.30), scour * 0.5 * uWear);
-  base = mix(base, sand * (0.8 + 0.4 * n2), low * (0.18 + 0.3 * n1) * uWear);
+  base = mix(base, sand * (0.8 + 0.4 * n2), low * (0.2 + 0.3 * n1) * uWear);
   } else {
-    base = mix(base, base * vec3(0.62, 0.54, 0.46), 0.2);
-    base = mix(base, sand * 0.8, low * 0.25);
+    float nf = rkNoise(uv * 0.25 + ax * 5.0);
+    n1 = nf; n2 = nf; dirt = 0.4;
+    base = mix(base, base * vec3(0.62, 0.54, 0.46), 0.2 + 0.25 * nf);
+    base = mix(base, sand * 0.8, low * (0.14 + 0.25 * nf));
+    scour = low * 0.5;
   }
   // --- сигнальные полосы
   if (tag == 4) {
@@ -124,18 +127,30 @@ const FRAG_COLOR = /* glsl */`
   }
   // --- пыль на верхних гранях
   float top = smoothstep(0.55, 0.95, N.y) * (0.55 + 0.45 * rkFbm(uv * 1.7));
-  base = mix(base, sand * (0.85 + 0.3 * n3), top * 0.8 * (tag == 2 ? 0.5 : 1.0));
+  vec3 spiceC = mix(sand, vec3(0.62, 0.32, 0.14), 0.35 * smoothstep(0.4, 0.8, n1));
+  base = mix(base, spiceC * (0.85 + 0.3 * n3), top * 0.6 * (tag == 2 ? 0.5 : 1.0));
 
-  gH = (-seam * 0.02 + riv * 0.025 + (n3 - 0.5) * 0.01 * lod - chip * 0.01) ;
+  gH = (-seam * 0.016 * (0.3 + 0.7 * lod) + riv * 0.011 + (n1 - 0.5) * 0.004 * lod);
   gR = mix(0.5, 0.92, clamp(dirt + top + scour, 0.0, 1.0));
   gR = mix(gR, 0.28, oil * 0.8);
   if (tag == 2) gR = 0.9;
+  if (tag == 7) {   // перепонка крыльев, брезент: ткань без заклёпок
+    float wv = sin(uv.x * 36.0) * sin(uv.y * 36.0) * 0.5 + 0.5;
+    base = diffuseColor.rgb * (0.95 + 0.1 * rkNoise(uv * 5.0)) * (0.93 + 0.1 * wv * lod) * (1.0 - 0.18 * smoothstep(0.4, 0.9, n1));
+    base = mix(base, sand * 0.8, top * 0.25);
+    gR = 0.85; gH = 0.0;
+  }
+  if (tag == 6) {   // песчаные наносы на корпусе
+    float rip = sin((uv.x * 1.3 + uv.y * 0.7) * 5.0 + n1 * 6.0) * 0.5 + 0.5;
+    base = mix(sand, vec3(0.62, 0.34, 0.17), 0.18 * smoothstep(0.5, 0.9, n1)) * (0.88 + 0.2 * n2) * (0.93 + 0.1 * rip);
+    gR = 0.96; gH = rip * 0.012;
+  }
   base *= 1.0 - 0.25 * (1.0 - lod2) * 0.0;
 #ifdef HV_TEX
-  float tpK = (1.0 - smoothstep(60.0, 320.0, dist)) * uHTexK.x * (tag == 4 ? 0.3 : 1.0);
+  float tpK = (1.0 - smoothstep(40.0, 190.0, dist)) * uHTexK.x * (tag == 4 ? 0.3 : (tag == 6 ? 0.0 : 1.0));
   if (tpK > 0.002) {
     tpHEval(vLP, N);
-    base *= mix(vec3(1.0), clamp(tpHMul, 0.62, 1.45), tpK * uHTexK.y * (tag == 2 ? 0.5 : 1.0));
+    base *= mix(vec3(1.0), clamp(tpHMul, 0.8, 1.22), tpK * uHTexK.y * (tag == 2 ? 0.5 : 1.0));
     gR = mix(gR, clamp(gR * (0.35 + tpHRgh), 0.05, 1.0), tpK * uHTexK.z);
     gTpD = (tpHNW - N) * tpK * uHTexK.w;
   }
@@ -147,7 +162,7 @@ const FRAG_FILL = `reflectedLight.indirectDiffuse += diffuseColor.rgb * uAmbient
 const FRAG_ROUGH = `roughnessFactor = gR;`;
 const FRAG_NORMAL = /* glsl */`
 {
-  vec2 dH = vec2(dFdx(gH), dFdy(gH)) * 40.0;
+  vec2 dH = vec2(dFdx(gH), dFdy(gH)) * 14.0;
   vec3 sX = dFdx(-vViewPosition), sY = dFdy(-vViewPosition);
   vec3 R1 = cross(sY, normal), R2 = cross(normal, sX);
   float det = dot(sX, R1) * faceDirection;
@@ -161,9 +176,9 @@ const FRAG_NORMAL = /* glsl */`
 export function createHullMaterial(quality) {
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7, metalness: 0.12, vertexColors: true });
   mat.userData.wear = { value: 1 };
-  const kit = triplanarKit('tpH', 'metal_rusty', { scale: 1.3, sharpness: 6, quality, ao: 0, normal: 1, chroma: 0.3 });
+  const kit = triplanarKit('tpH', 'metal_rusty', { scale: 2.2, sharpness: 6, quality, ao: 0, normal: 1, chroma: 0.25 });
   patchMaterial(mat, 'hv-hull' + (quality === 'low' ? 'L' : '') + (kit ? 't' : ''), {
-    uniforms: { uWear: mat.userData.wear, uHTexK: { value: new THREE.Vector4(1, 0.5, 0.6, 0.45) }, ...(kit ? kit.uniforms : {}) },
+    uniforms: { uWear: mat.userData.wear, uHTexK: { value: new THREE.Vector4(1, 0.55, 0.6, 0.28) }, ...(kit ? kit.uniforms : {}) },
     vertexPars: VERT_PARS, vertexMain: VERT_MAIN,
     fragPars: (kit ? '#define HV_TEX\nuniform vec4 uHTexK;\n' + kit.pars : '') + FRAG_PARS, fragColor: FRAG_COLOR, fragRough: FRAG_ROUGH, fragLightsEnd: FRAG_FILL,
     fragNormal: quality === 'low' ? '' : FRAG_NORMAL,
@@ -334,4 +349,28 @@ export function buildDecals(specs) {
   g.setIndex(idx);
   g.computeBoundingSphere();
   return g;
+}
+
+/** Песок наносов вокруг корпуса (берма): тот же цвет/текстура, что у грунта пустыни (triplanar 'sand'), общий туман. */
+export function createSandMaterial(quality) {
+  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.96, metalness: 0 });
+  const kit = triplanarKit('tpB', 'sand', { scale: 1.5, sharpness: 5, quality, ao: 0, normal: 1, chroma: 0.55, rough: 0, antiTile: false });
+  patchMaterial(mat, 'hv-sand' + (quality === 'low' ? 'L' : '') + (kit ? 't' : ''), {
+    uniforms: { uBA: { value: new THREE.Color('#CFB083') }, uBB: { value: new THREE.Color('#B8936A') }, ...(kit ? kit.uniforms : {}) },
+    vertexPars: 'varying vec3 vWP; varying vec3 vWN;\n',
+    vertexMain: 'vec3 transformed = vec3(position); vWP = (modelMatrix * vec4(position, 1.0)).xyz; vWN = normalize(mat3(modelMatrix) * normal);\n',
+    fragPars: 'varying vec3 vWP; varying vec3 vWN; uniform vec3 uBA; uniform vec3 uBB;\nvec3 gBN = vec3(0.0, 1.0, 0.0); float gBK = 0.0;\n' + (kit ? kit.pars : ''),
+    fragColor: /* glsl */`
+#include <color_fragment>
+{
+  vec3 N = normalize(vWN);
+  float m = rkFbm(vWP.xz / 38.0) - 0.5, st = rkNoise(vec2(vWP.x * 0.06 + vWP.z * 0.03, vWP.z * 0.5 - vWP.x * 0.2));
+  vec3 col = mix(uBA, uBB, smoothstep(0.35, 0.8, st) * 0.7) * (1.0 + 0.2 * m);
+  col = mix(col, col * vec3(0.8, 0.68, 0.58), smoothstep(0.55, 0.15, N.y) * 0.5);
+  ${kit ? 'tpBEval(vWP, N); col *= clamp(tpBMul, 0.7, 1.35); gBN = tpBNW; gBK = 1.0;' : ''}
+  diffuseColor.rgb = col;
+}`,
+    fragNormal: kit ? 'normal = normalize((viewMatrix * vec4(mix(vWN, gBN, gBK * 0.85), 0.0)).xyz);' : '',
+  });
+  return mat;
 }

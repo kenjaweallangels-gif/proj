@@ -1,5 +1,5 @@
 // Отладка: game.debug.goto(name) — быстрый переход к ключевым точкам демо (используется tools/smoke.mjs).
-// Имена: start | erg | P1..P7b | worm | A3 | trail | cleft | sietch | market(gallery) | hall | finale | garden | end
+// Имена: start | erg | P1..P7b | worm | A3 | trail | cleft | sietch | market(gallery) | hall | finale | garden
 // (mouth — устаревший синоним trail). Новые точки берутся из layout (ENTRY/GARDEN) и, если есть, из game.approach / game.garden.
 import { START, GOLDEN_PATH, SIETCH_ORIGIN, SIETCH, WORM_REVEAL, ENTRY, GARDEN } from '../core/layout.js';
 
@@ -58,7 +58,7 @@ export function create(game) {
           if (game.story?.startRitual) game.story.startRitual();
           else game.sietch?.startRitual?.();
           if (name === 'finale') game.story?.fire?.('Beat:SB_B5_06_Feet');
-        } else if (name === 'end') { if (game.story?.endDemo) game.story.endDemo(); else game.ui?.endCard?.(); }
+        }
         else if (gp(name)) { const p = gp(name); const i = GOLDEN_PATH.indexOf(p); tp(p.x, p.z, yawTo(p, GOLDEN_PATH[Math.min(i + 1, GOLDEN_PATH.length - 1)])); }
         else console.warn(`[debug] неизвестная точка '${name}'`);
         bus.emit('debug:goto', { name });
@@ -90,7 +90,7 @@ export function create(game) {
       } catch (e) { console.error('[debug.devour]', e); return null; }
       finally { devourBusy = false; }
     },
-    names: ['start', 'erg', 'P4', 'worm', 'A3', 'trail', 'cleft', 'sietch', 'market', 'hall', 'garden', 'finale', 'end'],
+    names: ['start', 'erg', 'P4', 'worm', 'A3', 'trail', 'cleft', 'sietch', 'market', 'hall', 'garden', 'finale'],
     fire: (t) => game.story?.fire?.(t),
     beats: () => game.story?.list?.(),
   };

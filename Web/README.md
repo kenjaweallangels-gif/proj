@@ -12,8 +12,15 @@ npm run build        # → dist/rakis_demo.html (один самодостато
 npm run dev          # локально: http://localhost:8080, пересборка при изменениях
 npm test             # headless Chromium: прогон ключевых точек + скриншоты в dist/shots/
 ```
-URL-параметры: `?q=low|med|high` (качество), `&lang=RU|EN`, `&skip=1` (без титульного экрана),
-`&at=P4|worm|A3|sietch|gallery|hall` (старт с точки).
+URL-параметры: `?q=low|med|high` (качество; без параметра — автоподбор по GPU/устройству), `&lang=RU|EN`, `&skip=1` (без титульного экрана),
+`&at=P4|worm|A3|sietch|gallery|hall` (старт с точки), `&perf=1` (оверлей профайлера; то же — F3), `&drs=0` (выключить динамическое разрешение),
+`&fps=55` (цель DRS), `&warm=0|1` (прогрев шейдеров на экране загрузки; по умолчанию вкл., в autotest выкл.).
+
+## Управление
+`WASD` — движение, `Shift` — бег, `Мышь` — камера, `V` — камера 1/3 лица, `E/F` — действие, `T` — тампер, `M` — маска,
+`C`/`Alt` — **походка по песку**, `Space` — **прыжок** в обычном режиме и **сбой ритма (stutter)** в режиме походки по песку, `ПКМ` — всегда stutter,
+`F2` — погода, `F3` — профайлер. Геймпад: `A` — то же, что Space. Падать с уступов можно (урона нет, при приземлении — вмятина камеры,
+лёгкий шум по песку); из сиетча можно выйти через щель по тропе вниз, а с верхних звеньев тропы — спрыгнуть в пустыню.
 
 ## Контракт модулей (для разработчиков)
 
@@ -39,11 +46,28 @@ URL-параметры: `?q=low|med|high` (качество), `&lang=RU|EN`, `&s
 | Сиетч, толпа | `src/sietch/**` | `game.sietch` | `enter()→Promise, heightAt, surfaceAt, collide, zoneAt(pos), startRitual(), playFinale()→Promise, speakerPos(id)` |
 | Диалоги, сюжет, звук, UI | `src/story/**`, `src/audio/**`, `src/ui/**` | `game.dialogue`, `game.story`, `game.audio`, `game.ui`, `game.debug` | dialogue: `play(id)→Promise, bark(arch, ctx, pos), lore(id), isBusy`; story: `fire(trigger)`; audio: `event(id, pos?), setMusic(state)`; ui: `fade(toBlack, sec)→Promise, titleCard(text), hint(text), letterbox(b) (только явный вызов), endCard()`; debug: `goto(name)` (`start, erg, P4, worm, A3, trail, cleft, sietch, market, hall, garden, finale, end`), `devour()` (сценарий «червь пожирает харвестер») |
 
+### Производительность и устойчивость (core)
+- Игровой цикл (`core/game.js`): `dt` ограничен 50 мс; `game.simulate(sec, dt, onTick)` — симуляция без рендера (боты/тесты); `colliders.tick()` раз в кадр.
+- `core/perf.js` — профайлер (оверлей F3/`?perf=1`): CPU мс на модуль (update+lateUpdate), render(cpu), draw calls/треугольники/программы/текстуры
+  (`renderer.info`, сбрасывается раз в кадр — композер рисует несколько проходов), куча JS, GPU-время (если есть `EXT_disjoint_timer_query`), график кадра.
+  `game.perf.snapshot()` — усреднённые значения для `tools/perf_probe.mjs` (`node tools/perf_probe.mjs --q=low,med`, отчёт `dist/perf/report.json`).
+- `core/quality.js` — автопресет и динамическое разрешение (DRS): `game.drs.level/scale`, `game.setRenderScale(s)`; `core/shadows.js` — троттлинг теней солнца при просадке.
+- `core/colliders.js` — равномерная сетка (ячейка 12 м) + покрытие с запасом 2 м: `push/near/overlaps/segmentBlocked` не перебирают все тела; тест `node tools/colliders_test.mjs`.
+- `desert/field.js: heightAtCached` — кэш высоты основы (узлы 0.25 м, билинейно; погрешность ≤ 8 см на гребнях дюн) для всей игровой логики (`world.heightAt`).
+- Игрок: физика с фиксированным шагом 60 Гц (`CFG.phys`), отрисовка и камера по интерполированной `player.renderPos`; на земле — слежение за рельефом без запаздывания
+  на склонах, сход с уступа > `CFG.jump.snapDown` → свободное падение (`CFG.jump`: гравитация, койот-время, буфер прыжка); события шины `jump`, `land {impact}`.
+- `core/reconcile.js` — после загрузки убирает валуны пустыни, перегородившие тропу подхода.
+- Прогрев шейдеров (`main.js: warmup`): состояния «как есть» / «всё видимо» / сочетания огней харвестера и сиетча / «глубоко в сиетче» — число видимых источников света входит в ключ
+  программы, переключение посреди игры перекомпилировало все материалы (подвисания). `?warm=0` отключает (в `autotest=1` выключен по умолчанию).
+- Инструменты: `tools/perf_probe.mjs` (рендер, SwiftShader: draw/tris/programs/CPU render; `--prof=1` — топ функций), `tools/perf_cpu.mjs` (чистое время JS-логики по модулям без рендера, до/после на любой сборке),
+  `tools/perf_report.mjs` (сводка → `dist/perf/report.json`), `tools/route_free.mjs` (плавность, прыжок, сиетч↔пустыня↔тропа, спрыгнуть с уступа; без рендера через `game.simulate`),
+  `tools/colliders_test.mjs`/`colliders_bench.mjs`, `tools/drs_test.mjs`, `tools/npc_smooth.mjs`, `tools/dbg_lights.mjs` (кто владеет источниками света).
+
 ### События `bus`
 `boot`, `start` (игра началась после титула), `zone {from,to}`, `footstep {x,z,yaw,surface,actor}`, `noise {x,z,loudness,source}`,
 `stutter`, `sandwalk {on}`, `interact {tag}`, `worm:state {from,to}`, `worm:breach {x,z}`, `thumper {x,z}`,
 `subtitle {speaker,name,text,duration,kind}`, `line:end {id}`, `chain:end {id}`, `cinematic {active,id}`,
-`weather {id}`, `music {state}`, `ritual`, `space {space}`, `pause {paused}`, `photo {active}`, `end`.
+`weather {id}`, `music {state}`, `ritual`, `space {space}`, `pause {paused}`, `photo {active}`, `end`, `jump {x,z}`, `land {x,y,z,impact,surface}`.
 
 ### Сюжет в реальном времени (story/ui/audio)
 - Нет склеек времени («N часов спустя») и кат-сцен с отнятым управлением. `PlayCinematic` в StoryBeats лишь вызывает `worm.playReveal()` / `sietch.playFinale()` и ждёт Promise; `game.cinematic` директор не трогает. Действие `Ellipsis` из старых таблиц игнорируется.

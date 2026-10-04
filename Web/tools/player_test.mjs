@@ -60,6 +60,12 @@ check('run speed ~6, loud', s.speed > 5 && s.noise > 0.7, `speed=${s.speed.toFix
 await page.screenshot({ path: join(outDir, '3_tp_run.png') });
 await page.keyboard.up('ShiftLeft');
 
+// 1b. Space в обычном режиме — прыжок (не stutter); приземление возвращает на землю
+await ev(() => { const g = window.__rakis; g.__ev.jump = 0; g.__ev.land = 0; g.__ev.st0 = g.__ev.stutter; g.bus.on('jump', () => g.__ev.jump++); g.bus.on('land', () => g.__ev.land++); });
+await page.keyboard.press('Space'); await wait(1.5);
+const jp = await ev(() => { const g = window.__rakis; return { jump: g.__ev.jump, grounded: g.player.grounded, stutter: g.__ev.stutter - g.__ev.st0 }; });
+check('Space = jump in normal mode (no stutter)', jp.jump === 1 && jp.grounded && jp.stutter === 0, JSON.stringify(jp));
+
 // 2. Походка по песку: ровно vs с Stutter
 await page.keyboard.down('KeyC'); await wait(5);
 const regSteady = await ev(() => ({ reg: window.__rakis.player.regularity, speed: window.__rakis.player.speed, sw: window.__rakis.player.sandWalking, last: window.__rakis.player.lastStepLoudness }));

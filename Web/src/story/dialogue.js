@@ -3,12 +3,16 @@
 // События: 'subtitle' {id, speaker, name, text, native, nativeScript, duration, kind:'line'|'lore'|'bark', pos?}, 'line:end' {id}, 'chain:end' {id}.
 import { clamp } from '../core/util.js';
 import { loadSettings } from '../ui/settings.js';
+import * as vo from '../audio/vo_bank.js';
 
 const SPEAKERS = {
   Kair: ['Кайр', 'Kair'], Ilva: ['Сестра Илва', 'Sister Ilva'], Rayn: ['Мастер Рэйн', 'Master Rayn'],
   Ossana: ['Оссана', 'Ossana'], Rider: ['Наездник', 'Rider'], Rider1: ['Наездник', 'Rider'], Rider2: ['Наездник', 'Rider'],
   Guard: ['Страж', 'Guard'], Harmat: ['Наиб Хармат', 'Naib Harmat'], Priestess: ['Жрица', 'Priestess'],
   Crowd: ['', ''], Lore: ['', ''],
+  // жители сиетча (подслушанные сцены, Ред. 2)
+  Trader: ['Торговец', 'Trader'], Carrier: ['Водоноска', 'Water-carrier'], Weaver: ['Ткачиха', 'Weaver'], Mother: ['Мать', 'Mother'],
+  Child: ['Мальчик', 'Boy'], Girl: ['Девочка', 'Girl'], Elder: ['Старик', 'Elder'], Youth: ['Юноша', 'Youth'], Pilgrim: ['Паломница', 'Pilgrim'],
 };
 const MAX_CHAIN_STEPS = 64;
 const BARK_RADIUS = 10;        // м
@@ -126,9 +130,11 @@ export function create(game) {
     playing = true; curId = id;
     const { text, native, nativeScript, galach } = lineParts(r);
     const isLore = r.speaker === 'Lore';
-    const duration = r.duration > 0 ? r.duration : (isLore ? clamp(0.07 * text.length + 2, 4, 10) : autoDuration(text));
+    // Длительность субтитра = длина записи озвучки (+ небольшая пауза между репликами); без записи — Duration из таблицы / оценка по тексту.
+    const audioDur = isLore ? 0 : vo.duration(id);
+    const duration = audioDur > 0 ? audioDur + 0.4 : (r.duration > 0 ? r.duration : (isLore ? clamp(0.07 * text.length + 2, 4, 10) : autoDuration(text)));
     remaining = duration;
-    bus.emit('subtitle', { id, speaker: r.speaker, name: speakerName(r.speaker), text, native, nativeScript, galach, duration, kind: isLore ? 'lore' : 'line', emotion: r.emotion });
+    bus.emit('subtitle', { id, speaker: r.speaker, name: speakerName(r.speaker), text, native, nativeScript, galach, duration, kind: isLore ? 'lore' : 'line', emotion: r.emotion, chain: chainStart, audio: audioDur > 0 });
   }
   function lineDone() {
     const id = curId;

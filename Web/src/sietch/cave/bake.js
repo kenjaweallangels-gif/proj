@@ -13,6 +13,31 @@ export { BOUNDS, GRID };
 
 const hash1 = (n) => { let h = Math.imul(n ^ 0x9e3779b9, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
 
+/** Активность блока surface nets: |SDF в центре| меньше полудиагонали (+запас на неточность SDF). */
+export function makeBlockActive(V, k = 1.15, m = 2.0) { return (cx, cy, cz, half) => Math.abs(V.sample(cx, cy, cz)) < half * k + m; }
+
+/**
+ * Открытые торцы: треугольники за плоскостью проёма не рисуем — туннели не закрыты «крышкой» и не торчат наружу.
+ *  • выход в сад: (p − mouth)·dir > EXIT.cutT;  • вход (расщелина): (p − ENTRY_CUT.p)·n > 0 (дальше — ниша тропы, модуль level).
+ */
+export function trimExitCap(mesh) {
+  const E = L.EXIT, EC = L.ENTRY_CUT, P = mesh.positions, I = mesh.indices;
+  const out = new Uint32Array(I.length);
+  let n = 0;
+  const sideExit = (v) => (P[v * 3] - E.mouth[0]) * E.dir[0] + (P[v * 3 + 2] - E.mouth[1]) * E.dir[1] - E.cutT;
+  const sideEntry = (v) => ((P[v * 3] - EC.p[0]) * EC.n[0] + (P[v * 3 + 2] - EC.p[1]) * EC.n[1]) - EC.cutT;
+  const inEntryZone = (v) => P[v * 3 + 2] > 0.5 && P[v * 3] < 2 && P[v * 3 + 2] < 30;   // область входного хода (локально)
+  const inExitZone = (v) => P[v * 3 + 2] < -40 && P[v * 3] > 185;
+  for (let t = 0; t < I.length; t += 3) {
+    const a = I[t], b = I[t + 1], c = I[t + 2];
+    if (inExitZone(a) && inExitZone(b) && inExitZone(c) && sideExit(a) > 0 && sideExit(b) > 0 && sideExit(c) > 0) continue;
+    if (inEntryZone(a) && inEntryZone(b) && inEntryZone(c) && sideEntry(a) > 0 && sideEntry(b) > 0 && sideEntry(c) > 0) continue;
+    out[n++] = a; out[n++] = b; out[n++] = c;
+  }
+  mesh.indices = out.slice(0, n);
+}
+
+export const CHUNK = 16;
 export function bakeCave(opts = {}) {
   const log = opts.log || (() => {});
   const T0 = Date.now();
@@ -27,7 +52,8 @@ export function bakeCave(opts = {}) {
   lap('объём готов');
 
   // 2. Меш.
-  const mesh = surfaceNets(air, BOUNDS, cell, (cx, cy, cz, half) => Math.abs(V.sample(cx, cy, cz)) < half + 1.1, log);
+  const mesh = surfaceNets(air, BOUNDS, cell, makeBlockActive(V), log);
+  trimExitCap(mesh);
   const NV = mesh.positions.length / 3;
   lap(`меш: ${NV} вершин, ${mesh.indices.length / 3} треугольников`);
 
@@ -65,10 +91,14 @@ export function bakeCave(opts = {}) {
   lap('зонды освещения готовы');
 
   // 9. Чанки (по центроиду треугольника).
-  const chunks = buildChunks(mesh, 16);
+  const chunks = buildChunks(mesh, CHUNK);
   lap(`чанков ${chunks.list.length}`);
 
-  return { mesh, att, chunks, grids, probes, globes, anchors, decals, lights, bounds: BOUNDS, cell, bakeMs: Date.now() - T0 };
+  // 10. Потенциальная видимость чанков из ячеек 8 м (отсечение «за стеной»).
+  const pvs = buildPVS(V, mesh, chunks, log);
+  lap(`PVS: ячеек ${pvs.rows}, чанков ${chunks.list.length}`);
+
+  return { mesh, att, chunks, pvs, grids, probes, globes, anchors, decals, lights, bounds: BOUNDS, cell, bakeMs: Date.now() - T0 };
 }
 
 // ------------------------------------------------------------------ светошары ----
@@ -146,9 +176,12 @@ function vertexAttributes(mesh, V, field, lights, globes, log) {
     // --- цвет: низкочастотные вариации охры/умбры
     const n1 = vn3(x * 0.07, y * 0.09, z * 0.07), n2 = vn3(x * 0.16 + 4, y * 0.2, z * 0.16), n3 = vn3(x * 0.4 - 3, y * 0.5, z * 0.4);
     let r = 1 + 0.10 * n1 + 0.06 * n3, g = 1 + 0.07 * n1 - 0.05 * n2 + 0.05 * n3, b = 1 - 0.1 * n1 + 0.1 * n2;
-    const region = L.REGION_BY_X(x);
+    const region = L.REGION_BY_X(x, z, y);
+    const stairsB6 = x > 96 && x < 106.5 && z > 9 && y < 0;
     if (region === 'B1') { r *= 0.92; g *= 0.9; b *= 0.88; }
     if (region === 'B5') { r *= 1.06; g *= 1.04; }
+    if (region === 'B6') { r *= 0.86; g *= 0.97; b *= 1.12; }
+    else if (stairsB6) { const k = clamp(-y / 9, 0, 1); r *= 1 - 0.14 * k; b *= 1 + 0.12 * k; }
     const inCist = x > 106 && x < 144 && z > 8.2;
     if (inCist) { r *= 0.9; g *= 0.96; b *= 1.08; }
     // --- копоть: потолок над светошарами + общий
@@ -164,7 +197,7 @@ function vertexAttributes(mesh, V, field, lights, globes, log) {
     soot = clamp(soot, 0, 1);
     // --- полировка ладонями: стены на высоте руки в узких местах, пол по тропе, ступени
     let polish = 0;
-    const fl = field.floorY(x, z), hh = y - fl;
+    const fl = field.floorAt(x, y, z), hh = y - fl;
     const horizontalWall = Math.abs(n[1]) < 0.55;
     if (horizontalWall && hh > 0.7 && hh < 1.9) {
       const tNar = march(V, p[0] + n[0] * 0.15, p[1] + n[1] * 0.15, p[2] + n[2] * 0.15, n[0], n[1], n[2], 3.6, 0.1, 0.05);
@@ -178,6 +211,8 @@ function vertexAttributes(mesh, V, field, lights, globes, log) {
     // --- влага
     let wet = 0;
     if (inCist) wet = clamp((1 - smoothstep(-1.4, 2.2, y)) * 0.9 + (n[1] < -0.2 ? 0.2 : 0), 0, 1) * (0.7 + 0.3 * vn3(x * 0.6, y, z * 0.6) + 0.3);
+    if (region === 'B6') wet = clamp(0.4 + 0.5 * (1 - smoothstep(-9.2, -5.5, y)) + (n[1] < -0.2 ? 0.22 : 0) + 0.15 * vn3(x * 0.5, y * 0.5, z * 0.5), 0, 1);
+    else if (stairsB6) wet = Math.max(wet, clamp(-y / 9, 0, 1) * 0.55);
     wet = clamp(wet, 0, 1);
     // --- песок/пыль
     const rr = Math.hypot(x - L.HALL.cx, z - L.HALL.cz);
@@ -220,7 +255,7 @@ function buildGrids(field, V, log) {
   const { h, ox, oz, nx, nz } = GRID;
   const NOFLOOR = -32768;
   const f0 = new Float32Array(nx * nz).fill(NaN), f1 = new Float32Array(nx * nz).fill(NaN);
-  const YMAX = 34, YMIN = -29, STEP = 0.125;
+  const YMAX = 34, YMIN = -29, STEP = 0.5;
   let cols = 0;
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
     const x = ox + (i + 0.5) * h, z = oz + (j + 0.5) * h;
@@ -298,6 +333,9 @@ export function stairTop(x, z) {
     const k = Math.floor((9.2 - az) / run);
     return clamp((k + 1) * (L.LEDGE.y / nS), 0, L.LEDGE.y);
   }
+  // лестница водяного погреба (ступени 0.18 м)
+  const CS = L.CELLAR.stairs;
+  if (x > CS.x - 1.3 && x < CS.x + 1.3 && z > CS.z0 - 0.3 && z < CS.z0 + CS.n * CS.tread + 0.45) return L.cellarStairY(z);
   return null;
 }
 function applyStairHeights(f0, f1, nx, nz) {
@@ -375,4 +413,83 @@ function buildChunks(mesh, size) {
   const list = keys.map((key, k) => { const B = bb[k]; const cx = (B[0] + B[3]) / 2, cy = (B[1] + B[4]) / 2, cz = (B[2] + B[5]) / 2; return { start: starts[k], count: counts[k] * 3, bs: [cx, cy, cz, Math.hypot(B[3] - B[0], B[4] - B[1], B[5] - B[2]) / 2 + 0.2], key }; });
   mesh.indices = out;
   return { list };
+}
+
+// ------------------------------------------------------------------ PVS (видимость чанков из ячеек 8 м) ----
+function clearLine(V, ax, ay, az, bx, by, bz) {
+  const dx = bx - ax, dy = by - ay, dz = bz - az, L = Math.hypot(dx, dy, dz);
+  if (L < 0.4) return true;
+  const ix = dx / L, iy = dy / L, iz = dz / L;
+  let t = 0.2;
+  const tEnd = L - 0.35;
+  while (t < tEnd) {
+    const d = V.sample(ax + ix * t, ay + iy * t, az + iz * t);
+    if (d > -0.03) return false;
+    t += Math.max(0.2, -d * 0.85);
+  }
+  return true;
+}
+
+/**
+ * Для каждой воздушной ячейки 8 м (по объёму V) считает, какие чанки меша видны хотя бы из одной из ~14 точек ячейки до одной из ~28 точек на чанке.
+ * Результат: idx[ячейка] → строка таблицы (или −1), bits[строка] — битовая маска по чанкам. Чанки дальше FAR (по сфере) невидимы.
+ */
+function buildPVS(V, mesh, chunks, log, CS = 8, FAR = 115) {
+  const list = chunks.list, NC = list.length, P = mesh.positions, I = mesh.indices;
+  const ox = BOUNDS.min[0], oy = BOUNDS.min[1], oz = BOUNDS.min[2];
+  const nx = Math.ceil((BOUNDS.max[0] - ox) / CS), ny = Math.ceil((BOUNDS.max[1] - oy) / CS), nz = Math.ceil((BOUNDS.max[2] - oz) / CS);
+  // целевые точки чанков
+  const targets = list.map((c, k) => {
+    const pts = [], nt = c.count / 3, n = Math.min(30, nt);
+    for (let i = 0; i < n; i++) {
+      const t = Math.floor(((i + 0.5) / n) * nt), v = I[c.start + t * 3 + (i % 3)];
+      pts.push([P[v * 3], P[v * 3 + 1], P[v * 3 + 2]]);
+    }
+    return pts;
+  });
+  const rowOf = new Int16Array(nx * ny * nz).fill(-1);
+  const rows = [];
+  const NB = Math.ceil(NC / 8);
+  let seed = 12345; const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+  let pairs = 0;
+  for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    // воздушные точки внутри ячейки
+    const pts = [];
+    for (let a = 0; a < 700 && pts.length < 14 && !(a > 120 && pts.length >= 1); a++) {
+      const x = ox + (i + rnd()) * CS, y = oy + (j + rnd()) * CS, z = oz + (k + rnd()) * CS;
+      if (V.sample(x, y, z) < -0.35) pts.push([x, y, z]);
+    }
+    if (!pts.length) continue;
+    const cx = ox + (i + 0.5) * CS, cy = oy + (j + 0.5) * CS, cz = oz + (k + 0.5) * CS, cr = CS * 0.87;
+    const bits = new Uint8Array(NB);
+    for (let c = 0; c < NC; c++) {
+      const bs = list[c].bs;
+      const dd = Math.hypot(bs[0] - cx, bs[1] - cy, bs[2] - cz) - bs[3] - cr;
+      if (dd > FAR) continue;
+      let vis = dd < 10;          // рядом (≤ 10 м от ячейки) — всегда: страховка от «дыр» за поворотами
+      for (let t = 0; t < targets[c].length && !vis; t++) {
+        const q = targets[c][t];
+        for (let a = 0; a < pts.length; a++) { pairs++; if (clearLine(V, pts[a][0], pts[a][1], pts[a][2], q[0], q[1], q[2])) { vis = true; break; } }
+      }
+      if (vis) bits[c >> 3] |= 1 << (c & 7);
+    }
+    rowOf[(k * ny + j) * nx + i] = rows.length;
+    rows.push(bits);
+  }
+  const data = new Uint8Array(rows.length * NB);
+  rows.forEach((r, i) => data.set(r, i * NB));
+  // консервативная дилатация: ячейка видит всё, что видят её воздушные соседи по 6 граням
+  const out = new Uint8Array(data.length);
+  for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const r = rowOf[(k * ny + j) * nx + i]; if (r < 0) continue;
+    for (let b = 0; b < NB; b++) out[r * NB + b] = data[r * NB + b];
+    for (const [di, dj, dk] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+      const ii = i + di, jj = j + dj, kk = k + dk; if (ii < 0 || jj < 0 || kk < 0 || ii >= nx || jj >= ny || kk >= nz) continue;
+      const r2 = rowOf[(kk * ny + jj) * nx + ii]; if (r2 < 0) continue;
+      for (let b = 0; b < NB; b++) out[r * NB + b] |= data[r2 * NB + b];
+    }
+  }
+  let on = 0; for (const v of out) { let x = v; while (x) { on += x & 1; x >>= 1; } }
+  log(`pvs: ячеек ${rows.length}, пар лучей ${(pairs / 1e6).toFixed(1)} М, среднее видимых чанков ${(on / Math.max(1, rows.length)).toFixed(1)} из ${NC}`);
+  return { cs: CS, ox, oy, oz, nx, ny, nz, nb: NB, nc: NC, rows: rows.length, idx: rowOf, bits: out };
 }

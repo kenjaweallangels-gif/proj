@@ -59,12 +59,12 @@ export function createDressing(game, world) {
   };
   const nB = q === 'low' ? 0.5 : 1;
   // осыпь у подножия скалы
-  for (let i = 0; i < 300 * nB; i++) {
+  for (let i = 0; i < 230 * nB; i++) {
     const t = -0.96 + 1.92 * R();
     const [cx, cz] = clawCenter(t);
     const w = clawHalfWidth(t);
     const west = R() < 0.75 ? 1 : -1;
-    const d = Math.pow(R(), 1.7) * 75 + 1;
+    const d = Math.pow(R(), 2.1) * 70 + 1;       // осыпь густеет у подножия и редеет к эргу
     const e = 0.004;
     const [ax, az] = clawCenter(t - e), [bx, bz] = clawCenter(t + e);
     let tx = bx - ax, tz = bz - az; const tl = Math.hypot(tx, tz); tx /= tl; tz /= tl;
@@ -82,16 +82,17 @@ export function createDressing(game, world) {
   }
   // острова: кольцо камней
   SAFE_ISLANDS.forEach((s) => {
-    const n = 7 + Math.floor(R() * 6);
+    // остров — выход породы: несколько глыб вплотную к кромке, а не «рассыпанные по эргу» камни
+    const n = 3 + Math.floor(R() * 3);
     for (let i = 0; i < n; i++) {
-      const a = R() * Math.PI * 2, r = s.r * (0.55 + R() * 0.6);
-      addBoulder(s.x + Math.cos(a) * r, s.z + Math.sin(a) * r, 0.5 + R() * 1.3);
+      const a = R() * Math.PI * 2, r = s.r * (0.6 + R() * 0.4);
+      addBoulder(s.x + Math.cos(a) * r, s.z + Math.sin(a) * r, 0.5 + R() * 1.1);
     }
     addBoulder(s.x + (R() - 0.5) * 2, s.z + (R() - 0.5) * 2, s.r * 0.22 + 0.5, 0.8);
   });
   // плиты A3: торчащие обломки
   A3_PLATES.forEach((p) => {
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 2; i++) {
       const lx = (R() - 0.5) * 2 * p.w * 0.9, lz = (R() - 0.5) * 2 * p.d * 0.9;
       const c = Math.cos(p.rot), s = Math.sin(p.rot);
       addBoulder(p.x + lx * c - lz * s, p.z + lx * s + lz * c, 0.4 + R() * 0.8, 0.5);
@@ -104,28 +105,25 @@ export function createDressing(game, world) {
     group.add(m); return m;
   });
 
-  // галька (мелкие камни): плотнее у скалы и островов
+  // галька: только там, где её приносит геология — осыпь у подножия Когтя и кромки каменных островов.
+  // Открытый эрг и плиты A3 — чистый песок (ветер выдувает и погребает мелочь).
   const pebGeo = boulderGeo(3.3, 1);
   const pebs = [];
-  const nP = Math.round((q === 'low' ? 600 : q === 'med' ? 2200 : 4000));
+  const nP = Math.round((q === 'low' ? 150 : q === 'med' ? 700 : 1300));
   for (let i = 0; i < nP; i++) {
     let x, z;
-    const k = R();
-    if (k < 0.55) { // у скалы
+    if (R() < 0.8) { // у скалы: плотнее к подножию (talus)
       const t = -0.95 + 1.9 * R();
       const [cx, cz] = clawCenter(t); const w = clawHalfWidth(t);
-      const d = Math.pow(R(), 1.4) * 90 + 3;
-      x = cx - (w + d); z = cz + (R() - 0.5) * 30;
-    } else if (k < 0.8) {
-      const s = SAFE_ISLANDS[Math.floor(R() * SAFE_ISLANDS.length)];
-      const a = R() * 6.28, r = s.r * (0.3 + R() * 1.6);
-      x = s.x + Math.cos(a) * r; z = s.z + Math.sin(a) * r;
+      const d = Math.pow(R(), 2.0) * 60 + 3;
+      x = cx - (w + d); z = cz + (R() - 0.5) * 20;
     } else {
-      const p = A3_PLATES[Math.floor(R() * A3_PLATES.length)];
-      x = p.x + (R() - 0.5) * p.w * 3; z = p.z + (R() - 0.5) * p.d * 3;
+      const s = SAFE_ISLANDS[Math.floor(R() * SAFE_ISLANDS.length)];
+      const a = R() * 6.28, r = s.r * (0.7 + R() * 0.6);
+      x = s.x + Math.cos(a) * r; z = s.z + Math.sin(a) * r;
     }
     if (solidSdf(x, z) < 0.5) continue;
-    const s = 0.05 + R() * R() * 0.22;
+    const s = 0.05 + R() * R() * 0.2;
     pebs.push({ x, y: heightAt(x, z) + s * 0.1, z, sx: s * (0.8 + R() * 0.6), sy: s * (0.5 + R() * 0.5), sz: s * (0.8 + R() * 0.6), ry: R() * 6.28 });
   }
   const pebMesh = new THREE.InstancedMesh(pebGeo, boulderMat, pebs.length);

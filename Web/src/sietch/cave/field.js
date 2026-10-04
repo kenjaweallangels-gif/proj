@@ -36,10 +36,6 @@ export function buildPrims() {
   // --- B1
   tubeLine(voids, L.TUNNELS.B1, 'B1', 0.8);
   tubeLine(voids, L.TUNNELS.entry, 'entry', 0.5);
-  { // выходной туннель к порталу
-    const E = L.EXIT, nodes = E.nodes.map((n, i) => [n[0], n[1], E.floorAt(E.cum[i]) + 0.9, E.rw, E.rh]);
-    tubeLine(voids, nodes, 'exit', 0.9);
-  }
   // --- B2: нижний зал, карнизы, лестничные тоннели, ниши-лавки, спальные ниши, эркеры, колодцы, вентиляция
   voids.push(makeTube({ a: [46, 3.8, 0], b: [93, 3.8, 0], rw: 4.6, rh: 8.2, tag: 'B2', k: 1.3, pad: 2.5 }));
   for (const s of [-1, 1]) {
@@ -54,7 +50,7 @@ export function buildPrims() {
   }
   for (const x of L.B2_ALCOVES.north) voids.push(makeEll({ c: [x, 1.3, -5.5], r: [2.1, 2.0, 2.3], tag: 'alcove', k: 0.7 }));
   for (const x of L.B2_ALCOVES.south) voids.push(makeEll({ c: [x, 1.3, 5.5], r: [2.1, 2.0, 2.3], tag: 'alcove', k: 0.7 }));
-  for (const x of L.SHELF_BAYS) for (const s of [-1, 1]) voids.push(makeEll({ c: [x + (s > 0 ? 1 : 0), 7.4, s * 8.3], r: [1.7, 1.8, 1.9], tag: 'bay', k: 0.7 }));
+  for (const x of L.SHELF_BAYS) for (const s of [-1, 1]) voids.push(makeEll({ c: [x + (s > 0 ? 1 : 0), L.BAY.cy, s * L.BAY.cz], r: [L.BAY.rx, L.BAY.ry, L.BAY.rz], tag: 'bay', k: 0.7 }));
   for (const w of L.WELLS) {
     if (w.slit) continue;
     voids.push(makeCyl({ cx: w.x, cz: w.z, r: w.r, y0: w.y0, y1: w.y1, tag: 'well', k: 0.9 }));
@@ -64,7 +60,14 @@ export function buildPrims() {
   for (const x of [16, 31, 108, 118, 126, 134, 142]) voids.push(makeCyl({ cx: x, cz: x < 50 ? 0 : (x % 2 ? 0.2 : -0.2), r: 0.24, y0: 2.4, y1: 5.2, tag: 'vent', k: 0.1, pad: 0.6 }));
   // --- B3
   tubeLine(voids, L.TUNNELS.C, 'C'); tubeLine(voids, L.TUNNELS.N, 'N'); tubeLine(voids, L.TUNNELS.S, 'S');
-  for (const n of L.NICHES) voids.push(makeEll({ c: [n.xc, 1.3, n.side * L.NICHE_Z], r: [n.rx, 2.0, 2.0], tag: 'niche', k: 0.6 }));
+  for (const n of L.NICHES) {
+    voids.push(makeEll({ c: [n.xc, n.cy, n.zc], r: [n.rx, n.ry, n.rz], tag: 'room', k: 0.6 }));
+    // вестибюль (проход 2.3 м) от оси прохода к комнате — здесь висит подвязанная занавесь
+    voids.push(makeTube({ a: [n.xc, 1.0, n.side * 0.3], b: [n.xc, 1.1, n.zc], rw: 1.15, rh: 1.3, tag: 'vest', k: 0.6 }));
+    // кладовые ниши в стенах комнаты (под сосуды, сундуки, сушку дистикомбов)
+    for (const sx of [-1, 1]) voids.push(makeEll({ c: [n.xc + sx * (n.rx - 0.25), 1.3, n.zc + n.side * (n.rz * 0.35)], r: [0.85, 0.95, 0.8], tag: 'store', k: 0.4 }));
+    voids.push(makeEll({ c: [n.xc + (n.xc % 2 ? 0.8 : -0.8), 1.35, n.zc + n.side * (n.rz - 0.15)], r: [0.9, 0.9, 0.75], tag: 'store', k: 0.4 }));
+  }
   voids.push(makeEll({ c: [L.FUNERAL.x + 1.4, 1.0, L.FUNERAL.z], r: L.FUNERAL.r, tag: 'funeral', k: 0.8 }));
   // --- B4
   voids.push(makeEll({ c: CISTERN.ellC, r: CISTERN.ellR, tag: 'B4', k: 1.5, pad: 3 }));
@@ -79,6 +82,7 @@ export function buildPrims() {
   }
   // карманы уплотнителей: вертикальные щели в стенах, куда сворачивается мембрана
   for (const sl of L.SEALS) for (const sg of [-1, 1]) {
+    if (sl.fy) continue; // подуровневые уплотнители — карманы в subPrims
     const o = sl.hw + 0.32;
     voids.push(makeCyl({ cx: sl.axis === 'x' ? sl.x : sl.x + sg * o, cz: sl.axis === 'x' ? sl.z + sg * o : sl.z, r: 0.26, y0: -0.5, y1: sl.yc + sl.rh - 0.15, tag: 'pocket', k: 0.15, pad: 0.8 }));
   }
@@ -86,7 +90,7 @@ export function buildPrims() {
   solids.push(makeBox({ c: [75.5, 5.5, 0], h: [1.55, 0.55, 5.6], rr: 0.25, tag: 'bridge' }));
   solids.push(makeEll({ c: [75.5, 4.3, 0], r: [1.6, 1.7, 4.2], tag: 'bridgeBelly' }));
   // плита-основание карниза: плоский пол на y=6 над нишами-лавками (ниши вырезаны под ней)
-  for (const s of [-1, 1]) solids.push(makeBox({ c: [74.1, 4.7, s * 7.9], h: [23.5, 1.3, 3.15], rr: 0.25, tag: 'shelfSlab' }));
+  for (const s of [-1, 1]) solids.push(makeBox({ c: [74.1, 4.7, s * 8.1], h: [23.5, 1.3, 3.4], rr: 0.25, tag: 'shelfSlab' }));
   for (const s of [-1, 1]) {
     solids.push(makeBox({ c: [62.6, 6.45, s * 4.95], h: [10.9, 0.5, 0.21], rr: 0.1, tag: 'parapet' }));
     solids.push(makeBox({ c: [87.6, 6.45, s * 4.95], h: [9.8, 0.5, 0.21], rr: 0.1, tag: 'parapet' }));
@@ -98,7 +102,7 @@ export function buildPrims() {
 }
 
 // ------------------------------------------------------------------- пол ----
-const NICHE_FOOT = L.NICHES.map((n) => ({ x: n.xc, z: n.side * L.NICHE_Z, rx: n.rx, rz: 1.9 }));
+const NICHE_FOOT = L.NICHES.map((n) => ({ x: n.xc, z: n.zc, rx: n.rx, rz: n.rz }));
 const ALCOVES = [...L.B2_ALCOVES.north.map((x) => ({ x, z: -5.5 })), ...L.B2_ALCOVES.south.map((x) => ({ x, z: 5.5 }))];
 
 export function hallFloor(x, z) {
@@ -121,19 +125,6 @@ export function hallFloor(x, z) {
   return y;
 }
 
-function exitFloor(x, z) {
-  const E = L.EXIT;
-  if (x < 160 || z > -8) return null;
-  let best = 9, bs = 0;
-  for (let i = 0; i < E.nodes.length - 1; i++) {
-    const a = E.nodes[i], b = E.nodes[i + 1];
-    const dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz;
-    const t = clamp(((x - a[0]) * dx + (z - a[1]) * dz) / l2, 0, 1);
-    const d = Math.hypot(x - (a[0] + dx * t), z - (a[1] + dz * t));
-    if (d < best) { best = d; bs = E.cum[i] + t * Math.sqrt(l2); }
-  }
-  return { d: best, y: E.floorAt(bs) };
-}
 export function floorY(x, z) {
   let f = 0;
   const az = Math.abs(z);
@@ -143,18 +134,18 @@ export function floorY(x, z) {
     if (hx > 0 && az > 3.5) f = hx * smoothstep(4.0, 4.6, az) * (1 - smoothstep(50.5, 51.3, x));
   }
   if (x > 100 && x < 148) {
-    for (const n of NICHE_FOOT) { const dx = (x - n.x) / n.rx, dz = (z - n.z) / n.rz; const e = dx * dx + dz * dz; if (e < 1) f = Math.max(f, 0.22 * (1 - smoothstep(0.55, 1.0, Math.sqrt(e)))); }
+    for (const n of NICHE_FOOT) { const dx = (x - n.x) / n.rx, dz = (z - n.z) / n.rz; const e = dx * dx + dz * dz; if (e < 1) f = Math.max(f, 0.16 * (1 - smoothstep(0.6, 1.0, Math.sqrt(e)))); }
     if (z > 5 && z < 32) {
       const nb = Math.pow(Math.pow(Math.abs(x - CISTERN.cx) / CISTERN.basinHX, 4) + Math.pow(Math.abs(z - CISTERN.cz) / CISTERN.basinHZ, 4), 0.25);
       f = Math.min(f, CISTERN.basinY * (1 - smoothstep(0.84, 1.0, nb)));
     }
   }
   if (x >= 148) f = hallFloor(x, z);
-  const ef = exitFloor(x, z);
-  if (ef && ef.d < 3.4) { const w = 1 - smoothstep(2.0, 3.2, ef.d); f = f + (ef.y - f) * w; }
   // лёгкие неровности (стёртость, наносы)
   const sc = x > 146 && x < 200 && Math.hypot(x - HALL.cx, z) < 6.2 ? 0.2 : 1;
   f += (0.045 * vn3(x * 0.55, 0.6, z * 0.55) + 0.06 * vn3(x * 0.13, 1.3, z * 0.13)) * sc;
+  // вход: пол ниши тропы (модуль level) на плоскости входа ≈ на 0.2 м ниже пола шлюза — плавно «подсаживаем» пол сиетча к ней (без скачка при выходе/входе)
+  if (z > 0.5 && z < 30 && x < 3) { const ds = -((x - L.ENTRY_CUT.p[0]) * L.ENTRY_CUT.n[0] + (z - L.ENTRY_CUT.p[1]) * L.ENTRY_CUT.n[1]); f -= 0.2 * (1 - smoothstep(0, 4.5, ds)); }
   return f;
 }
 
@@ -181,7 +172,10 @@ const SEAL_MASKS = L.SEALS;
 function noiseMask(x, y, z) {
   let m = 1;
   for (const s of SEAL_MASKS) {
-    const d = s.axis === 'x' ? Math.abs(x - s.x) : (Math.abs(x - s.x) < 3.2 ? Math.abs(z - s.z) : 9);
+    const fy = s.fy || 0;
+    let d;
+    if (s.axis === 'x') d = Math.abs(z - s.z) < 4 && Math.abs(y - fy) < 5 ? Math.abs(x - s.x) : 9;
+    else d = Math.abs(x - s.x) < 3.2 ? Math.abs(z - s.z) : 9;
     if (d < 3) m *= 1 - 0.96 * Math.exp(-((d / 1.3) ** 2));
   }
   return m;
@@ -197,11 +191,74 @@ export function rockNoise(x, y, z) {
   return n;
 }
 
+// ------------------------------------------------------------ подуровневые объёмы (свой пол у каждого примитива) ----
+/**
+ * «Подуровень»: примитив (труба/эллипсоид/цилиндр) со СВОЕЙ плоскостью/функцией пола. Глобальный пол floorY(x,z) на них не действует, поэтому
+ * наклонные туннели и нижние уровни (выход в сад, водяной погреб) — честные SDF с расстоянием, близким к евклидову (без «траншей» в глобальном поле).
+ * fl: {y} плоский пол | {x0,z0,dx,dz,l2,y0,y1,g} плоскость вдоль оси | {fn,g} произвольная функция высоты.
+ */
+function planeFloor(p0, p1) {
+  const dx = p1[0] - p0[0], dz = p1[2] - p0[2], l2 = dx * dx + dz * dz;
+  const slope = l2 > 1e-8 ? Math.abs(p1[1] - p0[1]) / Math.sqrt(l2) : 0;
+  return { x0: p0[0], z0: p0[2], dx, dz, l2, y0: p0[1], y1: p1[1], g: Math.sqrt(1 + slope * slope) };
+}
+function floorOf(fl, x, z) {
+  if (fl.fn) return fl.fn(x, z);
+  if (fl.y !== undefined) return fl.y;
+  // плоскость продолжается за концы сегмента линейно (НЕ зажимается): иначе пол следующего сегмента «проваливается» за его начало на перекрытии капсул
+  const s = ((x - fl.x0) * fl.dx + (z - fl.z0) * fl.dz) / (fl.l2 || 1);
+  return fl.y0 + (fl.y1 - fl.y0) * s;
+}
+const gOf = (fl) => (fl.fn ? fl.g : fl.y !== undefined ? 1 : fl.g);
+
+export function buildSubs() {
+  const subs = [], solids = [];
+  const sub = (prim, fl, k = 0.5, noise = 0.9, seg = null) => subs.push({ prim, fl, g: gOf(fl), k, noise, bb: prim.bb, tag: prim.tag, seg });
+  // --- выходной туннель в сад: каждый сегмент — труба со своей плоскостью пола
+  {
+    const E = L.EXIT;
+    for (let i = 0; i < E.nodes.length - 1; i++) {
+      const A = E.nodes[i], B = E.nodes[i + 1], sa = E.sect[i], sb = E.sect[i + 1];
+      const a = [A[0], E.ys[i] + sa.h0, A[1]], b = [B[0], E.ys[i + 1] + sb.h0, B[1]];
+      sub(makeTube({ a, b, rw0: sa.rw, rw1: sb.rw, rh0: sa.rh, rh1: sb.rh, tag: 'exit', k: 0.9 }), planeFloor([A[0], E.ys[i], A[1]], [B[0], E.ys[i + 1], B[1]]), 0.7, 0.8, [A[0], A[1], B[0], B[1]]);
+    }
+  }
+  // --- водяной погреб B6
+  {
+    const C = L.CELLAR, F = C.floorY, st = C.stairs;
+    const zEnd = st.z0 + st.n * st.tread;
+    // лестница: наклонная труба вдоль z (ось по уровню середины сечения), пол — ступени
+    sub(makeTube({ a: [102.0, 0.95, 7.0], b: [st.x, 0.95, st.z0 + 0.5], rw: 1.3, rh: 1.95, tag: 'cellarStairHead', k: 0.8 }), { y: 0 }, 0.7);
+    sub(makeTube({ a: [st.x, 0.95 - 0.1, st.z0 + 0.5], b: [st.x - 0.1, F + 0.95, zEnd + 0.4], rw: 1.4, rh: 2.0, tag: 'cellarStairs', k: 0.8 }), { fn: (x, z) => L.cellarStairYSmooth(z), g: Math.sqrt(1 + (st.riser / st.tread) ** 2) }, 0.7);
+    sub(makeEll({ c: C.landing.c, r: C.landing.r, tag: 'cellarLanding', k: 0.8 }), { y: F }, 0.8);
+    sub(makeTube({ a: [C.passage.x0, F + 0.95, C.passage.z], b: [C.passage.x1, F + 0.95, C.passage.z], rw: 1.3, rh: 1.9, tag: 'cellarPassage', k: 0.8 }), { y: F }, 0.7, 0.4);
+    const P = C.pool, nv = C.nave;
+    const poolFloor = (x, z) => { const rp = Math.hypot((x - P.c[0]) / P.r[0], (z - P.c[1]) / P.r[1]); return F - P.dip * (1 - smoothstep(0.55, 1.0, rp)); };
+    sub(makeEll({ c: nv.c, r: nv.r, tag: 'cellarNave', k: 1.0, pad: 2 }), { fn: poolFloor, g: 1.25 }, 1.0, 0.7);
+    for (const x of C.bayX) {
+      sub(makeEll({ c: [x, -7.5, C.bayZ.n], r: [2.5, 2.1, 2.4], tag: 'cellarBay', k: 0.8 }), { y: F }, 0.6, 0.6);
+      sub(makeEll({ c: [x, -7.5, C.bayZ.s], r: [2.5, 2.1, 2.4], tag: 'cellarBay', k: 0.8 }), { y: F }, 0.6, 0.6);
+    }
+    sub(makeEll({ c: C.station.c, r: C.station.r, tag: 'cellarStation', k: 0.8 }), { y: F }, 0.8, 0.6);
+    // карманы уплотнителя погреба
+    for (const sl of L.SEALS) {
+      if (!sl.fy) continue;
+      for (const sg of [-1, 1]) {
+        const o = sl.hw + 0.32;
+        sub(makeCyl({ cx: sl.axis === 'x' ? sl.x : sl.x + sg * o, cz: sl.axis === 'x' ? sl.z + sg * o : sl.z, r: 0.26, y0: sl.fy - 0.5, y1: sl.fy + sl.yc + sl.rh - 0.15, tag: 'pocket', k: 0.15, pad: 0.8 }), { y: sl.fy }, 0.15, 0);
+      }
+    }
+    for (const [px, pz] of C.pillars) solids.push(makeCyl({ cx: px, cz: pz, r: 0.62, y0: F - 1, y1: -2.5, tag: 'cellarPillar', k: 0.5 }));
+  }
+  return { subs, solids };
+}
+
 // -------------------------------------------------------------------- итоговое поле ----
 export function createField() {
   const { voids, solids } = buildPrims();
+  const { subs, solids: subSolids } = buildSubs();
   const field = {
-    voids, solids,
+    voids, solids, subs,
     /** Расстояние до поверхности воздуха: <0 — внутри пещеры. */
     air(x, y, z) {
       let d = unionPrims(voids, x, y, z, 1.0);
@@ -217,9 +274,39 @@ export function createField() {
         const e = 0.18, gx = (floorY(x + e, z) - floorY(x - e, z)) / (2 * e), gz = (floorY(x, z + e) - floorY(x, z - e)) / (2 * e);
         df /= Math.sqrt(1 + gx * gx + gz * gz);
       }
-      return smax(d, df, 0.45);
+      d = smax(d, df, 0.45);
+      // подуровневые объёмы (выход, погреб): собственные полы, шум считается один раз
+      let ds = 1e9, nz = null, bestV = 1e9, best = null;
+      for (let i = 0; i < subs.length; i++) {
+        const sb = subs[i];
+        const bd = bbDist(sb.bb, x, y, z);
+        if (bd > 3.0) { if (bd < ds) ds = bd; continue; }
+        let v = evalPrim(sb.prim, x, y, z);
+        if (v < 4 && sb.noise) { if (nz === null) nz = rockNoise(x, y, z) * noiseMask(x, y, z); v += nz * sb.noise * (1 - smoothstep(2.4, 4, v)); }
+        let dfl = (floorOf(sb.fl, x, z) - y) / sb.g;
+        v = smax(v, dfl, 0.25);
+        // пол объединения берём у сегмента, чья ось ближе всего (для труб с осью), иначе — у примитива с минимальным v
+        let key = v;
+        if (sb.seg) { const sg = sb.seg, ex = sg[2] - sg[0], ez = sg[3] - sg[1], l2 = ex * ex + ez * ez || 1, tt = Math.min(1, Math.max(0, ((x - sg[0]) * ex + (z - sg[1]) * ez) / l2)); key = Math.hypot(x - sg[0] - ex * tt, z - sg[1] - ez * tt) - 100; }
+        if (v < 2.5 && key < bestV) { bestV = key; best = sb; }
+        ds = ds >= 1e8 ? v : smin(ds, v, sb.k);
+      }
+      // гладкое объединение подуровневых примитивов «проседает» пол в перекрытиях (до k/4) — возвращаем пол ближайшего примитива жёстко
+      if (best !== null) ds = smax(ds, (floorOf(best.fl, x, z) - y) / best.g, 0.02);
+      if (ds < 1e8 && ds < 6) {
+        for (let i = 0; i < subSolids.length; i++) { const s = subSolids[i]; if (bbDist(s.bb, x, y, z) > 1.6) continue; ds = smax(ds, -evalPrim(s, x, y, z), 0.4); }
+      }
+      return ds > 1e8 ? d : smin(d, ds, 0.35);
     },
     floorY,
+    /** Высота пола под точкой (x,y,z) с учётом подуровней: ближайший подуровневый объём, если точка ниже глобального пола. */
+    floorAt(x, y, z) {
+      const f = floorY(x, z);
+      if (y > f - 0.6) return f;
+      let best = 1e9, fy = f;
+      for (const sb of subs) { if (bbDist(sb.bb, x, y, z) > 1.5) continue; const v = evalPrim(sb.prim, x, y, z); if (v < best) { best = v; fy = floorOf(sb.fl, x, z); } }
+      return best < 1.5 ? fy : f;
+    },
     grad(x, y, z, e = 0.07, out = [0, 0, 0]) {
       out[0] = field.air(x + e, y, z) - field.air(x - e, y, z);
       out[1] = field.air(x, y + e, z) - field.air(x, y - e, z);

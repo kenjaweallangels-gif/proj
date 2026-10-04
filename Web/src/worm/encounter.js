@@ -104,6 +104,7 @@ export class EncounterDirector {
     this.tasks = rd.items.map((it) => this.mkTask(it));
     this.offSub = bus.on('subtitle', (e) => this.onSubtitle(e));
     this.watching = false;
+    game.freecam?.setScene('encounter', true);          // свободная камера доступна на всё время сцены (клавиша F)
     this.setPhase('omen');
     this.setPhase('arrive');
     bus.emit('worm:reveal', { phase: 'start' });
@@ -131,6 +132,7 @@ export class EncounterDirector {
     if (!this._active) return;
     const { bus, K } = this.api;
     this._active = false; this.resting = false;
+    this.api.game.freecam?.setScene('encounter', false);
     this.watch(false);
     this.offSub?.(); this.offSub = null;
     const rd = this.worm.riders, sp = this.worm.spine;
@@ -279,13 +281,13 @@ export class EncounterDirector {
         }
         if (!this._passFx && this.u > path.o.approach - 60) { this._passFx = true; game.audio?.event?.('Worm.Pass', K.pos.clone()); }
         sp.headLift = lerp(sp.headLift, this.headLiftFor(this.v) * (0.55 + 0.45 * tired), 1 - Math.exp(-1.5 * dt));
-        game.shake = Math.max(game.shake || 0, 0.06 + 0.3 * smoothstep(300, 90, this.distToPlayer()) * smoothstep(5, 25, this.v));
+        game.shake = Math.max(game.shake || 0, 0.28 * smoothstep(260, 70, this.distToPlayer()) * smoothstep(5, 25, this.v));   // только вблизи: вдали земля не дрожит
         if (left < 0.4 && this.v < 0.9) { this.advanceTo(path.uStop); this.startCollapse(); }
         break;
       }
       case 'stop': this.updateCollapse(dt); break;
       case 'dismount': case 'talk': case 'rest': {
-        if (this.stirT > 0) { this.stirT -= dt; sp.headLift = lerp(sp.headLift, 2.6 + 1.4 * Math.sin(this.t * 3), 1 - Math.exp(-3 * dt)); game.shake = Math.max(game.shake || 0, 0.12); }
+        if (this.stirT > 0) { this.stirT -= dt; sp.headLift = lerp(sp.headLift, 2.6 + 1.4 * Math.sin(this.t * 3), 1 - Math.exp(-3 * dt)); }
         else sp.headLift = lerp(sp.headLift, 0, 1 - Math.exp(-0.8 * dt));
         this.restBreath(dt);
         this.updateTasks(dt);
@@ -331,7 +333,7 @@ export class EncounterDirector {
       this.api.fx.puff(this._v.x, this._v.y, this._v.z, 0.7 + 0.5 * this.rand(), 'wide');
       if (this.rand() < 0.35) game.audio?.event?.('Worm.RingSandfall', this._v.clone());
     }
-    game.shake = Math.max(game.shake || 0, 0.12 * (1 - k1) * smoothstep(300, 60, this.distToPlayer()));
+    game.shake = Math.max(game.shake || 0, 0.1 * (1 - k1) * smoothstep(200, 50, this.distToPlayer()));
     if (pt > T.collapseTime) this.startDismount();
     void K;
   }
