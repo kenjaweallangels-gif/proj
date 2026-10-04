@@ -196,6 +196,20 @@ export function createFlora(game, { ground, faceAt, root, quality, towerSites = 
     if (big && out.lizardRocks.length < 6) out.lizardRocks.push({ x, y: y + r * 0.66, z, r });
     i++;
   }
+  // галька и щебень по земле: мелкая россыпь (без коллайдеров), гуще у подножия гребней и у тропы
+  {
+    const pebs = new InstGroup(root, [{ geo: stoneGeo, mat: rockMat }], { range: 48, shadow: false, cell: 16, name: 'pebbles' }); out.groups.push(pebs);
+    const nPb = Math.round(900 * qf);
+    for (let i = 0, tries = 0; i < nPb && tries < nPb * 4; tries++) {
+      const th = R() * Math.PI * 2, rr = Math.sqrt(R()) * 53;
+      const x = C.x + Math.cos(th) * rr, z = C.z + Math.sin(th) * rr;
+      if (!inBasin(x, z, 1.5) || inBed(x, z, 0.5) || nearChannel(x, z, 0.3)) continue;
+      const edge = smoothstep(24, 50, rr), near = pathAt(x, z);
+      if (R() > 0.25 + 0.55 * edge + 0.3 * near) continue;
+      const s = 0.04 + Math.pow(R(), 2) * 0.16;
+      pebs.add(x, ground(x, z) + s * 0.1, z, R() * 6.28, s * (1 + R() * 0.6), s * (0.5 + R() * 0.4), colorVar(0.25, [0.95, 0.9, 0.82])); i++;
+    }
+  }
   // гарантируем несколько «нагретых» плоских камней для ящериц на открытом месте
   for (const [x, z, r] of [[858, 372, 1.0], [868, 424, 1.1], [846, 436, 0.9], [872, 380, 0.85]]) {
     if (!free(x, z, { m: 1 })) continue;
