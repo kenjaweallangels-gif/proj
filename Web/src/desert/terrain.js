@@ -75,6 +75,44 @@ void rkTerrain(out vec3 P, out vec3 N, out vec2 M){
 }
 `;
 
+/** Рябь песка (GLSL): функция rkRippleG — тоже используется в tools/ripple_lab.mjs. */
+export const RIPPLE_GLSL = /* glsl */`
+// Рябь как ВОЗМУЩЕНИЕ НОРМАЛИ (цвет не трогаем). Возвращает градиент высоты (уклон) в мировых xz.
+//  p — мировые xz; wl — средняя длина волны, м; S — амплитуда уклона (пик ≈ 1.3·S); fade — множитель (дистанция, склоны, фильтр по производным);
+//  kH, y, sl — изгиб гребней вокруг рельефа (фаза сдвигается высотой; только для средних масштабов).
+// Фаза = вдоль ветра + низкочастотное искажение (две октавы): гребни извиваются, меняют шаг и направление, изредка ветвятся (Y) и обрываются,
+// где градиент искажения гасит основной. Профиль несимметричный: пологий наветренный, крутой подветренный склон; гребни и впадины скруглены.
+vec2 rkRippleG(vec2 p, float wl, float seed, float S, float kH, float y, vec2 sl, float fade) {
+  vec3 nA = rkNoiseD(p / (wl * 16.0) + seed);
+  vec3 nB = rkNoiseD(p / (wl * 5.0) + seed * 2.3 + 7.0);
+  float ph = dot(p, uWind) / wl + 2.0 * nA.x + 0.45 * nB.x + kH * y / wl;
+  vec2 dph = uWind / wl + (2.0 / (wl * 16.0)) * nA.yz + (0.45 / (wl * 5.0)) * nB.yz + kH * sl / wl;
+  // вторая волна с чуть другим шагом: биения дают естественные дислокации — гребни сливаются, обрываются, раздваиваются (Y)
+  float ph2 = ph * 1.075 + 0.31 * nA.x;
+  float c1 = cos(6.2831853 * ph), c2 = cos(6.2831853 * ph2);
+  float d1 = (c1 - 0.8 * (2.0 * c1 * c1 - 1.0)) * 0.7;               // d(высота)/d(фаза): h = sin θ − 0.4 sin 2θ (пологий наветренный, крутой подветренный склон)
+  float d2 = (c2 - 0.8 * (2.0 * c2 * c2 - 1.0)) * 0.7;
+  float br = mix(0.25, 1.0, smoothstep(0.2, 0.65, nB.x));            // неравномерность: участки почти без ряби
+  return dph * (wl * S * (d1 + 0.55 * 1.075 * d2) * 0.65 * br * fade);
+}
+`;
+/** Блок накопления ряби в градиент g (3 масштаба + фильтрация по размеру пикселя); читает xz, uu, Ng, slope, nxzl, dist, rockM, disturb, packedM, vWP. */
+export const RIPPLE_BLOCK = /* glsl */`
+// Рябь (3 масштаба) + зерно. Всё — нормаль; фильтрация по размеру пикселя вдоль ветра (dFdx/dFdy) гасит гармоники, которые не разрешаются (муар).
+float pxW = abs(dFdx(uu)) + abs(dFdy(uu));      // размер пикселя вдоль ветра (поперёк гребней), м: выше частоты Найквиста рябь гасится
+// подветренный склон и его кромка (гребень): рябь на склоне скольжения и у гребня гаснет — там лавинные полосы
+float leeW = smoothstep(0.03, 0.14, slope) * smoothstep(0.0, 0.45, dot(Ng.xz, uWind) / nxzl);
+float calmR = (1.0 - smoothstep(0.0, 0.75, leeW)) * (1.0 - rockM) * (1.0 - disturb) * (1.0 - 0.6 * packedM);
+vec2 g = vec2(0.0);
+vec2 slp = -Ng.xz / max(Ng.y, 0.2);
+float f1 = (1.0 - smoothstep(0.11, 0.33, pxW / 0.11)) * calmR;
+float f2 = (1.0 - smoothstep(0.11, 0.33, pxW / 0.58)) * (1.0 - smoothstep(110.0, 190.0, dist)) * calmR;
+float f3 = (1.0 - smoothstep(0.11, 0.33, pxW / 2.7)) * (1.0 - smoothstep(300.0, 560.0, dist)) * calmR;
+if (f1 > 0.004 && uQual > 0.5) g += rkRippleG(xz, 0.11, 1.0, 0.042, 0.0, 0.0, slp, f1);
+if (f2 > 0.004) g += rkRippleG(xz, 0.58, 5.0, 0.026, 0.35, vWP.y, slp, f2);
+if (f3 > 0.004) g += rkRippleG(xz, 2.7, 9.0, 0.014, 0.6, vWP.y, slp, f3);
+`;
+
 const FRAG_PARS = /* glsl */`
 uniform vec3 uSandLoose;
 uniform vec3 uSandPacked;
@@ -88,23 +126,8 @@ varying vec2 vMask;
 varying float vShade;
 vec3 gNW;
 vec3 gSpark;
-float gRH;
 
-// Ripple: (высота 0..1 * амплитуда, градиент по x,z)
-vec3 rkRipple(vec2 p, float wl, float warpAmp, float seed, float asym){
-  vec3 nw = rkNoiseD(p / (wl * 7.0) + seed);
-  float ph = dot(p, uWind) / wl + (nw.x - 0.5) * warpAmp - uTime * uWindSpeed * 0.0004 / wl;
-  float f = fract(ph);
-  float h0 = f < asym ? f / asym : (1.0 - f) / (1.0 - asym);
-  float dh0 = f < asym ? 1.0 / asym : -1.0 / (1.0 - asym);
-  float hh = h0 * h0 * (3.0 - 2.0 * h0);
-  float dh = 6.0 * h0 * (1.0 - h0) * dh0;
-  float br = 0.55 + 0.45 * rkNoise(p / (wl * 6.0) + seed * 3.7);
-  vec2 dph = uWind / wl + warpAmp * nw.yz / (wl * 7.0);
-  float amp = wl * 0.10 * br;
-  gRH = hh;
-  return vec3(hh * amp, dph * dh * amp);
-}
+${RIPPLE_GLSL}
 `;
 
 const FRAG_COLOR = /* glsl */`
@@ -141,17 +164,7 @@ if (uFootRect.w > 0.5 && fuv.x > 0.02 && fuv.y > 0.02 && fuv.x < 0.98 && fuv.y <
   disturb *= edge; rimL *= edge; fgrad *= edge;
 }
 
-// Рябь (3 масштаба) + зерно
-float calmR = (1.0 - lee) * (1.0 - rockM) * (1.0 - disturb) * (1.0 - 0.6 * packedM);
-vec2 g = vec2(0.0);
-float f1 = 1.0 - smoothstep(5.0, 24.0, dist);
-float f2 = 1.0 - smoothstep(22.0, 110.0, dist);
-float f3 = 1.0 - smoothstep(90.0, 480.0, dist);
-float rOcc = 0.0;
-if (f1 > 0.001 && uQual > 0.5) { vec3 r = rkRipple(xz, 0.095, 1.7, 1.0, 0.7); g += r.yz * f1 * 0.5; }
-if (f2 > 0.001) { vec3 r = rkRipple(xz, 0.62, 1.8, 5.0, 0.72); g += r.yz * f2 * 0.12; rOcc += (1.0 - gRH) * f2 * 0.55 * (1.0 - smoothstep(20.0, 70.0, dist)); }
-if (f3 > 0.001) { vec3 r = rkRipple(xz, 2.9, 2.5, 9.0, 0.75); g += r.yz * f3 * 0.1; rOcc += (1.0 - gRH) * f3 * 0.15 * (1.0 - smoothstep(60.0, 300.0, dist)); }
-g *= calmR;
+${RIPPLE_BLOCK}
 // лавинные полосы на подветренных склонах: потоки зерна вдоль линии падения (вытянуты по склону), веер у подошвы
 float avl = 0.0;
 if (lee > 0.01) {
@@ -176,7 +189,7 @@ if (tpFn > 0.002) {
   tpMulA = tpSMul;
   tpMulA = mix(vec3(1.0), tpMulA, tpFn * uTexK.z);
 }
-float tpFm = (1.0 - smoothstep(18.0, 120.0, dist)) * (1.0 - rockM) * uTexK.x;
+float tpFm = (1.0 - smoothstep(18.0, 120.0, dist)) * (1.0 - smoothstep(0.11, 0.33, pxW / 0.30)) * (1.0 - rockM) * uTexK.x;   // тот же фильтр по пикселю (муар текстурной ряби)
 #ifdef RK_SAND_MID
 if (tpFm > 0.002) {
   // естественная рябь: координаты повёрнуты по ветру, градиент возвращается в мировые оси
@@ -214,20 +227,13 @@ float streak = rkNoise(vec2(uu / 170.0, vv / 14.0)) - 0.5;
 float micro = rkNoise(vec2(uu / 26.0, vv / 2.2) + 5.0) - 0.5;   // вытянуто по ветру, без «пятен»
 vec3 col = mix(uSandLoose, uSandPacked, packedM);
 col *= 1.0 + 0.13 * macro + 0.08 * streak + 0.045 * micro;
-float dmin = smoothstep(0.6, 0.82, rkNoise(vec2(uu / 6.5, vv / 80.0) + 11.0)) * wnd;
-col = mix(col, col * vec3(0.60, 0.50, 0.43), dmin * 0.55);
 // подветренные лавинные склоны: плотнее и темнее, краснее
-col = mix(col, col * vec3(0.80, 0.68, 0.58), lee * 0.6);
-col *= 1.0 + avl * 0.22 * lee;
+col = mix(col, col * vec3(0.82, 0.71, 0.62), lee * 0.42);
+col *= 1.0 + avl * 0.11 * lee;
 // разнообразие дюн: крупные тёплые/светлые пятна и полосы вдоль ветра
 float hv = rkFbm(xz / 900.0 + 17.0) - 0.5;
 float hv2 = rkNoise(vec2(uu / 240.0, vv / 650.0) + 3.0) - 0.5;
 col *= vec3(1.0 + 0.20 * hv + 0.12 * hv2, 1.0 + 0.03 * hv, 1.0 - 0.17 * hv - 0.10 * hv2);
-// тени гребней ряби при скользящем свете (когда солнце идёт вдоль ветра)
-float grazing = 1.0 - smoothstep(0.04, 0.42, uKeyDir.y);
-float along = abs(dot(normalize(uKeyDir.xz + vec2(1e-4)), uWind));
-col *= 1.0 - clamp(rOcc, 0.0, 1.0) * grazing * (0.08 + 0.22 * along) * (1.0 - rockM) * (1.0 - disturb);
-col = mix(col, col * vec3(0.52, 0.40, 0.36), clamp(rOcc, 0.0, 1.0) * 0.22 * (1.0 - rockM) * (1.0 - disturb) * (0.6 + 0.8 * rkNoise(vec2(uu / 9.0, vv / 40.0) + 2.0)));
 float fgr = (1.0 - smoothstep(0.5, 6.0, dist));
 col *= 1.0 + 0.05 * fgr * (rkNoise(xz * 70.0) - 0.5) * 2.0;
 #ifdef RK_SAND_TEX
@@ -340,7 +346,7 @@ export function createTerrain(game, foot) {
   const kS = q === 'low' ? null : triplanarKit('tpS', 'sand', { axes: 'y', scale: 1.45, quality: q, rough: 0, ao: 0, normal: 1, chroma: 0.55, antiTile: q === 'high' });
   const kM = q === 'low' ? null : triplanarKit('tpM', 'sand_ripples', { axes: 'y', scale: 2.6, quality: q, rough: 0, ao: 0, normal: 1, chroma: 0, antiTile: q === 'high' });
   const sandU = {
-    uTexK: { value: new THREE.Vector4(1, 0.4, 0.4, 0.6) },     // x: включено, y: сила нормали, z: сила цвета, w: сила среднего слоя
+    uTexK: { value: new THREE.Vector4(1, 0.4, 0.4, 0.4) },     // x: включено, y: сила нормали, z: сила цвета, w: сила среднего слоя
     ...(kS ? kS.uniforms : {}), ...(kM ? kM.uniforms : {}),
     uSandLoose: { value: new THREE.Color('#CFB083') },
     uSandPacked: { value: new THREE.Color('#B8936A') },
@@ -534,8 +540,28 @@ export function createTerrain(game, foot) {
     }
   }
 
+  /**
+   * Материал «песок ландшафта» для произвольной сетки (наносы у харвестера и т.п.): тот же фрагментный шейдер, что у клипмапа
+   * (палитра, макровариация, рябь, зерно, следы, искры, туман), поэтому шва по цвету/материалу нет.
+   * Вершины сетки должны давать: position (локально), normal, атрибут aMask (vec2: камень, плотность) — как terrain masks().
+   */
+  function makeSurfaceMaterial() {
+    const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0 });
+    mat.polygonOffset = true; mat.polygonOffsetFactor = -1; mat.polygonOffsetUnits = -2;   // там, где наносы лежат вровень с ландшафтом, выигрывает сетка (шейдер тот же)
+    patchMaterial(mat, 'rk-surface' + (kS ? (kM ? 'tm' : 't') : ''), {
+      uniforms: Object.assign({}, sandU),
+      vertexCommon: true,
+      vertexPars: 'attribute vec2 aMask;\nvarying vec3 vWP;\nvarying vec3 vTN;\nvarying vec2 vMask;\nvarying float vShade;\n',
+      vertexBeginNormal: 'vec3 objectNormal = vec3(normal);\n#ifdef USE_TANGENT\nvec3 objectTangent = vec3( tangent.xyz );\n#endif\n',
+      vertexMain: 'vec3 transformed = position;\nvWP = (modelMatrix * vec4(position, 1.0)).xyz; vTN = normalize(mat3(modelMatrix) * normal); vMask = aMask; vShade = rkClawShade(vWP);\n',
+      fragPars: (kS ? (kM ? '#define RK_SAND_MID\n' : '') + '#define RK_SAND_TEX\nuniform vec4 uTexK;\n' + kS.pars + (kM ? kM.pars : '') : '') + FRAG_PARS, fragColor: FRAG_COLOR, fragRough: FRAG_ROUGH, fragNormal: FRAG_NORMAL,
+      fragLightsEnd: FRAG_LIGHTS_END, fragBeforeOut: FRAG_BEFORE_OUT, fragAfterFog: FRAG_FAR_FADE,
+    });
+    return mat;
+  }
+
   return {
-    levels, update, sandU, texSize: TEX, cells: CELLS,
+    levels, update, sandU, texSize: TEX, cells: CELLS, makeSurfaceMaterial,
     setVisible(b) { for (const L of levels) L.mesh.visible = b; },
     /** Сбросить кэш высот (после изменения field.groundPatches) — кольца перезаливаются при следующем update. */
     invalidate(rect) {

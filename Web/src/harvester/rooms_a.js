@@ -188,7 +188,8 @@ export function corridor(plan, glow) {
   const CY = b.y1;
   for (const x of [-26, -19, -12, -5, 2, 6.2]) lampPanel(R, x, CY - 0.05, x > -6 ? -1.4 : 0, 1.4, 0.4, 0.9, 6.5);
   const dz = (x0) => hole(x0, x0 + 1.9, FA, FA + 3.2);
-  R.enclose({ w: [hole(-1.8, 1.8, FA, FA + 3.8)], n: [dz(-26), dz(-16), dz(-2)], s: [dz(-26), dz(-16), dz(-2)], e: false });
+  R.enclose({ w: [hole(-1.8, 1.8, FA, FA + 3.8)], n: [dz(-26), dz(-16), dz(-2)], s: [dz(-26), dz(-16), dz(-2)], e: false,
+    ceilHole: { x0: -6.8, x1: 8.0, z0: 0.2, z1: 3.8 } });   // проём в перекрытии над трапом на верхнюю палубу (совпадает с проёмом пола зала)
   R.slab(7.8, 14.9, -3.4, 8.0, CY + 0.3, 3.4, PAL.WALL, 0);   // перемычка над проходом в галерею
   // пороги в стыках (толщина перегородок): без них пол «обрывается» между комнатами
   R.floor(7.8, -3.4, 8.0, 3.4, FA, PAL.FLOOR, 5);
@@ -204,7 +205,7 @@ export function corridor(plan, glow) {
   dec(R, 'exit', [6.2, FA + 3.8, -3.38], '+z', 1.6, 0.6);
   dec(R, 'danger', [-27.6, FA + 3.0, -3.38], '+z', 1.2, 1.2);
   pipeX(R, -29, 7.8, CY - 0.6, -2.9, 0.22, '#7a6a52');
-  pipeX(R, -29, 7.8, CY - 0.6, 2.9, 0.22, '#4b6a5c');
+  pipeX(R, -29, -8.2, CY - 0.6, 2.9, 0.22, '#4b6a5c');   // не доходит до трапа (по нему идёт голова)
   R.box(-10, CY - 1.0, 0, 36, 0.1, 0.6, PAL.DARK, 2);
   for (let x = -28; x < 7.8; x += 1.3) R.box(x, CY - 1.0, 0, 0.05, 0.2, 0.7, PAL.STEEL, 1);
   R.cyl(-9.0, FA + 1.0, -3.2, 0.14, 0.14, 0.7, PAL.RED, 0, { seg: 8 });
@@ -233,7 +234,7 @@ export function dorm(plan, glow) {
   for (const s of [-1, 1]) R.box(-18, FA + 0.46, 15.6 + s * 0.85, 8.0, 0.08, 0.34, PAL.WOOD, 0, { s: true });
   for (let i = 0; i < 5; i++) R.cyl(-21 + i * 1.6, FA + 0.88, 15.4, 0.1, 0.09, 0.14, '#b9b2a2', 1, { seg: 8 });
   R.box(-18, FA + 0.02, 9.6, 14, 0.03, 2.0, '#4a5b52', 6);
-  for (let i = 0; i < 5; i++) crate(R, -26 + i * 1.3, FA, 9.4 + (i % 2) * 0.4, [0.8, 0.5, 0.6], i % 2 ? PAL.OLIVE : PAL.WOOD, 0, false);
+  for (let i = 0; i < 5; i++) crate(R, -26 + i * 1.3, FA, 9.4 + (i % 2) * 0.4, [0.8, 0.5, 0.6], i % 2 ? PAL.OLIVE : PAL.WOOD);
   // шкафчики вдоль восточной стены
   for (let i = 0; i < 5; i++) cabinet(R, b.x1 - 0.4, 5.4 + i * 2.4, 0.8, 0.7, 2.2, i % 2 ? PAL.OLIVE : PAL.BLUE, FA, true, '-x');
   // бельё на верёвке
@@ -315,7 +316,7 @@ export function mess(plan, glow) {
   R.box(-21, FA + 2.85, -19.0, 11, 0.06, 0.3, PAL.WOOD, 0);
   R.box(-21, FA + 3.5, -19.0, 7.0, 0.3, 0.3, PAL.DARK, 2);
   R.cyl(-10.4, FA + 1.3, -17.8, 0.9, 0.9, 2.6, '#5a7a82', 1, { seg: 16, s: true });
-  for (let i = 0; i < 6; i++) crate(R, -10.4, FA + (i % 3) * 0.55, -6.0 - Math.floor(i / 3) * 0.9, [0.8, 0.5, 0.7], i % 2 ? PAL.OLIVE : PAL.WOOD, 0, i < 3);
+  for (let i = 0; i < 6; i++) crate(R, -10.4, FA + (i % 3) * 0.55, -6.0 - Math.floor(i / 3) * 0.9, [0.8, 0.5, 0.7], i % 2 ? PAL.OLIVE : PAL.WOOD);
   dec(R, 'schedule', [b.x0 + 0.02, FA + 2.4, -8.0], '+x', 2.4, 1.5);
   dec(R, 'mural', [b.x0 + 0.02, FA + 2.4, -14.0], '+x', 4.6, 2.7);
   dec(R, 'eagle', [b.x1 - 0.02, FA + 3.0, -6.0], '-x', 1.6, 1.6);
@@ -373,6 +374,7 @@ export function gallery(plan, glow) {
     e: [hole(-2.6, 2.6, FA, FA + 4.2)],
     n: [hole(DOOR.x0, DOOR.x1, FA, DOOR.y1)],
   });
+  R.ceil(13.8, -2.6, 14.4, 2.6, b.y1, PAL.CEIL, 1);   // перекрытие зазора между стенами галереи и кают-компании над проходом
   R.box((DOOR.x0 + DOOR.x1) / 2, DOOR.y1 + 0.45, 19.0, DOOR.x1 - DOOR.x0 + 0.8, 0.5, 0.4, PAL.YEL, 4);
   R.gbox((DOOR.x0 + DOOR.x1) / 2, DOOR.y1 + 0.2, 18.98, 1.4, 0.12, 0.03, '#8be0a0');
   for (let i = 0; i < 5; i++) cabinet(R, 13.3, -17.5 + i * 1.15, 0.9, 1.0, 2.4, i % 2 ? PAL.OLIVE : PAL.BLUE, FA, true, '-x');
@@ -410,8 +412,8 @@ export function feedHall(plan, glow) {
   R.dyn.push({ kind: 'belt', a: [xa, ya + 0.14, 0], b: [xb, yb + 0.14, 0], hw: hw - 0.25, n: 22 });
   for (let i = 0; i <= 6; i++) {
     const t = i / 6, x = xa + (xb - xa) * t, y = ya + (yb - ya) * t;
-    for (const s of [-1, 1]) R.box(x, (FA + y) / 2 - 0.3, s * (hw + 0.4), 0.4, y - FA - 0.5, 0.4, PAL.STEEL, 1);
-    R.box(x, (FA + y) / 2 - 0.3, 0, 0.3, y - FA - 0.6, 0.3, '#554f48', 1);
+    for (const s of [-1, 1]) R.box(x, (FA + y) / 2 - 0.3, s * (hw + 0.4), 0.4, y - FA - 0.5, 0.4, PAL.STEEL, 1, { s: false });   // опоры внутри объёма ленты (R.solid ниже)
+    R.box(x, (FA + y) / 2 - 0.3, 0, 0.3, y - FA - 0.6, 0.3, '#554f48', 1, { s: false });
   }
   R.solid((xa + xb) / 2, FA + 2.4, 0, xa - xb, 4.8, 2 * (hw + 0.6));
   // дробилка у начала ленты на носовой стене

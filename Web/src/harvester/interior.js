@@ -7,30 +7,11 @@ import { engineRoom, corridor, dorm, stills, mess, lab, gallery, feedHall, FACE 
 import { hall, passage, chart, bridge } from './rooms_b.js';
 import { createInteriorMaterial, createInteriorDecalTexture, createInteriorDecalMaterial, buildQuads, IATLAS, createScreenAtlas, INT_POWER } from './imaterial.js';
 import { createGlowMaterial } from './material.js';
-import { GANG, LANDING, DOOR, FA } from './layout.js';
-import { rampY } from './hull.js';
+import { exteriorPlan } from './plan_ext.js';
+import { createPlanQueries } from './plan_query.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const BUILDERS = [gallery, corridor, feedHall, hall, chart, bridge, passage, mess, dorm, stills, lab, engineRoom];
-
-/** Схема входа с улицы: трап, посадочная площадка, порог двери, ограждения, стена корпуса вокруг двери. */
-function exteriorPlan(plan) {
-  const zc = GANG.zc, hw = GANG.w / 2;
-  plan.addFloor(GANG.xTop, zc - hw, GANG.xFoot, zc + hw, FA, GANG.yFoot, 'x', 'metal');
-  plan.addFloor(LANDING.x0, LANDING.z0, LANDING.x1, LANDING.z1, FA, FA, 'x', 'metal');
-  plan.addFloor(DOOR.x0, 19.0, DOOR.x1, LANDING.z0 + 0.02, FA, FA, 'x', 'metal');
-  for (let x = GANG.xTop; x < GANG.xFoot; x += 1.0) {
-    const xm = x + 0.5, y = rampY(xm);
-    for (const z of [zc - hw, zc + hw]) plan.addBlock(x, y - 0.15, z - 0.1, x + 1.0, y + 1.2, z + 0.1);
-  }
-  plan.addBlock(LANDING.x0 - 0.1, FA - 0.05, LANDING.z1 - 0.1, LANDING.x1, FA + 1.2, LANDING.z1 + 0.1);
-  plan.addBlock(LANDING.x0 - 0.1, FA - 0.05, LANDING.z0 + 0.4, LANDING.x0 + 0.1, FA + 1.2, LANDING.z1);
-  plan.addBlock(LANDING.x1 - 0.1, FA - 0.05, LANDING.z0 + 0.4, LANDING.x1 + 0.1, FA + 1.2, zc - hw);
-  // борт корпуса справа и слева от двери (стена 19.4..20.2) и перемычка над дверью
-  plan.addBlock(4, FA - 1, 19.4, DOOR.x0, FA + 9, 20.2);
-  plan.addBlock(DOOR.x1, FA - 1, 19.4, 18, FA + 9, 20.2);
-  plan.addBlock(DOOR.x0, DOOR.y1, 19.4, DOOR.x1, FA + 9, 20.2);
-}
 
 // ----------------------------------------------------------------------------------------------- геометрия механизмов
 const G = {
@@ -195,59 +176,8 @@ export function createInterior(game, root, quality) {
   }
 
   // ----------------------------------------------------------------------------------- запросы (локальные координаты)
-  const fh = (f, x, z) => {
-    if (f.y === f.y1) return f.y;
-    const t = f.axis === 'x' ? (x - f.x0) / (f.x1 - f.x0) : (z - f.z0) / (f.z1 - f.z0);
-    return f.y + (f.y1 - f.y) * Math.min(1, Math.max(0, t));
-  };
-  const EPS = 0.02;
-  /** Высота пола под точкой (лучший пол не выше y+0.9); null — полов нет. */
-  function floorAt(x, z, y) {
-    let best = -Infinity, kind = null;
-    const fl = plan.floors;
-    for (let i = 0; i < fl.length; i++) {
-      const f = fl[i];
-      if (x < f.x0 - EPS || x > f.x1 + EPS || z < f.z0 - EPS || z > f.z1 + EPS) continue;
-      const fy = fh(f, x, z);
-      if (fy <= y + 0.9 && fy > best) { best = fy; kind = f.kind; }
-    }
-    return best === -Infinity ? null : { y: best, kind };
-  }
-  /** Точка (ступни) внутри/на борту: есть пол в пределах ±1.3 м по высоте. */
-  function contains(x, z, y) {
-    const fl = plan.floors;
-    for (let i = 0; i < fl.length; i++) {
-      const f = fl[i];
-      if (x < f.x0 - EPS || x > f.x1 + EPS || z < f.z0 - EPS || z > f.z1 + EPS) continue;
-      if (Math.abs(fh(f, x, z) - y) < 1.3) return true;
-    }
-    return false;
-  }
-  /** Выталкивание круга радиуса r (ступни на высоте y) из стен/мебели. Меняет out.x/out.z; true — было столкновение. */
-  function collide(out, y, r) {
-    let hit = false;
-    const bl = plan.blockers;
-    const top = y + 1.75, step = y + 0.38;
-    for (let it = 0; it < 3; it++) {
-      let moved = false;
-      for (let i = 0; i < bl.length; i++) {
-        const b = bl[i];
-        if (b.y1 <= step || b.y0 >= top) continue;
-        const cx = Math.min(b.x1, Math.max(b.x0, out.x)), cz = Math.min(b.z1, Math.max(b.z0, out.z));
-        let dx = out.x - cx, dz = out.z - cz;
-        const d2 = dx * dx + dz * dz;
-        if (d2 >= r * r) continue;
-        if (d2 > 1e-8) { const d = Math.sqrt(d2); out.x = cx + dx / d * (r + 0.005); out.z = cz + dz / d * (r + 0.005); }
-        else {
-          const o = [out.x - b.x0, b.x1 - out.x, out.z - b.z0, b.z1 - out.z]; const m = Math.min(...o);
-          if (m === o[0]) out.x = b.x0 - r - 0.005; else if (m === o[1]) out.x = b.x1 + r + 0.005; else if (m === o[2]) out.z = b.z0 - r - 0.005; else out.z = b.z1 + r + 0.005;
-        }
-        moved = true; hit = true;
-      }
-      if (!moved) break;
-    }
-    return hit;
-  }
+  const Q = createPlanQueries(plan);
+  const { floorAt, floorBelow, contains, ceilingAt, collide } = Q;
   function roomAt(x, z, y) {
     for (const R of rooms) { const b = R.b; if (x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1 && y >= b.y0 - 1 && y <= b.y1 + 1) return R; }
     return null;
@@ -272,7 +202,7 @@ export function createInterior(game, root, quality) {
   }
 
   return {
-    group, plan, rooms, update, floorAt, contains, collide, roomAt,
+    group, plan, rooms, update, floorAt, floorBelow, contains, ceilingAt, collide, roomAt,
     get ready() { return S.ready; }, get progress() { return S.built ? 1 : (S.step + (S.assets ? 1 : 0)) / (BUILDERS.length + 2); },
     interactions: S.interactions,
     stats() { let tris = 0, draws = 0; for (const m of meshes) { draws++; const g = m.geometry; tris += (g.index ? g.index.count : g.attributes.position.count) / 3 * (m.isInstancedMesh ? m.count : 1); } return { draws, tris: Math.round(tris), blockers: plan.blockers.length, floors: plan.floors.length }; },
