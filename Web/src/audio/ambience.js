@@ -1,194 +1,123 @@
-// Эмбиент: ветер с порывами (по weather.windSpeed/storm), шорох песка, «пение» дюн, далёкая буря;
-// в сиетче — гул толпы (формантный шум), капли, гул светошаров, хлопки ткани, шорох зала.
+// Эмбиент (Ред. 3): ветер слоями (тело, свист по кромкам скал, шипение дрейфующего песка), порывы по desert:gust, осыпи по desert:sandslide;
+// сиетч — тон каменных залов (без гудения 180 Гц), далёкое бормотание толпы (шумовая текстура, не слова), стуки инструментов, капли, плеск воды, ткань;
+// сад — ручей, птицы, горлицы, насекомые. Всё через шину amb; параметры пишутся только через eng.ramp/eng.setT (защита от NaN).
 import { clamp, lerp, smoothstep } from '../core/util.js';
 import { ENTRY, GARDEN } from '../core/layout.js';
 
-/** Профили зон: ветер, интерьерные слои, реверберация. */
+/** Профили зон: ветер, свист (открытые кромки скал), интерьерные слои, реверберация. */
 const ENV = {
-  A1_Ridge: { wind: 1, dune: 0, rev: 'desert', lp: 20000 },
-  A2_Erg: { wind: 0.9, dune: 1, rev: 'desert', lp: 20000 },
-  A3_Approach: { wind: 1, dune: 0, rev: 'desert', lp: 20000 },
-  A4_Crevice: { wind: 0.7, drip: 0.15, rev: 'desert', lp: 20000 },
-  A5_Trail: { wind: 0.85, rev: 'desert', lp: 20000 },
-  A6_Cleft: { wind: 0.6, drip: 0.25, rev: 'desert', lp: 20000 },
+  A1_Ridge: { wind: 1, whistle: 1, rev: 'desert', lp: 20000 },
+  A2_Erg: { wind: 0.9, whistle: 0.25, rev: 'desert', lp: 20000 },
+  A3_Approach: { wind: 1, whistle: 0.6, rev: 'desert', lp: 20000 },
+  A4_Crevice: { wind: 0.7, whistle: 0.8, drip: 0.15, rev: 'desert', lp: 20000 },
+  A5_Trail: { wind: 0.85, whistle: 1, rev: 'desert', lp: 20000 },
+  A6_Cleft: { wind: 0.6, whistle: 0.9, drip: 0.25, rev: 'desert', lp: 20000 },
   C1_Garden: { wind: 0.22, garden: 1, rev: 'desert', lp: 20000 },
-  B1_Airlock: { wind: 0.05, hum: 0.5, murmur: 0.1, drip: 0.6, rev: 'sietch', lp: 9000 },
-  B2_Gallery: { wind: 0, hum: 0.8, murmur: 0.55, drip: 0.2, cloth: 0.6, rev: 'sietch', lp: 11000 },
-  B3_Passages: { wind: 0, hum: 0.5, murmur: 0.14, drip: 0.4, cloth: 0.7, rev: 'sietch', lp: 8000 },
+  B1_Airlock: { wind: 0.05, hum: 0.5, murmur: 0.1, drip: 0.6, work: 0.1, rev: 'sietch', lp: 9000 },
+  B2_Gallery: { wind: 0, hum: 0.8, murmur: 0.55, drip: 0.2, cloth: 0.6, work: 0.7, rev: 'sietch', lp: 11000 },
+  B3_Passages: { wind: 0, hum: 0.5, murmur: 0.14, drip: 0.4, cloth: 0.7, work: 0.3, rev: 'sietch', lp: 8000 },
   B4_Cistern: { wind: 0, hum: 0.25, murmur: 0.03, drip: 1, rev: 'cistern', lp: 8000 },
-  B5_Hall: { wind: 0, hum: 0.4, murmur: 0.38, rustle: 0.6, rev: 'hall', lp: 12000 },
-  B6_Cellar: { wind: 0, hum: 0.3, murmur: 0.03, drip: 1, rev: 'cistern', lp: 6500 },   // водяной погреб (sietch): капли, гулкая сырость
+  B5_Hall: { wind: 0, hum: 0.4, murmur: 0.38, rustle: 0.6, work: 0.1, rev: 'hall', lp: 12000 },
+  B6_Cellar: { wind: 0, hum: 0.3, murmur: 0.03, drip: 1, rev: 'cistern', lp: 6500 },
 };
-// Гласные для «толпы»: (F1, F2) Гц.
-const VOWELS = [[730, 1090], [530, 1840], [270, 2290], [570, 840], [300, 870], [660, 1720]];
 
 export function createAmbience(game, eng) {
   const { ctx, bus } = eng;
   const out = bus.amb;
   const rnd = (a, b) => a + Math.random() * (b - a);
+  const play = (n, o) => eng.playSample(n, { out, ...o });
 
-  // ---------- Ветер ----------
-  const windOut = eng.gain(1); windOut.connect(out);
-  const mkBand = (kind, f, q, pan) => {
-    const s = eng.loopNoise(kind), bp = eng.filter('bandpass', f, q), g = eng.gain(0);
-    s.connect(bp); bp.connect(g); g.connect(eng.stereoPan(windOut, pan));
-    return { bp, g };
+  // ---------- Ветер: тело (шум, НЧ срезан), свист (узкие полосы), шипение песка (гранулярная текстура) ----------
+  const windOut = eng.gain(1);
+  const windLP = eng.filter('lowpass', 9000, 0.5);       // в сиетче ветер глохнет
+  windOut.connect(windLP); windLP.connect(out);
+  const mkBody = (f, pan) => {
+    const s = eng.loopNoise('pink'), hp = eng.filter('highpass', 130, 0.6), lp = eng.filter('lowpass', f, 0.6), g = eng.gain(0);
+    s.connect(hp); hp.connect(lp); lp.connect(g); g.connect(eng.stereoPan(windOut, pan));
+    return { lp, g };
   };
-  const wA = mkBand('pink', 400, 0.6, -0.6);
-  const wB = mkBand('pink', 650, 0.7, 0.6);
-  const wW = mkBand('white', 1700, 7, 0);     // свист по кромке
-  const wS = mkBand('white', 4200, 0.5, 0);   // шорох песка
-  // Далёкая буря: низкий гул.
-  const stormSrc = eng.loopNoise('brown'), stormLP = eng.filter('lowpass', 220, 0.6), stormG = eng.gain(0);
-  stormSrc.connect(stormLP); stormLP.connect(stormG); stormG.connect(out);
-  // «Пение» дюн в эрге: тональный гул 70–110 Гц (очень тихо).
-  const duneG = eng.gain(0); duneG.connect(out);
-  for (const [f, d] of []) {  // «пение» дюн убрано (Ред. 2): постоянный тон 78–110 Гц читался как гул
-    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f; o.detune.value = d;
-    const lfo = ctx.createOscillator(), lg = eng.gain(0.15); lfo.frequency.value = rnd(0.05, 0.12); lfo.connect(lg);
-    const og = eng.gain(0.4); lg.connect(og.gain); o.connect(og); og.connect(duneG); o.start(); lfo.start();
-  }
+  const wA = mkBody(600, -0.55), wB = mkBody(1000, 0.55);
+  const mkWhistle = (f, pan) => {
+    const s = eng.loopNoise('white'), bp = eng.filter('bandpass', f, 26), g = eng.gain(0);
+    s.connect(bp); bp.connect(g); g.connect(eng.stereoPan(windOut, pan));
+    return { bp, g, f, next: 0 };
+  };
+  const whistles = [mkWhistle(1500, -0.4), mkWhistle(2300, 0.4)];
 
   let gust = 1, nextGust = 0;
-  const env = { wind: 1, dune: 0, hum: 0, murmur: 0, drip: 0, cloth: 0, rustle: 0, garden: 0 };
+  const env = { wind: 1, whistle: 0, hum: 0, murmur: 0, drip: 0, cloth: 0, rustle: 0, garden: 0, work: 0 };
   const ENV_KEYS = Object.keys(env);
 
-  // ---------- Сиетч: комнатный тон, гул светошаров ----------
-  const roomSrc = eng.loopNoise('pink'), roomLP = eng.filter('bandpass', 700, 0.5), roomG = eng.gain(0);
-  roomSrc.connect(roomLP); roomLP.connect(roomG); roomG.connect(out);
-  const humG = eng.gain(0); humG.connect(out); eng.send(humG, 0.2);
-  for (const [f, d, a] of [[110, 0, 0.5], [110.8, 0, 0.5], [220.5, 4, 0.18], [331, -3, 0.06]]) {
-    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f; o.detune.value = d;
-    const g = eng.gain(a); o.connect(g); g.connect(humG); o.start();
-  }
-  // Шорох зала / песка в луче: тихий «сыпучий» хай-фай.
-  const rustleSrc = eng.loopNoise('white'), rustleHP = eng.filter('highpass', 5200, 0.5), rustleG = eng.gain(0);
-  rustleSrc.connect(rustleHP); rustleHP.connect(rustleG); rustleG.connect(out); eng.send(rustleG, 0.4);
-
-  // ---------- Гул толпы (walla): 5 «голосов» с формантами и слоговой модуляцией ----------
-  const murmurOut = eng.gain(0); murmurOut.connect(out); eng.send(murmurOut, 0.45);
-  const murmurLP = eng.filter('lowpass', 3800, 0.5); murmurLP.connect(murmurOut);
-  const voices = [];
-  for (let i = 0; i < 5; i++) {
-    const s = eng.loopNoise('pink');
-    const f1 = eng.filter('bandpass', 700, 6), f2 = eng.filter('bandpass', 1200, 8);
-    const g = eng.gain(0), g1 = eng.gain(1), g2 = eng.gain(0.6);
-    s.connect(f1); s.connect(f2); f1.connect(g1); f2.connect(g2); g1.connect(g); g2.connect(g);
-    g.connect(eng.stereoPan(murmurLP, rnd(-0.8, 0.8)));
-    voices.push({ f1, f2, g, base: rnd(0.6, 1.2), next: 0, shift: rnd(0.85, 1.25) });
-  }
-  function stepVoices(t) {
-    for (const v of voices) {
-      if (t < v.next) continue;
-      v.next = t + rnd(0.12, 0.45);
-      const vow = VOWELS[(Math.random() * VOWELS.length) | 0];
-      v.f1.frequency.setTargetAtTime(vow[0] * v.shift, t, 0.03);
-      v.f2.frequency.setTargetAtTime(vow[1] * v.shift, t, 0.03);
-      // паузы между «фразами»: часть слогов тихие
-      v.g.gain.setTargetAtTime(Math.random() < 0.3 ? 0.002 : v.base * rnd(0.3, 1) * 0.05, t, 0.05);
+  // ---------- Слои-текстуры (создаются лениво, гаснут при нулевом уровне) ----------
+  const LAY = {};
+  function layer(key, name, level, opts, tc, dt) {
+    const e = LAY[key] || (LAY[key] = { ctl: null, idle: 0 });
+    if (level > 0.004) {
+      e.idle = 0;
+      if (!e.ctl && eng.samplesReady) e.ctl = eng.textureLoop(name, { gain: 0, ...opts });
+      e.ctl?.setGain(level, tc);
+    } else if (e.ctl) {
+      e.ctl.setGain(0, tc);
+      if ((e.idle += dt) > 6) { e.ctl.stop(0.5); e.ctl = null; }
     }
+    return e.ctl;
   }
+  // Реверберирующий приёмник бормотания/комнаты (эхо залов)
+  const roomOut = eng.gain(1); roomOut.connect(out); eng.send(roomOut, 0.35);
+  const murmurOut = eng.gain(1); murmurOut.connect(out); eng.send(murmurOut, 0.5);
 
-  // ---------- Капли, ткань: случайные события ----------
-  let nextDrip = 0, nextCloth = 0, dripPos = null;
-  function drip(t) {
-    const f = rnd(850, 2600);
-    const o = ctx.createOscillator(); o.type = 'sine';
-    o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * rnd(1.15, 1.5), t + 0.05);
-    const g = eng.gain(0);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(rnd(0.05, 0.11), t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
-    o.connect(g); g.connect(eng.stereoPan(out, rnd(-0.9, 0.9))); eng.send(g, 0.9);
-    o.start(t); o.stop(t + 0.25);
+  // ---------- Случайные события сиетча ----------
+  let nextDrip = 0, nextCloth = 0, nextWork = 0, nextLap = 0;
+  function drip(t, cistern) {
+    play(cistern && Math.random() < 0.5 ? 'dripdeep' : 'drip', { gain: rnd(0.12, 0.3), rateVar: 0.18, pan: rnd(-0.9, 0.9), send: cistern ? 1.0 : 0.8, when: t, lp: rnd(5000, 10000) });
   }
   function clothFlap(t) {
-    const pan = rnd(-0.9, 0.9);
-    for (let i = 0; i < 2 + ((Math.random() * 3) | 0); i++) {
-      eng.burst({ type: 'bandpass', f0: rnd(260, 420), f1: rnd(180, 300), q: 0.9, dur: rnd(0.12, 0.25), attack: 0.03, gain: rnd(0.025, 0.06), kind: 'pink', out: eng.stereoPan(out, pan), when: t + i * rnd(0.12, 0.2), send: 0.25 });
+    play('cloth', { gain: rnd(0.08, 0.2), rateVar: 0.15, pan: rnd(-0.9, 0.9), send: 0.3, when: t, lp: rnd(3500, 6000) });
+  }
+  function workClank(t) {
+    const pan = rnd(-0.9, 0.9), far = rnd(0, 1);
+    const hits = Math.random() < 0.4 ? 2 + ((Math.random() * 3) | 0) : 1;
+    let at = t;
+    for (let i = 0; i < hits; i++) {
+      play(Math.random() < 0.12 ? 'anvil' : 'clank', { gain: rnd(0.1, 0.28) * (1 - 0.5 * far), rate: rnd(0.85, 1.25), pan, send: 0.5, when: at, lp: lerp(9000, 3500, far) });
+      at += rnd(0.3, 0.7);
     }
   }
 
-  // ---------- Хоровой напев «ру… ру…» (зал) ----------
+  // ---------- Хоровой напев «ру… ру…» (зал): сэмпл голосов с плавными краями ----------
   function chant(seconds = 4) {
     const t0 = eng.T() + 0.05;
-    const dest = eng.gain(0); dest.connect(out); eng.send(dest, 0.9);
-    dest.gain.setValueAtTime(0, t0); dest.gain.linearRampToValueAtTime(0.5, t0 + 0.4);
-    dest.gain.setValueAtTime(0.5, t0 + seconds - 0.6); dest.gain.linearRampToValueAtTime(0, t0 + seconds);
-    const f0 = [98, 110, 123, 131, 87, 104];
-    for (const f of f0) {
-      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = rnd(-14, 14);
-      const lp = eng.filter('lowpass', 520, 0.8), vow = eng.filter('bandpass', 330, 3);
-      const am = eng.gain(0);
-      // ритм «ру — ру — ру»: ~1.5 Гц, мягкие пульсации
-      for (let k = 0; k < seconds * 1.6; k++) {
-        const tt = t0 + k / 1.6;
-        am.gain.setValueAtTime(0.02, tt); am.gain.linearRampToValueAtTime(0.18, tt + 0.12); am.gain.linearRampToValueAtTime(0.03, tt + 0.5);
-      }
-      o.connect(lp); lp.connect(vow); vow.connect(am); am.connect(dest);
-      o.start(t0); o.stop(t0 + seconds + 0.1);
+    for (let k = 0; k * 3.6 < seconds; k++) {
+      play('chant', { gain: 0.55, dur: Math.min(4, seconds - k * 3.6 + 0.4), fadeIn: 0.5, fadeOut: 0.7, send: 0.9, when: t0 + k * 3.6, rateVar: 0.01 });
     }
   }
 
-  // ---------- Ночная пустыня: насекомых в глубокой пустыне нет — ветер, далёкие осыпи, холодный треск песка ----------
+  // ---------- Ночная пустыня: далёкие осыпи и холодный треск песка ----------
   let nextSlide = 0, nextCrackle = 0;
   function sandSlide(t) {
-    const pan = rnd(-0.9, 0.9), dur = rnd(2.5, 5.5);
-    eng.burst({ type: 'lowpass', f0: rnd(260, 420), f1: rnd(90, 150), q: 0.7, dur, attack: dur * 0.35, gain: rnd(0.05, 0.1) * 3, kind: 'brown', out: eng.stereoPan(out, pan), when: t, send: 0.5 });
-    eng.burst({ type: 'bandpass', f0: rnd(1400, 2400), f1: rnd(700, 1100), q: 0.8, dur: dur * 0.8, attack: dur * 0.3, gain: rnd(0.008, 0.02), kind: 'pink', out: eng.stereoPan(out, pan), when: t + 0.05, send: 0.4 });
+    play('sand_pour', { gain: rnd(0.1, 0.2), rate: rnd(0.7, 0.95), dur: rnd(2.5, 5), fadeIn: 1, fadeOut: 1.5, pan: rnd(-0.9, 0.9), lp: 2800, send: 0.4, when: t, offset: rnd(0, 1) });
   }
   function coldCrackle(t) {
     const n = 1 + ((Math.random() * 4) | 0), pan = rnd(-0.8, 0.8);
-    for (let i = 0; i < n; i++) eng.burst({ type: 'bandpass', f0: rnd(2800, 6200), q: rnd(3, 7), dur: rnd(0.012, 0.03), attack: 0.001, gain: rnd(0.012, 0.035), kind: 'white', out: eng.stereoPan(out, pan + rnd(-0.1, 0.1)), when: t + i * rnd(0.03, 0.18), send: 0.3 });
+    for (let i = 0; i < n; i++) play('sand_tick', { gain: rnd(0.08, 0.2), rateVar: 0.3, pan: pan + rnd(-0.1, 0.1), send: 0.3, when: t + i * rnd(0.03, 0.18) });
   }
   /** 0..1: глубокая ночь по часам погоды (плавные края на рассвете и закате). */
   function nightAmount() {
     const w = game.weather;
     const h = typeof w?.getHours === 'function' ? w.getHours() : w?.hours;
-    if (typeof h !== 'number') return 0;
+    if (typeof h !== 'number' || !Number.isFinite(h)) return 0;
     const x = ((h % 24) + 24) % 24;
     const sm = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
     return x < 12 ? 1 - sm(4.6, 6.2, x) : sm(18.2, 19.8, x);
   }
 
-  // ---------- Сад: птицы, насекомые, ручей ----------
-  const brookSrc = eng.loopNoise('pink'), brookBP = eng.filter('bandpass', 1900, 1.1), brookG = eng.gain(0);
-  brookSrc.connect(brookBP); brookBP.connect(brookG); brookG.connect(out); eng.send(brookG, 0.15);
-  const gurSrc = eng.loopNoise('brown'), gurBP = eng.filter('bandpass', 420, 2.2), gurG = eng.gain(0);
-  gurSrc.connect(gurBP); gurBP.connect(gurG); gurG.connect(out);
+  // ---------- Сад: ручей (текстура), птицы и горлицы (сэмплы), насекомые (шум с AM) ----------
   const insSrc = eng.loopNoise('white'), insBP = eng.filter('bandpass', 5400, 16), insAM = eng.gain(0.5), insG = eng.gain(0);
   const insLFO = ctx.createOscillator(), insLG = eng.gain(0.5); insLFO.frequency.value = 34; insLFO.connect(insLG); insLG.connect(insAM.gain); insLFO.start();
   insSrc.connect(insBP); insBP.connect(insAM); insAM.connect(insG); insG.connect(out);
   let nextBird = 0, nextDove = 0, nextPlop = 0, nextIns = 0;
-  function birdCall(t) {
-    const pan = rnd(-0.9, 0.9), base = rnd(2300, 4300), n = 1 + ((Math.random() * 5) | 0), up = Math.random() < 0.5;
-    for (let i = 0; i < n; i++) {
-      const tt = t + i * rnd(0.08, 0.16), f = base * rnd(0.9, 1.25);
-      const o = ctx.createOscillator(); o.type = 'sine';
-      o.frequency.setValueAtTime(f, tt); o.frequency.exponentialRampToValueAtTime(f * (up ? 1.5 : 0.7), tt + 0.07);
-      const g = eng.gain(0);
-      g.gain.setValueAtTime(0, tt); g.gain.linearRampToValueAtTime(rnd(0.03, 0.07), tt + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.1);
-      o.connect(g); g.connect(eng.stereoPan(out, pan)); eng.send(g, 0.35); o.start(tt); o.stop(tt + 0.13);
-    }
-  }
-  function doveCoo(t) {
-    const pan = rnd(-0.8, 0.8), f = rnd(330, 420);
-    for (let i = 0; i < 3; i++) {
-      const tt = t + i * 0.42, o = ctx.createOscillator(); o.type = 'sine';
-      o.frequency.setValueAtTime(f * (i === 0 ? 0.9 : 1), tt); o.frequency.exponentialRampToValueAtTime(f * 0.88, tt + 0.3);
-      const g = eng.gain(0);
-      g.gain.setValueAtTime(0, tt); g.gain.linearRampToValueAtTime(0.05, tt + 0.06); g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.34);
-      o.connect(g); g.connect(eng.stereoPan(out, pan)); eng.send(g, 0.5); o.start(tt); o.stop(tt + 0.4);
-    }
-  }
-  function waterPlop(t) {
-    const f = rnd(500, 1300), o = ctx.createOscillator(); o.type = 'sine';
-    o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 1.9, t + 0.06);
-    const g = eng.gain(0);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(rnd(0.03, 0.07), t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
-    o.connect(g); g.connect(eng.stereoPan(out, rnd(-0.5, 0.5))); eng.send(g, 0.3); o.start(t); o.stop(t + 0.15);
-  }
 
-  // ---------- Проёмы: расстояние до ближайшего выхода наружу (щель-вход, туннель в сад) ----------
-  // Модуль сиетча может дополнительно выставить game.sietch.openings = [{x,y,z,kind:'garden'|'desert'}].
+  // ---------- Проёмы: расстояние до ближайшего выхода наружу ----------
   const OPENINGS = [{ ...ENTRY.cleft, kind: 'desert' }, { ...GARDEN.portal, kind: 'garden' }];
   function nearestOpening() {
     const p = game.player?.position;
@@ -197,21 +126,31 @@ export function createAmbience(game, eng) {
     const list = game.sietch?.openings?.length ? game.sietch.openings : OPENINGS;
     for (const o of list) {
       const d = Math.hypot(p.x - o.x, (p.y - (o.y ?? p.y)) * 0.7, p.z - o.z);
-      if (d < best.d) best = { d, kind: o.kind || 'desert' };
+      if (Number.isFinite(d) && d < best.d) best = { d, kind: o.kind || 'desert' };
     }
     return best;
   }
 
+  // ---------- События пустыни ----------
+  game.bus.on('desert:gust', (e) => {
+    const s = clamp(e?.strength ?? 0.6, 0, 1);
+    gust = Math.max(gust, 1.2 + 1.0 * s); nextGust = eng.T() + rnd(2.5, 4.5);   // порыв: тело + свист + шипение резко вверх и спад
+  });
+  game.bus.on('desert:sandslide', (e) => {
+    if (!e || !eng.samplesReady || game.space === 'sietch') return;
+    const k = clamp(e.intensity ?? 0.5, 0.1, 1);
+    const pos = Number.isFinite(e.x + e.z) ? { x: e.x, y: (game.heightAt?.(e.x, e.z) ?? 0) + 1, z: e.z } : null;
+    play('sand_pour', { ...(pos ? { pos, pannerOpts: { ref: 20, rolloff: 1, max: 300 } } : {}), gain: 0.35 * k, dur: rnd(2.5, 4), fadeIn: 0.5, fadeOut: 1.5, offset: rnd(0, 1), lp: 5000 });
+  });
+
   // ---------- Обновление ----------
   const api = {
     chant,
-    /** Принудительный флаг сада (bus 'garden:enter' / 'garden:leave'). */
     gardenFlag: false,
     /** Звуковой «порыв» по событию Wind.Gust. */
     gustNow() { gust = 1.8; },
-    update(dt, t) {
+    update(dt) {
       const w = game.weather;
-      // Бесшовный переход «снаружи ↔ внутри»: вес улицы (ext) и интерьера (int) плавно зависят от game.space и расстояния до проёмов.
       const inS = game.space === 'sietch';
       const op = nearestOpening();
       const ext = inS ? smoothstep(40, 3, op.d) * 0.85 : 1;
@@ -229,55 +168,59 @@ export function createAmbience(game, eng) {
       revW[extProf.rev] = (revW[extProf.rev] || 0) + ext;
       revW[intProf.rev] = (revW[intProf.rev] || 0) + (inS ? 1 : int);
       eng.setReverbMix(revW);
-      // буря глушит верха: песок в воздухе; интерьер приглушает (смешение по весам)
       const extLP = extProf.lp * (1 - 0.5 * clamp(game.weather?.storm ?? 0, 0, 1) * (extProf.wind > 0.2 ? 1 : 0));
       const wInt = int / (int + ext + 1e-3);
       eng.ramp(eng.masterLP.frequency, game.paused ? 700 : lerp(extLP, intProf.lp, wInt), 0.4);
-      const night0 = nightAmount();
+      eng.ramp(windLP.frequency, lerp(9000, 650, wInt), 0.5);   // ветер в сиетче глухой, как из-за стены
       const ws = clamp(w?.windSpeed ?? 4, 0, 24), storm = clamp(w?.storm ?? 0, 0, 1);
       const now = eng.T();
-      if (now > nextGust) {
-        gust = rnd(0.55, 1.5) * (1 + storm * 0.6);
-        nextGust = now + rnd(1.4, 5);
-      }
+      if (now > nextGust) { gust = rnd(0.6, 1.4) * (1 + storm * 0.6); nextGust = now + rnd(1.6, 5); }
       const night = game.space === 'desert' ? nightAmount() : 0;
-      const K = 4; // шумовые полосы после фильтров тихие — компенсируем усилением (замер: ~-36 дБFS при 5 м/с)
-      const base = (0.03 + 0.42 * Math.pow(ws / 16, 1.4)) * env.wind * K * (1 + 0.25 * night);
+      const night0 = nightAmount();
+      // Тело ветра: уровень по скорости, спектр темнее при слабом ветре
+      const base = (0.012 + 0.2 * Math.pow(ws / 16, 1.5)) * env.wind * (1 + 0.25 * night + storm * 0.8);
       const gg = base * gust;
-      eng.ramp(wA.g.gain, gg, 0.9); eng.ramp(wB.g.gain, gg * 0.85, 1.1);
-      eng.ramp(wA.bp.frequency, 240 + ws * 26, 0.8); eng.ramp(wB.bp.frequency, 420 + ws * 38, 0.8);
-      eng.ramp(wW.g.gain, 0.012 * K * Math.pow(ws / 12, 2) * gust * env.wind * (1 + storm * 2.5), 0.8);
-      eng.ramp(wW.bp.frequency, 1300 + ws * 70 + gust * 120, 0.7);
-      const sandy = (game.player?.sandWalking ? 0.5 : 0) + ws / 24;
-      eng.ramp(wS.g.gain, (0.004 + 0.02 * sandy * gust) * env.wind * 6 * (1 + storm * 4.5) * (1 - 0.5 * night), 0.7);
-      // дальняя буря: слышна только при заметной буре и вне сиетча; без низкого «землетрясения»
-      const stormK = clamp((storm - 0.3) / 0.6, 0, 1);
-      eng.ramp(stormG.gain, stormK * 0.22 * (env.wind > 0.2 ? 1 : 0), 1.5);
-      eng.ramp(duneG.gain, 0.012 * env.dune * (1 - clamp(ws / 14, 0, 0.6)), 1.5);
+      eng.ramp(wA.g.gain, gg, 0.9); eng.ramp(wB.g.gain, gg * 0.8, 1.1);
+      eng.ramp(wA.lp.frequency, 380 + ws * 40 + gust * 80, 0.8); eng.ramp(wB.lp.frequency, 650 + ws * 60 + gust * 120, 0.8);
+      // Свист по кромкам скал: растёт ~ квадрат скорости, зависит от открытости зоны; частота плавает случайно
+      const wl = 0.1 * Math.pow(ws / 12, 2.2) * env.whistle * env.wind * gust * (1 + storm);
+      whistles.forEach((s, i) => {
+        eng.ramp(s.g.gain, wl * (i ? 0.7 : 1), 0.6);
+        if (now > s.next) { s.next = now + rnd(0.6, 1.8); eng.ramp(s.bp.frequency, clamp(s.f * rnd(0.7, 1.5) * (0.85 + ws / 30), 700, 4200), 0.5); }
+      });
+      // Шипение дрейфующего песка
+      const sandy = (game.player?.sandWalking ? 0.3 : 0) + ws / 20;
+      const hiss = (0.01 + 0.2 * clamp(sandy, 0, 1.3) * gust) * env.wind * (1 + storm * 2) * (1 - 0.5 * night);
+      layer('hiss', 'sand_pour', hiss * (ws > 2.5 ? 1 : ws / 2.5), { out: windOut, lp: 7000 }, 0.8, dt);
 
-      eng.ramp(roomG.gain, 0.045 * Math.min(1, env.hum + env.murmur), 0.8);
-      eng.ramp(humG.gain, 0.012 * env.hum, 0.8);
-      eng.ramp(rustleG.gain, 0.03 * env.rustle, 1.2);
-      eng.ramp(murmurOut.gain, env.murmur * (api.ritualOn ? 1.5 : 1) * 7, 0.9);
-      if (env.murmur > 0.02) stepVoices(now);
+      // Сиетч: каменный тон зала + бормотание (две текстуры: тихая и плотная толпа) — без тональных гудений
+      const room = Math.min(1, env.hum + env.murmur);
+      layer('room', 'room_stone', 0.1 * room, { out: roomOut }, 0.9, dt);
+      const m = env.murmur * (api.ritualOn ? 1.5 : 1);
+      layer('babA', 'babble_1', 0.34 * m, { out: murmurOut, lp: 3000 }, 0.9, dt);
+      layer('babB', 'babble_2', 0.3 * m * m, { out: murmurOut, lp: 3000 }, 0.9, dt);
 
       if (night > 0.2 && env.wind > 0.2) {
         if (now > nextSlide) { sandSlide(now + 0.02); nextSlide = now + rnd(11, 28) / night; }
         if (now > nextCrackle) { coldCrackle(now + 0.02); nextCrackle = now + rnd(0.7, 2.6) / night; }
       }
-      // сад
+      // Сад
       const gd = env.garden;
-      eng.ramp(brookG.gain, 0.2 * gd, 1.2); eng.ramp(gurG.gain, 0.16 * gd, 1.2);
-      eng.ramp(insG.gain, 0.08 * gd * (0.35 + 0.65 * night0), 1.5);
-      if (gd > 0.05) {
+      layer('brook', 'brook', 0.28 * gd, { out, lp: 9000 }, 1.2, dt);
+      eng.ramp(insG.gain, 0.05 * gd * (0.35 + 0.65 * night0), 1.5);
+      if (gd > 0.05 && eng.samplesReady) {
         if (now > nextIns) { nextIns = now + rnd(2, 5); eng.ramp(insLFO.frequency, rnd(26, 44), 2); eng.ramp(insBP.frequency, rnd(4800, 6200), 2); }
         const day = 1 - night0;
-        if (day > 0.1 && now > nextBird) { birdCall(now + 0.02); nextBird = now + rnd(0.5, 3.2) / (gd * (0.2 + 0.8 * day)); }
-        if (day > 0.1 && now > nextDove) { doveCoo(now + 0.02); nextDove = now + rnd(9, 22) / gd; }
-        if (now > nextPlop) { waterPlop(now + 0.01); nextPlop = now + rnd(0.4, 2.2) / gd; }
+        if (day > 0.1 && now > nextBird) { play('bird', { gain: rnd(0.1, 0.25), rateVar: 0.15, pan: rnd(-0.9, 0.9), send: 0.35, when: now + 0.02 }); nextBird = now + rnd(0.7, 3.5) / (gd * (0.2 + 0.8 * day)); }
+        if (day > 0.1 && now > nextDove) { play('dove', { gain: 0.16, rateVar: 0.05, pan: rnd(-0.8, 0.8), send: 0.5, when: now + 0.02 }); nextDove = now + rnd(9, 22) / gd; }
+        if (now > nextPlop) { play('drip', { gain: rnd(0.08, 0.2), rate: rnd(0.55, 0.9), pan: rnd(-0.5, 0.5), send: 0.3, when: now + 0.01 }); nextPlop = now + rnd(0.5, 2.5) / gd; }
       }
-      if (env.drip > 0.02 && now > nextDrip) { drip(now + 0.01); nextDrip = now + rnd(1.4, 5.5) / env.drip; }
-      if (env.cloth > 0.05 && now > nextCloth) { clothFlap(now + 0.01); nextCloth = now + rnd(5, 14) / env.cloth; }
+      if (eng.samplesReady) {
+        if (env.drip > 0.02 && now > nextDrip) { drip(now + 0.01, env.drip > 0.6); nextDrip = now + rnd(1.4, 5.5) / env.drip; }
+        if (env.cloth > 0.05 && now > nextCloth) { clothFlap(now + 0.01); nextCloth = now + rnd(5, 14) / env.cloth; }
+        if (env.work > 0.05 && now > nextWork) { workClank(now + 0.01); nextWork = now + rnd(2.5, 8) / env.work; }
+        if (env.drip > 0.6 && now > nextLap) { play('water_lap', { gain: rnd(0.1, 0.22), rateVar: 0.1, pan: rnd(-0.8, 0.8), send: 0.9, when: now + 0.01 }); nextLap = now + rnd(6, 14); }
+      }
     },
   };
   return api;
