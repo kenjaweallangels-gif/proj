@@ -9,7 +9,7 @@ export function createEnvMap(game, sky) {
   const { renderer, scene } = game;
   const pm = new THREE.PMREMGenerator(renderer);
   const env = new THREE.Scene();
-  const dome = new THREE.Mesh(sky.dome.geometry, sky.dome.material);
+  const dome = new THREE.Mesh(sky.dome.geometry, sky.makeLite ? sky.makeLite() : sky.dome.material);   // облегчённое небо: без звёзд, облаков, хребтов
   dome.frustumCulled = false; dome.scale.setScalar(50); dome.renderOrder = -1000;
   env.add(dome);
   // нижняя полусфера: цвет песка, освещённого ключевым светом + небом (приближение отражённого света земли)
@@ -43,7 +43,7 @@ export function createEnvMap(game, sky) {
       const kd = ENV.uniforms.uKeyDir.value;
       const moved = Math.abs(kd.x - lastKey.x) + Math.abs(kd.y - lastKey.y) + Math.abs(kd.z - lastKey.z)
         + Math.abs(ENV.uniforms.uNight.value - lastNight) * 2 + Math.abs(ENV.uniforms.uStorm.value - lastStorm) * 2;
-      if (!rt || (age > 1.0 && moved > 0.012) || age > 8) api.refresh();
+      if (!rt || (age > 1.0 && moved > 0.012) || (age > 45 && moved > 0.002)) api.refresh();   // без движения света/погоды карту не пересобираем (каждая пересборка — всплеск GPU)
     },
   };
   return api;

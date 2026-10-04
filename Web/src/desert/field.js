@@ -7,6 +7,8 @@ import {
 } from '../core/layout.js';
 
 const Wx = WIND_DIR[0], Wz = WIND_DIR[1];
+/** Быстрая замена Math.hypot (в V8 hypot в разы медленнее; на горячем пути заливки клипмапа). */
+const hyp = (a, b) => Math.sqrt(a * a + b * b);
 
 // ---------- Скала: станции вдоль оси ----------
 export const ROCK_NS = 64;
@@ -28,17 +30,22 @@ export const FINS = [
 export const FALSE_DOOR = { x: 651.5, z: 326, w: 5.0, h: 7.5 };
 
 const RQ = { d: 1e9, t: 0, i: 0 };
+// плоские массивы станций (без аллокаций на горячем пути)
+const RS_X = new Float64Array(ROCK_NS + 1), RS_Z = new Float64Array(ROCK_NS + 1), RS_W = new Float64Array(ROCK_NS + 1), RS_T = new Float64Array(ROCK_NS + 1);
+const RS_DX = new Float64Array(ROCK_NS), RS_DZ = new Float64Array(ROCK_NS), RS_IL = new Float64Array(ROCK_NS);
+rockStations.forEach((a, i) => { RS_X[i] = a.x; RS_Z[i] = a.z; RS_W[i] = a.w; RS_T[i] = a.t; });
+for (let i = 0; i < ROCK_NS; i++) { RS_DX[i] = RS_X[i + 1] - RS_X[i]; RS_DZ[i] = RS_Z[i + 1] - RS_Z[i]; RS_IL[i] = 1 / (RS_DX[i] * RS_DX[i] + RS_DZ[i] * RS_DZ[i]); }
 /** Знаковое расстояние до основания скалы (2D); RQ.t — параметр ближайшей точки оси. */
 function rockQuery(x, z) {
   let best = 1e9, bt = 0;
   for (let i = 0; i < ROCK_NS; i++) {
-    const a = rockStations[i], b = rockStations[i + 1];
-    const abx = b.x - a.x, abz = b.z - a.z;
-    const apx = x - a.x, apz = z - a.z;
-    const s = clamp((apx * abx + apz * abz) / (abx * abx + abz * abz), 0, 1);
-    const dx = apx - abx * s, dz = apz - abz * s;
-    const d = Math.hypot(dx, dz) - lerp(a.w, b.w, s);
-    if (d < best) { best = d; bt = lerp(a.t, b.t, s); }
+    const apx = x - RS_X[i], apz = z - RS_Z[i];
+    let s = (apx * RS_DX[i] + apz * RS_DZ[i]) * RS_IL[i];
+    s = s < 0 ? 0 : s > 1 ? 1 : s;
+    const dx = apx - RS_DX[i] * s, dz = apz - RS_DZ[i] * s;
+    const w = RS_W[i] + (RS_W[i + 1] - RS_W[i]) * s;
+    const d = Math.sqrt(dx * dx + dz * dz) - w;
+    if (d < best) { best = d; bt = RS_T[i] + (RS_T[i + 1] - RS_T[i]) * s; }
   }
   RQ.d = best; RQ.t = bt;
   return best;
@@ -46,7 +53,7 @@ function rockQuery(x, z) {
 
 const boxSdf = (x, z, cx, cz, hx, hz) => {
   const dx = Math.abs(x - cx) - hx, dz = Math.abs(z - cz) - hz;
-  return Math.min(Math.max(dx, dz), 0) + Math.hypot(Math.max(dx, 0), Math.max(dz, 0));
+  return Math.min(Math.max(dx, dz), 0) + hyp(Math.max(dx, 0), Math.max(dz, 0));
 };
 
 /** SDF твёрдого тела скалы: скала − расщелина + «плавники» у входа. <0 — внутри. */
@@ -61,21 +68,25 @@ export function solidSdf(x, z) {
 
 // ---------- Золотой путь ----------
 const PATH = GOLDEN_PATH.map((p) => [p.x, p.z]);
+const PN = PATH.length - 1;
+const PA_X = new Float64Array(PN), PA_Z = new Float64Array(PN), PA_DX = new Float64Array(PN), PA_DZ = new Float64Array(PN), PA_IL = new Float64Array(PN);
+for (let i = 0; i < PN; i++) { PA_X[i] = PATH[i][0]; PA_Z[i] = PATH[i][1]; PA_DX[i] = PATH[i + 1][0] - PATH[i][0]; PA_DZ[i] = PATH[i + 1][1] - PATH[i][1]; PA_IL[i] = 1 / (PA_DX[i] * PA_DX[i] + PA_DZ[i] * PA_DZ[i]); }
 function pathDist(x, z) {
-  let best = 1e9;
-  for (let i = 0; i < PATH.length - 1; i++) {
-    const [ax, az] = PATH[i], [bx, bz] = PATH[i + 1];
-    const abx = bx - ax, abz = bz - az;
-    const s = clamp(((x - ax) * abx + (z - az) * abz) / (abx * abx + abz * abz), 0, 1);
-    const d = Math.hypot(x - ax - abx * s, z - az - abz * s);
+  let best = 1e18;
+  for (let i = 0; i < PN; i++) {
+    const px = x - PA_X[i], pz = z - PA_Z[i];
+    let s = (px * PA_DX[i] + pz * PA_DZ[i]) * PA_IL[i];
+    s = s < 0 ? 0 : s > 1 ? 1 : s;
+    const dx = px - PA_DX[i] * s, dz = pz - PA_DZ[i] * s;
+    const d = dx * dx + dz * dz;
     if (d < best) best = d;
   }
-  return best;
+  return Math.sqrt(best);
 }
 
 // ---------- Гряда A1 ----------
 const [[rx0, rz0], [rx1, rz1]] = A1_RIDGE;
-const RLEN = Math.hypot(rx1 - rx0, rz1 - rz0);
+const RLEN = hyp(rx1 - rx0, rz1 - rz0);
 const RDX = (rx1 - rx0) / RLEN, RDZ = (rz1 - rz0) / RLEN;
 const RNX = -RDZ, RNZ = RDX; // нормаль: (-0.37, 0.93) — подветренная сторона (ЮЗ)
 const RIDGE_H = 35;
@@ -106,13 +117,13 @@ const fade = (wl, sp) => (sp <= 0 ? 1 : 1 - smoothstep(wl / 12, wl / 5, sp));
 /** Крупные формы, видимые на горизонте (драа) — растут с удалением от ядра карты. */
 function draa(x, z, sp) {
   const dx = x - CORE_CENTER[0], dz = z - CORE_CENTER[1];
-  const far = smoothstep(750, 2400, Math.hypot(dx, dz));
+  const far = smoothstep(750, 2400, hyp(dx, dz));
   if (far <= 0) return 0;
   const u = x * Wx + z * Wz, v = -x * Wz + z * Wx;
   const p = u / 780 + 0.3 * noise2(v / 900, u / 2500) + 0.15 * noise2(v / 350, u / 900);
   const f = p - Math.floor(p);
   const a = 14 + 34 * smoothstep(-0.4, 0.6, noise2(u / 2400 + 5, v / 1400 - 3));
-  return far * a * duneProfile(f, 0.84) * fade(780, sp);
+  return far * a * duneProfile(f, 0.9) * fade(780, sp);
 }
 
 /** Плоская площадка под большой харвестер (модуль Web/src/harvester): центр (x,z) м, плоская часть радиусом radius, затем плавный спуск на blend м. */
@@ -124,7 +135,7 @@ export function heightAt(x, z, spacing = 0) {
   let h = heightBase(x, z, spacing);
   for (let i = 0; i < groundPatches.length; i++) {
     const p = groundPatches[i];
-    const d = Math.hypot(x - p.x, z - p.z);
+    const d = hyp(x - p.x, z - p.z);
     if (d >= p.radius) continue;
     const y = p.height(x, z, h);
     if (y == null) continue;
@@ -135,14 +146,14 @@ export function heightAt(x, z, spacing = 0) {
 }
 function heightBase(x, z, spacing = 0) {
   const h = heightRaw(x, z, spacing);
-  const fd = Math.hypot(x - FLAT_ZONE.x, z - FLAT_ZONE.z);
+  const fd = hyp(x - FLAT_ZONE.x, z - FLAT_ZONE.z);
   if (fd >= FLAT_ZONE.radius + FLAT_ZONE.blend) return h;
   const k = 1 - smoothstep(FLAT_ZONE.radius, FLAT_ZONE.radius + FLAT_ZONE.blend, fd);
   const flat = FLAT_ZONE.level + 0.12 * noise2(x / 23, z / 23);
   return lerp(h, flat, k);
 }
 
-function heightRaw(x, z, spacing = 0) {
+function heightRaw(x, z, spacing = 0, noIsl = false) {
   const u = x * Wx + z * Wz, v = -x * Wz + z * Wx;
 
   // влияние дорожки/островов/плит: подавляет дюны, чтобы идти было приятно
@@ -151,15 +162,15 @@ function heightRaw(x, z, spacing = 0) {
 
   let isleInfl = 0;
   for (const s of SAFE_ISLANDS) {
-    const d = Math.hypot(x - s.x, z - s.z);
+    const d = hyp(x - s.x, z - s.z);
     if (d < s.r * 3) isleInfl = Math.max(isleInfl, 1 - smoothstep(s.r * 0.9, s.r * 2.6, d));
   }
   if (x > 440 && x < 640 && z > 180 && z < 360) {
-    const dpl = Math.hypot(x - 540, z - 270);
+    const dpl = hyp(x - 540, z - 270);
     isleInfl = Math.max(isleInfl, 0.8 * (1 - smoothstep(60, 150, dpl)));
   }
   calm *= 1 - isleInfl;
-  const mouthK = 1 - smoothstep(20, 85, Math.hypot(x - 632, z - 326));   // ровная площадка у устья расщелины
+  const mouthK = 1 - smoothstep(20, 85, hyp(x - 632, z - 326));   // ровная площадка у устья расщелины
   calm *= 1 - 0.92 * mouthK;
 
   // Основные поперечные дюны (бархано-подобные, ориентированы по ветру)
@@ -170,7 +181,7 @@ function heightRaw(x, z, spacing = 0) {
     const f = p - Math.floor(p);
     const amp = (5 + 10 * smoothstep(-0.5, 0.6, noise2(u / 650 + 11, v / 420 + 5)))
       * (0.35 + 0.65 * smoothstep(-0.55, 0.1, noise2(v / 280 + 2, u / 520)));
-    h += amp * duneProfile(f, 0.86) * calm * fade(wl1, spacing);
+    h += amp * duneProfile(f, 0.9) * calm * fade(wl1, spacing);       // гребень 0.9: короткий крутой склон скольжения (≈ 27°) и длинный пологий наветренный
   }
   // Линейные (сейф) дюны вдоль ветра
   const wl2 = 260;
@@ -185,14 +196,14 @@ function heightRaw(x, z, spacing = 0) {
   if (fade(wl3, spacing) > 0.001) {
     const p3 = u / wl3 + 0.3 * noise2(v / 90, u / 160 + 4) + 0.1 * noise2(v / 30, u / 50);
     const f3 = p3 - Math.floor(p3);
-    h += (1.1 + 1.6 * smoothstep(-0.3, 0.7, noise2(u / 240 + 2, v / 180))) * duneProfile(f3, 0.82) * calm * fade(wl3, spacing);
+    h += (1.1 + 1.6 * smoothstep(-0.3, 0.7, noise2(u / 240 + 2, v / 180))) * duneProfile(f3, 0.88) * 0.85 * calm * fade(wl3, spacing);
   }
   // Ветровые валы
   const wl4 = 15;
   if (fade(wl4, spacing) > 0.001) {
     const p4 = u / wl4 + 0.5 * noise2(v / 22, u / 40 + 1);
     const f4 = p4 - Math.floor(p4);
-    h += 0.28 * duneProfile(f4, 0.8) * (0.4 + 0.6 * calm) * fade(wl4, spacing);
+    h += 0.13 * duneProfile(f4, 0.8) * (0.4 + 0.6 * calm) * fade(wl4, spacing);   // слабее: меньше «бугристости» эрга
   }
   // Пологие волны рельефа
   h += (2.4 * noise2(x / 640 + 3, z / 640) * (0.5 + 0.5 * calm) + 0.9 * noise2(x / 130, z / 130 + 9) * (0.4 + 0.6 * calm) * fade(130, spacing)) * (1 - 0.85 * mouthK);
@@ -212,14 +223,16 @@ function heightRaw(x, z, spacing = 0) {
     }
   }
 
-  // Каменные острова (купола)
-  for (const s of SAFE_ISLANDS) {
+  // Каменные острова (купола): выход породы на уровне местной земли в центре острова (не «яма до нуля» посреди гряды),
+  // вокруг — пологий фартук ~2.4 радиуса, без обрывов
+  if (!noIsl) for (const s of SAFE_ISLANDS) {
     const dx = x - s.x, dz = z - s.z;
     const d2 = dx * dx + dz * dz;
-    if (d2 > (s.r * 1.6) * (s.r * 1.6)) continue;
+    if (d2 > (s.r * 2.5) * (s.r * 2.5)) continue;
+    if (s.base === undefined) s.base = heightRaw(s.x, s.z, 0, true);
     const re = s.r * (1 + 0.2 * noise2(x * 0.22, z * 0.22));
     const q = Math.sqrt(d2) / re;
-    if (q < 1.15) h = lerp(h, 0.4 + s.r * 0.2 * Math.pow(Math.max(0, 1 - q * q), 0.55), 1 - smoothstep(0.9, 1.15, q));
+    if (q < 2.4) { const k = smoothstep(0.95, 2.4, q); h = lerp(h, s.base + 0.4 + s.r * 0.2 * Math.pow(Math.max(0, 1 - q * q), 0.55), 1 - k * k * (3 - 2 * k)); }
   }
   // Плиты A3 (чуть приподняты)
   h += plateRaise(x, z);
@@ -267,7 +280,7 @@ export function masks(x, z, out = { rock: 0, packed: 0 }) {
   const flats = smoothstep(0.1, 0.6, noise2(x / 210 - 5, z / 210 + 3)) * 0.6;
   out.rock = rock;
   out.packed = Math.max(pan, flats * (1 - rock)) * (1 - rock);
-  const fd = Math.hypot(x - FLAT_ZONE.x, z - FLAT_ZONE.z);
+  const fd = hyp(x - FLAT_ZONE.x, z - FLAT_ZONE.z);
   if (fd < FLAT_ZONE.radius + FLAT_ZONE.blend) out.packed = Math.max(out.packed, 0.7 * (1 - smoothstep(FLAT_ZONE.radius, FLAT_ZONE.radius + FLAT_ZONE.blend * 0.6, fd)));
   return out;
 }
