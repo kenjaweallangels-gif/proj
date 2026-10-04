@@ -306,7 +306,7 @@ export function create(game) {
   function containsPos(pos) {
     if (!interior.ready) return false;
     const dx = pos.x - H.x, dz = pos.z - H.z;
-    if (dx * dx + dz * dz > 85 * 85) return false;
+    if (dx * dx + dz * dz > 85 * 85) { if (nearPlayer(pos)) stickyIn = false; return false; }
     _lp.copy(pos).applyMatrix4(_inv);
     const np = nearPlayer(pos);
     if (interior.contains(_lp.x, _lp.z, _lp.y)) { if (np) stickyIn = true; return true; }

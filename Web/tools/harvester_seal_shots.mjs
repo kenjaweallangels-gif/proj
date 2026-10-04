@@ -36,8 +36,8 @@ for (const [name, c, t] of VIEWS) {
     const g = window.__rakis, h = g.harvester, T = g.THREE;
     const W = (a) => h.toWorld(a[0], a[1], a[2], new T.Vector3());
     const p = W(c), q = W(t);
-    // игрок далеко от двери (дверь закрыта), камера у корпуса
-    g.player.position.set(p.x, p.y - 1.5, p.z);
+        const far = h.toWorld(11, 4, 80, new T.Vector3());   // игрок далеко от двери: шлюз закрыт (открывается, когда игрок в 9 м от двери или на борту)
+    g.player.position.copy(far);
     g.camera.position.copy(p); g.camera.fov = 62; g.camera.updateProjectionMatrix(); g.camera.lookAt(q);
     g.step(20, 0.1);
     return g.shot();

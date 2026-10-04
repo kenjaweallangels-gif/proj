@@ -19,11 +19,12 @@ await page.evaluate(() => { window.__rakis.paused = true; });
 const hours = Number(arg('hours', 15.5));
 // [имя, состояние, дистанция, азимут (рад от +z борта к носу), высота камеры над грунтом]
 const VIEWS = [
-  ['park_15', 'off', 15, 0.5, 2.2], ['park_40', 'off', 40, 0.9, 5], ['park_120', 'off', 120, 0.9, 14],
-  ['work_15', 'running', 15, 0.5, 2.2], ['work_40', 'running', 40, 0.9, 5], ['work_120', 'running', 120, 0.9, 14],
+  ['park_40', 'off', 40, 0.9, 5], ['park_15', 'off', 15, 0.5, 2.2], ['work_40', 'running', 40, 0.9, 5], ['park_120', 'off', 120, 0.9, 14],
+  ['work_15', 'running', 15, 0.5, 2.2], ['work_120', 'running', 120, 0.9, 14],
 ];
 const only = arg('only', '').split(',').filter(Boolean);
 for (const [name, st, dist, az, h] of VIEWS) {
+  if (arg('berm', '1') !== '1') break;
   if (only.length && !only.some((o) => name.includes(o))) continue;
   await page.evaluate(async ([st, dist, az, h, hours]) => {
     const g = window.__rakis, hv = g.harvester, w = g.weather;
@@ -43,6 +44,26 @@ for (const [name, st, dist, az, h] of VIEWS) {
     if (g.simulate) g.simulate(st === 'running' ? 6 : 2, 1 / 20);
     for (let i = 0; i < 3; i++) { g.weather.update(1.0); g.desertRoot.update(0.016, g.realTime); hv.update?.(0.05, g.time); await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); }
   }, [st, dist, az, h, hours]);
+  await page.screenshot({ path: join(outDir, `${name}.png`) });
+  console.log('shot', name);
+}
+// рябь: те же виды, что в sand_look.mjs (эрг, 160/52): имя, часы, пресет, камера
+const RIP = [
+  ['ripple_dawn_fp15', 6.4, 'Dawn_Ridge', { x: 160, z: 52, h: 1.7, yaw: 0.9, pitch: -0.55 }],
+  ['ripple_dusk_fp4', 17.7, 'Dusk_Gold', { x: 160, z: 52, h: 1.7, yaw: 0.9, pitch: -0.2 }],
+  ['ripple_noon_mid30', 12, 'Noon_Approach', { x: 160, z: 52, h: 1.8, yaw: 2.2, pitch: -0.05 }],
+];
+for (const [name, hours, preset, cm] of RIP) {
+  if (arg('ripple', '1') !== '1' || (only.length && !only.some((o) => name.includes(o)))) continue;
+  await page.evaluate(async ({ hours, preset, cm }) => {
+    const g = window.__rakis, w = g.weather;
+    w.clearOverride?.(); w.request(preset, 0); w.setHours(hours, true); w.timeScale = 0; w.setOverride({ storm: 0, dust: 0.05, clouds: 0.25, wind: 6 }, 0); w.snap();
+    const cam = g.camera; g.player.position.set(cm.x, g.world.heightAt(cm.x, cm.z), cm.z);
+    cam.position.set(cm.x, g.world.heightAt(cm.x, cm.z) + cm.h, cm.z); cam.fov = 62; cam.updateProjectionMatrix();
+    const c = Math.cos(cm.pitch);
+    cam.lookAt(cam.position.x + Math.cos(cm.yaw) * c, cam.position.y + Math.sin(cm.pitch), cam.position.z + Math.sin(cm.yaw) * c); cam.updateMatrixWorld(true);
+    for (let i = 0; i < 2; i++) { g.weather.update(1.0); g.desertRoot.update(0.016, g.realTime); await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); }
+  }, { hours, preset, cm });
   await page.screenshot({ path: join(outDir, `${name}.png`) });
   console.log('shot', name);
 }

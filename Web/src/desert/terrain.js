@@ -189,7 +189,7 @@ if (tpFn > 0.002) {
   tpMulA = tpSMul;
   tpMulA = mix(vec3(1.0), tpMulA, tpFn * uTexK.z);
 }
-float tpFm = (1.0 - smoothstep(18.0, 120.0, dist)) * (1.0 - rockM) * uTexK.x;
+float tpFm = (1.0 - smoothstep(18.0, 120.0, dist)) * (1.0 - smoothstep(0.11, 0.33, pxW / 0.30)) * (1.0 - rockM) * uTexK.x;   // тот же фильтр по пикселю (муар текстурной ряби)
 #ifdef RK_SAND_MID
 if (tpFm > 0.002) {
   // естественная рябь: координаты повёрнуты по ветру, градиент возвращается в мировые оси
@@ -346,7 +346,7 @@ export function createTerrain(game, foot) {
   const kS = q === 'low' ? null : triplanarKit('tpS', 'sand', { axes: 'y', scale: 1.45, quality: q, rough: 0, ao: 0, normal: 1, chroma: 0.55, antiTile: q === 'high' });
   const kM = q === 'low' ? null : triplanarKit('tpM', 'sand_ripples', { axes: 'y', scale: 2.6, quality: q, rough: 0, ao: 0, normal: 1, chroma: 0, antiTile: q === 'high' });
   const sandU = {
-    uTexK: { value: new THREE.Vector4(1, 0.4, 0.4, 0.6) },     // x: включено, y: сила нормали, z: сила цвета, w: сила среднего слоя
+    uTexK: { value: new THREE.Vector4(1, 0.4, 0.4, 0.4) },     // x: включено, y: сила нормали, z: сила цвета, w: сила среднего слоя
     ...(kS ? kS.uniforms : {}), ...(kM ? kM.uniforms : {}),
     uSandLoose: { value: new THREE.Color('#CFB083') },
     uSandPacked: { value: new THREE.Color('#B8936A') },
