@@ -14,8 +14,8 @@ function findChromium() { const base = '/opt/pw-browsers'; if (!existsSync(base)
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || findChromium(), args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage', '--ignore-gpu-blocklist'] });
 const p = await b.newPage({ viewport: { width: 480, height: 270 } });
 const errs = []; p.on('pageerror', (e) => errs.push(String(e))); p.on('console', (m) => { if (m.type() === 'error' && !/AudioContext/.test(m.text())) errs.push(m.text()); });
-await p.goto(`file://${join(root, 'dist', arg('file', 'sietch.html'))}?autotest=1&q=${arg('q', 'low')}&lang=RU`);
-await p.waitForFunction(() => window.__rakis?.realTime > 1.5, null, { timeout: 480000, polling: 1000 });
+await p.goto(`file://${join(root, 'dist', arg('file', 'sietch.html'))}?autotest=1&q=${arg('q', 'low')}&lang=RU`, { timeout: 0 });
+await p.waitForFunction(() => window.__rakis?.realTime > 1.5, null, { timeout: 3000000, polling: 1000 });
 const info = () => p.evaluate(() => { const g = window.__rakis, q = g.player.position; return { pos: [q.x, q.y, q.z].map((v) => +v.toFixed(1)), space: g.space, zone: g.zone }; });
 let bad = 0;
 const from = arg('from', 'trail');

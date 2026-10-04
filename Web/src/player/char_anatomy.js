@@ -38,7 +38,7 @@ export function pchip(t, y, k) {
 export const BUILDS = {
   m: { sh: 1, chest: 1, waist: 1, hip: 1, depth: 1, bust: 0, limb: 1, head: 0.91, mus: 1, fat: 0.35, belly: 0.2, glute: 0.6, neck: 1 },
   f: { sh: 0.88, chest: 0.92, waist: 0.86, hip: 1.1, depth: 0.95, bust: 1, limb: 0.9, head: 0.88, mus: 0.45, fat: 0.8, belly: 0.2, glute: 1.0, neck: 0.82 },
-  c: { sh: 0.85, chest: 0.92, waist: 1.02, hip: 0.95, depth: 0.98, bust: 0, limb: 0.9, head: 1.03, mus: 0.1, fat: 0.7, belly: 0.55, glute: 0.3, neck: 0.78 },
+  c: { sh: 0.85, chest: 0.92, waist: 1.02, hip: 0.95, depth: 0.98, bust: 0, limb: 0.9, head: 1.14, mus: 0.1, fat: 0.7, belly: 0.55, glute: 0.3, neck: 0.78 },
   a: { sh: 1.04, chest: 0.98, waist: 0.88, hip: 1.0, depth: 0.98, bust: 0.45, limb: 0.97, head: 0.89, mus: 1.1, fat: 0.25, belly: 0.1, glute: 0.9, neck: 0.9 },
   e: { sh: 1.05, chest: 1.1, waist: 1.14, hip: 1.05, depth: 1.08, bust: 0, limb: 1.0, head: 0.91, mus: 0.55, fat: 1.0, belly: 0.9, glute: 0.5, neck: 1.0 },
 };
