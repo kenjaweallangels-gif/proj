@@ -228,6 +228,7 @@ export function createVoice(game, eng) {
   }
   function setPan(p, pos, smooth = false) {
     const x = pos.x, y = pos.y ?? 0, z = pos.z, t = ctx.currentTime;
+    if (!Number.isFinite(x + y + z)) return;
     if (p.positionX) {
       if (smooth) { p.positionX.setTargetAtTime(x, t, 0.08); p.positionY.setTargetAtTime(y, t, 0.08); p.positionZ.setTargetAtTime(z, t, 0.08); }
       else { p.positionX.value = x; p.positionY.value = y; p.positionZ.value = z; }
@@ -253,7 +254,7 @@ export function createVoice(game, eng) {
     const layers = base === 'Crowd' ? [{ seed: 1, voice: { f0: 120 } }, { seed: 7, voice: { f0: 170, rate: 1.15 } }] : [{ seed: 0, voice: o.voice }];
     const dest = ctx.createGain(); dest.gain.value = 1;
     let node = dest;
-    if (pos) {
+    if (pos && Number.isFinite(pos.x + (pos.y ?? 0) + pos.z)) {
       const p = ctx.createPanner(); p.panningModel = 'equalpower'; p.distanceModel = 'inverse';
       p.refDistance = 2.5; p.rolloffFactor = 1.4; p.maxDistance = 120;
       if (p.positionX) { p.positionX.value = pos.x; p.positionY.value = (pos.y ?? 0) + 1.6; p.positionZ.value = pos.z; } else p.setPosition(pos.x, (pos.y ?? 0) + 1.6, pos.z);

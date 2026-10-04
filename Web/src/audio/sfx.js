@@ -235,7 +235,7 @@ export function createSfx(game, eng) {
     eng.ramp(harv.wg.gain, 0.01 + 0.05 * harv.level * harv.level, 0.3);
     eng.ramp(harv.lfo.frequency, 6 + 5 * harv.level, 0.3);
     const hp = harvPos();
-    if (hp) {
+    if (hp && Number.isFinite(hp.x + (hp.y ?? 0) + hp.z)) {
       const p = harv.pn;
       if (p.positionX) { p.positionX.setTargetAtTime(hp.x, t, 0.1); p.positionY.setTargetAtTime(hp.y ?? 0, t, 0.1); p.positionZ.setTargetAtTime(hp.z, t, 0.1); } else p.setPosition(hp.x, hp.y ?? 0, hp.z);
       game.camera.getWorldPosition(camPos);

@@ -140,6 +140,7 @@ export function createEngine(game) {
   }
   /** Стерео-панорама + (опц.) 3D-позиция. Возвращает входной узел. */
   function panner(dest, pos, { ref = 4, rolloff = 1.1, max = 400 } = {}) {
+    if (pos && !(Number.isFinite(pos.x) && Number.isFinite(pos.z))) pos = null;   // NaN-позиция → без 3D (иначе AudioParam бросает)
     if (pos) {
       const p = ctx.createPanner();
       p.panningModel = 'equalpower'; p.distanceModel = 'inverse';
@@ -199,6 +200,7 @@ export function createEngine(game) {
     cam.getWorldPosition(camPos);
     fwd.set(0, 0, -1).applyQuaternion(cam.quaternion);
     up.set(0, 1, 0).applyQuaternion(cam.quaternion);
+    if (!Number.isFinite(camPos.x + camPos.y + camPos.z + fwd.x + fwd.y + fwd.z + up.x + up.y + up.z)) return;
     if (l.positionX) {
       const t = T();
       l.positionX.setValueAtTime(camPos.x, t); l.positionY.setValueAtTime(camPos.y, t); l.positionZ.setValueAtTime(camPos.z, t);
