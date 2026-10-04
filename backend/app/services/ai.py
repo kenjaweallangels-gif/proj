@@ -242,13 +242,37 @@ def _openai_tools():
     return [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in TOOLS]
 
 
+def _local_headers() -> dict:
+    s = get_settings()
+    return {"Authorization": f"Bearer {s.local_llm_api_key}"} if s.local_llm_api_key else {}
+
+
+def local_models() -> dict:
+    """Проверка подключения к локальному LLM-серверу: список моделей по /v1/models."""
+    s = get_settings()
+    try:
+        with httpx.Client(timeout=10, headers=_local_headers()) as c:
+            r = c.get(f"{s.local_llm_url.rstrip('/')}/models")
+            r.raise_for_status()
+            data = r.json().get("data", [])
+            ids = [m.get("id") for m in data if isinstance(m, dict)]
+            return {"ok": True, "url": s.local_llm_url, "models": ids, "configured": s.local_llm_model,
+                    "configured_found": s.local_llm_model in ids if ids else None}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "url": s.local_llm_url, "error": f"{type(e).__name__}: {e}", "configured": s.local_llm_model}
+
+
 def local_llm(ex: ToolExecutor, history: list[dict], text: str) -> str:
     s = get_settings()
     msgs = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [{"role": "user", "content": text}]
-    with httpx.Client(timeout=120) as c:
+    with httpx.Client(timeout=180, headers=_local_headers()) as c:
         for _ in range(6):
-            r = c.post(f"{s.local_llm_url}/chat/completions", json={"model": s.local_llm_model, "messages": msgs,
-                                                                     "tools": _openai_tools(), "temperature": 0.1})
+            body = {"model": s.local_llm_model, "messages": msgs, "tools": _openai_tools(), "temperature": 0.1}
+            r = c.post(f"{s.local_llm_url.rstrip('/')}/chat/completions", json=body)
+            if r.status_code == 400 and "tool" in r.text.lower():
+                # сервер/модель без function calling — отвечаем без инструментов, но с фактами из правил
+                body.pop("tools")
+                r = c.post(f"{s.local_llm_url.rstrip('/')}/chat/completions", json=body)
             r.raise_for_status()
             msg = r.json()["choices"][0]["message"]
             msgs.append(msg)

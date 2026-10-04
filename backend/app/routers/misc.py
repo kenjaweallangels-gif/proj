@@ -146,9 +146,15 @@ def export_journal(db: Session = Depends(get_db), me: User = Depends(require("fi
 @ai_r.get("/status")
 def ai_status(me: User = Depends(require("ai:use"))):
     s = get_settings()
-    return {"local": s.local_llm_enabled, "local_model": s.local_llm_model if s.local_llm_enabled else None,
+    return {"local": s.local_llm_enabled, "local_model": s.local_llm_model if s.local_llm_enabled else None, "local_url": s.local_llm_url,
             "cloud": bool(s.cloud_llm_enabled and s.anthropic_api_key), "cloud_model": s.cloud_llm_model,
             "cloud_allowed_for_user": "ai:cloud" in me.permissions or "*" in me.permissions}
+
+
+@ai_r.get("/models")
+def ai_models(_: User = Depends(require("admin:integrations"))):
+    """Проверка подключения к локальному LLM-серверу и список доступных моделей."""
+    return ai_svc.local_models()
 
 
 @ai_r.post("/chat", response_model=ChatOut)

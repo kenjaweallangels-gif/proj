@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     # ИИ: локальная модель (Ollama / vLLM / LM Studio — OpenAI-совместимый API)
     local_llm_url: str = "http://localhost:11434/v1"
     local_llm_model: str = "qwen2.5:14b-instruct"
+    local_llm_api_key: str = ""  # для серверов, требующих ключ (LM Studio, vLLM --api-key); Ollama — пусто
     local_llm_enabled: bool = False
     # ИИ: облачная модель (Anthropic Claude) — только для неконфиденциальных данных
     anthropic_api_key: str = ""

@@ -13,7 +13,7 @@ fi
 [ -f certs/plm.crt ] || sh ./make-certs.sh "${1:-plm.corp.local}"
 
 if [ "${WITH_LLM:-0}" = "1" ]; then
-  sed -i.bak "s|^PLM_LOCAL_LLM_ENABLED=.*|PLM_LOCAL_LLM_ENABLED=true|" .env && rm -f .env.bak
+  sed -i.bak "s|^PLM_LOCAL_LLM_ENABLED=.*|PLM_LOCAL_LLM_ENABLED=true|; s|^PLM_LOCAL_LLM_URL=.*|PLM_LOCAL_LLM_URL=http://ollama:11434/v1|" .env && rm -f .env.bak
   docker compose --profile llm up -d --build
 else
   docker compose up -d --build
@@ -32,7 +32,8 @@ if [ "${WITH_LLM:-0}" = "1" ]; then
   echo "Загрузка локальной LLM ${MODEL:-qwen2.5:14b-instruct} (~9 ГБ)..."
   docker compose exec -T ollama ollama pull "${MODEL:-qwen2.5:14b-instruct}" || echo "Не удалось загрузить модель — ассистент будет работать в режиме команд."
 else
-  echo "Локальная LLM не разворачивалась (ассистент в режиме команд). Включить позже: WITH_LLM=1 ./up.sh"
+  echo "Контейнер с LLM не разворачивался. Свои модели на этом ПК: задайте PLM_LOCAL_LLM_ENABLED=true, PLM_LOCAL_LLM_URL и PLM_LOCAL_LLM_MODEL в .env,"
+  echo "затем: docker compose up -d app. Проверка — в интерфейсе: Ещё → Пользователи, роли → ИИ-ассистент → «Проверить подключение»."
 fi
 echo
 echo "Вход: admin / admin12345   Логи: docker compose logs -f app"

@@ -14,7 +14,8 @@ export default function Admin() {
   const perms = useData(() => get<Record<string, string>>("/api/admin/permissions"));
   const audit = useData(() => get<Audit[]>("/api/admin/audit"), [tab]);
   const conns = useData(() => get<Conn[]>("/api/integrations").catch(() => []));
-  const ai = useData(() => get<{ local: boolean; local_model: string | null; cloud: boolean; cloud_model: string }>("/api/ai/status").catch(() => null));
+  const ai = useData(() => get<{ local: boolean; local_model: string | null; local_url: string; cloud: boolean; cloud_model: string }>("/api/ai/status").catch(() => null));
+  const [probe, setProbe] = useState<{ ok: boolean; url: string; models?: string[]; error?: string; configured: string; configured_found?: boolean | null } | null>(null);
   const [edit, setEdit] = useState<Partial<User> & { password?: string; role_codes?: string[] } | null>(null);
   const [editRole, setEditRole] = useState<Role | null>(null);
   const saveUser = async (e: FormEvent) => {
@@ -66,8 +67,22 @@ export default function Admin() {
       {tab === "ai" && <Card title="Конфигурация ИИ-ассистента">
         <p>Маршрутизация запросов: <b>правила</b> (всегда) → <b>локальная LLM</b> (конфиденциальные данные, не покидают сеть) → <b>облачная модель</b> (только по явному разрешению пользователя с правом <span className="kbd">ai:cloud</span>, для изделий с конфиденциальностью ≤ 1).</p>
         <div className="stats">
-          <div className="stat"><div className="stat-v">{ai.data?.local ? "✅" : "⬜"}</div><div className="stat-l">Локальная модель</div><div className="stat-h">{ai.data?.local_model ?? "PLM_LOCAL_LLM_ENABLED=true, PLM_LOCAL_LLM_URL (Ollama/vLLM)"}</div></div>
+          <div className="stat"><div className="stat-v">{ai.data?.local ? "✅" : "⬜"}</div><div className="stat-l">Локальная модель {ai.data?.local ? "включена" : "выключена"}</div><div className="stat-h">{ai.data?.local_url} · {ai.data?.local_model ?? "модель не задана"}</div></div>
           <div className="stat"><div className="stat-v">{ai.data?.cloud ? "✅" : "⬜"}</div><div className="stat-l">Облачная модель</div><div className="stat-h">{ai.data?.cloud_model ?? ""} · PLM_CLOUD_LLM_ENABLED, PLM_ANTHROPIC_API_KEY</div></div>
+        </div>
+        <div className="card" style={{ marginTop: 12 }}>
+          <div className="row"><b>Свои модели на этом ПК / в сети</b><button className="sm primary" onClick={async () => { setProbe(null); setProbe(await get("/api/ai/models")); }}>Проверить подключение</button></div>
+          <p className="muted small">Подходит любой сервер с OpenAI-совместимым API: Ollama (порт 11434), LM Studio (1234), Jan (1337), vLLM, text-generation-webui, GPT4All. Адрес и название модели задаются в <span className="kbd">deploy/.env</span>: <span className="kbd">PLM_LOCAL_LLM_URL</span>, <span className="kbd">PLM_LOCAL_LLM_MODEL</span>, <span className="kbd">PLM_LOCAL_LLM_ENABLED=true</span>, затем <span className="kbd">docker compose up -d app</span>.</p>
+          {probe && (probe.ok ? (
+            <div>
+              <div className="ok">✓ Сервер отвечает: {probe.url}</div>
+              {probe.models?.length ? <>
+                <div className="small muted" style={{ margin: "6px 0" }}>Доступные модели — скопируйте нужное название в PLM_LOCAL_LLM_MODEL:</div>
+                <div className="row">{probe.models.map((m) => <Badge key={m} tone={m === probe.configured ? "green" : "gray"}>{m}{m === probe.configured && " · выбрана"}</Badge>)}</div>
+                {probe.configured_found === false && <div className="warn small" style={{ marginTop: 6 }}>Заданная модель «{probe.configured}» не найдена среди доступных — исправьте название в .env.</div>}
+              </> : <div className="small muted">Сервер не вернул список моделей — укажите название вручную.</div>}
+            </div>
+          ) : <div className="errbox">Нет связи с {probe.url}: {probe.error}<br /><span className="small">Проверьте, что LLM-сервер запущен и слушает не только 127.0.0.1 (Ollama: OLLAMA_HOST=0.0.0.0; LM Studio: «Serve on Local Network»). Из контейнера ПК доступен как host.docker.internal.</span></div>)}
         </div>
         <p className="muted small">Все действия ИИ, изменяющие данные, требуют подтверждения пользователя и записываются в журнал аудита с источником «ai».</p>
       </Card>}

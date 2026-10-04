@@ -30,8 +30,10 @@ services:
       PLM_SEED_DEMO: ${PLM_SEED_DEMO:-false}
       PLM_CORS_ORIGINS: ${PLM_CORS_ORIGINS:-https://plm.corp.local}
       PLM_LOCAL_LLM_ENABLED: ${PLM_LOCAL_LLM_ENABLED:-false}
-      PLM_LOCAL_LLM_URL: http://ollama:11434/v1
+      # адрес LLM-сервера: модели на этом же ПК → host.docker.internal; контейнер ollama из профиля llm → http://ollama:11434/v1
+      PLM_LOCAL_LLM_URL: ${PLM_LOCAL_LLM_URL:-http://host.docker.internal:11434/v1}
       PLM_LOCAL_LLM_MODEL: ${PLM_LOCAL_LLM_MODEL:-qwen2.5:14b-instruct}
+      PLM_LOCAL_LLM_API_KEY: ${PLM_LOCAL_LLM_API_KEY:-}
       PLM_CLOUD_LLM_ENABLED: ${PLM_CLOUD_LLM_ENABLED:-false}
       PLM_ANTHROPIC_API_KEY: ${PLM_ANTHROPIC_API_KEY:-}
       PLM_CLOUD_LLM_MODEL: ${PLM_CLOUD_LLM_MODEL:-claude-opus-5-5}
@@ -39,6 +41,8 @@ services:
       ONEC_PASSWORD: ${ONEC_PASSWORD:-}
       ERP_DB_URL: ${ERP_DB_URL:-}
     expose: ["8000"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # доступ к LLM, запущенной на самом сервере/ПК (Linux)
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 15s
