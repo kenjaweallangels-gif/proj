@@ -2,7 +2,8 @@
 // деятельность у точек (станки, прилавки, кувшины, мастерская, дети, старики, молитвы), блуждание по лейнам,
 // взгляд на игрока, уступание дороги, замолкание разговоров, барки с кулдаунами, ритуальный сбор в зал B5.
 import * as THREE from 'three';
-import { makeFigure, PALETTES } from '../core/figures.js';
+import { makeFigure, PALETTES, crowdLook } from '../core/figures.js';
+import { createFigureCrowd } from '../core/figure_crowd.js';
 import { clamp, lerp, damp, dampAngle, rng } from '../core/util.js';
 import { HALL, heightAtLocal, hallHeightSmooth } from './plan.js';
 import { faceYaw, pathZ } from './props.js';
@@ -15,7 +16,7 @@ const TAU = Math.PI * 2;
 export function createCrowd(ctx) {
   const { game, root, origin: O } = ctx;
   const q = ctx.quality;
-  const R = rng(4242);
+  const R = rng(4242), RL = rng(9091); // RL — отдельный генератор внешности (не сдвигает раскладку/поведение)
   const S = ctx.spots;
   const arch = Object.fromEntries((game.data?.CrowdArchetypes || []).map((a) => [a.id, a]));
   const npcs = [];
@@ -29,7 +30,7 @@ export function createCrowd(ctx) {
     capsules.push({ n, a, b, id });
   };
   const maxFull = q === 'low' ? 3 : q === 'high' ? 8 : 5;
-  const fullR = q === 'low' ? 7 : q === 'high' ? 12 : 9.5;
+  const fullR = q === 'low' ? 10 : q === 'high' ? 20 : 15; // ближние — полные скин-фигуры (со своими LOD0/1), остальные — групповой LOD (один draw call)
   const out = { npcs, ritualState: 'idle', seated: 0, guardReleased: false };
 
   // ------------------------------------------------------------------ граф лейнов ----
@@ -72,12 +73,13 @@ export function createCrowd(ctx) {
       cloth: o.cloth || pal[Math.floor(R() * 4)], accent: o.accent || pal[(1 + Math.floor(R() * 3)) % 4], suit: o.suit || P.suit || '#4a4038',
       skin: SKIN[Math.floor(R() * SKIN.length)], hood: o.hood ?? R() < 0.78, mask: o.mask ?? (child ? false : R() < (archId === 'Guard' ? 0.7 : 0.3)),
       pack: !!P.pack && R() < 0.6, speed: (a.walkSpeed || 1.1) * (0.9 + R() * 0.2), eyesIbad: !!o.eyesIbad, robe: o.robe,
+      extra: crowdLook(archId, RL), // силуэт: возраст, поклажа, кушак, повязка, кольца воды
     };
   }
   let seq = 0;
   function spawn(archId, kind, spot, o = {}) {
     const lk = look(archId, o.look || {});
-    const fig = makeFigure({ preset: lk.preset, height: lk.height, cloth: lk.cloth, accent: lk.accent, suit: lk.suit, skin: lk.skin, hood: lk.hood, mask: lk.mask, bulk: lk.bulk, pack: lk.pack, eyesIbad: lk.eyesIbad, robe: lk.robe, name: `NPC_${archId}_${seq}` });
+    const fig = makeFigure({ preset: lk.preset, height: lk.height, cloth: lk.cloth, accent: lk.accent, suit: lk.suit, skin: lk.skin, hood: lk.hood, mask: lk.mask, bulk: lk.bulk, pack: lk.pack, eyesIbad: lk.eyesIbad, robe: lk.robe, ...(lk.extra || {}), name: `NPC_${archId}_${seq}` });
     const n = {
       id: seq++, arch: archId, kind, fig, lk, scale: lk.height / 1.75, speed: lk.speed, x: spot.x, z: spot.z, y: 0, yaw: spot.yaw ?? R() * TAU, goalYaw: spot.yaw ?? 0,
       pose: 'stand', mode: 'act', timer: R() * 5, path: null, pi: 0, spot, home: { x: spot.x, z: spot.z, yaw: spot.yaw ?? 0 }, lod: 'off', imp: -1, talk: false, group: o.group ?? -1,
@@ -187,36 +189,14 @@ export function createCrowd(ctx) {
   const guardCheck = npcs.find((n) => n.kind === 'guardCheck');
   out.guard = guardCheck;
 
-  // ------------------------------------------------------------------ импостеры ----
+  // ------------------------------------------------------------------ групповой LOD (вместо болванок-импостеров) ----
+  // Дальние NPC — те же силуэт/одежда/палитра (LOD1/2 геометрии фигур), один BatchedMesh, ход считается в шейдере (core/figure_crowd.js).
   npcs.forEach(mkCap);
   const NI = npcs.length;
-  const bodyGeo = new THREE.LatheGeometry([[0, 0], [0.3, 0], [0.33, 0.06], [0.26, 0.7], [0.21, 1.02], [0.2, 1.22], [0.1, 1.32], [0, 1.33]].map((p) => new THREE.Vector2(p[0], p[1])), 10);
-  const headGeo = new THREE.SphereGeometry(0.125, 8, 6); headGeo.translate(0, 1.43, 0);
-  const sashGeo = new THREE.TorusGeometry(0.2, 0.025, 4, 10); sashGeo.rotateX(Math.PI / 2); sashGeo.translate(0, 0.92, 0);
-  const impGlow = new Float32Array(NI * 3);
-  const mkImp = (geo, rough) => {
-    const g = geo.clone();
-    g.setAttribute('aGlow', new THREE.InstancedBufferAttribute(impGlow, 3));
-    const m = new THREE.MeshStandardMaterial({ roughness: rough, color: '#ffffff' });
-    m.onBeforeCompile = (sh) => {
-      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec3 aGlow; varying vec3 vGlow;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvGlow = aGlow;');
-      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vGlow;').replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vGlow;');
-    };
-    m.customProgramCacheKey = () => 'sietch-imp';
-    const im = new THREE.InstancedMesh(g, m, NI);
-    im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(NI * 3), 3);
-    im.frustumCulled = false; im.count = NI;
-    root.add(im);
-    return im;
-  };
-  const impBody = mkImp(bodyGeo, 0.95), impHead = mkImp(headGeo, 0.6), impSash = mkImp(sashGeo, 0.9);
-  const tmpC = new THREE.Color();
-  npcs.forEach((n, i) => {
-    n.imp = i;
-    tmpC.set(n.lk.cloth); impBody.setColorAt(i, tmpC);
-    tmpC.set(n.lk.skin); impHead.setColorAt(i, tmpC);
-    tmpC.set(n.lk.accent); impSash.setColorAt(i, tmpC);
-  });
+  const farCrowd = createFigureCrowd({ parent: root, maxInstances: NI + 4 });
+  out.farCrowd = farCrowd;
+  npcs.forEach((n, i) => { n.imp = i; n.far = n.special ? null : farCrowd.register(n.fig); n.mix = n.special ? 0 : 1; n.farLod = 2; });
+  farCrowd.prewarm(); // геометрии вариантов — при загрузке, а не при первом взгляде
   const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _e = new THREE.Euler();
 
   // ------------------------------------------------------------------ поведение ----
@@ -458,21 +438,41 @@ export function createCrowd(ctx) {
     const pw = game.player?.position;
     if (pw) root.worldToLocal(plL.copy(pw)); else plL.copy(camL);
     barkGlobal -= dt; lodT -= dt; glowT -= dt;
-    // LOD: ближайшие — полные фигуры.
+    // LOD: ближайшие — полные скин-фигуры (их LOD0/1 переключает figures.js), остальные — групповой LOD (BatchedMesh); переходы — дизер-растворение.
     if (lodT <= 0) {
       lodT = 0.3;
       const cand = [];
-      for (const n of npcs) { const d2 = (n.x - camL.x) ** 2 + (n.z - camL.z) ** 2 + (n.y - camL.y) ** 2 * 0.3; n.d2 = d2; if (!n.special && d2 < fullR * fullR) cand.push(n); }
-      cand.sort((a, b) => a.d2 - b.d2);
+      for (const n of npcs) {
+        const d2 = (n.x - camL.x) ** 2 + (n.z - camL.z) ** 2 + (n.y - camL.y) ** 2 * 0.3; n.d2 = d2;
+        // гистерезис: уже полная фигура держится до 1.2×R, новая берётся внутри R
+        if (!n.special && d2 < (n.lod === 'full' ? fullR * 1.2 : fullR) ** 2) cand.push(n);
+      }
+      cand.sort((a, b) => a.d2 * (a.lod === 'full' ? 0.6 : 1) - b.d2 * (b.lod === 'full' ? 0.6 : 1));
       const set = new Set(cand.slice(0, maxFull));
       for (const n of npcs) {
-        if (n.special) { const vis = camL.x > 118 && n.d2 < 2800; n.lod = vis ? 'full' : 'off'; }
-        else n.lod = set.has(n) ? 'full' : n.d2 > 75 * 75 ? 'off' : 'imp';
-        const inScene = n.fig.group.parent === root;
-        if (n.lod === 'full' && !inScene) root.add(n.fig.group);
-        else if (n.lod !== 'full' && inScene) root.remove(n.fig.group);
+        if (n.special) { const vis = camL.x > 118 && n.d2 < 2800; n.lod = vis ? 'full' : 'off'; n.mix = 0; }
+        else n.lod = set.has(n) ? 'full' : n.d2 > (n.lod === 'off' ? 100 : 110) ** 2 ? 'off' : 'imp';
+        if (n.lod !== 'full' && n.far) n.farLod = n.d2 > (n.farLod === 2 ? 11 : 13) ** 2 ? 2 : 1, farCrowd.setLod(n.far, n.farLod);
       }
     }
+    // растворение: mix 0 — только скин-фигура, 1 — только групповой LOD
+    for (const n of npcs) {
+      if (n.special) continue;
+      const tgt = n.lod === 'full' ? 0 : 1;
+      if (!n.lodInit) { n.lodInit = true; n.mix = tgt; } // первое назначение — без растворения
+      if (n.mix !== tgt) {
+        const nm = n.mix + Math.sign(tgt - n.mix) * Math.min(Math.abs(tgt - n.mix), dt / 0.4);
+        // в группу переходим, только когда её геометрия готова (иначе человек пропал бы)
+        if (tgt === 1 && !farCrowd.setFade(n.far, nm)) continue;
+        n.mix = nm;
+      }
+      const visFar = n.lod !== 'off' || n.mix < 1;
+      farCrowd.setFade(n.far, n.lod === 'off' && n.mix >= 1 ? 0 : Math.max(0.0001, n.mix) * (visFar ? 1 : 0));
+      n.fig.setGroupFade(n.mix < 0.001 ? 1 : -n.mix);
+      const inScene = n.fig.group.parent === root, want = n.mix < 0.999 && !(n.lod === 'off' && n.mix >= 0.999);
+      if (want && !inScene) root.add(n.fig.group); else if (!want && inScene) root.remove(n.fig.group);
+    }
+    for (const n of npcs) if (n.special) { const inScene = n.fig.group.parent === root; if (n.lod === 'full' && !inScene) root.add(n.fig.group); else if (n.lod !== 'full' && inScene) root.remove(n.fig.group); }
     const q1 = pnow();
     capT -= dt;
     const capAll = capT <= 0; if (capAll) capT = 0.4;
@@ -488,7 +488,7 @@ export function createCrowd(ctx) {
       const n = npcs[i];
       // редкий тик для дальних
       n.acc = (n.acc || 0) + dt;
-      const far = n.lod !== 'full';
+      const far = n.lod !== 'full' && n.mix >= 0.999;
       if (far) { if (n.acc < (n.d2 > 4900 ? 0.6 : n.d2 > 1600 ? 0.3 : 0.12)) { if (n.mode === 'walk' || dyn) writeImpostor(n, i, t, dyn); continue; } }
       // «полные» фигуры (дорогая анимация: походка, ткань, лицо) вдали и в статичных позах обновляем реже: 60 → 30/15/8 Гц
       else if (n.mode !== 'walk' && !n.special && n.acc < (n.d2 > 144 ? 0.12 : n.d2 > 49 ? 0.066 : n.d2 > 20 ? 0.033 : 0)) continue;
@@ -520,7 +520,7 @@ export function createCrowd(ctx) {
         n.sfxT = (n.sfxT ?? R() * 2) - sdt;
         if (n.sfxT <= 0) { n.sfxT = n.pose === 'weave' ? 1.1 + R() * 0.6 : 5 + R() * 4; game.audio?.event?.(n.pose === 'weave' ? 'Loom.Clack' : n.pose === 'measure' ? 'Water.Measure' : 'Stillsuit.Repair', ctx.toWorld(n.x, n.y + 1.0, n.z)); }
       }
-      if (n.lod === 'full') {
+      if (n.lod === 'full' || n.mix < 0.999) {
         n.y = n.special && n.kind === 'priestess' ? rimY : ground(n.x, n.z, n.layer || 0);
         const g = n.fig.group;
         g.position.set(n.x, n.y, n.z); g.rotation.y = n.yaw;
@@ -533,8 +533,7 @@ export function createCrowd(ctx) {
       } else { n.y = n.special ? n.y : ground(n.x, n.z, n.layer || 0); if (n.kind === 'dancer') specialMove(n, sdt, t); }
       const qi = pnow(); writeImpostor(n, i, t, dyn); impT += pnow() - qi;
     }
-    impBody.instanceMatrix.needsUpdate = impHead.instanceMatrix.needsUpdate = impSash.instanceMatrix.needsUpdate = true;
-    if (dyn) { impBody.geometry.attributes.aGlow.needsUpdate = impHead.geometry.attributes.aGlow.needsUpdate = impSash.geometry.attributes.aGlow.needsUpdate = true; }
+    farCrowd.update(dt, t);
     const q3 = pnow(), e = 0.05;
     PF.lod += (q1 - q0 - PF.lod) * e; PF.caps += (q2 - q1 - PF.caps) * e; PF.loop += (q3 - q2 - poolT - impT - PF.loop) * e; PF.pose += (poolT - PF.pose) * e; PF.imp += (impT - PF.imp) * e;
   };
@@ -612,30 +611,32 @@ export function createCrowd(ctx) {
   }
 
   function writeImpostor(n, i, t, dyn) {
-    const show = n.lod === 'imp';
-    if (!show) { _s.set(0, 0, 0); _p.set(0, -100, 0); _q.identity(); _m.compose(_p, _q, _s); impBody.setMatrixAt(i, _m); impHead.setMatrixAt(i, _m); impSash.setMatrixAt(i, _m); return; }
+    const H = n.far;
+    if (!H || n.special) return;
+    const show = n.lod === 'imp' || n.mix < 0.999;
+    if (!show) return;
     const s = n.scale, bulk = n.lk.bulk;
     let sy = s, yoff = 0, lean = 0;
     if (n.mode === 'seat' || n.pose === 'sitFloor' || n.pose === 'pray') { sy = s * 0.55; }
     else if (n.pose === 'sitBench' || n.pose === 'weave') { sy = s * 0.72; }
     else if (n.pose === 'crouch') sy = s * 0.7;
-    if (n.mode === 'walk') { yoff = Math.abs(Math.sin(t * 6 * (n.speed) + n.phase)) * 0.035; lean = 0.06; }
-    else if (n.mode !== 'seat') lean = Math.sin(t * 0.6 + n.phase) * 0.012;
+    // ход и покой анимируются в шейдере группы (фаза шага — farCrowd.update)
+    farCrowd.setWalk(H, n.mode === 'walk' ? 1 : 0);
+    if (n.mode !== 'walk' && n.mode !== 'seat') lean = Math.sin(t * 0.6 + n.phase) * 0.012;
+    else if (n.mode === 'walk') lean = 0.04;
     const yy = n.special && n.kind === 'priestess' ? rimY : n.y;
     if (n.kind === 'sleep') {
       const hx = Math.sin(n.yaw), hz = Math.cos(n.yaw), len = 0.85 * s;
       _e.set(-Math.PI / 2, n.yaw + Math.PI, 0, 'YXZ'); _q.setFromEuler(_e);
-      _p.set(n.x - hx * len, (n.bedY ?? n.y) + 0.1, n.z - hz * len); _s.set(bulk * s, s, bulk * s);
-      _m.compose(_p, _q, _s); impBody.setMatrixAt(i, _m); impSash.setMatrixAt(i, _m); impHead.setMatrixAt(i, _m);
-      if (dyn) { const g = glowAt(n.x, n.y + 0.4, n.z); impGlow[i * 3] = g[0]; impGlow[i * 3 + 1] = g[1]; impGlow[i * 3 + 2] = g[2]; }
+      _p.set(n.x - hx * len, (n.bedY ?? n.y) + 0.1, n.z - hz * len); _s.set(bulk * s, s, s * (1 + (bulk - 1) * 0.8));
+      _m.compose(_p, _q, _s); farCrowd.setMatrix(H, _m);
+      if (dyn) { const g = glowAt(n.x, n.y + 0.4, n.z); farCrowd.setGlow(H, g[0], g[1], g[2]); }
       return;
     }
     _e.set(lean, n.yaw, n.mode === 'seat' && out.ritualState !== 'idle' ? Math.sin(t * 0.7 + (n.sway || 0)) * 0.06 : 0, 'YXZ'); _q.setFromEuler(_e);
-    _p.set(n.x, yy + yoff, n.z); _s.set(bulk * s, sy, bulk * s);
-    _m.compose(_p, _q, _s); impBody.setMatrixAt(i, _m); impSash.setMatrixAt(i, _m);
-    // голова не должна «проваливаться» — масштаб по Y как у тела
-    impHead.setMatrixAt(i, _m);
-    if (dyn) { const g = glowAt(n.x, n.y + 1, n.z); impGlow[i * 3] = g[0]; impGlow[i * 3 + 1] = g[1]; impGlow[i * 3 + 2] = g[2]; }
+    _p.set(n.x, yy + yoff, n.z); _s.set(bulk * s, sy, s * (1 + (bulk - 1) * 0.8));
+    _m.compose(_p, _q, _s); farCrowd.setMatrix(H, _m);
+    if (dyn) { const g = glowAt(n.x, n.y + 1, n.z); farCrowd.setGlow(H, g[0], g[1], g[2]); }
   }
 
   // ------------------------------------------------------------------ прочее API ----

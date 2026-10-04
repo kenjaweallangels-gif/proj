@@ -28,6 +28,12 @@ const WIND = { x: 0, z: 0, speed: 0 };
 const VIEW = new THREE.Vector3(1e6, 0, 1e6);
 let VIEW_SET = false;
 let LOD_SCALE = 1;
+// Половина вертикального угла камеры (tan): берётся из камеры, которая реально рисует фигуру, — LOD зависит от экранного размера, а не только от метров.
+let TAN_HALF = 0.62;
+const REF_SCREEN = 1.75 / (6 * 2 * 0.5774); // экранная доля роста 1.75 м на 6 м при fov 60° — бывшая граница LOD0
+// Пороги экранной доли роста (с гистерезисом ±12%): LOD0 выше A, LOD1 выше B, иначе LOD2.
+const SCR_A = REF_SCREEN * 0.9, SCR_B = REF_SCREEN * 0.27;
+const FADE_TIME = 0.4;
 let CLOCK = 0;
 let _tick = 0;
 function FRAME_TICK() { const n = performance.now(); if (n - _tick > 4) { FRAME++; _tick = n; } }
@@ -49,6 +55,8 @@ export function pumpFigureBuilds(budgetMs = 4) {
   }
 }
 export function figureBuildBacklog() { return BUILDQ.length; }
+/** Поставить в фоновую очередь сборку геометрии варианта (для групповых LOD: figure_crowd.js). */
+export function enqueueFigureBuild(o, lod, key) { if (!hasGeometry(key, lod)) enqueueBuild(o, lod, key); }
 
 // ------------------------------------------------------------------------------------------ палитры архетипов толпы ----
 export const PALETTES = {
@@ -61,6 +69,35 @@ export const PALETTES = {
   Elder: { cloth: '#4e4438', accent: '#2c3e57', suit: '#3b342d', height: 1.66, age: 0.92 },
   Weaver: { cloth: '#7d4f3a', accent: '#2c3e57', suit: '#4a3d33' },
 };
+
+/**
+ * Внешность жителей сиетча по архетипу: возраст, телосложение, поклажа, кушаки, головные повязки, кольца воды, бороды.
+ * Детерминирована генератором R() (передаёт crowd.js) — один архетип даёт разные силуэты.
+ * Фракции: возрожденцы-«фримены» (Pilgrim/Artisan/Weaver/Guard), жрецы Разделённого Бога (Elder с повязкой), торговцы (Trader), дети (Child).
+ */
+export function crowdLook(arch, R) {
+  const pick = (a) => a[Math.floor(R() * a.length)];
+  const o = {};
+  switch (arch) {
+    case 'Trader': // пёстрые многослойные одеяния, сумки, украшения: торговцы живут обменом
+      o.age = 0.3 + R() * 0.45; o.sash = R() < 0.75; o.wrap = R() < 0.35; o.carry = R() < 0.6 ? pick(['satchel', 'satchel', 'bundle', 'skin']) : undefined; o.waterRings = R() < 0.55 ? 3 + Math.floor(R() * 4) : 0; o.wear = 0.15 + R() * 0.3; o.hemTrim = true; o.frontTrim = R() < 0.5; o.scarf = R() < 0.2; break;
+    case 'Artisan':
+      o.age = 0.3 + R() * 0.5; o.sash = R() < 0.5; o.carry = R() < 0.55 ? pick(['basket', 'bundle', 'satchel']) : undefined; o.wrap = R() < 0.3; o.wrapStyle = 'band'; o.waterRings = R() < 0.3 ? 3 : 0; o.wear = 0.4 + R() * 0.4; break;
+    case 'WaterCarrier': // кувшины и бурдюки, кольца воды на шнуре
+      o.age = 0.25 + R() * 0.5; o.carry = R() < 0.85 ? pick(['jug', 'jug', 'skin']) : 'skin'; o.wrap = R() < 0.5; o.sash = R() < 0.4; o.waterRings = R() < 0.7 ? 4 + Math.floor(R() * 4) : 0; o.wear = 0.3 + R() * 0.4; break;
+    case 'Child':
+      o.sash = R() < 0.5; o.wrap = R() < 0.25; o.wrapStyle = 'band'; o.carry = R() < 0.15 ? 'skin' : undefined; o.wear = 0.3 + R() * 0.4; break;
+    case 'Guard': // возрожденцы-воины: сумки, кольца, крис
+      o.age = 0.25 + R() * 0.4; if (R() < 0.6) o.build = 'a'; o.waterRings = R() < 0.5 ? 4 : 0; o.carry = R() < 0.25 ? 'satchel' : undefined; o.wrap = R() < 0.25; o.wrapStyle = 'band'; break;
+    case 'Pilgrim': // странники: скатки, корзины, выцветшие тюрбаны
+      o.age = 0.25 + R() * 0.6; o.carry = R() < 0.6 ? pick(['bundle', 'bundle', 'basket', 'skin']) : undefined; o.wrap = R() < 0.6; o.sash = R() < 0.35; o.waterRings = R() < 0.35 ? 3 : 0; o.wear = 0.5 + R() * 0.4; o.dust = 0.7; break;
+    case 'Elder': // старики и жрецы Разделённого Бога: длинные одежды, тюрбаны, кольца, седая борода
+      o.age = 0.8 + R() * 0.15; if (R() < 0.4) o.build = 'e'; o.style = { elder: 1, stride: 0.8, sway: 0.8, tempo: 0.85, armSwing: 0.6 }; o.wrap = R() < 0.55; o.wrapAccent = R() < 0.5; o.sash = R() < 0.6; o.waterRings = R() < 0.6 ? 4 + Math.floor(R() * 5) : 0; o.carry = R() < 0.15 ? 'satchel' : undefined; o.wear = 0.5 + R() * 0.4; break;
+    case 'Weaver':
+      o.age = 0.25 + R() * 0.55; o.sash = R() < 0.6; o.wrap = R() < 0.5; o.wrapAccent = R() < 0.4; o.carry = R() < 0.15 ? 'satchel' : undefined; o.waterRings = R() < 0.3 ? 3 : 0; o.wear = 0.2 + R() * 0.4; break;
+  }
+  return o;
+}
 
 // ------------------------------------------------------------------------------------------ пресеты персонажей ----
 // Стили походки: см. char_anim DEFAULT_STYLE.
@@ -77,26 +114,26 @@ export const PRESETS = {
   },
   Rayn: {
     name: 'Rayn', age: 0.62, height: 1.6, build: 'm', bulk: 1.1, skin: '#a9805e', suit: '#3e3630', cloth: '#5a4a3a', cloth2: '#7a2e24', accent: '#c9a46a', leather: '#4a3524',
-    robe: true, robeStyle: 'kaftan', layers: [{ style: 'cape', fold: 0.05, tear: 0.3 }], hood: true, mask: true, pouches: 5, frontTrim: true, hemTrim: true, pack: 'box', hair: 'short', hairColor: '#4a3a2a', wear: 0.25, dust: 0.7,
+    robe: true, robeStyle: 'kaftan', layers: [{ style: 'cape', fold: 0.05, tear: 0.3 }], hood: true, mask: true, pouches: 5, frontTrim: true, hemTrim: true, pack: 'box', sash: true, waterRings: 5, hair: 'short', hairColor: '#4a3a2a', wear: 0.25, dust: 0.7,
     style: { nervous: 1, stride: 0.82, tempo: 1.15, hunch: 0.05, shoulders: 1, armSwing: 0.7 }, seed: 31,
   },
   Ossana: {
     name: 'Ossana', age: 0.45, gender: 0.1, height: 1.72, build: 'a', skin: '#5a3e28', suit: '#3b302a', cloth: '#4a3b2c', cloth2: '#6b4f36', accent: '#2c3e57', leather: '#4a3222',
     robe: true, robeStyle: 'tunic', layers: [{ style: 'cape', fold: 0.04, tear: 0.5, scale: 0.97 }], hood: true, mask: 'down', pouches: 3, kris: true, armPads: true, harness: true, hooks: 2, hair: 'short', hairColor: '#1a1410',
-    eyesIbad: true, wear: 0.7, dust: 0.6, style: { stride: 1.08, armSwing: 1.1, stance: 1, sway: 1.1 }, seed: 41, scarf: false,
+    eyesIbad: true, wear: 0.7, dust: 0.6, style: { stride: 1.08, armSwing: 1.1, stance: 1, sway: 1.1 }, seed: 41, scarf: false, waterRings: 7, wrap: true, wrapStyle: 'band',
   },
   Rider: {
     name: 'Rider', age: 0.3, height: 1.78, build: 'm', skin: '#6e4c34', suit: '#14120f', cloth: '#1d1a17', cloth2: '#2a2118', accent: '#5c2a1f', leather: '#3a2a1c',
-    robe: true, robeStyle: 'tunic', layers: [{ style: 'cape', fold: 0.04, tear: 0.8 }], hood: true, mask: true, pouches: 2, armPads: true, kris: true, hooks: 1, eyesIbad: true, wear: 0.6, scarf: true, style: { stride: 1.05 }, seed: 51,
+    robe: true, robeStyle: 'tunic', layers: [{ style: 'cape', fold: 0.04, tear: 0.8 }], hood: true, mask: true, pouches: 2, armPads: true, kris: true, hooks: 1, eyesIbad: true, wear: 0.6, scarf: true, waterRings: 6, style: { stride: 1.05 }, seed: 51,
   },
   Rider2: {
     name: 'Rider2', age: 0.28, height: 1.66, build: 'f', skin: '#7a563a', suit: '#3b302a', cloth: '#5e4b3c', cloth2: '#9c7c52', accent: '#2c3e57', leather: '#4a3222',
-    robe: true, robeStyle: 'tunic', layers: [{ style: 'cape', fold: 0.04, scale: 0.9 }], hood: true, mask: 'down', pouches: 2, armPads: true, hooks: 2, eyesIbad: true, wear: 0.5, scarf: true, hair: 'short', hairColor: '#241a14', style: { stride: 1.0, tempo: 1.05 }, seed: 52,
+    robe: true, robeStyle: 'tunic', layers: [{ style: 'cape', fold: 0.04, scale: 0.9 }], hood: true, mask: 'down', pouches: 2, armPads: true, hooks: 2, eyesIbad: true, wear: 0.5, scarf: true, hair: 'short', hairColor: '#241a14', waterRings: 5, style: { stride: 1.0, tempo: 1.05 }, seed: 52,
   },
   Harmat: {
     name: 'Harmat', age: 0.92, height: 1.72, build: 'e', bulk: 1.12, skin: '#7a563a', suit: '#2a221b', cloth: '#2b2420', cloth2: '#6b4f36', accent: '#2c62b8', leather: '#3a2a1a',
     robe: true, robeStyle: 'jubba', layers: [{ style: 'heavy', hemTrim: true, folds: 6, fold: 0.05 }], hood: false, mask: false, pouches: 2, kris: true, hair: 'short', hairColor: '#c9c6bd', beard: true, eyesIbad: true,
-    wear: 0.8, dust: 0.5, staff: 'hook', style: { elder: 1, stride: 0.8, sway: 0.8, tempo: 0.85, armSwing: 0.6 }, seed: 61,
+    wear: 0.8, dust: 0.5, staff: 'hook', sash: true, waterRings: 8, wrap: true, wrapAccent: true, style: { elder: 1, stride: 0.8, sway: 0.8, tempo: 0.85, armSwing: 0.6 }, seed: 61,
   },
   Priestess: {
     name: 'Priestess', age: 0.3, height: 1.86, build: 'f', skin: '#c2a083', suit: '#e0d6c2', cloth: '#e0d6c2', cloth2: '#e0d6c2', accent: '#3f5e7a', lining: '#f0e8d6', leather: '#8a6a3a', bare: true, barefoot: true, gloves: false,
@@ -167,9 +204,30 @@ function resolveOptions(opts) {
 
 function geoKey(o) {
   const k = {};
-  for (const f of ['build', 'robe', 'robeStyle', 'layers', 'hood', 'maskState', 'scarf', 'hair', 'beard', 'pouches', 'kris', 'armPads', 'gloves', 'bare', 'barefoot', 'asym', 'tear', 'hemTrim', 'frontTrim', 'fold', 'noDrape', 'cuffTrim', 'sleeve', 'hoodTrim', 'cowl', 'noTubes', 'harness', 'hoodUp', 'beltR']) k[f] = o[f];
+  for (const f of ['build', 'robe', 'robeStyle', 'layers', 'hood', 'maskState', 'scarf', 'hair', 'beard', 'pouches', 'kris', 'armPads', 'gloves', 'bare', 'barefoot', 'asym', 'tear', 'hemTrim', 'frontTrim', 'fold', 'noDrape', 'cuffTrim', 'sleeve', 'hoodTrim', 'cowl', 'noTubes', 'harness', 'hoodUp', 'beltR', 'sash', 'carry', 'waterRings', 'wrap', 'wrapStyle', 'wrapAccent']) k[f] = o[f];
   k.lin = !!o.lining; k.hr = o.height < 1.4; k.fk = faceKey(o.faceP); k.hv = (o.seed | 0) % 4;
   return JSON.stringify(k);
+}
+
+/**
+ * Квантованный вариант фигуры для группового (инстансового) LOD: общий силуэт — построение, одежда, капюшон, причёска, борода —
+ * без случайных мелочей (складки, лицо, подсумки), поэтому десятки NPC делят единицы геометрий. Цвета берутся из опций отдельно.
+ * Возвращает { o, key } — опции и ключ кэша геометрии (geometryFor/hasGeometry).
+ */
+export function figureFarVariant(src) {
+  const child = src.height < 1.4;
+  const age = src.faceP?.age ?? 0.4, fem = (src.faceP?.g ?? 0.9) < 0.5;
+  const L0 = (src.layers || [])[0];
+  const hair = src.hair === 'bun' || src.hair === 'long' || src.hair === 'braid' ? src.hair : 'short';
+  const fo = {
+    ...src, seed: 4000 + (src.build || 'm').charCodeAt(0), age: age > 0.7 ? 0.9 : age > 0.4 ? 0.5 : 0.25, gender: fem ? 0.05 : 0.92, height: child ? 1.2 : 1.75,
+    layers: L0 ? [{ style: L0.style, fold: 0.05 }] : [], fold: 0.05, folds: undefined, tear: 0, asym: 0, hemTrim: false, frontTrim: false, hoodTrim: false, cuffTrim: false,
+    pouches: 0, kris: false, armPads: false, scarf: false, harness: !!src.harness, maskState: src.maskState === 'up' ? 'up' : 'none', maskOn: src.maskState === 'up', mask: src.maskState === 'up', hair, beard: !!src.beard,
+    wear: 0.4, hooks: 0, props: undefined, lining: undefined, waterRings: 0, wrapAccent: false, wrapStyle: src.wrap ? (src.wrapStyle === 'band' ? 'band' : 'turban') : undefined, sleeve: undefined,
+  };
+  fo.faceP = faceParams(fo); fo.hs = (BUILDS[fo.build] || BUILDS.m).head; fo.faceSpec = faceUniformsSpec(fo.build, fo.faceP, BUILDS[fo.build] || BUILDS.m);
+  fo.beltR = src.beltR;
+  return { o: fo, key: geoKey(fo) };
 }
 
 // ------------------------------------------------------------------------------------------ реквизит ----
@@ -275,8 +333,42 @@ export function makeFigure(opts = {}) {
   root.updateMatrixWorld(true);
   body.bind(skeleton, body.matrixWorld);
   cloth.bind(skeleton, cloth.matrixWorld);
-  for (const m of [body, cloth]) m.onBeforeRender = () => { cl.seen = FRAME; };
+  for (const m of [body, cloth]) m.onBeforeRender = (r, sc, cam) => { cl.seen = FRAME; if (cam.isPerspectiveCamera) TAN_HALF = 1 / cam.projectionMatrix.elements[5]; };
   const setLod = (l) => { const e = geoAt(l); if (l === lod && body.geometry === e.body) return; lod = l; body.geometry = e.body; cloth.geometry = e.cloth; };
+  // Перекрёстное растворение LOD: «призрачная» пара мешей со старой геометрией и дизерингом (по экранному шуму) — переключение не заметно.
+  let ghost = null;
+  const fadeSt = { t: 1 };
+  function ensureGhost() {
+    if (ghost) return ghost;
+    const U2 = { ...U, uFade: { value: 1 } };
+    const gb = new THREE.SkinnedMesh(body.geometry, makeBodyMaterial(U2)), gc = new THREE.SkinnedMesh(cloth.geometry, makeClothMaterial(U2));
+    for (const m of [gb, gc]) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = true; m.visible = false; root.add(m); }
+    gb.bind(skeleton, body.matrixWorld); gc.bind(skeleton, cloth.matrixWorld);
+    gb.name = 'FigureBodyLodGhost'; gc.name = 'FigureClothLodGhost';
+    ghost = { gb, gc, U2 };
+    return ghost;
+  }
+  function startFade(l) {
+    if (fadeSt.t < 1) endFade();
+    const seenNow = FRAME - cl.seen < 30;
+    if (!seenNow || !g.parent) { cl.fadeTo = -1; setLod(l); return; }
+    const gh = ensureGhost(), e = geoAt(l);
+    gh.gb.geometry = body.geometry; gh.gc.geometry = cloth.geometry;
+    // внешние правки материалов/теней основного меша (например, подсветка наездников) — те же у призрака
+    for (const [a, b] of [[gh.gb, body], [gh.gc, cloth]]) { if (a.material.emissive && b.material.emissive) { a.material.emissive.copy(b.material.emissive); a.material.emissiveIntensity = b.material.emissiveIntensity; } a.castShadow = b.castShadow; a.receiveShadow = b.receiveShadow; }
+    gh.gb.visible = gh.gc.visible = true;
+    lod = l; body.geometry = e.body; cloth.geometry = e.cloth;
+    fadeSt.t = 0; cl.fadeTo = l; U.uFade.value = 0.001; gh.U2.uFade.value = -0.001;
+  }
+  function endFade() { fadeSt.t = 1; cl.fadeTo = -1; U.uFade.value = 1; if (ghost) { ghost.gb.visible = ghost.gc.visible = false; ghost.U2.uFade.value = 1; } }
+  function fadeStep(dt) {
+    if (fadeSt.t >= 1) return false;
+    fadeSt.t += dt / FADE_TIME;
+    if (fadeSt.t >= 1) { endFade(); return false; }
+    const t = Math.min(0.999, Math.max(0.001, fadeSt.t * fadeSt.t * (3 - 2 * fadeSt.t)));
+    U.uFade.value = t; ghost.U2.uFade.value = -t;
+    return true;
+  }
   const parts = { root, pelvis, spine, chest, neck, headPivot, limbs, body, cloth, skeleton };
   const props = addProps(parts, o);
 
@@ -284,7 +376,7 @@ export function makeFigure(opts = {}) {
   const anim = createAnimator(parts, { style: o.style, seed: o.seed });
   const ik = createArmIK(parts, g);
   const V = THREE.Vector3;
-  const cl = { lag: new V(), lv: new V(), prev: new V(), have: false, vel: new V(), lastPos: new V(), lodT: 0, jit: 0.05 + (hashStr(o.name || 'x') % 100) / 1000, skip: 0, acc: 0, wasCtxWind: false, dist: 5, seen: 1e9 };
+  const cl = { lag: new V(), lv: new V(), prev: new V(), have: false, vel: new V(), lastPos: new V(), lodT: 0, jit: 0.05 + (hashStr(o.name || 'x') % 100) / 1000, skip: 0, acc: 0, jph: 0.3 + (hashStr(o.name || 'x') % 70) / 100, fadeTo: -1, wasCtxWind: false, dist: 5, seen: 1e9 };
   const fig = {
     group: g, height: H, parts, options: o, props, gait: null, onStep: null, lod: () => lod, _anim: anim,
     get stats() { return { tris: [0, 1, 2].map((l) => { const e = geoAt(l); return triCount(e.body) + triCount(e.cloth); }), key }; },
@@ -302,20 +394,25 @@ export function makeFigure(opts = {}) {
           const e = g.matrixWorld.elements, dx = e[12] - VIEW.x, dy = e[13] + 1 - VIEW.y, dz = e[14] - VIEW.z;
           cl.dist = Math.sqrt(dx * dx + dy * dy + dz * dz) / LOD_SCALE;
           const d = cl.dist, hy = 1.12;
-          const want = d < 6 * (lod === 0 ? hy : 1 / hy) ? 0 : d < 22 * (lod === 1 ? hy : lod === 2 ? 1 / hy : 1) ? 1 : 2;
-          // геометрию строим заранее: LOD0 — с 11 м, остальные — по запросу; переключаем, когда готово
-          if (want !== lod) {
-            if (hasGeometry(key, want)) setLod(want); else enqueueBuild(o, want, key);
-          } else if (lod > 0 && d < 11 && !hasGeometry(key, 0)) enqueueBuild(o, 0, key);
+          // экранная доля роста (с учётом fov камеры и масштаба качества)
+          const scr = (H / Math.max(0.3, d)) / (2 * TAN_HALF);
+          const want = scr > SCR_A / (lod === 0 ? hy : 1 / hy) ? 0 : scr > SCR_B / (lod === 1 ? hy : lod === 2 ? 1 / hy : 1) ? 1 : 2;
+          // геометрию строим заранее: LOD0 — при scr > 0.6·A, остальные — по запросу; переключаем (с перекрёстным растворением), когда готово
+          if (want !== lod && want !== cl.fadeTo) {
+            if (hasGeometry(key, want)) startFade(want); else enqueueBuild(o, want, key);
+          } else if (lod > 0 && scr > SCR_A * 0.6 && !hasGeometry(key, 0)) enqueueBuild(o, 0, key);
+          else if (lod === 0 && !hasGeometry(key, 1)) enqueueBuild(o, 1, key);
         }
       }
       if (QFRAME !== FRAME && BUILDQ.length) { QFRAME = FRAME; pumpFigureBuilds(3.5); }
-      // частота анимации: ближние — каждый кадр; дальние и невидимые — реже (dt копится, поза не «залипает»)
+      // частота анимации по экранному размеру: LOD0 — каждый кадр, LOD1 ≈ 30 Гц, LOD2 ≈ 20 Гц (dt копится, поза не «залипает»);
+      // скрытые от камеры дальние — 10 Гц. Фаза сдвинута по фигурам, чтобы нагрузка не приходилась на один кадр.
       cl.acc += dt;
       const seen = FRAME - cl.seen < 30;
-      const every = lod === 0 ? 1 : lod === 1 ? (cl.dist > 14 ? 2 : 1) : 4;
-      const skipN = !seen && cl.dist > 9 ? Math.max(every, 6) : every;
-      if (skipN > 1 && ++cl.skip % skipN !== 0 && cl.acc < 0.09) return anim.state.ph * Math.PI * 2;
+      const period = !seen && cl.dist > 9 ? 0.1 : lod === 0 ? 0 : lod === 1 ? 0.03 : 0.048;
+      if (fadeStep(dt)) { /* перекрёстное растворение идёт каждый кадр */ }
+      if (period > 0 && cl.acc < period * cl.jph) return anim.state.ph * Math.PI * 2;
+      cl.jph = 1;
       const adt = Math.min(cl.acc, 0.1); cl.acc = 0;
       const out = anim.update(adt, speed, irregular, ctx);
       clothStep(adt, speed, ctx, out);
@@ -327,6 +424,10 @@ export function makeFigure(opts = {}) {
     reachTo(point, side = 'R', weight = 1, opts) { ik.reachTo(point, side, weight, opts); },
     /** Мировая позиция ладони (для деформации ткани/занавеса). */
     handWorld(side = 'R', out) { return ik.handWorld(side, out); },
+    /** Состояние перекрёстного растворения LOD (для тестов): t 0..1, ghost — виден ли меш старой геометрии. */
+    fadeState() { return { t: fadeSt.t, ghost: !!ghost && ghost.gb.visible, lod }; },
+    /** Групповое растворение (figure_crowd.js): 1 — виден; 0<v<1 — доля пикселей; -m (m 0..1) — дополнение к группе: скрыто m пикселей. */
+    setGroupFade(v) { U.uGrp.value = v; },
     setTalking(b) { anim.setTalking(!!b); fa.talk = !!b; },
     /** Открытие рта 0..1 (например, амплитуда голоса). null — вернуть управление автоанимации речи. */
     setMouth(v) { fa.ext = v === null || v === undefined ? null : clamp01(v); },
@@ -339,7 +440,7 @@ export function makeFigure(opts = {}) {
       anim.setLook(THREE.MathUtils.clamp(yaw, -1.2, 1.2), weight);
     },
     setWind(dir, speed) { cl.ownWind = dir ? { x: dir.x, z: dir.z, s: speed } : null; },
-    dispose() { /* геометрии общие; материалы — по фигуре */ bodyMat.dispose(); clothMat.dispose(); },
+    dispose() { /* геометрии общие; материалы — по фигуре */ bodyMat.dispose(); clothMat.dispose(); if (ghost) { ghost.gb.material.dispose(); ghost.gc.material.dispose(); } },
   };
   fig.gait = {
     get env() { return anim.env; }, get desertness() { return anim.desertness; },

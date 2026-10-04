@@ -130,7 +130,7 @@ function makeSurface(P) {
 function rowList(lod) {
   const Y = new Set(), add = (a, b, st) => { for (let y = a; y < b - 1e-9; y += st) Y.add(+y.toFixed(5)); };
   if (lod === 0) {
-    add(-0.1205, -0.096, 0.0082); add(-0.096, -0.0755, 0.0045); add(-0.0755, -0.001, 0.003); add(-0.001, 0.0335, 0.0023); add(0.0335, 0.074, 0.0042); add(0.074, 0.141, 0.0105);
+    add(-0.1205, -0.096, 0.0082); add(-0.096, -0.0755, 0.0052); add(-0.0755, -0.001, 0.0041); add(-0.001, 0.0335, 0.0031); add(0.0335, 0.074, 0.0055); add(0.074, 0.141, 0.0105);
     const keys = [YM + 0.0009, YM - 0.0009, -0.0575, -0.0705, 0.014, 0.141];
     const out = [...Y].filter((y) => !keys.some((k) => Math.abs(k - y) < 0.0011));
     return [...new Set([...out, ...keys].map((v) => +v.toFixed(5)))].sort((a, b) => a - b);
@@ -139,7 +139,7 @@ function rowList(lod) {
   return [...Y, 0.141].sort((a, b) => a - b);
 }
 function colList(lod) {
-  const PI = Math.PI, fine = lod === 0 ? 0.026 : 0.15, coarse = lod === 0 ? 0.16 : 0.4, lim = lod === 0 ? 1.2 : 0.9;
+  const PI = Math.PI, fine = lod === 0 ? 0.04 : 0.15, coarse = lod === 0 ? 0.2 : 0.4, lim = lod === 0 ? 1.2 : 0.9;
   const pos = [];
   for (let a = 0; a < lim - 1e-6; a += fine) pos.push(a);
   const nC = Math.max(2, Math.round((PI - lim) / coarse)), st = (PI - lim) / (nC + 0.5);
@@ -181,7 +181,7 @@ export function* buildHeadHi(b, o, lod, B, cowled, P) {
 
 function buildEyeball(b, c, R) {
   // сфера с выпуклой роговицей; регион SCLERA, радужка/зрачок — в шейдере по направлению от центра
-  const U = 20, V = 14, rings = [];
+  const U = 14, V = 10, rings = [];
   for (let k = 0; k <= V; k++) {
     const ph = -Math.PI / 2 + (Math.PI * k) / V, cy = Math.cos(ph), sy = Math.sin(ph), pts = [];
     for (let i = 0; i < U; i++) {
@@ -292,10 +292,15 @@ export function* buildHair(b, o, lod, B, P, S) {
     capRings.push(r); capN.push(rn);
   }
   const hcap = style === 'bald';
-  if (!hcap) b.loft(capRings, (j, i) => ({ reg: REG.HAIR, aux: [0, 0, -1, 0], sk: HSK, nrm: capN[j][i] }), { capEnd: true });
-  if (lod > 0) return;
+  if (!hcap) b.loft(capRings, (j, i) => ({ reg: REG.HAIR, aux: [0, 0, lod > 0 ? -2 : -1, 0], sk: HSK, nrm: capN[j][i] }), { capEnd: true });
+  if (lod > 0) {
+    // дальний/средний LOD: силуэт причёски без карточек
+    if (style === 'bun') { const bz = headRow(0.07)[2] - headRow(0.07)[1]; ellipsoid(b, [0, Y(0.072), Z(bz - 0.028)], [0.042 * hs, 0.034 * hs, 0.032 * hs], REG.HAIR, HSK, { u: 8, v: 5, aux: [0, 0, -2, 0] }); }
+    else if (style === 'long' || style === 'braid') ellipsoid(b, [0, Y(-0.05), Z(headRow(-0.04)[2] - headRow(-0.04)[1] * 0.8)], [0.07 * hs, 0.085 * hs, 0.03 * hs], REG.HAIR, HSK, { u: 8, v: 5, aux: [0, 0, -2, 0] });
+    return;
+  }
   // --- карточки ---
-  const cards = style === 'long' || style === 'braid' ? 620 : style === 'bun' ? 420 : 560;
+  const cards = style === 'long' || style === 'braid' ? 340 : style === 'bun' ? 250 : 250;
   const jawBeard = 0;
   for (let c = 0; c < cards; c++) {
     if (c % 110 === 109) yield;
@@ -347,7 +352,6 @@ export function* buildHair(b, o, lod, B, P, S) {
 
 /** Борода/усы-карточки: корни на нижней части лица, пряди вниз и вперёд; двигаются с челюстью. */
 export function* buildBeard(b, o, lod, B, P, S) {
-  if (lod > 0) return;
   const hs = B.head, R = rng(((o.seed | 0) * 17 + 3) >>> 0);
   const X = (x) => x * hs, Y = (y) => HEAD_Y + y * hs, Z = (z) => z * hs + 0.005;
   const len0 = o.beardLen ?? 0.1;
@@ -355,7 +359,7 @@ export function* buildBeard(b, o, lod, B, P, S) {
   const outN = (p, y) => { const [rx, rz, cz] = headRow(clamp(y, -0.12, 0.14)); const nx = p.x / (rx * rx), nz = (p.z - cz) / (rz * rz), l = Math.hypot(nx, nz) || 1; return [nx / l, nz / l]; };
   const jawW = (y, x) => sstep(-0.05, -0.085, y) * (1 - sstep(0.04, 0.078, Math.abs(x)));
   // подложка: непрозрачная шапка бороды (тёмные корни)
-  const NR = 7, NC = 19, rings = [];
+  const NR = lod > 1 ? 4 : lod > 0 ? 5 : 7, NC = lod > 1 ? 9 : lod > 0 ? 13 : 19, rings = [];
   for (let j = 0; j < NR; j++) {
     const t = j / (NR - 1), r = [];
     for (let i = 0; i < NC; i++) {
@@ -364,7 +368,8 @@ export function* buildBeard(b, o, lod, B, P, S) {
     }
     rings.push(r);
   }
-  b.loft(rings, (j, i, p) => ({ reg: REG.HAIR, aux: [0, 0, -1, 0], face: [0, 0, 0, jawW((p[1] - HEAD_Y) / hs, p[0] / hs)], sk: HSK }), { closed: false });
+  b.loft(rings, (j, i, p) => ({ reg: REG.HAIR, aux: [0, 0, lod > 0 ? -2 : -1, 0], face: [0, 0, 0, lod > 0 ? 0 : jawW((p[1] - HEAD_Y) / hs, p[0] / hs)], sk: HSK }), { closed: false });
+  if (lod > 0) return;
   const strand = (a0, yTop, L, w0, layer, jawFlag) => {
     const K = 4, pts = [], norms = [];
     for (let k = 0; k < K; k++) {
