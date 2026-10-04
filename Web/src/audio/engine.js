@@ -5,7 +5,7 @@ import { clamp } from '../core/util.js';
 const BUS_NAMES = ['music', 'amb', 'sfx', 'vo', 'ui'];
 
 /** Импульсная характеристика комнаты: затухающий шум, темнеющий со временем. */
-function makeIR(ctx, seconds, decay, { pre = 0.01, dark = 0.5 } = {}) {
+export function makeIR(ctx, seconds, decay, { pre = 0.01, dark = 0.5 } = {}) {
   const sr = ctx.sampleRate, n = Math.floor(seconds * sr);
   const buf = ctx.createBuffer(2, n, sr);
   for (let ch = 0; ch < 2; ch++) {
@@ -24,21 +24,24 @@ function makeIR(ctx, seconds, decay, { pre = 0.01, dark = 0.5 } = {}) {
   return buf;
 }
 
-export function createEngine(game) {
+/** opts.ctx — готовый контекст (OfflineAudioContext для замеров tools/music_render.mjs); opts.raw — компрессор в обход (замер сырых пиков). */
+export function createEngine(game, opts = {}) {
   const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
-  if (!AC) return null;
-  const ctx = new AC({ latencyHint: 'interactive' });
+  if (!AC && !opts.ctx) return null;
+  const ctx = opts.ctx || new AC({ latencyHint: 'interactive' });
   const vol = game.settings.volume || { master: 0.9, music: 0.8, sfx: 1, amb: 1, vo: 1 };
 
   // ---- Мастер-цепочка: шины → pre → LP(пауза) → компрессор → выход ----
   const out = ctx.createGain(); out.gain.value = vol.master;
   const comp = ctx.createDynamicsCompressor();
   comp.threshold.value = -16; comp.knee.value = 22; comp.ratio.value = 3.5; comp.attack.value = 0.006; comp.release.value = 0.28;
+  if (opts.raw) { comp.threshold.value = 0; comp.knee.value = 0; comp.ratio.value = 1; }
   const masterLP = ctx.createBiquadFilter(); masterLP.type = 'lowpass'; masterLP.frequency.value = 20000; masterLP.Q.value = 0.4;
   const pre = ctx.createGain(); pre.gain.value = 0.9;
   // Финальный лимитер (защита от клиппинга суммы всех шин): быстрая атака, жёсткое отношение.
   const limiter = ctx.createDynamicsCompressor();
   limiter.threshold.value = -4; limiter.knee.value = 0; limiter.ratio.value = 20; limiter.attack.value = 0.002; limiter.release.value = 0.12;
+  if (opts.raw) { limiter.threshold.value = 0; limiter.ratio.value = 1; }
   pre.connect(masterLP); masterLP.connect(comp); comp.connect(limiter); limiter.connect(out); out.connect(ctx.destination);
   // Анализатор уровня (для автотестов и отладки): audio.level() → {rms, peak} в dBFS
   const analyser = ctx.createAnalyser(); analyser.fftSize = 2048; out.connect(analyser);
@@ -68,6 +71,16 @@ export function createEngine(game) {
   // Музыка идёт через узел приглушения (дакинг под диалоги).
   const duck = ctx.createGain(); duck.gain.value = 1;
   duck.connect(bus.music);
+  // Детектор активности речи на шине vo (для дакинга музыки по факту звучания, а не только по субтитрам).
+  const voAn = ctx.createAnalyser(); voAn.fftSize = 1024; bus.vo.connect(voAn);
+  const voBuf = new Float32Array(voAn.fftSize);
+  /** RMS шины vo (линейный, 0..1). */
+  function voLevel() {
+    voAn.getFloatTimeDomainData(voBuf);
+    let s = 0;
+    for (let i = 0; i < voBuf.length; i++) s += voBuf[i] * voBuf[i];
+    return Math.sqrt(s / voBuf.length);
+  }
 
   // ---- Реверберации: общий вход revIn → три свёртки с управляемым влажным уровнем ----
   const revIn = ctx.createGain(); revIn.gain.value = 1;
@@ -380,7 +393,7 @@ export function createEngine(game) {
   }
 
   return {
-    ctx, out, comp, limiter, masterLP, level, sfxDuck, sfxLim, bus, duck, ambDuck, rev, revIn, setReverb, setReverbMix, revState,
+    ctx, out, comp, limiter, masterLP, level, voLevel, sfxDuck, sfxLim, bus, duck, ambDuck, rev, revIn, setReverb, setReverbMix, revState,
     noiseBuf, loopNoise, filter, gain, send, panner, stereoPan, burst, blip, ramp, T, updateListener, setVolume,
     fin, setT, setPos, relPos, airCut, loadSamples, playSample, pick, textureLoop, pump,
     get samplesReady() { return samplesState === 'ready'; }, hasSample: (n) => !!pick(n),

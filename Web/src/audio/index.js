@@ -1,5 +1,7 @@
 // game.audio — процедурный звук на WebAudio (без файлов). Запускается по первому жесту пользователя / событию 'start'.
 // Слои (звук Ред. 3: сэмплы банка + гранулярные/текстурные петли, SFX-шина с лимитером и дакингом): ветер/интерьер с плавным смешением по расстоянию до проёмов, сад (garden:enter/leave), поедание харвестера (worm:devour {phase}).
+// Музыка: сценарий задаёт базовое состояние (setMusic), аудио уточняет его — в саду (зона C1_Garden) DesertCalm/DesertDrone → Garden,
+// ночью в пустыне → Night; поедание харвестера → Devour.
 // API: event(id, pos?), setMusic(state), finalChord(), setVolume(bus, v), resume(), ready, musicState, voice (речь на языке Ракиса: speak/stop/renderOffline).
 // Если AudioContext недоступен — все методы безопасно ничего не делают.
 import { createEngine } from './engine.js';
@@ -14,6 +16,21 @@ export function create(game) {
   let eng = null, amb = null, sfx = null, music = null, voice = null;
   let pendingMusic = null, failed = false, acc = 0;
   let duckTarget = 1, ambTarget = 1, sfxTarget = 1, harvRunning = false, gardenPending = false;
+  let baseMusic = null, effMusic = null, resolveAcc = 0;
+  // Базовые «уличные» состояния, которые аудио подменяет по месту/времени суток.
+  const OUTDOOR_BASE = new Set(['DesertCalm', 'DesertDrone']);
+  function resolveMusic(base) {
+    if (!OUTDOOR_BASE.has(base)) return base;
+    if (game.space !== 'sietch' && (game.zone === 'C1_Garden' || amb?.gardenFlag)) return 'Garden';
+    if (game.weather?.isNight && game.space !== 'sietch') return 'Night';
+    return base;
+  }
+  function applyMusic() {
+    if (!music || !baseMusic) return;
+    const eff = resolveMusic(baseMusic);
+    if (eff === effMusic) return;
+    effMusic = eff; music.set(eff);
+  }
 
   function ensure() {
     if (eng || failed) return eng;
@@ -28,7 +45,7 @@ export function create(game) {
       voice = createVoice(game, eng);
       api.voice = voice;
       eng.resume();
-      if (pendingMusic) music.set(pendingMusic);
+      if (pendingMusic) { baseMusic = pendingMusic; applyMusic(); }
       if (harvRunning) sfx.play('Harvester.Run');
       if (gardenPending) amb.gardenFlag = true;
       applyAll();
@@ -57,8 +74,8 @@ export function create(game) {
 
   // Дакинг музыки под диалоги.
   bus.on('subtitle', (s) => {
-    if (s?.kind === 'line') { duckTarget = 0.42; ambTarget = 0.6; sfxTarget = 0.65; }
-    else if (s?.kind === 'lore') { duckTarget = 0.75; ambTarget = 0.85; sfxTarget = 0.85; }
+    if (s?.kind === 'line') { duckTarget = 0.6; ambTarget = 0.6; sfxTarget = 0.65; }
+    else if (s?.kind === 'lore') { duckTarget = 0.85; ambTarget = 0.85; sfxTarget = 0.85; }
     if (s?.id === 'DLG_B5_001' && s.kind === 'line') amb?.chant(Math.min(s.duration || 4, 6));
   });
   bus.on('chain:end', () => { duckTarget = 1; ambTarget = 1; sfxTarget = 1; });
@@ -96,7 +113,7 @@ export function create(game) {
       case 'rumble': sfx.devourRumble(pos, dur); api.setMusic('WormThreat'); break;
       case 'alarm': sfx.devourAlarm(pos); break;
       case 'carryall': sfx.devourCarryall(pos, dur); break;
-      case 'swallow': sfx.devourSwallow(pos); api.setMusic('WormReveal'); break;
+      case 'swallow': sfx.devourSwallow(pos); api.setMusic('Devour'); break;
       case 'debris': sfx.devourDebris(pos, dur); api.setMusic('Silence'); break;
       case 'end': api.setMusic('DesertDrone'); break;
       default: break;
@@ -123,9 +140,11 @@ export function create(game) {
       sfx.play(id, pos);
     },
     setMusic(state) {
-      pendingMusic = state;
-      if (ensure()) music.set(state);
+      pendingMusic = state; baseMusic = state;
+      if (ensure()) applyMusic();
     },
+    /** Базовое (сценарное) состояние музыки; musicState — фактическое (с учётом сада/ночи). */
+    get baseMusicState() { return baseMusic ?? 'Silence'; },
     finalChord() { if (ensure()) music.finalChord(); },
     /** Прощальное нарастание хора (червь уходит). */
     swell() { if (ensure()) music.swell(); },
@@ -136,6 +155,8 @@ export function create(game) {
     update(dt) {
       if (!eng || !eng.running) return;
       acc += dt;
+      resolveAcc += dt;
+      if (resolveAcc > 1) { resolveAcc = 0; applyMusic(); }
       if (acc < 1 / 15) return;
       const d = acc; acc = 0;
       try {

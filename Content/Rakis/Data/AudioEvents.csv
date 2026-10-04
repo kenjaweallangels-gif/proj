@@ -7,6 +7,9 @@ Music.WormReveal,Music:WormReveal,/Game/Rakis/Audio/MetaSounds/MS_Music_Adaptive
 Music.SietchLife,Music:SietchLife,/Game/Rakis/Audio/MetaSounds/MS_Music_Adaptive,Music,,100,0.7,True
 Music.SietchNarrow,Music:SietchNarrow,/Game/Rakis/Audio/MetaSounds/MS_Music_Adaptive,Music,,100,0.6,True
 Music.HallChorale,Music:HallChorale,/Game/Rakis/Audio/MetaSounds/MS_Music_Adaptive,Music,,100,0.95,True
+Music.Night,Music:Night,/Game/Rakis/Audio/MetaSounds/MS_Music_Adaptive,Music,,100,0.6,True
+Music.Garden,Music:Garden,/Game/Rakis/Audio/MetaSounds/MS_Music_Adaptive,Music,,100,0.7,True
+Music.Devour,Music:Devour,/Game/Rakis/Audio/MetaSounds/MS_Music_Adaptive,Music,,100,1.0,True
 Amb.A1_Ridge,ZoneEnter:A1_Ridge,/Game/Rakis/Audio/MetaSounds/MS_Amb_Desert,Ambience,,90,0.8,True
 Amb.A2_Erg,ZoneEnter:A2_Erg,/Game/Rakis/Audio/MetaSounds/MS_Amb_Desert,Ambience,,90,0.75,True
 Amb.A3_Approach,ZoneEnter:A3_Approach,/Game/Rakis/Audio/MetaSounds/MS_Amb_Desert,Ambience,,90,0.8,True

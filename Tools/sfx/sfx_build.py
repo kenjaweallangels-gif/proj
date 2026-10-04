@@ -3,7 +3,7 @@
 
 Всё синтезируется: гранулярный песок, удары, металл, вода, птицы, текстуры (петли строятся спектральным синтезом — циркулярны).
 Запуск:  python3 Tools/sfx/sfx_build.py [--out Web/src/assets/sfx_bank.js] [--wav-dir DIR]
-Бюджет: файл банка <= 0.5 МБ (скрипт печатает итог и завершается с ошибкой, если превышен).
+Бюджет: файл банка <= 20 МБ (практически ~1 МБ; битрейт Opus 48-64 кбит/с) (скрипт печатает итог и завершается с ошибкой, если превышен).
 Нижний край: все сэмплы фильтруются HP (обычно 45-90 Гц) — постоянного НЧ-гула в банке нет.
 Имена вида 'base_N' образуют группу 'base' (round-robin / случайный выбор в рантайме).
 """
@@ -12,7 +12,7 @@ import numpy as np
 from scipy.signal import butter, sosfilt
 
 SR = 48000
-BUDGET = 500_000
+BUDGET = 20_000_000   # проект локальный: лимит 16 МБ снят, SFX до ~20 МБ; фактически ~1 МБ
 
 
 def R(seed):
@@ -238,9 +238,9 @@ def worm_thud(seed):
 
 def distant_thump(seed):
     r = R(seed); n = N(1.4); t = T(n)
-    y = np.sin(2 * np.pi * 62 * (0.8 + 0.2 * np.exp(-t / 0.1)) * t) * np.exp(-t / 0.16)
+    y = np.sin(2 * np.pi * 78 * (0.8 + 0.2 * np.exp(-t / 0.1)) * t) * np.exp(-t / 0.16)
     y += lp(r.normal(size=n), 260) * np.exp(-t / 0.25) * 0.8
-    y = hp(lp(y, 300, 3), 40)
+    y = hp(lp(y, 320, 3), 55)
     return fade(norm(y, 0.8), 0.01, 0.4)
 
 
@@ -612,7 +612,7 @@ def registry():
 
 def encode(x, kbps):
     pcm = (np.clip(x, -1, 1) * 32767).astype('<i2').tobytes()
-    p = subprocess.run(['ffmpeg', '-v', 'error', '-f', 's16le', '-ar', str(SR), '-ac', '1', '-i', '-', '-c:a', 'libopus', '-b:a', f'{kbps}k',
+    p = subprocess.run(['ffmpeg', '-v', 'error', '-f', 's16le', '-ar', str(SR), '-ac', '1', '-i', '-', '-c:a', 'libopus', '-b:a', f'{max(48, kbps * 2)}k',
                         '-application', 'audio', '-vbr', 'on', '-map_metadata', '-1', '-fflags', '+bitexact', '-f', 'ogg', '-'], input=pcm, capture_output=True, check=True)
     return p.stdout
 
@@ -643,7 +643,7 @@ def main():
         f.write(js)
     print(f'{len(bank)} сэмплов, opus {total_bin/1024:.0f} КБ, js {len(js)/1024:.0f} КБ')
     if len(js) > BUDGET:
-        print('ПРЕВЫШЕН БЮДЖЕТ 0.5 МБ', file=sys.stderr)
+        print('ПРЕВЫШЕН БЮДЖЕТ', file=sys.stderr)
         sys.exit(1)
 
 
