@@ -35,7 +35,19 @@ export const CFG = {
     shakePos: 0.08, shakeRot: 0.025, shakeRoll: 0.03, shakeDecay: 2.0, rumbleScale: 0.4,
   },
   interact: { radius: 2.2, viewCos: 0.3 },
-  companions: { spacing: 3.5, minSep: 1.1, snapDist: 25, maxSpeed: 7.5, idleDelay: 0.6, trailStep: 0.45, trailKeep: 40 },
+  companions: {
+    spacing: 3.5, minSep: 1.1, snapDist: 25, maxSpeed: 7.5, idleDelay: 0.6, trailStep: 0.45, trailKeep: 40,
+    // Строй (вид от первого лица): позади-сбоку, не в кадре; в узких местах (тропа, расщелина, проход) — гуськом по следу
+    openBack: 2.4, openBackStep: 1.0, openSide: 1.35,      // м: позади игрока / шаг на каждого следующего / вбок
+    fileSpacing: 2.2,                                       // м между идущими гуськом
+    narrowProbe: 1.5, narrowEvery: 0.2, narrowLambda: 3,    // проверка ширины вбок (м), период (с), плавность перехода строй↔гуськом
+    restMin: 1.5, restMax: 4.2,                             // м: естественная дистанция, когда игрок стоит
+    frontCone: 0.62, frontRange: 5, frontPush: 1.6,         // cos угла «в кадре», дальность (м), боковой толчок м/с
+    accelLambda: 5.5, catchSpeed: 1.6, runBoost: 0.9,       // догоняют бегом: множитель к скорости игрока; запас скорости м/с
+    warpDist: 14, warpMinHidden: 5, warpCosHidden: 0.15,    // телепорт только вне кадра: дальше (м), не ближе (м), cos угла «за спиной/боком»
+    ghostRange: 1.25,                                       // м: в узком месте спутник на пути игрока становится «призраком» (проходит насквозь)
+    idleLook: [3.5, 8], idleDrink: [16, 34], drinkDur: 4.5, chatDur: [6, 10], lookDur: [2.5, 5],
+  },
 };
 
 /** Интервал между шагами (с) при скорости v: кусочно-линейная интерполяция по таблице. */

@@ -1,6 +1,6 @@
-// Толпа сиетча: 40–80 горожан с простыми конечными автоматами, LOD (полные фигуры рядом / инстанс-болванки вдали),
-// деятельность у точек (станки, прилавки, кувшины, мастерская, дети, старики, молитвы), блуждание по лейнам,
-// взгляд на игрока, уступание дороги, замолкание разговоров, барки с кулдаунами, ритуальный сбор в зал B5.
+// Толпа сиетча: 40–80 горожан, LOD (полные фигуры рядом / инстанс-болванки вдали), деятельность у точек (станки, прилавки, кувшины,
+// мастерская, дети, старики, молитвы). Движение: nav.js (сетка + A*, правая полоса) и agents.js (рулёжка без дрожания и скольжения);
+// распорядок дня, разговоры, взгляд, шаг в сторону, барки, тревога: social.js; здесь — состав, LOD, позы, импостеры, ритуальный сбор в зал B5.
 import * as THREE from 'three';
 import { makeFigure, PALETTES } from '../core/figures.js';
 import { clamp, lerp, damp, dampAngle, rng } from '../core/util.js';
@@ -8,6 +8,10 @@ import { HALL, heightAtLocal, hallHeightSmooth } from './plan.js';
 import { faceYaw, pathZ } from './props.js';
 import { PATHS } from './cave/layout.js';
 import { U } from './mats.js';
+import * as plan from './plan.js';
+import { createNav } from './nav.js';
+import { createMover, MOVE_CFG } from './agents.js';
+import { createSocial, SOCIAL_CFG } from './social.js';
 
 const SKIN = ['#9c7458', '#8a6048', '#b08462', '#7a523c', '#c09470', '#a07050'];
 const TAU = Math.PI * 2;
@@ -32,30 +36,9 @@ export function createCrowd(ctx) {
   const fullR = q === 'low' ? 7 : q === 'high' ? 12 : 9.5;
   const out = { npcs, ritualState: 'idle', seated: 0, guardReleased: false };
 
-  // ------------------------------------------------------------------ граф лейнов ----
-  const nodes = [];
-  const node = (x, z, tag = '') => { const n = { x, z, nb: [], tag }; nodes.push(n); return n; };
-  const link = (a, b) => { if (!a || !b) return; a.nb.push(b); b.nb.push(a); };
-  const xs = [44, 52, 60, 68, 76, 84, 92], zs = [-2.6, 0, 2.6];
-  const grid = xs.map((x) => zs.map((z) => node(x, z, 'B2')));
-  for (let i = 0; i < xs.length; i++) for (let j = 0; j < 3; j++) { if (j < 2) link(grid[i][j], grid[i][j + 1]); if (i < xs.length - 1) link(grid[i][j], grid[i + 1][j]); }
-  const b1 = [4, 12, 20, 28, 37].map((x) => node(x, pathZ(PATHS.B1, x), 'B1')); for (let i = 0; i < b1.length - 1; i++) link(b1[i], b1[i + 1]); link(b1[b1.length - 1], grid[0][1]);
-  const b3 = [100, 108, 116, 124, 132, 140, 148].map((x) => node(x, pathZ(PATHS.C, x), 'B3')); for (let i = 0; i < b3.length - 1; i++) link(b3[i], b3[i + 1]); link(grid[xs.length - 1][1], b3[0]);
-  const ring = []; const NR = 20;
-  for (let i = 0; i < NR; i++) { const a = (i / NR) * TAU; ring.push(node(HALL.cx + Math.cos(a) * 20.5, HALL.cz + Math.sin(a) * 15.2, 'B5')); }
-  for (let i = 0; i < NR; i++) link(ring[i], ring[(i + 1) % NR]);
-  link(b3[b3.length - 1], ring[NR / 2]);
-  // ближайший узел
-  const nearestNode = (x, z, tag) => { let b = null, bd = 1e9; for (const n of nodes) { if (tag && n.tag !== tag) continue; const d = (n.x - x) ** 2 + (n.z - z) ** 2; if (d < bd) { bd = d; b = n; } } return b; };
-  const tagOf = (x) => (x < 40 ? 'B1' : x < 100 ? 'B2' : x < 150 ? 'B3' : 'B5');
-  function route(from, to) {
-    const a = nearestNode(from.x, from.z, tagOf(from.x)), b = nearestNode(to.x, to.z, tagOf(to.x));
-    const prev = new Map([[a, null]]); const qd = [a];
-    while (qd.length) { const c = qd.shift(); if (c === b) break; for (const n of c.nb) if (!prev.has(n)) { prev.set(n, c); qd.push(n); } }
-    const path = []; let c = b; while (c) { path.unshift([c.x, c.z]); c = prev.get(c); }
-    path.push([to.x, to.z]);
-    return path;
-  }
+  // Навигация и движение (замена графа лейнов): сетка строится из запечённых сеток пола/стен по всем помещениям.
+  const nav = createNav(plan);
+  const xs = [44, 52, 60, 68, 76, 84, 92];
 
   // ------------------------------------------------------------------ создание ----
   const ARCH_FALLBACK = { Trader: 1, Artisan: 1, WaterCarrier: 1, Child: 1, Guard: 1, Pilgrim: 1, Elder: 1, Weaver: 1 };
@@ -82,6 +65,7 @@ export function createCrowd(ctx) {
       id: seq++, arch: archId, kind, fig, lk, scale: lk.height / 1.75, speed: lk.speed, x: spot.x, z: spot.z, y: 0, yaw: spot.yaw ?? R() * TAU, goalYaw: spot.yaw ?? 0,
       pose: 'stand', mode: 'act', timer: R() * 5, path: null, pi: 0, spot, home: { x: spot.x, z: spot.z, yaw: spot.yaw ?? 0 }, lod: 'off', imp: -1, talk: false, group: o.group ?? -1,
       barkT: 1 + R() * 10, stranger: false, silent: 0, walkAnim: 0, irregular: 0, special: !!o.special, role: spot.role || '', phase: R() * 10, after: null, sitH: 0, speedNow: 0, dwell: 0,
+      vx: 0, vz: 0, walkYaw: spot.yaw ?? 0, task: null, chat: null, goal: null, pathReq: null, pathT: 0, blockedT: 0, slowIgnore: 0, stuckCount: 0, lookNpc: null, prayAt: 0, mealAt: 0,
     };
     n.layer = spot.level ? 6.5 : 0; n.bedY = spot.y;
     n.y = ground(n.x, n.z, n.layer);
@@ -128,9 +112,9 @@ export function createCrowd(ctx) {
     if (q !== 'low') { const c = mk(134); c.role = 'rider'; }
   }
   // Блуждающие по галерее.
-  const wanderArchs = ['Trader', 'Pilgrim', 'WaterCarrier', 'WaterCarrier', 'Artisan', 'Weaver', 'Pilgrim', 'Elder', 'Trader', 'Child'];
-  const nWander = q === 'low' ? 5 : q === 'high' ? 24 : 16;
-  for (let i = 0; i < nWander; i++) { const nd = grid[Math.floor(R() * xs.length)][Math.floor(R() * 3)]; place(wanderArchs[i % wanderArchs.length], 'wander', { x: nd.x + (R() - 0.5), z: nd.z + (R() - 0.5) * 0.6, yaw: R() * TAU }); }
+  const wanderArchs = ['Weaver', 'Pilgrim', 'Trader', 'WaterCarrier', 'Artisan', 'Weaver', 'Pilgrim', 'Elder', 'Trader', 'WaterCarrier', 'Pilgrim', 'Artisan'];
+  const nWander = q === 'low' ? 6 : q === 'high' ? 24 : 16;
+  for (let i = 0; i < nWander; i++) { const p = nav.randomPoint(xs[0], xs[xs.length - 1], -3.4, 3.4, 0.9, R) || { x: 60, z: 0 }; place(wanderArchs[i % wanderArchs.length], 'wander', { x: p.x, z: p.z, yaw: R() * TAU }); }
   // Жители проходов B3.
   if (q !== 'low') for (let i = 0; i < 3; i++) { const wx = 106 + R() * 36; place(i ? 'Elder' : 'Weaver', 'wanderB3', { x: wx, z: pathZ(PATHS.C, wx) + (R() - 0.5) * 0.8, yaw: R() * TAU }); }
 
@@ -220,42 +204,35 @@ export function createCrowd(ctx) {
   const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _e = new THREE.Euler();
 
   // ------------------------------------------------------------------ поведение ----
+  // Окружение движения/социальной жизни: игрок и спутники в ЛОКАЛЬНЫХ координатах сиетча, скорость игрока (сглаженная).
+  const plV = { x: 0, z: 0 }, plPrev = new THREE.Vector3(), compL = [];
+  let barkGlobal = 3, envSeq = 0;
   const say = (n, ctxName) => {
     if (n.barkT > 0 || game.space !== 'sietch') return false;
     if (game.dialogue?.isBusy || game.cinematic?.active) return false;
-    if (barkGlobal > 0) return false;
-    n.barkT = 38 + R() * 30; barkGlobal = 4.5;
+    n.barkT = 38 + R() * 30;
     game.dialogue?.bark?.(n.arch, ctxName, ctx.toWorld(n.x, n.y + 1.5, n.z));
     return true;
   };
-  let barkGlobal = 3;
-
-  function setPath(n, path, after) { n.path = path; n.pi = 0; n.mode = 'walk'; n.after = after || null; }
-  const toSpot = (n, x, z, after) => setPath(n, route(n, { x, z }), after);
+  const env = { game, ctx, nav, plan, npcs, S, R, out, plL, plV, say, time: () => ctxTime, comps: () => compL, get seq() { return envSeq; }, set seq(v) { envSeq = v; }, onGiveUp: null };
+  const mover = createMover(env);
+  env.onGiveUp = (n) => { mover.halt(n); if (n.rit && out.ritualState !== 'idle') { n.mode = 'wait'; n.timer = 4; return; } if (n.task) social.release(n); else if (n.home && !social.isWander(n) && n.kind !== 'play') { if ((n.giveUps = (n.giveUps || 0) + 1) <= 2) social.goHome(n); else n.excT = 40; } };
+  const social = createSocial({ ...env, mover, get seq() { return envSeq; }, set seq(v) { envSeq = v; } });
+  out.nav = nav; out.social = social; out.mover = mover;
+  // тревога по событиям червя: замолкают и поворачиваются на гул (в сиетче рядом с залом/цистерной — глухой удар)
+  const alertLocal = (x, z) => { if (x === undefined) return null; const l = ctx.toLocal(new THREE.Vector3(x, game.camera.position.y, z)); return { x: l.x, z: l.z }; };
+  game.bus.on('worm:breach', (e) => social.alert('panic', alertLocal(e?.x, e?.z)));
+  game.bus.on('worm:devour', (e) => { if (e?.phase !== 'done') social.alert('panic'); });
+  game.bus.on('worm:state', (e) => { if (e?.to === 'Approach' || e?.to === 'Surface') social.alert('hush'); });
 
   function actAt(n, mode, pose, dwell) { n.mode = mode; n.pose = pose; n.timer = dwell ?? 0; n.speedNow = 0; }
-
-  function pickWander(n) {
-    const roll = R();
-    let tx, tz;
-    if (n.kind === 'wanderB3') { tx = 104 + R() * 42; tz = pathZ(PATHS.C, tx) + (R() - 0.5) * 0.9; }
-    else if (roll < 0.34 && S.stall.length) { const s = S.stall[Math.floor(R() * S.stall.length)]; tx = s.x + (R() - 0.5) * 1.6; tz = s.side * 3.2; }
-    else if (roll < 0.46 && S.water.length) { const s = S.water[0]; tx = s.x + (R() - 0.5) * 1.4; tz = s.z - 1.85; }
-    else if (roll < 0.56) { const s = S.loom[Math.floor(R() * S.loom.length)]; tx = s.x; tz = s.z - 1.9; }
-    else { const nd = grid[Math.floor(R() * xs.length)][Math.floor(R() * 3)]; tx = nd.x + (R() - 0.5) * 2; tz = nd.z + (R() - 0.5) * 0.8; }
-    toSpot(n, tx, tz, () => {
-      const r = R();
-      actAt(n, 'act', r < 0.7 ? 'stand' : 'stand', 6 + R() * 14); n.talk = r < 0.45 && n.arch !== 'Child'; n.pose = 'stand';
-      n.goalYaw = n.yaw + (R() - 0.5) * 1.6;
-    });
-  }
 
   function think(n, dt, t) {
     switch (n.kind) {
       case 'loom': n.pose = 'weave'; break;
-      case 'stall': n.pose = 'trade'; n.talk = !n.silent; break;
-      case 'water': n.pose = 'measure'; break;
-      case 'repair': n.pose = n.role === 'artisan' ? 'repair' : 'stand'; break;
+      case 'stall': n.pose = 'trade'; n.talk = (n.cust.length ? !!n.vtalk : ((t * 0.13 + n.phase) % 10) < 3.5) && !n.silent; break;
+      case 'water': n.pose = 'measure'; n.talk = n.cust.length ? !!n.vtalk && !n.silent : false; break;
+      case 'repair': n.pose = n.role === 'artisan' ? 'repair' : 'stand'; if (n.role !== 'artisan') n.talk = ((t * 0.17 + n.phase) % 8) < 3 && !n.silent; break;
       case 'elder': n.pose = 'sitBench'; n.talk = (n.id % 2 === 0) && !n.silent; break;
       case 'coffee': n.pose = n.role === 'pour' ? 'pour' : 'sitFloor'; break;
       case 'quarrel': n.pose = 'argue'; n.talk = !n.silent; break;
@@ -274,35 +251,72 @@ export function createCrowd(ctx) {
       case 'poolWatch': n.pose = 'measure'; break;
       case 'cellarGuard': cellarGuardThink(n, dt); break;
       case 'guardCheck': guardThink(n, dt, t); break;
-      case 'wander': case 'wanderB3': if (n.mode === 'act' && n.timer <= 0) pickWander(n); break;
+      case 'wander': case 'wanderB3': n.pose = 'stand'; break;
       default: break;
+    }
+    // разговорные группы на месте: говорит по очереди, остальные слушают и смотрят на говорящего
+    if (n.sg && !n.silent) { n.talk = n.sg.speaker === n; n.lookNpc = n.sg.speaker === n ? n.sg.listener : n.sg.speaker; }
+  }
+  // группы на месте (ссора, шёпот, семья за столом, старейшины, кофе): очередь говорящих
+  const staticGroups = [];
+  {
+    const byKey = new Map();
+    for (const n of npcs) {
+      const key = n.kind === 'quarrel' ? 'q' : n.kind === 'whisper' ? 'w' : n.kind === 'family' ? `f${n.spot.room || ''}` : n.kind === 'elder' ? `e${n.x < 70 ? 0 : 1}` : n.kind === 'coffee' ? 'c' : null;
+      if (!key) continue;
+      if (!byKey.has(key)) byKey.set(key, { members: [], speaker: null, listener: null, t: 0 });
+      byKey.get(key).members.push(n);
+    }
+    for (const g of byKey.values()) { if (g.members.length < 2) continue; g.speaker = g.members[0]; g.listener = g.members[1]; g.members.forEach((m) => { m.sg = g; }); staticGroups.push(g); }
+  }
+  function updateGroups(dt) {
+    for (const g of staticGroups) {
+      g.t -= dt; if (g.t > 0) continue;
+      g.t = 2.4 + R() * 3.4;
+      const k = g.members.length, i = g.members.indexOf(g.speaker), j = (i + 1 + Math.floor(R() * (k - 1))) % k;
+      g.speaker = g.members[j]; g.listener = g.members[(j + 1 + Math.floor(R() * (k - 1))) % k];
+      if (g.members.some((m) => m.lod === 'full')) social.stats.groupTalk++;
     }
   }
 
-  // дети: нерегулярный бег по площадке / в комнате / по коридору, догонялки
+  // дети: нерегулярный бег по площадке / в комнате / по коридору, догонялки; «хвост» за матерью
   function arenaPoint(n) {
     const A = n.arena;
     if (A && A.line) { const x = A.x0 + R() * (A.x1 - A.x0); return [x, pathZ(PATHS.C, x) + (R() - 0.5) * 0.9]; }
     const cx = A ? A.x : 47, cz = A ? A.z : -0.3, rr = A ? A.r : 2.6;
-    const a = R() * TAU, r = (0.25 + 0.75 * R()) * rr;
-    return [cx + Math.cos(a) * r, cz + Math.sin(a) * r * 0.9];
+    for (let k = 0; k < 4; k++) {
+      const a = R() * TAU, r = (0.25 + 0.75 * R()) * rr, x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r * 0.9;
+      if (nav.walkable(x, z) && nav.clearanceAt(x, z) > 0.5) return [x, z];
+    }
+    const s = nav.snap(cx, cz, 3); return s ? [s.x, s.z] : [cx, cz];
   }
   function playThink(n, dt) {
     if (n.mode !== 'act') return;
     n.pose = n.role === 'stomp' ? 'stomp' : n.role === 'worm' ? 'crouch' : 'stand';
     if (n.timer > 0) return;
-    let tgt;
+    if (n.leader) { // мать рядом: если она идёт — бегут следом, если стоит — играют вокруг неё
+      const L = n.leader, dl = Math.hypot(L.x - n.x, L.z - n.z), walking = L.mode === 'walk';
+      if (walking || dl > 4.5 || L.task) {
+        if (!walking && dl < 2.6) { n.timer = 0.6 + R(); return; }
+        const hy = walking ? L.walkYaw : Math.atan2(n.x - L.x, n.z - L.z), side = (n.id % 2 ? 1 : -1) * 0.55;
+        const tx = L.x - Math.sin(hy) * 1.1 + Math.cos(hy) * side, tz = L.z - Math.cos(hy) * 1.1 - Math.sin(hy) * side;
+        const p = nav.snap(tx, tz, 1.5);
+        mover.goTo(n, p ? p.x : L.x, p ? p.z : L.z, () => { n.timer = 0.15; }, { speed: clamp(0.8 + dl * 0.45, 0.8, 2.3), irregular: walking ? 0 : 0.5 });
+        n.timer = 0.5; return;
+      }
+      n.arena = { x: L.x, z: L.z, r: SOCIAL_CFG.kids.playRadius };
+    }
+    let tgt, boost = 1.9 + R() * 0.8;
     if ((n.role === 'chase' || n.role === 'chased') && n.buddy) {
       const bd = n.buddy;
-      if (n.role === 'chase') { tgt = [bd.x + (R() - 0.5) * 0.4, bd.z + (R() - 0.5) * 0.3]; if (Math.hypot(bd.x - n.x, bd.z - n.z) < 0.9) { n.role = 'chased'; bd.role = 'chase'; n.timer = 0.4; bd.timer = 0.2; n.talk = true; return; } n.speedBoost = 2.3; }
-      else { tgt = arenaPoint(n); n.speedBoost = 2.5; }
+      if (n.role === 'chase') { tgt = [bd.x + (R() - 0.5) * 0.4, bd.z + (R() - 0.5) * 0.3]; if (Math.hypot(bd.x - n.x, bd.z - n.z) < 0.9) { n.role = 'chased'; bd.role = 'chase'; n.timer = 0.4; bd.timer = 0.2; n.talk = true; return; } boost = 2.3; }
+      else { tgt = arenaPoint(n); boost = 2.5; }
     } else {
       tgt = arenaPoint(n);
       if (!n.arena && R() < 0.12) tgt = [52 + R() * 6, (R() - 0.5) * 5];
-      n.speedBoost = n.role === 'worm' ? 0.35 : 1.9 + R() * 0.8;
+      if (n.role === 'worm') boost = 0.35;
     }
-    n.path = [tgt]; n.pi = 0; n.mode = 'walk'; n.irregular = 1;
-    n.after = () => { n.irregular = 0; actAt(n, 'act', 'stand', (n.role === 'chase' || n.role === 'chased') ? 0.05 : 0.3 + R() * 1.6); };
+    mover.goTo(n, tgt[0], tgt[1], () => { actAt(n, 'act', 'stand', (n.role === 'chase' || n.role === 'chased') ? 0.05 : 0.3 + R() * 1.6); }, { speed: boost, irregular: 1, direct: !!n.arena || Math.hypot(tgt[0] - n.x, tgt[1] - n.z) < 4 });
   }
 
   // стража погреба: у входа — стоит/сидит, патруль — ходит вдоль нефа
@@ -311,9 +325,8 @@ export function createCrowd(ctx) {
     if (n.role === 'patrol') {
       if (n.mode === 'act' && n.timer <= 0) {
         n.patI = ((n.patI ?? 0) + 1) % 4;
-        const pts = [[116, 32.0], [126, 32.0], [138, 32.0], [126, 32.0]];
-        n.path = [pts[n.patI]]; n.pi = 0; n.mode = 'walk'; n.speedBoost = 0.7;
-        n.after = () => { actAt(n, 'act', 'stand', 4 + R() * 6); n.goalYaw = faceYaw(0, 1); };
+        const pts = [[116, 32.0], [126, 32.0], [138, 32.0], [126, 32.0]], p = pts[n.patI];
+        mover.goTo(n, p[0], p[1], () => { actAt(n, 'act', 'stand', 4 + R() * 6); n.baseYaw = faceYaw(0, 1); }, { speed: 0.7 });
       }
       return;
     }
@@ -338,7 +351,7 @@ export function createCrowd(ctx) {
       if (guardTalkT >= 0) { guardTalkT += dt; n.talk = guardTalkT < 14; if (guardTalkT > 16 || plL.x > n.x + 2.0) out.guardReleased = true; }
     } else if (n.mode === 'act' && Math.abs(n.z - (pathZ(PATHS.B1, n.x) - 1.25)) > 0.15) {
       const gz = pathZ(PATHS.B1, n.x) - 1.25;
-      n.talk = false; n.path = [[n.x, gz], [n.x + 0.5, gz]]; n.pi = 0; n.mode = 'walk'; n.speedBoost = 0.9; n.after = () => { actAt(n, 'act', 'stand', 0); n.goalYaw = faceYaw(0, 1); n.stand = true; };
+      n.talk = false; mover.goTo(n, n.x + 0.5, gz, () => { actAt(n, 'act', 'stand', 0); n.baseYaw = faceYaw(0, 1); n.goalYaw = n.baseYaw; n.stand = true; }, { direct: true, speed: 0.9 });
     } else if (n.mode === 'act') { n.pose = 'stand'; n.goalYaw = faceYaw(0, 1); if (d < 5) n.goalYaw = Math.atan2(dx, dz); }
   }
 
@@ -365,6 +378,7 @@ export function createCrowd(ctx) {
   out.startRitual = () => {
     if (out.ritualState !== 'idle') return false;
     out.ritualState = 'gathering';
+    social.onRitual();
     const seats = buildSeats();
     // на сбор в зал идут жители галереи; те, кто «дома» (спящие, семьи за столом, дети в комнатах/коридоре, повара, музыкант, стража и писец погреба), остаются
     const STAY = new Set(['guardGrate', 'guardPost', 'funeral', 'sleep', 'family', 'cook', 'musician', 'audience', 'scribe', 'poolWatch', 'cellarGuard']);
@@ -375,6 +389,7 @@ export function createCrowd(ctx) {
     eligible.forEach((n, i) => {
       const s = seats[si++ % seats.length];
       n.rit = { seat: s, delay: i * (0.8 + R() * 0.5) + R() * 3 };
+      mover.cancel(n); n.vx = n.vz = 0; n.speedNow = 0; n.yielded = null;
       n.mode = 'wait'; n.timer = n.rit.delay; n.talk = false; n.irregular = 0;
       n.pose = 'stand'; n.after = null;
       n.fig.setTalking?.(false);
@@ -384,13 +399,10 @@ export function createCrowd(ctx) {
   };
   function ritualDepart(n) {
     const s = n.rit.seat;
-    // маршрут: до внешнего кольца у входа → по кольцу (ближайший узел к месту) → радиально к месту
-    const pEnd = [s.x, s.z];
-    const ringNode = nearestNode(s.x, s.z, 'B5');
-    const p0 = route(n, { x: ringNode.x, z: ringNode.z });
-    p0.push(pEnd);
-    setPath(n, p0, () => { n.mode = 'seat'; n.pose = n.rit.seat.k > 3 && R() < 0.3 ? 'stand' : 'sitFloor'; n.goalYaw = Math.atan2(cx - n.x, cz - n.z); n.sway = R() * 6; out.seated++; if (out.seated === 24) game.bus.emit('sietch:seated', { count: out.seated }); });
-    n.speedBoost = 1.0;
+    const seatCb = () => { n.mode = 'seat'; n.pose = n.rit.seat.k > 3 && R() < 0.3 ? 'stand' : 'sitFloor'; n.goalYaw = Math.atan2(cx - n.x, cz - n.z); n.sway = R() * 6; out.seated++; if (out.seated === 24) game.bus.emit('sietch:seated', { count: out.seated }); };
+    const go = () => mover.goTo(n, s.x, s.z, seatCb, { speed: 1.0 });
+    // стоящие за прилавком/станком (другая компонента навигации) сперва выходят в проход кратчайшим путём
+    if (!n.canLeave && n.exitPortal) mover.goTo(n, n.exitPortal.x, n.exitPortal.z, go, { direct: true, speed: 0.9 }); else go();
   }
 
   // ------------------------------------------------------------------ позы ----
@@ -436,6 +448,20 @@ export function createCrowd(ctx) {
       case 'scribe': { P.spine.rotation.x = 0.4; arms(-1.1, -1.2 + Math.sin(tt * 4.6) * 0.07, -1.0 + Math.sin(tt * 4.6) * 0.08); P.headPivot.rotation.x = 0.55; break; }
       case 'stomp': { const k = Math.abs(Math.sin(tt * 4.2)); P.pelvis.position.y = (0.92 - 0.1 * k) ; L.L.hip.rotation.x = -k * 0.6; L.R.hip.rotation.x = -(1 - k) * 0.4; arms(-1.3 + k * 0.6, -1.3 + (1 - k) * 0.6, -0.4); break; }
       case 'crouch': { P.pelvis.position.y = 0.55; L.L.kn.rotation.x = L.R.kn.rotation.x = 1.4; L.L.hip.rotation.x = L.R.hip.rotation.x = -1.0; P.spine.rotation.x = 0.7; arms(-1.2, -1.2, -0.4); break; }
+      case 'gesture': { // говорит: жесты руками, голова оживлена
+        const k = Math.sin(tt * 2.1);
+        arms(-0.7 + Math.sin(tt * 1.9) * 0.45, -0.55 + Math.sin(tt * 2.6 + 1) * 0.5, -0.9 - Math.max(0, k) * 0.25); P.spine.rotation.x = 0.06; P.spine.rotation.y = Math.sin(tt * 0.9) * 0.05; break;
+      }
+      case 'listen': { // слушает: руки опущены/скрещены, редкие кивки
+        arms(-0.25, -0.3, -1.1); const nod = Math.max(0, Math.sin(tt * 0.9 + n.id)) ** 6; P.headPivot.rotation.x = 0.04 + nod * 0.18; P.spine.rotation.x = 0.03; break;
+      }
+      case 'eat': { const b = Math.max(0, Math.sin(tt * 0.9)); arms(-0.9, -0.5 - b * 1.5, -1.3 - b * 0.4); P.spine.rotation.x = 0.1; P.headPivot.rotation.x = 0.15 - b * 0.1; break; }
+      case 'sitEat': { P.pelvis.position.y = 0.16 / s; L.L.hip.rotation.x = L.R.hip.rotation.x = -1.4; L.L.hip.rotation.z = 0.5; L.R.hip.rotation.z = -0.5; L.L.kn.rotation.x = L.R.kn.rotation.x = 2.3; const b = Math.max(0, Math.sin(tt * 0.8 + n.id)); arms(-0.9, -0.5 - b * 1.5, -1.3 - b * 0.4); P.spine.rotation.x = 0.12; P.headPivot.rotation.x = 0.2 - b * 0.1; break; }
+      case 'tidy': { P.spine.rotation.x = 0.25; arms(-0.95 + Math.sin(tt * 1.4) * 0.15, -1.0 + Math.sin(tt * 1.9 + 1) * 0.2, -0.8); P.headPivot.rotation.x = 0.3; break; }
+      case 'drink': { const b = Math.min(1, (Math.sin(tt * 0.5) + 1.2)); arms(-0.3, -0.5 - b * 1.4, -1.4 - b * 0.3); P.headPivot.rotation.x = -0.1 * b; break; }
+      case 'stretch': { const b = 0.5 + 0.5 * Math.sin(tt * 0.6); arms(-2.3 * b, -2.3 * b, -0.2); P.spine.rotation.x = -0.15 * b; P.headPivot.rotation.x = -0.2 * b; break; }
+      case 'invoke': { arms(-2.2 + Math.sin(tt * 0.5) * 0.12, -2.2 + Math.sin(tt * 0.5 + 1) * 0.12, -0.5); L.L.sh.rotation.z = 0.4; L.R.sh.rotation.z = -0.4; P.headPivot.rotation.x = -0.35; break; }
+      case 'sitPray': { sit(0.5, 1.5); arms(-0.95, -0.95, -1.4); P.headPivot.rotation.x = 0.45; P.spine.rotation.x = 0.2 + Math.sin(tt * 0.4) * 0.05; break; }
       default: break;
     }
   }
@@ -449,15 +475,50 @@ export function createCrowd(ctx) {
   }
   const regionAt = (x) => (x < 40 ? 'B1' : x < 100 ? 'B2' : x < 150 ? 'B3' : 'B5');
 
-  out.prof = { lod: 0, caps: 0, loop: 0, pose: 0, imp: 0 };
+  out.prof = { lod: 0, caps: 0, loop: 0, ai: 0, pose: 0, imp: 0 };
   const PF = out.prof, pnow = () => performance.now();
+  const _lt = new THREE.Vector3();
+  const reachP = new THREE.Vector3(), zeroP = new THREE.Vector3();
+  /** Горожанин на ходу раздвигает занавесь рукой (если идёт на неё): лёгкий жест через IK фигуры. */
+  function curtainHand(n) {
+    if (game.settings?.curtainHand === false || !n.fig.reachTo) return;
+    let best = null, bw = 0;
+    if (n.mode === 'walk' && n.speedNow > 0.3) {
+      const fx = Math.sin(n.yaw), fz = Math.cos(n.yaw);
+      for (const c of ctx.curtains) {
+        if (c.axis !== 'x') continue;
+        const lat = n.x - c.x; if (Math.abs(lat) > c.w / 2 + 0.1) continue;
+        const sd = (n.z - c.z) * c.side; if (Math.abs(sd) > 1.0) continue;
+        if (-Math.sign(sd || 1) * fz * c.side < 0.3) continue;
+        const w = clamp((1.0 - Math.abs(sd)) / 0.55, 0, 1); if (w > bw) { bw = w; best = c; }
+      }
+      if (best) { reachP.set(clamp(n.x + fx * 0.35, best.x - best.w / 2 + 0.2, best.x + best.w / 2 - 0.2), n.y + 1.2, best.z); ctx.toWorld(reachP.x, reachP.y, reachP.z, reachP); n.fig.reachTo(reachP, 'R', bw * 0.35); n.reaching = true; out.curtainHands++; return; }
+    }
+    if (n.reaching) { n.fig.reachTo(zeroP, 'R', 0); n.reaching = false; }
+  }
+  out.curtainHands = 0;
+
   out.update = (dt, t) => {
     const q0 = pnow();
     ctxTime = t;
     root.worldToLocal(camL.copy(game.camera.position));
     const pw = game.player?.position;
     if (pw) root.worldToLocal(plL.copy(pw)); else plL.copy(camL);
-    barkGlobal -= dt; lodT -= dt; glowT -= dt;
+    // скорость игрока в локальных координатах (сглаженная; прыжок телепорта отбрасываем) и спутники
+    if (dt > 0) {
+      const ivx = (plL.x - plPrev.x) / dt, ivz = (plL.z - plPrev.z) / dt;
+      if (Math.hypot(ivx, ivz) < 9) { plV.x = damp(plV.x, ivx, 9, dt); plV.z = damp(plV.z, ivz, 9, dt); } else plV.x = plV.z = 0;
+      plPrev.copy(plL);
+      const cl = game.companions?.list || [];
+      for (let i = 0; i < cl.length; i++) {
+        const c = compL[i] || (compL[i] = { x: 0, z: 0, vx: 0, vz: 0, init: false });
+        ctx.toLocal(cl[i].position, _lt);
+        if (c.init) { const vx = (_lt.x - c.x) / dt, vz = (_lt.z - c.z) / dt; if (Math.hypot(vx, vz) < 9) { c.vx = vx; c.vz = vz; } else c.vx = c.vz = 0; }
+        c.x = _lt.x; c.z = _lt.z; c.init = true;
+      }
+      compL.length = cl.length;
+    }
+    lodT -= dt; glowT -= dt;
     // LOD: ближайшие — полные фигуры.
     if (lodT <= 0) {
       lodT = 0.3;
@@ -478,10 +539,13 @@ export function createCrowd(ctx) {
     const capAll = capT <= 0; if (capAll) capT = 0.4;
     for (const c of capsules) {
       if (!capAll && c.n.d2 > 900) continue;
-      const n = c.n, sitting = n.pose === 'sitFloor' || n.mode === 'seat' || n.pose === 'pray' || n.pose === 'crouch' || n.pose === 'play' || n.pose === 'sleep', h = n.lk.height * (n.pose === 'sleep' ? 0.35 : sitting ? 0.6 : 1);
+      const n = c.n, sitting = n.pose === 'sitFloor' || n.pose === 'sitEat' || n.pose === 'sitPray' || n.mode === 'seat' || n.pose === 'pray' || n.pose === 'crouch' || n.pose === 'play' || n.pose === 'sleep', h = n.lk.height * (n.pose === 'sleep' ? 0.35 : sitting ? 0.6 : 1);
       ctx.toWorld(n.x, n.y + 0.3, n.z, c.a); ctx.toWorld(n.x, n.y + Math.max(0.5, h - 0.2), n.z, c.b);
     }
     const q2 = pnow();
+    // социальная жизнь: часы суток, разговоры, навигация (порционный A*)
+    social.update(dt, t); updateGroups(dt); nav.pump();
+    const q2b = pnow();
     let poolT = 0, impT = 0;
     const dyn = glowT <= 0; if (dyn) glowT = 0.4;
     for (let i = 0; i < npcs.length; i++) {
@@ -493,42 +557,37 @@ export function createCrowd(ctx) {
       // «полные» фигуры (дорогая анимация: походка, ткань, лицо) вдали и в статичных позах обновляем реже: 60 → 30/15/8 Гц
       else if (n.mode !== 'walk' && !n.special && n.acc < (n.d2 > 144 ? 0.12 : n.d2 > 49 ? 0.066 : n.d2 > 20 ? 0.033 : 0)) continue;
       const sdt = n.acc; n.acc = 0;
-      n.timer -= sdt; n.barkT -= sdt;
+      n.timer -= sdt; n.barkT -= sdt; n.bark2 -= sdt;
       const dxp = plL.x - n.x, dzp = plL.z - n.z, dp = Math.hypot(dxp, dzp);
       // замолкание разговоров рядом с игроком
-      if (n.group >= 0 || n.kind === 'stall') { if (dp < 3.4) n.silent = 5; else n.silent = Math.max(0, n.silent - sdt); }
+      if (n.group >= 0 || n.kind === 'stall' || n.chat || n.sg) { if (dp < 3.4) n.silent = 5; else n.silent = Math.max(0, n.silent - sdt); }
       if (n.mode === 'wait') { if (n.timer <= 0) ritualDepart(n); }
-      if (n.mode === 'walk') walk(n, sdt);
-      else if (n.mode === 'seat') { /* сидит */ }
-      else think(n, sdt, t);
-      if (n.mode !== 'walk') n.speedNow = 0;
-      // взгляд / поворот к игроку
-      const nearTalk = dp < 3.2 && (n.kind === 'stall' || n.kind === 'water' || n.kind === 'wander' || n.kind === 'elder' || n.kind === 'play' || n.kind === 'guardPost' || n.kind === 'hooks');
-      if (nearTalk && n.mode !== 'walk' && !n.special) n.goalYaw = Math.atan2(dxp, dzp);
-      n.yaw = dampAngle(n.yaw, n.mode === 'walk' ? n.walkYaw : n.goalYaw, n.mode === 'walk' ? 6 : 3.5, sdt);
-      // барки
-      if (dp < 6.5 && n.mode !== 'wait' && !n.special && n.kind !== 'sleep' && n.kind !== 'musician') {
-        if (!n.stranger && dp < 4.5) { if (R() < 0.5) n.stranger = true; else if (say(n, 'Stranger')) n.stranger = true; }
-        else if (n.barkT <= 0) {
-          const c = out.ritualState !== 'idle' ? 'Ritual' : n.kind === 'stall' ? 'Market' : (n.kind === 'water' || n.arch === 'WaterCarrier') ? 'Water' : n.kind === 'whisper' || n.kind === 'shrine' ? 'Shiana' : n.kind === 'quarrel' ? 'Kin' : n.kind === 'loom' ? 'Market' : 'Idle';
-          if (n.silent <= 0 || n.kind === 'play') say(n, c);
-        }
+      if (n.mode === 'walk') {
+        const rit = n.rit && out.ritualState !== 'idle';
+        mover.step(n, sdt, n.lod !== 'full' && n.d2 > 900, rit ? (camL.x > 100 && n.d2 > 625 ? 3.2 : 1.55) : 1);
+      } else if (n.mode === 'seat') { /* сидит */ }
+      else if (n.mode === 'act') {
+        if (!n.special) {
+          n.goalYaw = n.baseYaw;
+          if (!social.tick(n, sdt) && !social.pauseTick(n)) { think(n, sdt, t); social.think(n, sdt); }
+        } else think(n, sdt, t);
       }
-      // уступить дорогу
-      if (dp < 1.15 && !n.special && n.mode !== 'seat' && n.kind !== 'sleep' && n.kind !== 'musician' && n.kind !== 'cook') { const k = (1.15 - dp) / 1.15; n.x -= (dxp / (dp + 1e-3)) * k * sdt * 1.6; n.z -= (dzp / (dp + 1e-3)) * k * sdt * 1.6; }
+      if (n.mode !== 'walk') { n.speedNow = 0; n.vx = n.vz = 0; }
+      if (!n.special && n.mode !== 'wait') social.react(n, sdt, dp, dxp, dzp);
+      n.yaw = dampAngle(n.yaw, n.mode === 'walk' ? n.walkYaw : n.goalYaw, n.mode === 'walk' ? MOVE_CFG.turnLambda : MOVE_CFG.idleTurnLambda, sdt);
       if (n.lod === 'full' && n.mode === 'act' && (n.pose === 'weave' || n.pose === 'measure' || n.pose === 'repair') && dp < 12) {
         n.sfxT = (n.sfxT ?? R() * 2) - sdt;
         if (n.sfxT <= 0) { n.sfxT = n.pose === 'weave' ? 1.1 + R() * 0.6 : 5 + R() * 4; game.audio?.event?.(n.pose === 'weave' ? 'Loom.Clack' : n.pose === 'measure' ? 'Water.Measure' : 'Stillsuit.Repair', ctx.toWorld(n.x, n.y + 1.0, n.z)); }
       }
       if (n.lod === 'full') {
-        n.y = n.special && n.kind === 'priestess' ? rimY : ground(n.x, n.z, n.layer || 0);
+        const gy = n.special && n.kind === 'priestess' ? rimY : ground(n.x, n.z, n.layer || 0);
+        n.y = n.mode === 'walk' && Math.abs(gy - n.y) < 0.5 ? damp(n.y, gy, 16, sdt) : gy;
         const g = n.fig.group;
         g.position.set(n.x, n.y, n.z); g.rotation.y = n.yaw;
         if (n.kind === 'sleep') layDown(n);
         n.fig.setTalking?.(n.talk && !n.silent);
         const qa = pnow();
-        if (n.special) specialPose(n, sdt, t); else applyPose(n, sdt, t);
-        if (dp < 7 && !n.special && n.kind !== 'sleep') n.fig.lookAt(game.camera.position, n.kind === 'musician' ? 0.3 : 0.85);
+        if (n.special) specialPose(n, sdt, t); else { applyPose(n, sdt, t); social.applyLook(n); curtainHand(n); }
         poolT += pnow() - qa;
       } else { n.y = n.special ? n.y : ground(n.x, n.z, n.layer || 0); if (n.kind === 'dancer') specialMove(n, sdt, t); }
       const qi = pnow(); writeImpostor(n, i, t, dyn); impT += pnow() - qi;
@@ -536,7 +595,8 @@ export function createCrowd(ctx) {
     impBody.instanceMatrix.needsUpdate = impHead.instanceMatrix.needsUpdate = impSash.instanceMatrix.needsUpdate = true;
     if (dyn) { impBody.geometry.attributes.aGlow.needsUpdate = impHead.geometry.attributes.aGlow.needsUpdate = impSash.geometry.attributes.aGlow.needsUpdate = true; }
     const q3 = pnow(), e = 0.05;
-    PF.lod += (q1 - q0 - PF.lod) * e; PF.caps += (q2 - q1 - PF.caps) * e; PF.loop += (q3 - q2 - poolT - impT - PF.loop) * e; PF.pose += (poolT - PF.pose) * e; PF.imp += (impT - PF.imp) * e;
+    PF.lod += (q1 - q0 - PF.lod) * e; PF.caps += (q2 - q1 - PF.caps) * e; PF.ai += (q3 - q2 - poolT - impT - PF.ai) * e; PF.pose += (poolT - PF.pose) * e; PF.imp += (impT - PF.imp) * e;
+    PF.loop = PF.ai + PF.lod + PF.caps;
   };
 
   const _e2 = new THREE.Euler();
@@ -545,19 +605,6 @@ export function createCrowd(ctx) {
     const g = n.fig.group, hx = Math.sin(n.yaw), hz = Math.cos(n.yaw), len = 0.85 * n.scale;
     g.rotation.order = 'YXZ'; g.rotation.set(-Math.PI / 2, n.yaw + Math.PI, 0);
     g.position.set(n.x - hx * len, (n.bedY ?? n.y) + 0.1, n.z - hz * len);
-  }
-
-  function walk(n, dt) {
-    const p = n.path[n.pi];
-    if (!p) { n.mode = 'act'; n.after?.(); return; }
-    let dx = p[0] - n.x, dz = p[1] - n.z; const d = Math.hypot(dx, dz);
-    const rit = n.rit && out.ritualState !== 'idle';
-    const sp = n.speed * (n.speedBoost ?? 1) * (rit ? (camL.x > 100 && n.d2 > 625 ? 3.2 : 1.55) : 1) * (n.irregular ? (0.6 + 0.8 * Math.abs(Math.sin(n.phase + ctxTime * 3.7))) : 1);
-    if (d < 0.18) { n.pi++; if (n.pi >= n.path.length) { n.mode = 'act'; n.speedNow = 0; n.speedBoost = 1; const a = n.after; n.after = null; a?.(); } return; }
-    const step = Math.min(d, sp * dt);
-    n.x += (dx / d) * step; n.z += (dz / d) * step;
-    n.walkYaw = Math.atan2(dx, dz);
-    n.speedNow = sp;
   }
 
   // Спец-персонажи.
@@ -616,8 +663,8 @@ export function createCrowd(ctx) {
     if (!show) { _s.set(0, 0, 0); _p.set(0, -100, 0); _q.identity(); _m.compose(_p, _q, _s); impBody.setMatrixAt(i, _m); impHead.setMatrixAt(i, _m); impSash.setMatrixAt(i, _m); return; }
     const s = n.scale, bulk = n.lk.bulk;
     let sy = s, yoff = 0, lean = 0;
-    if (n.mode === 'seat' || n.pose === 'sitFloor' || n.pose === 'pray') { sy = s * 0.55; }
-    else if (n.pose === 'sitBench' || n.pose === 'weave') { sy = s * 0.72; }
+    if (n.mode === 'seat' || n.pose === 'sitFloor' || n.pose === 'sitEat' || n.pose === 'pray') { sy = s * 0.55; }
+    else if (n.pose === 'sitBench' || n.pose === 'sitPray' || n.pose === 'weave') { sy = s * 0.72; }
     else if (n.pose === 'crouch') sy = s * 0.7;
     if (n.mode === 'walk') { yoff = Math.abs(Math.sin(t * 6 * (n.speed) + n.phase)) * 0.035; lean = 0.06; }
     else if (n.mode !== 'seat') lean = Math.sin(t * 0.6 + n.phase) * 0.012;
@@ -631,7 +678,8 @@ export function createCrowd(ctx) {
       return;
     }
     _e.set(lean, n.yaw, n.mode === 'seat' && out.ritualState !== 'idle' ? Math.sin(t * 0.7 + (n.sway || 0)) * 0.06 : 0, 'YXZ'); _q.setFromEuler(_e);
-    _p.set(n.x, yy + yoff, n.z); _s.set(bulk * s, sy, bulk * s);
+    const ex = n.mode === 'walk' ? Math.min(n.acc, 0.7) : 0;
+    _p.set(n.x + (n.vx || 0) * ex, yy + yoff, n.z + (n.vz || 0) * ex); _s.set(bulk * s, sy, bulk * s);
     _m.compose(_p, _q, _s); impBody.setMatrixAt(i, _m); impSash.setMatrixAt(i, _m);
     // голова не должна «проваливаться» — масштаб по Y как у тела
     impHead.setMatrixAt(i, _m);

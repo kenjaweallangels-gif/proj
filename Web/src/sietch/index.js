@@ -293,7 +293,7 @@ export function create(game) {
     root, ctx, meshes: staticMeshes, cave, probes, crowd, doors, lighting, finale, life, poi, inside: false, get k() { return kNow; }, pvsStats,
     /** Скользящее среднее стоимости update() по подсистемам, мс/кадр (JS-часть, без GPU). */
     prof: { pvs: 0, lighting: 0, crowd: 0, life: 0, total: 0 },
-    toWorld, toLocal,
+    toWorld, toLocal, plan,
     /** true, если точка (мировая) внутри пещер сиетча, включая входную расщелину и выходной туннель (до плоскости устья). */
     contains(pos) { return inCave(pos); },
     heightAt(x, z, yh) {
