@@ -4,7 +4,9 @@ import { Parts } from './parts.js';
 
 /** Схема проходимости: полы (в т.ч. наклонные — трапы/лестницы) и твёрдые боксы (стены, мебель, перила). */
 export class Plan {
-  constructor() { this.floors = []; this.blockers = []; }
+  constructor() { this.floors = []; this.blockers = []; this.ceils = []; }
+  /** Потолок (низ плиты на высоте y) над прямоугольником: ограничивает прыжок и подъём головой. */
+  addCeil(x0, z0, x1, z1, y) { this.ceils.push({ x0: Math.min(x0, x1), x1: Math.max(x0, x1), z0: Math.min(z0, z1), z1: Math.max(z0, z1), y }); }
   /** Пол: прямоугольник; y — высота (или y→y1 вдоль оси axis 'x'|'z' от меньшей координаты к большей). */
   addFloor(x0, z0, x1, z1, y, y1 = y, axis = 'x', kind = 'metal') {
     this.floors.push({ x0: Math.min(x0, x1), x1: Math.max(x0, x1), z0: Math.min(z0, z1), z1: Math.max(z0, z1), y, y1, axis, kind });
@@ -57,12 +59,17 @@ export class Room {
     const ao = near >= 2 ? 0.7 : 1;
     return [r * ao, g * ao, bl * ao];
   }
-  /** Бокс; o.s — твёрдый (коллизия), o.tess — шаг деления, o.ry/rz/rx — поворот (коллизия считается по осевому бокс-описанию). */
+  /**
+   * Бокс; o.s — твёрдый (true/false); если не задан — твёрдым считается всё «телесное» (≥0.25 м в плане, ≥0.4 м высотой, без наклона):
+   * то, что видно как объём, нельзя пройти насквозь. o.s=false — декор (накладки, плинтусы). Коллизия — по осевому описанию (поворот ry учтён).
+   */
   box(cx, cy, cz, sx, sy, sz, color, tag = 0, o = {}) {
     this.P.box(cx, cy, cz, sx, sy, sz, color, tag, o);
-    if (o.s) {
-      const q = Math.abs(Math.sin(o.ry || 0)) > 0.7071;
-      const hx = (q ? sz : sx) / 2, hz = (q ? sx : sz) / 2;
+    const tilt = Math.abs(o.rx || 0) + Math.abs(o.rz || 0) > 0.04;
+    const body = !tilt && Math.min(sx, sz) >= 0.25 && sy >= 0.25;
+    if (o.s === true || (o.s === undefined && body)) {
+      const c = Math.abs(Math.cos(o.ry || 0)), sn = Math.abs(Math.sin(o.ry || 0));
+      const hx = (sx * c + sz * sn) / 2, hz = (sx * sn + sz * c) / 2;
       this.plan.addBlock(cx - hx, cy - sy / 2, cz - hz, cx + hx, cy + sy / 2, cz + hz);
     }
     return this;
@@ -74,9 +81,9 @@ export class Room {
   }
   cyl(cx, cy, cz, rTop, rBot, h, color, tag = 0, o = {}) {
     this.P.cyl(cx, cy, cz, rTop, rBot, h, color, tag, o);
-    if (o.s) {
-      const r = Math.max(rTop, rBot);
-      const ax = o.axis || 'y';
+    const r = Math.max(rTop, rBot), ax = o.axis || 'y', tilt = Math.abs(o.rx || 0) + Math.abs(o.rz || 0) > 0.04;
+    const body = !tilt && r >= 0.15 && (ax === 'y' ? h >= 0.4 : h >= 0.4 && r >= 0.2);
+    if (o.s === true || (o.s === undefined && body)) {
       const hx = ax === 'x' ? h / 2 : r, hy = ax === 'y' ? h / 2 : r, hz = ax === 'z' ? h / 2 : r;
       this.plan.addBlock(cx - hx, cy - hy, cz - hz, cx + hx, cy + hy, cz + hz);
     }
@@ -91,7 +98,7 @@ export class Room {
     this.plan.addFloor(x0, z0, x1, z1, y, y, 'x', kind);
     return this;
   }
-  ceil(x0, z0, x1, z1, y, color = PAL.CEIL, tag = 0) { return this.slab(x0, y, z0, x1, y + 0.3, z1, color, tag); }
+  ceil(x0, z0, x1, z1, y, color = PAL.CEIL, tag = 0) { this.plan.addCeil(x0, z0, x1, z1, y); return this.slab(x0, y, z0, x1, y + 0.3, z1, color, tag); }
   /** Стена вдоль X на z=zc (с проёмами holes [{a0,a1,b0,b1}] по x/y; непересекающиеся по a). */
   wallX(zc, x0, x1, y0, y1, t, color, tag, holes = [], o = {}) {
     const hs = [...holes].sort((p, q) => p.a0 - q.a0);

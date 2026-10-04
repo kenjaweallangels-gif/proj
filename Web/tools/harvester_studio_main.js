@@ -66,6 +66,7 @@ function tick(raw) {
   ENV.uniforms.uCamXZ.value.set(camera.position.x, camera.position.z);
   camera.updateMatrixWorld(true);
   for (const m of modules) if (m.update && (dt > 0 || m.alwaysUpdate)) m.update(dt, game.time);
+  colliders.tick();   // как в игровом цикле: широкая фаза следит за динамическими телами
   const hp = game.harvester?.position; if (hp) { sun.target.position.copy(hp); sun.position.copy(hp).addScaledVector(sunDir, 200); }
 }
 /** Продвинуть симуляцию на n шагов по dt секунд (без рендера). */

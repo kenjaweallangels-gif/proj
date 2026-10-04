@@ -305,6 +305,8 @@ export function create(game) {
       if (jumpBuf > 0 && coyote > 0 && p.vy <= 0.5) jump(); // «койот»: прыжок сразу после схода с края
       p.vy = Math.max(-J.maxFall, p.vy - J.gravity * h);
       position.y += p.vy * h;
+      // потолок/перекрытие над головой (борт харвестера и т.п.): в прыжке голова не проходит сквозь плиту
+      if (p.vy > 0 && game.ceilingAt) { const ce = game.ceilingAt(position.x, position.z, position.y - p.vy * h); if (position.y + CFG.height > ce) { position.y = ce - CFG.height; p.vy = 0; } }
       if (position.y <= gy && p.vy <= 0) {
         const imp = -p.vy;
         position.y = gy; p.vy = 0; p.grounded = true; groundY = gy;
