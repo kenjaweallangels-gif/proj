@@ -603,6 +603,9 @@ export class WormFX {
     const cfg = this.cfg, g = ctx.groundFn, t = this.game.time;
     const rk = ctx.rocks;           // {playerI, headI, player:Vector3, head:Vector3, rPlayer, rHead}
     const arr = this.rockData;
+    // нет прыгунов и все уже «припаркованы» — ничего не пересчитываем (раньше 60–100 матриц каждый кадр)
+    if ((!rk || ((rk.playerI || 0) <= 0.02 && (rk.headI || 0) <= 0.02)) && this._rocksParked && !this.rocks.visible) return;
+    this._rocksParked = false;
     let any = false;
     const m = this._m, q = this._q, e = this._e, v = this._v, s = this._s;
     for (let i = 0; i < arr.length; i++) {
@@ -636,5 +639,6 @@ export class WormFX {
     }
     this.rocks.visible = any;
     this.rocks.instanceMatrix.needsUpdate = any;
+    if (!any) this._rocksParked = true;
   }
 }

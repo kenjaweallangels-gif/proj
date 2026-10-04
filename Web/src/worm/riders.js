@@ -78,7 +78,7 @@ export class Riders {
     };
     this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion();
     this._pts = [new THREE.Vector3(), new THREE.Vector3()];
-    this._u = new THREE.Vector3(); this._f = new THREE.Vector3(); this._r = new THREE.Vector3();
+    this._u = new THREE.Vector3(); this._f = new THREE.Vector3(); this._r = new THREE.Vector3(); this._uS = new THREE.Vector3();
   }
 
   get ossana() { return this.items[1]; }
@@ -91,7 +91,7 @@ export class Riders {
     if (f.lengthSq() < 1e-6) f.set(0, 0, 1).addScaledVector(u, -u.z);
     f.normalize();
     const r = this._r.crossVectors(u, f);
-    this._m.makeBasis(r, u.clone().multiplyScalar(scaleY), f).setPosition(pos);
+    this._m.makeBasis(r, this._uS.copy(u).multiplyScalar(scaleY), f).setPosition(pos);
     it.root.matrixAutoUpdate = false;
     it.root.matrix.copy(this._m);
     it.root.matrixWorldNeedsUpdate = true;

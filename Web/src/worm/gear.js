@@ -41,11 +41,12 @@ export class RopeChain {
   }
 }
 
+const _fmF = new THREE.Vector3(), _fmR = new THREE.Vector3(), _fmN = new THREE.Vector3();
 function frameMatrix(P, N, T, out, yaw = 0, scale = 1) {
-  const f = T.clone().addScaledVector(N, -T.dot(N)).normalize();
+  const f = _fmF.copy(T).addScaledVector(N, -T.dot(N)).normalize();
   if (yaw) f.applyAxisAngle(N, yaw);
-  const r = new THREE.Vector3().crossVectors(N, f);
-  return out.makeBasis(r.multiplyScalar(scale), N.clone().multiplyScalar(scale), f.multiplyScalar(scale)).setPosition(P);
+  const r = _fmR.crossVectors(N, f);
+  return out.makeBasis(r.multiplyScalar(scale), _fmN.copy(N).multiplyScalar(scale), f.multiplyScalar(scale)).setPosition(P);
 }
 
 export class Gear {
@@ -129,7 +130,7 @@ export class Gear {
       frameMatrix(P, N, T, m);
       if (h.popT >= 0) {            // вылет: вверх и вбок по параболе, кувыркаясь
         const u = h.popT;
-        const out = N.clone().multiplyScalar(2.0 * u).addScaledVector(UP, 3.0 * u - 5 * u * u);
+        const out = (this._tmpO || (this._tmpO = new THREE.Vector3())).copy(N).multiplyScalar(2.0 * u).addScaledVector(UP, 3.0 * u - 5 * u * u);
         const mm = new THREE.Matrix4().makeRotationX(u * 7).setPosition(out);
         m.multiply(mm);
         h.root.matrix.copy(m); h.root.matrixWorldNeedsUpdate = true;
