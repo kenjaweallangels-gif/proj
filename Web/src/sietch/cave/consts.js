@@ -1,3 +1,3 @@
 // Общие константы запечённой пещеры (границы, сетка пола) — в проектной системе координат сиетча (до поворота CAVE_YAW).
-export const BOUNDS = { min: [-8, -30, -52], max: [216, 35, 35] };
-export const GRID = { h: 0.25, ox: -8, oz: -52, nx: 896, nz: 348 };
+export const BOUNDS = { min: [-8, -30, -64], max: [222, 35, 52] };
+export const GRID = { h: 0.25, ox: -8, oz: -64, nx: 920, nz: 464 };

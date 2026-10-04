@@ -28,25 +28,34 @@ const res = await page.evaluate(() => {
   S.doors.doors.forEach((d) => { d.open = 1; d.target = 1; });
   // маршрут в проектных координатах [x, z] (локальные), с этапами
   const ROUTE = [
-    ['B1 вход', [[-2.2, 7.2], [-1.5, 3.5], [2.4, 0], [12, 0], [24, 0], [36, -0.3], [41.5, 0]]],
+    ['B1 вход', [[-0.9, 2.6], [0.5, 1.2], [2.4, 0], [12, 0], [24, 0], [36, -0.3], [41.5, 0]]],
     ['B2 низ', [[46, 0], [60, 0], [75.5, 0], [92, 0], [96, 0]]],
     ['B2 лестница N → карниз → мост', [[44, -3], [43.5, -6], [49, -6.1], [53, -6], [58, -6.2], [74, -6.1], [75.5, -3], [75.5, 3], [75.5, 6], [56, 6.3], [50, 6.1], [46, 6.1], [41.5, 5.5], [41.5, 2]]],
     ['B3 центр', [[96, 0], [104, 0.4], [112, -0.6], [120, 0.7], [136, 0.6], [150, 0]]],
-    ['B3 ниша (север)', [[114, 0.2], [114, -1.6], [114, -3.2], [114, 0.2]]],
-    ['B3 юг → решётка', [[92, 0], [96, 2.5], [97, 3.4], [99, 4.4], [100.5, 5.4], [102, 7], [107, 7.6], [116, 7.5], [121, 7.4]]],
+    ['B3 комнаты (север, открытая Nn1)', [[126, 0.2], [126, -1.4], [126, -3.2], [127.8, -4.2], [128.0, -7.5], [127.8, -4.2], [126, -3.2], [126, 0.2]]],
+    ['B3 комната Nn0 (занавесь)', [[111, 0.2], [111, -1.6], [112.6, -2.6], [112.6, -4.3], [109.6, -4.6], [109.6, -2.6], [111, -1.6], [111, 0.2]]],
+    ['B3 комната Ns2 (юг, занавесь)', [[142, 0.2], [142, 1.6], [143.3, 4.0], [143.6, 8.2], [140.4, 8.6], [140.6, 3.8], [142, 1.6], [142, 0.2]]],
+    ['B3 юг → решётка', [[92, 0], [96, 2.5], [97, 3.4], [99, 4.4], [100.5, 5.4], [102, 7], [107, 7.9], [116, 7.8], [121, 7.8]]],
     ['B5 зал', [[153, 0], [160, 0], [167, 0], [175, 0], [182, 6], [188, 9.4], [193.8, 9.4], [193.8, 5.6], [193.5, 2.5], [192, 0]]],
-    ['выход', [[183, -13], [184, -18.5], [195, -23], [206, -27], [208, -32], [199, -35], [186, -33], [173, -32], [169, -38], [173, -42], [181, -44], [187, -45], [191, -45.5], [195, -46.2]]],
+    ['погреб: вниз', [[102, 7.2], [101.4, 10], [101.3, 18], [101.3, 27], [101.6, 29.8], [103, 31.4], [112, 31.4], [117, 31.6], [122, 32.2], [138, 32.2], [140.3, 35.8], [142.4, 37], [144.4, 37.1]]],
+    ['погреб: неф и бассейн (обход)', [[144.4, 37.1], [142.4, 37], [140.3, 35.8], [138, 32.2], [116, 32.2], [112.8, 36], [115.2, 38.4], [117.6, 41.4], [136, 41.85], [117.6, 41.4], [115.2, 38.4], [112.8, 36], [114, 32.2]]],
+    ['погреб: вверх', [[114, 32.2], [112, 31.4], [103, 31.4], [101.6, 29.8], [101.3, 27], [101.3, 18], [101.4, 10], [102, 7.2], [96, 2.5]]],
+    ['выход: зал → устье (мир)', 'EXIT'],
+    ['выход: устье → зал (мир)', 'EXIT_BACK'],
   ];
   const V3 = g.camera.position.constructor;
   const pos = new V3();
   const place = (lx, lz) => { const w = S.toWorld(lx, 0, lz); const y = S.heightAt(w.x, w.z, 0); pos.set(w.x, y, w.z); };
   let first = true;
-  for (const [name, pts] of ROUTE) {
-    const leg = { name, stuck: null, maxStepUp: 0, minY: 1e9, maxY: -1e9, inside: 0, total: 0 };
-    place(pts[0][0], pts[0][1]);
+  const exitW = S.exitPath.map((p) => [p.x, p.z]);
+  for (const [name, pts0] of ROUTE) {
+    const world = typeof pts0 === 'string';
+    const pts = pts0 === 'EXIT' ? exitW : pts0 === 'EXIT_BACK' ? exitW.slice().reverse() : pts0;
+    const leg = { name, stuck: null, maxStepUp: 0, minY: 1e9, maxY: -1e9, inside: 0, total: 0, maxGapDown: 0 };
+    if (world) { const y = S.heightAt(pts[0][0], pts[0][1], pos.y || 0); pos.set(pts[0][0], y, pts[0][1]); } else place(pts[0][0], pts[0][1]);
     if (first) { first = false; }
     for (let i = 1; i < pts.length; i++) {
-      const tw = S.toWorld(pts[i][0], 0, pts[i][1]);
+      const tw = world ? { x: pts[i][0], z: pts[i][1] } : S.toWorld(pts[i][0], 0, pts[i][1]);
       let guard = 0;
       while (guard++ < 4000) {
         const dx = tw.x - pos.x, dz = tw.z - pos.z, d = Math.hypot(dx, dz);
@@ -64,7 +73,7 @@ const res = await page.evaluate(() => {
         }
         pos.x = best[0]; pos.z = best[1];
         const y = S.heightAt(pos.x, pos.z, pos.y);
-        const du = y - pos.y; if (du > leg.maxStepUp) leg.maxStepUp = du;
+        const du = y - pos.y; if (du > leg.maxStepUp) leg.maxStepUp = du; if (-du > leg.maxGapDown) leg.maxGapDown = -du;
         pos.y = y;
         leg.minY = Math.min(leg.minY, y); leg.maxY = Math.max(leg.maxY, y);
         leg.total++; if (S.contains(pos)) leg.inside++;
@@ -80,9 +89,9 @@ const res = await page.evaluate(() => {
 });
 let bad = 0;
 for (const l of res.legs) {
-  const ok = !l.stuck && l.inside / Math.max(1, l.total) > 0.9 && l.maxStepUp < 0.7;
+  const ok = !l.stuck && l.inside / Math.max(1, l.total) > 0.9 && l.maxStepUp < 0.7 && l.maxGapDown < 0.7;
   if (!ok) bad++;
-  console.log(`${ok ? 'OK ' : 'XX '} ${l.name.padEnd(34)} шагов ${l.total}, внутри ${(100 * l.inside / Math.max(1, l.total)).toFixed(0)}%, y ${l.minY.toFixed(1)}..${l.maxY.toFixed(1)}, макс. подъём за шаг ${l.maxStepUp.toFixed(2)}${l.stuck ? ' ЗАСТРЯЛ ' + JSON.stringify(l.stuck) : ''}`);
+  console.log(`${ok ? 'OK ' : 'XX '} ${l.name.padEnd(34)} шагов ${l.total}, внутри ${(100 * l.inside / Math.max(1, l.total)).toFixed(0)}%, y ${l.minY.toFixed(1)}..${l.maxY.toFixed(1)}, макс. подъём за шаг ${l.maxStepUp.toFixed(2)}, спуск ${l.maxGapDown.toFixed(2)}${l.stuck ? ' ЗАСТРЯЛ ' + JSON.stringify(l.stuck) : ''}`);
 }
 console.log('снаружи contains =', res.outside.contains, res.outside.contains ? '(ОШИБКА)' : '(ok)');
 await browser.close();

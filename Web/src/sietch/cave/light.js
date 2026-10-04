@@ -25,7 +25,15 @@ export function buildLights(globes) {
   // дневной свет снаружи: расщелина-вход (запад) и портал в котловину (юго-восток)
   omni.push({ x: -2.6, y: 1.7, z: 8.4, color: [0.62, 0.74, 0.95], intensity: 1.1, d0: 3.2, radius: 14, shadow: true });
   omni.push({ x: -1.4, y: 1.7, z: 4.4, color: [0.62, 0.74, 0.95], intensity: 0.4, d0: 3.0, radius: 9, shadow: true });
-  omni.push({ x: 194.5, y: L.EXIT.drop + 1.8, z: -46.2, color: [0.72, 0.88, 0.8], intensity: 1.1, d0: 3.2, radius: 14, shadow: true });
+  { // дневной свет сада в конце выходного туннеля: плавный градиент на последних ~24 м (3 источника вдоль прямой)
+    const E = L.EXIT, M = E.mouth, d = E.dir, y = E.drop + 1.8;
+    omni.push({ x: M[0] + d[0] * 1.5, y: y + 0.6, z: M[1] + d[1] * 1.5, color: [0.86, 0.94, 0.82], intensity: 1.7, d0: 4.2, radius: 24, shadow: true });
+    omni.push({ x: M[0] - d[0] * 5.0, y, z: M[1] - d[1] * 5.0, color: [0.8, 0.88, 0.78], intensity: 0.55, d0: 3.5, radius: 15, shadow: true });
+    omni.push({ x: M[0] - d[0] * 11.0, y, z: M[1] - d[1] * 11.0, color: [0.74, 0.84, 0.74], intensity: 0.25, d0: 3.0, radius: 11, shadow: true });
+  }
+  // водяной погреб: холодный отсвет воды бассейна (бледный сине-зелёный)
+  omni.push({ x: 127, y: L.CELLAR.pool.water + 0.5, z: 37, color: [0.34, 0.5, 0.62], intensity: 0.5, d0: 4, radius: 13, shadow: true });
+  omni.push({ x: 146.5, y: -7.0, z: 37, color: [0.9, 0.7, 0.45], intensity: 0.45, d0: 3, radius: 9, shadow: true });
   return { omni, beams };
 }
 

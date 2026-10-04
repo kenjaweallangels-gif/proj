@@ -3,7 +3,7 @@
 import data from '../src/assets/sietch_cave.js';
 import { unpack } from '../src/sietch/cave/pack.js';
 import * as plan from '../src/sietch/plan.js';
-import { CAVE_YAW, EXIT, SEALS } from '../src/sietch/cave/layout.js';
+import { CAVE_YAW, EXIT, SEALS, NICHES, CELLAR, ENTRY_MOUTH } from '../src/sietch/cave/layout.js';
 import { clawInside, SIETCH_ORIGIN as O, GARDEN, ENTRY } from '../src/core/layout.js';
 
 const { header: H, A } = unpack(data);
@@ -47,14 +47,20 @@ const reach = (x, z, label) => {
   return ok;
 };
 console.log('достижимых клеток:', seen.size);
+const mouthIn = [EXIT.mouth[0] - EXIT.dir[0] * 0.6, EXIT.mouth[1] - EXIT.dir[1] * 0.6];
 const pts = [
   [2.4, 0, 'B1 спавн'], [-2.4, 7.4, 'вход-расщелина'], [12, 0, 'шлюз'], [30, 0.5, 'проход B1'], [44, 0, 'B2 вход'], [60, 0, 'B2 центр'], [95, 0, 'B2 восток'],
   [56, 6.5, 'карниз юг (ярус 2)'], [56, -6.3, 'карниз север'], [75.5, 0, 'мост (низ)'], [75.5, 3.5, 'карниз у моста'],
   [55, -4.8, 'ниша-лавка'], [80, 5.4, 'водяная станция'], [79, -5.2, 'мастерская'], [57, 5.4, 'ткачиха'], [47, -0.5, 'дети'],
-  [104, 0.5, 'B3 начало'], [114, 0.4, 'B3 центр'], [114, -2.9, 'ниша север'], [108, 2.9, 'святилище'], [121.4, 7.0, 'у решётки B4'], [140, 0, 'B3 конец'],
+  [66.4, -0.7, 'музыкант'], [92, -5.4, 'кухня'],
+  [104, 0.5, 'B3 начало'], [114, 0.4, 'B3 центр'], [107, 3.6, 'святилище'], [121.4, 7.0, 'у решётки B4'], [140, 0, 'B3 конец'],
   [104, -7.4, 'N ветка'], [130, -14.9, 'N тупик'], [153, 0, 'B5 вход'], [167, 0, 'чаша край'], [175, 0, 'чаша центр'], [185, 6, 'ярус'], [192.2, 0.2, 'помост наиба'],
-  [194, 7, 'лестница помоста'], [183, -14, 'выход: начало'], [187, -45, 'выход: портал'], [194, -46, 'портал (конец)'],
+  [194, 7, 'лестница помоста'], [184, -12, 'выход: начало'], [184, -20, 'выход: за стеной зала'], [mouthIn[0], mouthIn[1], 'выход: устье'],
+  [101.3, 14, 'погреб: лестница верх'], [101.3, 24, 'погреб: лестница низ'], [101.6, 31.2, 'погреб: тамбур'], [112, 31.4, 'погреб: за уплотнителем'], [127, 32.4, 'погреб: неф север'],
+  [127, 41.8, 'погреб: неф юг'], [143, 37, 'погреб: восток'], [146.2, 37, 'погреб: станция'], [115.5, 29.4, 'погреб: ниша'],
 ];
+for (const n of NICHES) pts.push([n.xc, n.zc, `комната ${n.id}`], [n.xc, n.mouth, `вход ${n.id}`]);
+for (const x of [56, 62, 68, 82, 88, 94]) pts.push([x, 8.8, `эркер ${x}`]);
 // споты реквизита (места NPC)
 {
   const { Builder } = await import('../src/sietch/builder.js');
@@ -71,19 +77,36 @@ let worst = 1e9, wp = null;
 for (const [k, y] of seen) {
   const l = Math.floor(k / (G.nz * G.nx)); const r = k - l * G.nz * G.nx; const j = Math.floor(r / G.nx), i = r - j * G.nx;
   const x = cx(i), z = cz(j);
+  if (z < -40 && x > 185 && (x - EXIT.mouth[0]) * EXIT.dir[0] + (z - EXIT.mouth[1]) * EXIT.dir[1] > EXIT.cutT) continue; // «хвост» за устьем — снаружи скалы
   const wx = O.x + x * c - z * s, wz = O.z + x * s + z * c;
   const m = clawInside(wx, wz, 0);
   if (m < worst) { worst = m; wp = [x, z, wx, wz]; }
 }
 console.log('минимальный запас до края скалы по проходимой зоне: %s м, в точке', worst.toFixed(1), wp?.map((v) => v.toFixed(1)).join(' '));
-const pw = [O.x + 194 * c + 46.2 * s, O.z + 194 * s - 46.2 * c];
-console.log('портал в мире ≈', pw.map((v) => v.toFixed(1)).join(', '), ' ожидается', GARDEN.portal.x, GARDEN.portal.z);
-const ew = [O.x + -3 * c - 9 * s, O.z + -3 * s + 9 * c];
-console.log('устье расщелины в мире ≈', ew.map((v) => v.toFixed(1)).join(', '), ' ожидается ~', ENTRY.cleft.x, ENTRY.cleft.z);
+const pw = [O.x + EXIT.mouth[0] * c - EXIT.mouth[1] * s, O.z + EXIT.mouth[0] * s + EXIT.mouth[1] * c];
+console.log('устье в мире ≈', pw.map((v) => v.toFixed(2)).join(', '), ' GARDEN.portal', GARDEN.portal.x, GARDEN.portal.z);
+const ew = [O.x + ENTRY_MOUTH[0] * c - ENTRY_MOUTH[1] * s, O.z + ENTRY_MOUTH[0] * s + ENTRY_MOUTH[1] * c];
+console.log('устье расщелины в мире ≈', ew.map((v) => v.toFixed(1)).join(', '), ' (плоскость входа x=652.4), ENTRY.cleft', ENTRY.cleft.x, ENTRY.cleft.z);
 if (process.argv.includes('--dump')) {
   const rows = [];
   for (let z = -9; z <= 9; z += 0.5) { let r = String(z).padStart(5) + ' '; for (let x = 40; x <= 100; x += 0.5) { const [i, j] = idx(x, z); const a = seen.get(key(i, j, 0)), b = seen.get(key(i, j, 1)); r += b !== undefined ? '^' : a !== undefined ? '.' : ' '; } rows.push(r); }
   console.log(rows.join('\n'));
+}
+// профиль пола выходного туннеля: шаг 0.25 м вдоль оси — ступени ≤ 0.3 м, уклон ≤ 25°
+{
+  let maxStep = 0, maxSlope = 0, missing = 0, prev = null;
+  for (let sd = EXIT.sA - 1; sd < EXIT.length - EXIT.tail; sd += 0.25) {
+    let i = 0; while (i < EXIT.cum.length - 2 && EXIT.cum[i + 1] < sd) i++;
+    const t = (sd - EXIT.cum[i]) / (EXIT.cum[i + 1] - EXIT.cum[i]);
+    const x = EXIT.nodes[i][0] + (EXIT.nodes[i + 1][0] - EXIT.nodes[i][0]) * t, z = EXIT.nodes[i][1] + (EXIT.nodes[i + 1][1] - EXIT.nodes[i][1]) * t;
+    if (!plan.hasFloor(x, z, EXIT.floorAt(sd))) { missing++; continue; }
+    const y = plan.heightAtLocal(x, z, EXIT.floorAt(sd));
+    if (prev !== null) { const st = Math.abs(y - prev); maxStep = Math.max(maxStep, st); maxSlope = Math.max(maxSlope, Math.atan2(st, 0.25) * 57.3); }
+    prev = y;
+    if (!seen.size) break;
+  }
+  console.log(`выход: ступень макс ${maxStep.toFixed(2)} м, уклон макс ${maxSlope.toFixed(1)}°, без пола ${missing}`);
+  if (maxStep > 0.3 || maxSlope > 25 || missing) bad++;
 }
 console.log(bad ? `ПРОВАЛ: недостижимо точек: ${bad}` : 'OK: все точки достижимы');
 process.exit(bad ? 1 : 0);

@@ -6,23 +6,16 @@ import * as THREE from 'three';
 import { addBlock, heightAtLocal, HALL, LEDGE, NICHES, FUNERAL } from './plan.js';
 import { PATHS, B2_ALCOVES, SHELF_BAYS, NICHE_Z } from './cave/layout.js';
 import { rng, clamp } from '../core/util.js';
+import { J_A, J_B, CUP, POT, faceYaw, pathZ } from './shapes.js';
+import { buildRooms, buildBays, buildKitchen, buildMusic, tiedCurtain } from './rooms.js';
+import { buildCellar, buildExit, buildDetails } from './cellar.js';
 
-const J_A = [[0.0, 0], [0.22, 0.0], [0.28, 0.12], [0.28, 0.4], [0.2, 0.68], [0.14, 0.76], [0.17, 0.8], [0.14, 0.82], [0.12, 0.76]];
-const J_B = [[0.0, 0], [0.2, 0.0], [0.27, 0.15], [0.28, 0.6], [0.22, 1.0], [0.12, 1.12], [0.15, 1.2], [0.12, 1.22], [0.1, 1.1]];
-const CUP = [[0.0, 0], [0.03, 0], [0.035, 0.02], [0.05, 0.08], [0.045, 0.085], [0.03, 0.02]];
-const POT = [[0.0, 0], [0.07, 0], [0.09, 0.04], [0.06, 0.14], [0.04, 0.2], [0.03, 0.26], [0.05, 0.3], [0.03, 0.29]];
-
-export const faceYaw = (dx, dz) => Math.atan2(dx, dz);
-/** z оси ломаной в точке x (линейная интерполяция). */
-export function pathZ(path, x) {
-  for (let i = 0; i < path.length - 1; i++) { const a = path[i], b = path[i + 1]; if (x >= a[0] && x <= b[0]) return a[1] + ((b[1] - a[1]) * (x - a[0])) / (b[0] - a[0] || 1); }
-  return path[path.length - 1][1];
-}
+export { faceYaw, pathZ };
 
 export function buildProps(B, ctx) {
   const R = rng(909);
   const A = ctx.anchors;
-  const S = ctx.spots = { loom: [], stall: [], water: [], repair: [], play: [], bench: [], mat: [], hooks: [], guard: [], coffee: [], funeral: [], shrine: [], quarrel: [], whisper: [], lane: [], elder: [], door: [] };
+  const S = ctx.spots = { loom: [], stall: [], water: [], repair: [], play: [], bench: [], mat: [], hooks: [], guard: [], coffee: [], funeral: [], shrine: [], quarrel: [], whisper: [], lane: [], elder: [], door: [], sleep: [], family: [], kidroom: [], musician: [], cook: [], scribe: [], cellarGuard: [], pool: [], audience: [] };
   const clothKeys = ['stripeOchre', 'stripeBlue', 'stripeRed', 'plain'];
   const goodsCols = [[0.72, 0.38, 0.16], [0.55, 0.22, 0.14], [0.78, 0.62, 0.3], [0.25, 0.36, 0.52], [0.5, 0.45, 0.2], [0.36, 0.5, 0.3]];
   const WOOD = [0.5, 0.4, 0.3]; // «дерево Дюны»: прессованное волокно/пластик-кость
@@ -73,6 +66,7 @@ export function buildProps(B, ctx) {
     else B.cyl('wood', [x + side * 0.04, yTop + 0.03, z], 0.022, 0.022, w + 0.3, 6, { rot: [Math.PI / 2, 0, 0], color: WOOD });
   };
   const kKeys = ['blueCloth', 'stripeRed', 'plain', 'stripeOchre', 'stripeBlue', 'hemp'];
+  const H = { B, ctx, R, S, gy, jar, rug, cushion, hanging, goodsCols, clothKeys, WOOD, kKeys, wallP, A };
 
   // ================================================================== B1: расщелина и шлюз ====
   {
@@ -152,7 +146,8 @@ export function buildProps(B, ctx) {
     B.box('wood', [x - 1.0, 0.22, zc + side * 1.0 + side * 0.4], [0.5, 0.44, 0.5], { color: [0.7, 0.52, 0.36] });
     S.stall.push({ x, z: side * 5.45, yaw: faceYaw(0, -side), side, cx: x, cz: zc });
   };
-  B2_ALCOVES.north.forEach((x, i) => { if (x !== 79) stallAlcove(x, -1, i % 2 ? 'spice' : 'goods'); });
+  B2_ALCOVES.north.forEach((x, i) => { if (x === 79) return; if (x === 92) { buildKitchen(H); return; } stallAlcove(x, -1, i % 2 ? 'spice' : 'goods'); });
+  buildMusic(H);
   [74, 86, 92].forEach((x, i) => stallAlcove(x, 1, i % 2 ? 'goods' : 'spice'));
 
   // --- ткацкие станки (юг, западные ниши)
@@ -255,11 +250,7 @@ export function buildProps(B, ctx) {
     B.region = 'B2';
     const yf = 6.5;
     for (const [x, s] of [[56, 1], [64, -1], [72, 1], [84, -1], [92, 1], [60, -1]]) { rug('carpetRed', x, s * 6.1, 3.0, 1.6, 0.1 * s, 0, yf); rug('carpetBlue', x + 0.4, s * 6.2, 1.6, 1.0, 0.5, 1, yf); cushion(x - 1.0, s * 6.0, goodsCols[(x | 0) % 6], 1, yf); cushion(x + 1.2, s * 6.5, goodsCols[(x + 2 | 0) % 6], 0.9, yf); }
-    for (const x of SHELF_BAYS) for (const s of [-1, 1]) {
-      const bx = x + (s > 0 ? 1 : 0), zz = s * 7.35;
-      hanging(bx, 8.55, zz, 2.7, 2.35, 'x', s, kKeys[(x + s + 5) % 6 | 0], x * 0.7, [0.9, 0.9, 0.9], (x % 3) * 0.08, true);
-      rug('carpetOchre', bx, s * 8.1, 2.0, 1.4, 0.2, 0, yf); cushion(bx - 0.5, s * 8.4, goodsCols[(x | 0) % 6], 0.9, yf);
-    }
+    buildBays(H);
     for (const s of [-1, 1]) for (let i = 0; i < 8; i++) {
       const x = 54 + i * 5.6; if (x > 72 && x < 79) continue;
       B.rails(`cloth:${['stripeRed', 'stripeBlue', 'stripeOchre'][i % 3]}`, [[[x - 0.8, 6.95, s * 5.1], [x + 0.8, 6.95, s * 5.1]], [[x - 0.8, 5.6, s * 4.7], [x + 0.8, 5.6, s * 4.7]]], { want: [0, 0, -s], par: (px, py) => [0, 0, clamp((6.95 - py) / 1.3, 0, 1)], uvu: 1, uvv: 1 });
@@ -282,21 +273,7 @@ export function buildProps(B, ctx) {
   // ================================================================== B3: жилые ниши ====
   {
     B.region = 'B3';
-    ctx.niches = [];
-    for (const n of NICHES) {
-      const zc = pathZ(PATHS.C, n.xc), zn = n.side * NICHE_Z;
-      const mouthZ = zc + n.side * 1.45;
-      ctx.niches.push({ ...n, cx: n.xc, mouthZ, zn });
-      const fl = gy(n.xc, zn);
-      if (!n.open) hanging(n.xc, 2.45, mouthZ, 2.55, 2.3, 'x', n.side, kKeys[n.curtain * 2 % 6], n.xc, [0.9, 0.9, 0.9], (n.curtain === 1 ? 0.12 : 0), true);
-      // постель: ковры друг на друге, подушки, сундучок, кувшин
-      rug(['carpetBlue', 'carpetRed', 'carpetOchre'][n.curtain], n.xc, zn + n.side * 0.2, 2.2, 1.4, 0.1 * n.side, 0, 0);
-      rug(['carpetOchre', 'carpetBlue', 'carpetRed'][n.curtain], n.xc + 0.2, zn + n.side * 0.35, 1.5, 0.9, 0.5, 1, 0);
-      cushion(n.xc - 0.8, zn + n.side * 0.9, goodsCols[n.curtain + 1], 1);
-      cushion(n.xc + 0.9, zn + n.side * 0.8, goodsCols[n.curtain + 3], 0.85);
-      B.box('wood', [n.xc + 0.8, fl + 0.2, zn + n.side * 1.4], [0.5, 0.4, 0.34], { color: [0.45, 0.34, 0.24], rot: [0, 0.2, 0] });
-      jar(n.xc - 0.9, zn + n.side * 1.5, false);
-    }
+    buildRooms(H);
     // святилище Шианы (открытая ниша): лента, чаша с песком, цветок
     const sh = ctx.niches.find((n) => n.id === 'Shrine');
     if (sh) {
@@ -378,6 +355,9 @@ export function buildProps(B, ctx) {
     addBlock({ x0: LEDGE.x0 - 0.3, x1: LEDGE.x0 + 0.3, z0: -LEDGE.hz, z1: LEDGE.hz }, 1);
   }
 
+  buildCellar(H);
+  buildExit(H);
+  buildDetails(H);
   ctx.poi.mural = [70, 6.8, 6.0]; ctx.poi.muralAt = [70, 8.0, 6.3];
   return S;
 }

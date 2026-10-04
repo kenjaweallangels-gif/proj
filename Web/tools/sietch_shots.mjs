@@ -42,23 +42,47 @@ const VIEWS = [
   ['17_hall_vault', [160, 0, 0], [175, 19, 0], 84],
   ['18_godray', [169, -1.0, 3.5], [175, 8, 0], 74],
   ['19_ledge', [176, -0.5, 0], [192, 3.8, 0], 70],
-  ['20_exit_tunnel', [206, -5.7, -27], [208, -7.2, -32], 74],
-  ['21_exit_portal', [181, -20.9, -44], [195, -23.6, -46.2], 76],
-  ['22_exit_start', [184, 0.0, -18.5], [195, -3.1, -23], 74],
+  // выход в сад: точки задаются через EXIT (см. EXITV ниже) — здесь только зал → стена
+  ['22_exit_start', [184, 1.4, -8], [184, -0.3, -22], 74],
+  // комнаты семей
+  ['40_room_open_Nn1', [126, 1.6, -0.3], [126, 1.0, -9.5], 78],
+  ['41_room_Nn1_inside', [126, 1.7, -3.0], [126.5, 0.9, -9.0], 82],
+  ['42_room_Nn0_curtain', [111, 1.6, 1.4], [111, 1.3, -4.5], 74],
+  ['42b_curtain_standing_in_door', [111, 1.6, -2.0], [111.0, 1.3, -4.5], 74],
+  ['43_room_Ns2_inside', [142, 1.7, 2.6], [142, 0.8, 9.5], 82],
+  ['44_room_Ns2_kids', [140.5, 1.5, 4.0], [139.2, 0.3, 7.6], 76],
+  ['45_corridor_doors', [118, 1.6, 0.3], [140, 1.5, 0.0], 78],
+  ['46_bay_on_shelf', [62, 7.7, 5.6], [62.5, 7.2, 10.5], 80],
+  ['47_sleepers_Nn2', [141, 1.5, -3.0], [140.5, 0.4, -9.8], 78],
+  ['47b_sleeper_close', [139.0, 1.5, -5.8], [139.95, 0.3, -8.4], 70],
+  ['48_shadow_gallery', [66, 1.7, 1.8], [66, 1.6, 5.6], 76],
+  ['48c_self_shadow_wall', [126.3, 1.6, -0.5], [126.3, 1.0, -1.5], 70],
+  ['49_kids_corridor', [112, 1.5, 0.3], [125, 1.0, 0.2], 74],
+  // водяной погреб
+  ['50_cellar_stairs', [101.3, -0.4, 11.5], [101.3, -4.6, 26.0], 76],
+  ['51_cellar_landing', [101.6, -7.4, 29.0], [108.5, -7.6, 31.4], 76],
+  ['52_cellar_nave', [112.5, -7.4, 31.4], [136, -7.4, 37], 82],
+  ['53_cellar_pool', [127, -7.5, 32.0], [127, -9.3, 38.5], 74],
+  ['54_cellar_station', [139, -7.4, 37], [147, -7.6, 37], 76],
+  ['55_cellar_vessels', [121.5, -7.3, 33.2], [121.5, -7.5, 29.6], 70],
+  // атмосфера
+  ['60_kitchen', [88.6, 1.6, -1.0], [91.4, 0.8, -6.3], 72],
+  ['61_musician', [62.5, 1.6, -2.0], [66.4, 0.8, -0.8], 66],
+  ['62_gallery_life', [48, 2.0, 3.0], [66, 1.5, -1.0], 82],
 ];
 
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM || findChromium(),
   args: ['--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
 });
-const page = await browser.newPage({ viewport: { width: 896, height: 504 } });
+const page = await browser.newPage({ viewport: { width: Number(arg('w', 896)), height: Number(arg('h', 504)) } });
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${m.type()}: ${m.text()}`); if (m.text().startsWith('[sietch]')) console.log(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
 const file = arg('file', 'sietch.html');
-await page.goto(`file://${join(root, 'dist', file)}?autotest=1&q=${q}&lang=RU`);
+await page.goto(`file://${join(root, 'dist', file)}?autotest=1&q=${q}&lang=RU${process.argv.includes('--keepworld') ? '&keepworld=1' : ''}`);
 await page.waitForFunction(() => window.__rakis && window.__rakis.realTime > 1.0, null, { timeout: 480000 });
-await page.evaluate(async () => { const w = window.__rakis.world; if (w && !new URLSearchParams(location.search).has('keepworld')) { w.setVisible(false); w.setVisible = () => {}; } await window.__rakis.sietch.enter(); window.__rakis.cinematic = { active: true, owner: 'shots' }; });
+await page.evaluate(async (hide) => { const g0 = window.__rakis; if (hide && g0.dialogue) g0.dialogue.bark = () => null; if (hide) { const h = () => { for (const c of g0.companions?.list || []) { if (c.figure?.group) c.figure.group.visible = false; } if (g0.player?.figure?.group) g0.player.figure.group.visible = false; }; g0.__hideCompanions = h; const r0 = g0.render; g0.render = (dt) => { h(); r0(dt); }; } const w = window.__rakis.world; if (w && !new URLSearchParams(location.search).has('keepworld')) { w.setVisible(false); w.setVisible = () => {}; } await window.__rakis.sietch.enter(); window.__rakis.cinematic = { active: true, owner: 'shots' }; }, !process.argv.includes('--companions'));
 await page.waitForTimeout(500);
 
 const shoot = async (name, pos, tgt, fov = 70, wait = Number(arg('wait', 1500))) => {
@@ -73,7 +97,12 @@ const shoot = async (name, pos, tgt, fov = 70, wait = Number(arg('wait', 1500)))
   }, [pos, tgt, fov]);
   await page.waitForTimeout(wait);
   await page.screenshot({ path: join(outDir, `${name}.png`), timeout: 420000 });
-  const info = await page.evaluate(() => { const g = window.__rakis, r = g.renderer.info.render; return { fps: g.stats.fps, zone: g.sietch.zoneAt?.(g.camera.position), calls: r.calls, tris: r.triangles, lights: g.scene.children.length }; });
+  const info = await page.evaluate(async () => {
+    const g = window.__rakis, ri = g.renderer.info, raf = () => new Promise((r) => requestAnimationFrame(() => r()));
+    ri.autoReset = false; await raf(); ri.reset(); await raf(); await raf();
+    const calls = ri.render.calls / 2, tris = ri.render.triangles / 2; ri.autoReset = true;
+    return { fps: g.stats.fps, zone: g.sietch.zoneAt?.(g.camera.position), calls, tris, pvs: `${g.sietch.pvsStats.visible}/${g.sietch.pvsStats.total}`, shadows: g.sietch.life.shadows.filter((q) => q.mesh.visible).length, crowd: Object.fromEntries(Object.entries(g.sietch.crowd.prof).map(([k, v]) => [k, +v.toFixed(1)])), prof: Object.fromEntries(Object.entries(g.sietch.prof).map(([k, v]) => [k, +v.toFixed(2)])) };
+  });
   console.log(name, JSON.stringify(info));
 };
 
@@ -82,6 +111,17 @@ for (const [name, pos, tgt, fov, w] of VIEWS) {
   await shoot(name, pos, tgt, fov, w);
 }
 
+// Выходной туннель: кадры вдоль оси (по api.exitPath): середина, последний прямой участок, устье.
+if (!only.length || only.some((o) => o.startsWith('2') || o === 'exit')) {
+  const pts = await page.evaluate(() => window.__rakis.sietch.exitPath.map((p) => { const l = window.__rakis.sietch.toLocal(p); return [l.x, l.y, l.z]; }));
+  const at = (k) => pts[Math.max(0, Math.min(pts.length - 1, k))];
+  const n = pts.length;
+  const mk = (name, i0, i1, dy = 1.5, fov = 76) => { const a = at(i0), b = at(i1); return [name, [a[0], a[1] + dy, a[2]], [b[0], b[1] + dy - 0.2, b[2]], fov]; };
+  for (const [name, pos, tgt, fov] of [mk('20_exit_mid', 40, 44), mk('21_exit_leg_a', 6, 11), mk('23_exit_final_in', n - 8, n - 1), mk('24_exit_mouth_close', n - 3, n - 1, 1.6, 70), mk('25_exit_turn', 30, 34), mk('26_exit_light_a', n - 12, n - 1, 1.5, 70), mk('27_exit_light_b', n - 6, n - 1, 1.5, 70)]) {
+    if (only.length && !only.some((o) => name.includes(o) || o === 'exit')) continue;
+    await shoot(name, pos, tgt, fov);
+  }
+}
 // Зал с толпой на ярусах (после рассадки).
 if (!only.length || only.some((o) => o.startsWith('30'))) {
   await page.evaluate(() => window.__rakis.sietch.crowd.debugSeatAll?.());
