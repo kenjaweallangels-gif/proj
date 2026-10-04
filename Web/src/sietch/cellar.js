@@ -43,16 +43,17 @@ export function buildCellar(H) {
   // ---------------------------------------------------------------- тамбур (у подножия) ----
   {
     const [lx, , lz] = C.landing.c;
-    B.box('clay', [lx + 0.2, F + 0.24, lz - 2.45], [3.0, 0.48, 0.6], { par: [0.9, 0, 0], color: [0.78, 0.66, 0.52] });   // скамья стражи
-    addBlock({ x0: lx - 1.3, x1: lx + 1.7, z0: lz - 2.8, z1: lz - 2.1 }, 0);
+    // скамья стражи — у южной стены тамбура (лестница входит с севера, проход уходит на восток: их ничто не перегораживает)
+    B.box('clay', [lx + 0.4, F + 0.24, lz + 2.45], [3.0, 0.48, 0.6], { par: [0.9, 0, 0], color: [0.78, 0.66, 0.52] });
+    addBlock({ x0: lx - 1.1, x1: lx + 1.9, z0: lz + 2.1, z1: lz + 2.8 }, 0);
     H.rug('carpetRed', lx + 0.6, lz + 0.2, 2.8, 1.8, 0.1, 0, 0); H.rug('carpetBlue', lx + 0.9, lz + 0.3, 1.6, 1.0, 0.5, 1, 0);
     H.cushion(lx - 0.8, lz + 1.4, goodsCols[2], 1, 0); H.cushion(lx + 2.0, lz + 1.1, goodsCols[4], 0.9, 0);
-    // доска долгов у входа: расписание выдачи воды (охрой)
-    B.box('wood', [lx - 0.5, F + 1.55, lz + 3.05], [1.3, 0.8, 0.05], { color: [0.45, 0.34, 0.24] });
-    for (let i = 0; i < 12; i++) B.box('cloth', [lx - 1.0 + (i % 6) * 0.18, F + 1.8 - Math.floor(i / 6) * 0.3, lz + 3.0], [0.04, 0.22 + (i % 3) * 0.04, 0.01], { color: [0.7, 0.3, 0.16], par: [0, 0, 0] });
-    for (let i = 0; i < 5; i++) { B.geo('brass', new THREE.TorusGeometry(0.05, 0.007, 6, 14), { pos: [lx + 0.4 + i * 0.12, F + 1.9, lz + 3.0], color: [0.78, 0.62, 0.4] }); }
-    ctx.poi.cellarLedger = [lx - 0.5, F + 1.5, lz + 2.8];
-    S.cellarGuard.push({ x: lx + 2.6, z: lz - 0.2, yaw: faceYaw(-1, 0.3), role: 'stair' }, { x: lx + 0.4, z: lz - 1.8, yaw: faceYaw(0, 1), role: 'sit' });
+    // доска долгов — на западной стене тамбура: расписание выдачи воды (охрой)
+    B.box('wood', [lx - 2.95, F + 1.55, lz + 0.2], [0.05, 0.8, 1.3], { color: [0.45, 0.34, 0.24] });
+    for (let i = 0; i < 12; i++) B.box('cloth', [lx - 2.9, F + 1.8 - Math.floor(i / 6) * 0.3, lz - 0.35 + (i % 6) * 0.18], [0.01, 0.22 + (i % 3) * 0.04, 0.04], { color: [0.7, 0.3, 0.16], par: [0, 0, 0] });
+    for (let i = 0; i < 5; i++) { B.geo('brass', new THREE.TorusGeometry(0.05, 0.007, 6, 14), { pos: [lx - 2.88, F + 1.9, lz - 0.3 + i * 0.12], rot: [0, Math.PI / 2, 0], color: [0.78, 0.62, 0.4] }); }
+    ctx.poi.cellarLedger = [lx - 2.3, F + 1.5, lz + 0.2];
+    S.cellarGuard.push({ x: lx + 2.6, z: lz - 0.6, yaw: faceYaw(-1, 0.3), role: 'stair' }, { x: lx + 0.4, z: lz + 1.8, yaw: faceYaw(0, -1), role: 'sit' });
     sandals(H, 105.4, 30.6, Math.PI / 2, 1);
   }
 

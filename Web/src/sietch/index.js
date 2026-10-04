@@ -65,6 +65,12 @@ export function create(game) {
   const staticMeshes = [];
   // Меши, подчинённые PVS-отсечению: {mesh, chunk} (chunk = индекс чанка пещеры, чья видимость определяет видимость меша; −1 — всегда)
   const pvsMeshes = [];
+  /** Чанки 16 м, покрытые габаритом меша: меш виден, если виден любой из них (пустой список — виден всегда). */
+  const chunksOfBox = (bb) => {
+    const CH = cave.CHUNK, ids = [];
+    for (let i = Math.floor(bb.min.x / CH); i <= Math.floor(bb.max.x / CH); i++) for (let j = Math.floor(bb.min.y / CH); j <= Math.floor(bb.max.y / CH); j++) for (let k = Math.floor(bb.min.z / CH); k <= Math.floor(bb.max.z / CH); k++) { const id = cave.chunkIndexByKey.get(`${i},${j},${k}`); if (id !== undefined) ids.push(id); }
+    return ids;
+  };
   const chunkMeshes = new Array(cave.chunks.length).fill(null);
   cave.chunks.forEach((g, i) => {
     const mesh = new THREE.Mesh(g, M.rock);
@@ -78,7 +84,7 @@ export function create(game) {
     for (const pc of d.pieces) {
       const mesh = new THREE.Mesh(pc.geometry, mk);
       mesh.name = `Decal_${d.tex}`; mesh.renderOrder = 1 + (decalOrder[d.tex] || 1); mesh.matrixAutoUpdate = false; mesh.updateMatrix();
-      root.add(mesh); staticMeshes.push(mesh); pvsMeshes.push({ mesh, chunks: pc.chunk >= 0 ? [pc.chunk] : [] });
+      root.add(mesh); staticMeshes.push(mesh); pvsMeshes.push({ mesh, chunks: chunksOfBox(pc.bbox) });
     }
   }
   // --- Реквизит: свет и AO из запечённых зондов пещеры.
@@ -91,11 +97,7 @@ export function create(game) {
     const mesh = new THREE.Mesh(g, M[mk]);
     mesh.name = `S_${key}`; mesh.matrixAutoUpdate = false; mesh.updateMatrix();
     root.add(mesh); staticMeshes.push(mesh);
-    { // чанки 16 м, покрытые габаритом меша: меш виден, если виден любой из них
-      const bb = g.boundingBox, CH = cave.CHUNK, ids = [];
-      for (let i = Math.floor(bb.min.x / CH); i <= Math.floor(bb.max.x / CH); i++) for (let j = Math.floor(bb.min.y / CH); j <= Math.floor(bb.max.y / CH); j++) for (let k = Math.floor(bb.min.z / CH); k <= Math.floor(bb.max.z / CH); k++) { const id = cave.chunkIndexByKey.get(`${i},${j},${k}`); if (id !== undefined) ids.push(id); }
-      pvsMeshes.push({ mesh, chunks: ids });
-    }
+    pvsMeshes.push({ mesh, chunks: chunksOfBox(g.boundingBox) });
   }
   // Реквизит как твёрдые тела реестра game.colliders (боксы в мировых координатах).
   for (const b of plan.allBlocks()) {
@@ -288,7 +290,7 @@ export function create(game) {
   }
 
   const api = {
-    root, ctx, meshes: staticMeshes, cave, probes, crowd, doors, lighting, finale, poi, inside: false, get k() { return kNow; }, pvsStats,
+    root, ctx, meshes: staticMeshes, cave, probes, crowd, doors, lighting, finale, life, poi, inside: false, get k() { return kNow; }, pvsStats,
     /** Скользящее среднее стоимости update() по подсистемам, мс/кадр (JS-часть, без GPU). */
     prof: { pvs: 0, lighting: 0, crowd: 0, life: 0, total: 0 },
     toWorld, toLocal,

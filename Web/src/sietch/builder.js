@@ -43,7 +43,7 @@ export class Builder {
     geo.setAttribute('aPar', new THREE.BufferAttribute(p, 3));
     // группировка по (материал, регион, ячейка 32 м): меши отсекаются frustum/PVS (см. index.js: видны, если виден любой из покрытых чанков 16 м)
     geo.computeBoundingBox();
-    const bb = geo.boundingBox, CS = 32;
+    const bb = geo.boundingBox, CS = 48;
     const cell = `${Math.floor((bb.min.x + bb.max.x) / 2 / CS)},${Math.floor((bb.min.y + bb.max.y) / 2 / CS)},${Math.floor((bb.min.z + bb.max.z) / 2 / CS)}`;
     const key = `${mat}@${cell}`;
     if (!this.groups.has(key)) this.groups.set(key, { mat, region: this.region, cell, list: [] });

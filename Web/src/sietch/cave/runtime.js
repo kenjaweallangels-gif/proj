@@ -26,7 +26,8 @@ export function loadCave() {
   });
   const chunkIndexByKey = new Map(H.chunks.map((c, i) => [c.key, i]));
   const CHUNK = 16;
-  const cellKey = (x, y, z) => `${Math.floor(x / CHUNK)},${Math.floor(y / CHUNK)},${Math.floor(z / CHUNK)}`;
+  const DCELL = 32;   // декали режем на ячейки 32 м (меньше draw calls); видимость — по любому из покрытых чанков 16 м
+  const cellKey = (x, y, z) => `${Math.floor(x / DCELL)},${Math.floor(y / DCELL)},${Math.floor(z / DCELL)}`;
   const decals = H.decals.map((d, i) => {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(A[`d${i}pos`], 3));
@@ -52,8 +53,8 @@ export function loadCave() {
       const gg = new THREE.BufferGeometry();
       for (const name of Object.keys(g.attributes)) gg.setAttribute(name, g.attributes[name]);
       gg.setIndex(new THREE.BufferAttribute(new Uint32Array(arr), 1));
-      gg.computeBoundingSphere();
-      pieces.push({ geometry: gg, chunk: chunkIndexByKey.has(k) ? chunkIndexByKey.get(k) : -1 });
+      gg.computeBoundingSphere(); gg.computeBoundingBox();
+      pieces.push({ geometry: gg, bbox: gg.boundingBox });
     }
     return { tex: d.tex, count: d.count, layer: d.layer, geometry: g, pieces };
   });

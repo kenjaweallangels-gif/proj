@@ -28,8 +28,8 @@ export function createCrowd(ctx) {
     const id = game.colliders?.add({ type: 'capsule', a, b, r: n.arch === 'Child' ? 0.22 : 0.3, owner: 'sietch', tags: new Set(['npc']) });
     capsules.push({ n, a, b, id });
   };
-  const maxFull = q === 'low' ? 4 : q === 'high' ? 10 : 7;
-  const fullR = q === 'low' ? 8 : q === 'high' ? 13 : 11;
+  const maxFull = q === 'low' ? 3 : q === 'high' ? 8 : 5;
+  const fullR = q === 'low' ? 7 : q === 'high' ? 12 : 9.5;
   const out = { npcs, ritualState: 'idle', seated: 0, guardReleased: false };
 
   // ------------------------------------------------------------------ граф лейнов ----
@@ -366,7 +366,9 @@ export function createCrowd(ctx) {
     if (out.ritualState !== 'idle') return false;
     out.ritualState = 'gathering';
     const seats = buildSeats();
-    const eligible = npcs.filter((n) => !n.special && n.kind !== 'guardGrate' && n.kind !== 'guardPost' && n.kind !== 'funeral');
+    // на сбор в зал идут жители галереи; те, кто «дома» (спящие, семьи за столом, дети в комнатах/коридоре, повара, музыкант, стража и писец погреба), остаются
+    const STAY = new Set(['guardGrate', 'guardPost', 'funeral', 'sleep', 'family', 'cook', 'musician', 'audience', 'scribe', 'poolWatch', 'cellarGuard']);
+    const eligible = npcs.filter((n) => !n.special && !STAY.has(n.kind) && !(n.kind === 'play' && n.arena));
     // ближайшие к выходу из галереи идут первыми
     eligible.sort((a, b) => b.x - a.x);
     let si = 0;
@@ -447,7 +449,10 @@ export function createCrowd(ctx) {
   }
   const regionAt = (x) => (x < 40 ? 'B1' : x < 100 ? 'B2' : x < 150 ? 'B3' : 'B5');
 
+  out.prof = { lod: 0, caps: 0, loop: 0, pose: 0, imp: 0 };
+  const PF = out.prof, pnow = () => performance.now();
   out.update = (dt, t) => {
+    const q0 = pnow();
     ctxTime = t;
     root.worldToLocal(camL.copy(game.camera.position));
     const pw = game.player?.position;
@@ -468,6 +473,7 @@ export function createCrowd(ctx) {
         else if (n.lod !== 'full' && inScene) root.remove(n.fig.group);
       }
     }
+    const q1 = pnow();
     capT -= dt;
     const capAll = capT <= 0; if (capAll) capT = 0.4;
     for (const c of capsules) {
@@ -475,13 +481,17 @@ export function createCrowd(ctx) {
       const n = c.n, sitting = n.pose === 'sitFloor' || n.mode === 'seat' || n.pose === 'pray' || n.pose === 'crouch' || n.pose === 'play' || n.pose === 'sleep', h = n.lk.height * (n.pose === 'sleep' ? 0.35 : sitting ? 0.6 : 1);
       ctx.toWorld(n.x, n.y + 0.3, n.z, c.a); ctx.toWorld(n.x, n.y + Math.max(0.5, h - 0.2), n.z, c.b);
     }
+    const q2 = pnow();
+    let poolT = 0, impT = 0;
     const dyn = glowT <= 0; if (dyn) glowT = 0.4;
     for (let i = 0; i < npcs.length; i++) {
       const n = npcs[i];
       // редкий тик для дальних
       n.acc = (n.acc || 0) + dt;
       const far = n.lod !== 'full';
-      if (far && n.acc < (n.d2 > 4900 ? 0.6 : n.d2 > 1600 ? 0.3 : 0.12)) { if (n.mode === 'walk' || dyn) writeImpostor(n, i, t, dyn); continue; }
+      if (far) { if (n.acc < (n.d2 > 4900 ? 0.6 : n.d2 > 1600 ? 0.3 : 0.12)) { if (n.mode === 'walk' || dyn) writeImpostor(n, i, t, dyn); continue; } }
+      // «полные» фигуры (дорогая анимация: походка, ткань, лицо) вдали и в статичных позах обновляем реже: 60 → 30/15/8 Гц
+      else if (n.mode !== 'walk' && !n.special && n.acc < (n.d2 > 144 ? 0.12 : n.d2 > 49 ? 0.066 : n.d2 > 20 ? 0.033 : 0)) continue;
       const sdt = n.acc; n.acc = 0;
       n.timer -= sdt; n.barkT -= sdt;
       const dxp = plL.x - n.x, dzp = plL.z - n.z, dp = Math.hypot(dxp, dzp);
@@ -516,13 +526,17 @@ export function createCrowd(ctx) {
         g.position.set(n.x, n.y, n.z); g.rotation.y = n.yaw;
         if (n.kind === 'sleep') layDown(n);
         n.fig.setTalking?.(n.talk && !n.silent);
+        const qa = pnow();
         if (n.special) specialPose(n, sdt, t); else applyPose(n, sdt, t);
         if (dp < 7 && !n.special && n.kind !== 'sleep') n.fig.lookAt(game.camera.position, n.kind === 'musician' ? 0.3 : 0.85);
+        poolT += pnow() - qa;
       } else { n.y = n.special ? n.y : ground(n.x, n.z, n.layer || 0); if (n.kind === 'dancer') specialMove(n, sdt, t); }
-      writeImpostor(n, i, t, dyn);
+      const qi = pnow(); writeImpostor(n, i, t, dyn); impT += pnow() - qi;
     }
     impBody.instanceMatrix.needsUpdate = impHead.instanceMatrix.needsUpdate = impSash.instanceMatrix.needsUpdate = true;
     if (dyn) { impBody.geometry.attributes.aGlow.needsUpdate = impHead.geometry.attributes.aGlow.needsUpdate = impSash.geometry.attributes.aGlow.needsUpdate = true; }
+    const q3 = pnow(), e = 0.05;
+    PF.lod += (q1 - q0 - PF.lod) * e; PF.caps += (q2 - q1 - PF.caps) * e; PF.loop += (q3 - q2 - poolT - impT - PF.loop) * e; PF.pose += (poolT - PF.pose) * e; PF.imp += (impT - PF.imp) * e;
   };
 
   const _e2 = new THREE.Euler();

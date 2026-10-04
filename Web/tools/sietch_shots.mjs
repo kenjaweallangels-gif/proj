@@ -48,12 +48,15 @@ const VIEWS = [
   ['40_room_open_Nn1', [126, 1.6, -0.3], [126, 1.0, -9.5], 78],
   ['41_room_Nn1_inside', [126, 1.7, -3.0], [126.5, 0.9, -9.0], 82],
   ['42_room_Nn0_curtain', [111, 1.6, 1.4], [111, 1.3, -4.5], 74],
+  ['42b_curtain_standing_in_door', [111, 1.6, -2.0], [111.0, 1.3, -4.5], 74],
   ['43_room_Ns2_inside', [142, 1.7, 2.6], [142, 0.8, 9.5], 82],
   ['44_room_Ns2_kids', [140.5, 1.5, 4.0], [139.2, 0.3, 7.6], 76],
   ['45_corridor_doors', [118, 1.6, 0.3], [140, 1.5, 0.0], 78],
   ['46_bay_on_shelf', [62, 7.7, 5.6], [62.5, 7.2, 10.5], 80],
   ['47_sleepers_Nn2', [141, 1.5, -3.0], [140.5, 0.4, -9.8], 78],
+  ['47b_sleeper_close', [139.0, 1.5, -5.8], [139.95, 0.3, -8.4], 70],
   ['48_shadow_gallery', [66, 1.7, 1.8], [66, 1.6, 5.6], 76],
+  ['48c_self_shadow_wall', [126.3, 1.6, -0.5], [126.3, 1.0, -1.5], 70],
   ['49_kids_corridor', [112, 1.5, 0.3], [125, 1.0, 0.2], 74],
   // водяной погреб
   ['50_cellar_stairs', [101.3, -0.4, 11.5], [101.3, -4.6, 26.0], 76],
@@ -98,7 +101,7 @@ const shoot = async (name, pos, tgt, fov = 70, wait = Number(arg('wait', 1500)))
     const g = window.__rakis, ri = g.renderer.info, raf = () => new Promise((r) => requestAnimationFrame(() => r()));
     ri.autoReset = false; await raf(); ri.reset(); await raf(); await raf();
     const calls = ri.render.calls / 2, tris = ri.render.triangles / 2; ri.autoReset = true;
-    return { fps: g.stats.fps, zone: g.sietch.zoneAt?.(g.camera.position), calls, tris, pvs: `${g.sietch.pvsStats.visible}/${g.sietch.pvsStats.total}` };
+    return { fps: g.stats.fps, zone: g.sietch.zoneAt?.(g.camera.position), calls, tris, pvs: `${g.sietch.pvsStats.visible}/${g.sietch.pvsStats.total}`, shadows: g.sietch.life.shadows.filter((q) => q.mesh.visible).length, crowd: Object.fromEntries(Object.entries(g.sietch.crowd.prof).map(([k, v]) => [k, +v.toFixed(1)])), prof: Object.fromEntries(Object.entries(g.sietch.prof).map(([k, v]) => [k, +v.toFixed(2)])) };
   });
   console.log(name, JSON.stringify(info));
 };
