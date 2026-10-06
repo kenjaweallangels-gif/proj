@@ -25,6 +25,7 @@ import { searchDocs } from './catalog.js';
 import { buildGlassesModel } from './glasses_model.js';
 import { AssemblyPlayer, SPEEDS } from './assembly_player.js';
 import { galleyTarget } from './galley_player.js';
+import { trainingTarget } from './training_view.js';
 import { buildCatalog, findAlgorithm } from './algorithms.js';
 import { tickHolo } from './virtual.js';
 import { buildWorker } from './humanoid.js';
@@ -43,6 +44,7 @@ for (const t of location.hash.slice(1).split(/[-_.~]/).filter(Boolean)) {      /
   else if (t === 'free') { q.set('auto', '1'); q.set('autocam', 'free'); }
   else if (t === 'corner') q.set('corner', '1');
   else if (t === 'virtual') { q.set('asm', '1'); q.set('intro', '0'); }
+  else if (t === 'train' || t === 'training') { q.set('train', '1'); q.set('intro', '0'); }
   else if (t === 'tp') q.set('tp', '1');
   else if (['em1', 'sl1', 'me1'].includes(t)) { q.set('place', t); q.set('intro', '0'); }
   else if (t === 'narrow') q.set('field', '0');
@@ -62,6 +64,7 @@ async function main() {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: q.has('shot'), powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, Number(q.get('pr')) || 1.5));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.localClippingEnabled = true;                                 // обучение: клей и плёнка наносятся полосой
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   const scene = new THREE.Scene();
@@ -299,6 +302,10 @@ async function main() {
         <button data-pl="style" id="pl_style"></button><button data-pl="close" title="Закрыть (6)">✕</button>
       </div>
     </div>
+    <div class="train pe" id="train" hidden>
+      <div class="tr-head"><span id="tr_n"></span><b id="tr_title"></b><span class="tr-btns"><button id="tr_guide" title="Камера ведёт по урокам (выкл. — ходите сами)">🎥</button><button id="tr_tts" title="Озвучивать уроки">🔊</button></span></div>
+      <div id="tr_body"></div>
+    </div>
     <div class="status" id="status"></div>
     <canvas class="map" id="map" width="440" height="300"></canvas>
     <div class="card pe" id="card" hidden></div>
@@ -496,7 +503,7 @@ async function main() {
     if (k === 'KeyR') act('recenter');
     if (k === 'KeyX') act(e.shiftKey ? 'sys' : 'corner', e.shiftKey ? 'view' : undefined);
     if (k === 'KeyU') act('auto_cam');
-    if (k === 'Digit6') act('player');
+    if (k === 'Digit6') act(e.shiftKey ? 'training' : 'player');
     if (k === 'Digit5') act('tp');
     // окно «Система»: 7–0 и = — вкладки, PageUp/PageDown — прокрутка
     const TAB_KEYS = { Digit7: 'algo', Digit8: 'cat', Digit9: 'kd', Digit0: 'tree', Equal: 'ctl' };
@@ -681,6 +688,7 @@ async function main() {
       case 'corner_side': panels.algo.corner = panels.algo.corner === 'tl' ? 'tr' : 'tl'; cornerAlgo(true); break;
       case 'auto_pause': if (asm.open) asm.pause(); else auto.pause(true); break;
       case 'tp': setTP(arg == null ? undefined : !!arg); break;
+      case 'training': startTraining(arg == null ? undefined : !!arg); break;
       case 'player': case 'player_close': togglePlayer(cmd === 'player_close' ? false : arg == null ? undefined : !!arg); break;
       case 'player_play': if (!asm.open) togglePlayer(true); else asm.toggle(); break;
       case 'player_rev': if (asm.open) asm.reverse(); break;
@@ -863,6 +871,7 @@ async function main() {
         ['Tab', 'вид: полное поле ≈ 200° / центр 72° / без периферии / прямой обзор'], ['\\', 'схема зон поля зрения'],
         ['I', 'имитация сборки реальными деталями — на месте, где стоите: запуск / пауза; Shift+I — стоп'],
         ['6', 'виртуальная сборка из голограмм: открыть / закрыть'],
+        ['Shift+6', 'обучающая сборка: цветная учебная модель, уроки с подписями деталей, советами и предупреждениями'],
         ['Пробел', 'пауза / пуск — виртуальной сборки (если открыта) или имитации'], ['[ ]', 'скорость ×0,25 … ×8'],
         ['−', 'направление: вперёд / назад во времени (разборка)'], [', .', 'шаг назад / вперёд'], ['Home / End', 'виртуальная сборка: в начало / в конец'], ['5', 'вид от третьего лица (колесо — ближе/дальше)'], ['U', 'имитация: камера ведёт / хожу сам'], ['X', 'окно «Система» на экране: показать / скрыть; Shift+X — компактно / полностью'], ['7 8 9 0 =', 'вкладки окна: Алгоритм, Каталог, КД, Дерево, Управление'], ['PgUp / PgDn', 'прокрутка окна'], ['K', 'другие очки (Shift+K — назад)'], ['R', '3DoF: окна по центру взгляда'],
         ['T', 'ускорение времени участка ×1 / ×60 / ×600'], ['L', 'затемнение линз по ступеням очков → авто'], ['V', 'снять / надеть очки'], ['O', 'модель зрения'], ['Enter', 'пропустить вступление'],
@@ -931,7 +940,8 @@ async function main() {
       ...(auto.on ? [['⏹', 'stop', '']] : []),
       [auto.cam === 'free' ? '🚶 Хожу сам (U)' : '🎥 Камера ведёт (U)', 'cam', auto.cam === 'free' ? 'on' : ''],
       [panels.algo.visible ? '▣ Система (X)' : '□ Система (X)', 'corner', panels.algo.visible ? 'on' : ''],
-      [asm.open ? '⏹ Закрыть виртуальную сборку (6)' : '🧩 Виртуальная сборка (6)', 'asm', asm.open ? 'on' : ''],
+      [asm.open && !asm.target.training ? '⏹ Закрыть виртуальную сборку (6)' : '🧩 Виртуальная сборка (6)', 'asm', asm.open && !asm.target.training ? 'on' : ''],
+      [asm.target?.training ? '⏹ Закрыть обучение (⇧6)' : '🎓 Обучение (⇧6)', 'train', asm.target?.training ? 'on' : ''],
       [tp.on ? '👁 От первого лица (5)' : '🧍 Вид от третьего лица (5)', 'tp', tp.on ? 'on' : ''],
       [activeSt ? `📍 ${activeSt.short.split(' · ')[0]}` : '📍 Участки', 'places', activeSt ? 'on' : ''],
       [`👓 ${sim.device.brand} ${sim.device.name} (K)`, 'dev', ''],
@@ -942,7 +952,7 @@ async function main() {
       e.stopPropagation();
       const k = b.dataset.b;
       if (k === 'auto') act('auto_toggle'); if (k === 'stop') act('auto_stop');
-      if (k === 'cam') act('auto_cam'); if (k === 'corner') act('corner'); if (k === 'field') act('field'); if (k === 'asm') act('player'); if (k === 'tp') act('tp'); if (k === 'places') toggleCard('places');
+      if (k === 'cam') act('auto_cam'); if (k === 'corner') act('corner'); if (k === 'field') act('field'); if (k === 'asm') act('player'); if (k === 'train') act('training'); if (k === 'tp') act('tp'); if (k === 'places') toggleCard('places');
       if (k === 'dev') toggleCard('vision');
       if (k === 'help') toggleCard('help'); if (k === 'vision') toggleCard('vision');
       if (k === 'win') for (const p of [panels.kd, panels.step, panels.sys, panels.task]) mgr.toggle(p, true);
@@ -993,15 +1003,74 @@ async function main() {
     onBegin: () => { auto.pause(); app.notify('Виртуальная сборка: реальных деталей нет — изделие собирается из голограмм на месте настоящих. Пробел — пуск/пауза, , . — по шагу, [ ] — скорость, − — назад во времени, 6 — закрыть', 7); },
     onEnd: () => { applyState(); showStep(); viz.setAnchored(sim.device.tracking === '6dof'); },
   });
+  // обучающая сборка: учебная цветная модель, уроки с пояснениями, советами и предупреждениями, 10 с на урок
+  const tr = { tts: q.get('tts') !== '0', lastSaid: -1, guide: q.get('trguide') !== '0', lastFocus: -1 };
+  const trainingAsm = trainingTarget(world, viz, {
+    onBegin: () => { auto.pause(); app.notify('Обучающая сборка КМ-2: детали — цветные полупрозрачные, у деталей — номера позиций. Пробел — пауза, , . — урок назад/вперёд, ⇧6 — закрыть', 7); },
+    onEnd: () => { $('train').hidden = true; applyState(); showStep(); viz.setAnchored(sim.device.tracking === '6dof'); },
+    onLesson: (L, i) => { trainCard(L, i); trainPlace(L, i); },
+  });
+  const esc = (x) => String(x).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+  const ACT_RU = { install: 'установка', fasten: 'крепёж', glue: 'клей', seal: 'герметик', degrease: 'обезжиривание', brush: 'клей кистью', film: 'плёнка',
+    wire: 'монтаж', paint: 'окраска', wait: 'выдержка', check: 'контроль', inspect: 'осмотр', intro: 'подготовка' };
+  function trainCard(L, i) {
+    const el = $('train');
+    el.hidden = false;
+    const n = trainingAsm.lessons.length;
+    $('tr_n').textContent = L ? `Урок ${i + 1}/${n} · ${L.id} · ${ACT_RU[L.action] || L.action}${L.place === 'table' ? ' · стол подготовки' : ''}` : `Готово: ${n}/${n}`;
+    $('tr_title').textContent = L ? L.title : 'Модуль КМ-2 собран. Обучение завершено';
+    $('tr_tts').textContent = tr.tts ? '🔊' : '🔇';
+    if (!L) { $('tr_body').innerHTML = '<p class="tr-ok">Все уроки пройдены. Повторить — ⏮, закрыть — ⇧6.</p>'; return; }
+    const li = (a, cls) => a.map((x) => `<li class="${cls}">${esc(x)}</li>`).join('');
+    $('tr_body').innerHTML = `${L.critical ? '<p class="tr-crit">● Ответственный переход: контроль мастера ОТК</p>' : ''}
+      <ul class="tr-ex">${li(L.explain, '')}</ul>
+      ${L.labels?.length ? `<p class="tr-parts">${L.labels.map((x) => `<span>${esc(x.text)}</span>`).join('')}</p>` : ''}
+      ${L.check ? `<p class="tr-chk">📏 Замер: ${esc(L.check.name)} — ${L.check.nominal ?? ''}${L.check.tol != null ? ` ± ${L.check.tol}` : ''}${L.check.unit ? ` ${esc(L.check.unit)}` : ''}</p>` : ''}
+      ${L.timer ? `<p class="tr-chk">⏱ ${esc(L.timer.label)}</p>` : ''}
+      <ul class="tr-w">${li(L.warns, 'w')}</ul><ul class="tr-t">${li(L.tips, 't')}</ul>`;
+    if (tr.tts && asm.playing && asm.dir > 0 && tr.lastSaid !== i) { tr.lastSaid = i; speak([L.title, L.explain[0], ...L.warns.slice(0, 1)].filter(Boolean).join('. ')); }
+  }
+  $('tr_guide').onclick = (e) => { e.stopPropagation(); tr.guide = !tr.guide; $('tr_guide').classList.toggle('off', !tr.guide); if (tr.guide) { tr.lastFocus = -1; trainPlace(null, asm.current.i); } else { player.path = null; player.mode = 'walk'; } app.notify(tr.guide ? 'Камера ведёт по урокам' : 'Свободный обзор: ходите сами (WASD, мышь)', 3); };
+  $('tr_tts').onclick = (e) => { e.stopPropagation(); tr.tts = !tr.tts; $('tr_tts').textContent = tr.tts ? '🔊' : '🔇'; if (!tr.tts) speechSynthesis?.cancel?.(); };
+  /**
+   * Камера ведёт по урокам: сборщик подходит к месту работы урока (стол подготовки, вырез раковины, уголки…)
+   * и смотрит на него; при перемотке — переносится сразу. Выключить — 🎥 в карточке, дальше ходите сами.
+   */
+  function trainPlace(L, i) {
+    if (!tr.guide) return;
+    const { p, dist, table } = trainingAsm.focusOf(i);
+    const x = table ? p.x : THREE.MathUtils.clamp(p.x, -0.75, 0.75), z = table ? p.z + dist : Math.max(p.z + dist, 1.45);
+    if (Math.hypot(x - player.pos.x, z - player.pos.z) < 0.25 && tr.lastFocus === i) return;
+    tr.lastFocus = i;
+    if (player.mode === 'inspect') player.exitInspect();
+    const look = [p.x, p.y, p.z];
+    if (asm.playing && asm.dir > 0 && Math.hypot(x - player.pos.x, z - player.pos.z) < 6) player.walkPath([[x, z]], { speed: 0.9, lookAt: look });
+    else {
+      player.path = null; player.mode = 'walk';
+      const d = V(p.x - x, p.y - player.eye, p.z - z);
+      player.place(x, z, Math.atan2(-d.x, -d.z), Math.atan2(d.y, Math.hypot(d.x, d.z)));
+    }
+  }
+  function startTraining(on = !asm.target?.training) {
+    if (!on) { if (asm.target?.training) asm.close(); updateBar(); return; }
+    if (asm.open) asm.close();
+    auto.pause();
+    tr.lastSaid = -1; tr.lastFocus = -1;
+    asm.openFor(trainingAsm, 0); asm.play(1);
+    updateBar();
+  }
   const asmTargets = () => [{ t: galleyAsm, at: V(0, 0, 0) }, ...(world.stations || []).map((st) => ({ t: st.asm, at: st.center }))];
   function nearestAsmTarget() {
     const p = player.pos; let best = null, bd = Infinity;
     for (const x of asmTargets()) { const d = Math.hypot(p.x - x.at.x, p.z - x.at.z); if (d < bd) { bd = d; best = x.t; } }
     return best;
   }
+  let barTraining = false;
   function playerUi() {
     const el = $('player');
     el.hidden = !asm.open;
+    if (!asm.target?.training) $('train').hidden = true;
+    if (barTraining !== !!asm.target?.training) { barTraining = !!asm.target?.training; updateBar(); }
     if (!asm.open) return;
     const { i, f, step } = asm.current;
     $('pl_name').textContent = asm.target.name;
@@ -1422,6 +1491,7 @@ async function main() {
   if (q.get('corner') === '1') cornerAlgo(true, true);
   if (q.get('sys')) act('sys', q.get('sys'));                       // ?sys=full|cat|kd|tree|ctl — окно «Система»
   if (q.get('asm') === '1') togglePlayer(true);
+  if (q.get('train') === '1') startTraining(true);
   if (tp.on) setTP(true);
   window.__demo = {
     ready: true, scene, world, run, cam, player, eye, vision, app, mgr, panels, viz, finishIntro, inspectAtGaze, sim, params, auto, setDevice, act, asm, tp, worker, stations, perf,

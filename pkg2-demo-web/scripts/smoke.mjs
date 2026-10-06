@@ -52,6 +52,8 @@ const cases = [
   ['galley_system_full', 'galley.html?intro=0&sys=cat&glasses=aura&field=0'],
   ['galley_sim_em1', 'galley.html?intro=0&place=em1&auto=1&field=0'],
   ['galley_third_person', 'galley.html?intro=0&tp=1&glasses=aura'],
+  // обучающая сборка: цветная учебная модель, уроки с советами и предупреждениями
+  ['galley_training', 'galley.html?intro=0&train=1&field=0&tts=0'],
 ];
 let failed = 0;
 const only = process.env.SMOKE_ONLY?.split(',');            // SMOKE_ONLY=galley_manual,tablet — только эти сценарии

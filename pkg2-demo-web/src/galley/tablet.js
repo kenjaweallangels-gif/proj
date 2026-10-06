@@ -123,7 +123,7 @@ export function mountTablet() {
       <button class="btn" data-c="player_fwd">⏩</button><button class="btn" data-c="player_end">⏭</button>
       <button class="btn" data-c="player_speed" data-a="down">−</button><button class="btn" disabled>×${num(A.speed)}</button><button class="btn" data-c="player_speed" data-a="up">+</button>
       <button class="btn acc" data-c="player_style">Вид</button><button class="btn bad" data-c="player_close">✕</button></div></div>`
-      : '<div class="card"><div class="row"><button class="btn acc" data-c="player">🧩 Виртуальная сборка (без деталей)</button></div></div>';
+      : '<div class="card"><div class="row"><button class="btn acc" data-c="player">🧩 Виртуальная сборка (без деталей)</button><button class="btn" data-c="training">🎓 Обучение</button></div></div>';
     return `${autoRow}${asmRow}<div class="card"><span class="id">${esc(s.id)} · ${S.index + 1}/${S.total}</span>${s.critical ? '<span class="tag">критичный</span>' : ''}
       <h2>${esc(s.title)}</h2>${S.preview ? `<div class="tag">в очках просмотр: ${esc(S.preview.id)}</div>` : ''}
       <ul class="txt">${s.text.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>${timers}

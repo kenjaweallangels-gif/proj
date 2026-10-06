@@ -59,7 +59,7 @@ export class AssemblyPlayer {
 
   update(dt) {
     if (!this.target || !this.playing) return;
-    this.t += (this.dir * this.speed * dt) / this.secPerStep;
+    this.t += (this.dir * this.speed * dt) / (this.target.secPerStep ?? this.secPerStep);
     if (this.t >= this.n) { this.t = this.n; this.playing = false; this.emit(); }
     if (this.t <= 0) { this.t = 0; this.playing = false; this.emit(); }
     this.apply();

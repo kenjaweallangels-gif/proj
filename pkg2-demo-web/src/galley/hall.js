@@ -16,6 +16,7 @@ export const PLACES = {
   kitRack: [2.9, -0.4],
   kitCart: [2.3, 1.7],
   glueTable: [-2.8, -1.9],
+  prepTable: [-2.95, 1.9],          // стол подготовки панелей у стапеля (плёнка до установки), столешница 0,85 м
 };
 
 const colliders = [];          // {x0, x1, z0, z1}
@@ -289,6 +290,23 @@ export function buildHall(scene) {
   const tl = sign(['КЛЕЕВОЙ СТОЛ', 'работа с вытяжкой · СИЗ'], 0.5, 0.16, { w: 512, h: 160, bg: '#ffffff', size: 44 });
   tl.position.set(0, 1.0, 0.401); gt.add(tl);
   root.add(gt); solid(gx, gz, 1.5, 0.9);
+
+  // ---------- стол подготовки панелей у стапеля: боковина целиком (2,05 × 0,86 м) — наклейка плёнки до установки ----------
+  {
+    const pt = new THREE.Group();
+    const [px, pz] = PLACES.prepTable;
+    pt.position.set(px, 0, pz);
+    pt.add(box(2.3, 0.04, 1.05, painted('#cfd3d6', { rough: 0.45, metal: 0.5 }), 0, 0.83, 0, 0.004));
+    pt.add(box(2.26, 0.006, 1.01, new THREE.MeshStandardMaterial({ color: '#3b4a3f', roughness: 0.95 }), 0, 0.853, 0, 0.001));   // мягкое покрытие
+    for (const sx of [-1.08, 1.08]) for (const sz of [-0.46, 0.46]) pt.add(box(0.05, 0.81, 0.05, frame, sx, 0.405, sz, 0.004));
+    pt.add(box(2.1, 0.03, 0.03, frame, 0, 0.18, -0.46, 0.004), box(2.1, 0.03, 0.03, frame, 0, 0.18, 0.46, 0.004));
+    for (const sx of [-0.7, 0, 0.7]) pt.add(box(0.36, 0.02, 0.9, new THREE.MeshStandardMaterial({ color: '#2c2f33', roughness: 0.9 }), sx, 0.866, 0, 0.004));   // прокладки
+    const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.9, 24), painted('#d9cfc2', { rough: 0.6, metal: 0 }));
+    roll.rotation.x = Math.PI / 2; roll.position.set(1.0, 0.2, 0); pt.add(roll);                                  // рулон плёнки на полке
+    const lab = sign(['СТОЛ ПОДГОТОВКИ ПАНЕЛЕЙ', 'плёнка · обезжиривание · клей'], 0.6, 0.18, { w: 640, h: 192, bg: '#ffffff', size: 46 });
+    lab.position.set(0, 0.7, 0.53); pt.add(lab);
+    root.add(pt); solid(px, pz, 2.35, 1.1);
+  }
 
   // ---------- окрасочная кабина (у северной стены) ----------
   const booth = new THREE.Group();

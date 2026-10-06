@@ -72,3 +72,23 @@ body.galley #view { position: fixed; inset: 0; width: 100vw; height: 100vh; disp
 .player button.main { background: var(--g-acc); color: #04161c; border-color: var(--g-acc); min-width: 44px; font-weight: 600; }
 .player button[aria-pressed="true"] { border-color: #ffc845; color: #ffe39a; }
 .player input[type=range] { flex: 1; min-width: 120px; accent-color: var(--g-acc); }
+/* обучающая сборка: карточка урока */
+.train { position: absolute; right: 12px; top: 64px; width: min(400px, calc(100vw - 24px)); max-height: calc(100vh - 250px); overflow: auto; background: var(--g-bg); border: 1px solid #ff6fae; border-radius: 10px; padding: 10px 14px; font-size: 13.5px; line-height: 1.42; }
+.train[hidden] { display: none; }
+.train .tr-head { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: start; margin-bottom: 6px; }
+.train .tr-head span { grid-column: 1; color: var(--g-mute); font-size: 12px; }
+.train .tr-head b { grid-column: 1; font: 600 16px var(--sans); color: #ffd1e6; }
+.train .tr-btns { grid-column: 2; grid-row: 1 / span 2; display: flex; gap: 4px; }
+.train .tr-head button.off { opacity: .45; }
+.train .tr-head button { background: #11171b; color: var(--g-ink); border: 1px solid var(--g-line); border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 15px; }
+.train ul { margin: 6px 0; padding-left: 18px; }
+.train .tr-ex li { margin: 2px 0; }
+.train li.w { color: #ffd98a; list-style: none; margin-left: -18px; padding: 3px 6px; border-left: 3px solid var(--g-warn); background: rgba(255,200,69,.08); margin-bottom: 3px; }
+.train li.w::before { content: '⚠ '; }
+.train li.t { color: #b9f5d6; list-style: none; margin-left: -18px; padding: 2px 6px; }
+.train li.t::before { content: '💡 '; }
+.train .tr-crit { color: #ff8a8a; font-weight: 600; margin: 2px 0 4px; }
+.train .tr-chk { color: var(--g-acc); margin: 4px 0; }
+.train .tr-parts { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.train .tr-parts span { font-size: 12px; border: 1px solid #2f5d73; border-radius: 5px; padding: 1px 6px; color: #cdefff; }
+.train .tr-ok { color: var(--g-ok); }
