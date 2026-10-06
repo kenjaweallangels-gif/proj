@@ -92,3 +92,8 @@ body.galley #view { position: fixed; inset: 0; width: 100vw; height: 100vh; disp
 .train .tr-parts { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
 .train .tr-parts span { font-size: 12px; border: 1px solid #2f5d73; border-radius: 5px; padding: 1px 6px; color: #cdefff; }
 .train .tr-ok { color: var(--g-ok); }
+/* сравнение режимов ПО очков */
+.card table.swcmp { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 4px 0 8px; }
+.card table.swcmp th { text-align: left; color: var(--g-mute); font-weight: 500; padding: 2px 6px; }
+.card table.swcmp td { padding: 3px 6px; border-top: 1px solid var(--g-line); vertical-align: top; }
+.card table.swcmp td:first-child { color: var(--g-mute); white-space: nowrap; }

@@ -96,6 +96,8 @@ describe('голос: виртуальная сборка', () => {
     expect(parseGalley('сборка виртуальная сборка')).toEqual({ cmd: 'player', arg: null });
     expect(parseGalley('сборка обучающая сборка')).toEqual({ cmd: 'training', arg: null });
     expect(parseGalley('сборка обучение')).toEqual({ cmd: 'training', arg: null });
+    expect(parseGalley('сборка штатное по')).toEqual({ cmd: 'sw_stock', arg: null });
+    expect(parseGalley('сборка своё по')).toEqual({ cmd: 'sw_sdk', arg: null });
     expect(parseGalley('сборка назад во времени')).toEqual({ cmd: 'player_rev', arg: null });
     expect(parseGalley('сборка назад')).toEqual({ cmd: 'prev', arg: null });
     expect(parseGalley('сборка покажи готовое')).toEqual({ cmd: 'player_end', arg: null });

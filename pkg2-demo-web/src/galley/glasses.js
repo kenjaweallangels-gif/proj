@@ -69,6 +69,16 @@ export const DEVICES = [
     sources: ['https://tutorials.xreal.com/docs/glasses/one-series/spec', 'https://docs.xreal.com/Release%20Note/XREAL%20SDK%203.1.0'],
   },
   {
+    // комплект для закупки: One Pro + камера XREAL Eye + XREAL Beam Pro (вычислительный блок Android)
+    id: 'xreal-one-pro-eye', short: 'oneproeye', brand: 'XREAL', name: 'One Pro + Eye', fovDiag: 57, aspect: 16 / 9, res: [1920, 1080], nits: 700, refresh: 120,
+    weightG: 89, optics: 'плоская призма X-Prism, Sony 0,55″ micro-OLED', ghost: 0.012, edgeSoft: 0.2,
+    transmit: 0.30, dimLevels: [0.30, 0.12, 0.01], dimNote: 'электрохромное, 3 режима',
+    tracking: '6dof', hands: false, cameras: 'XREAL Eye 12 Мп (RGB)', driftDegMin: 0, latencyMs: 12, distM: 4, centerDeg: -1, dial: 0, housing: 14,
+    note: '6DoF по камере Eye — только в приложении на XREAL SDK 3.1 (Beam Pro). Штатно — 3DoF-якорь экрана чипом X1.',
+    estimates: ['задержка 6DoF', 'пропускание линз'],
+    sources: ['https://docs.xreal.com/Release%20Note/XREAL%20SDK%203.1.0', 'https://xreal.com.ru/one-pro'],
+  },
+  {
     id: 'xreal-aura', short: 'aura', brand: 'XREAL', name: 'Aura (Android XR)', fovDiag: 70, aspect: 16 / 10, res: [1920, 1200], nits: 700, refresh: 120,
     weightG: 95, optics: 'плоская призма X-Prism, Sony micro-OLED, X1S + вычислительный блок Snapdragon Reality Elite', ghost: 0.015, edgeSoft: 0.25,
     transmit: 0.40, dimLevels: [0.40, 0.18, 0.05], dimNote: 'электрохромное',
@@ -139,7 +149,7 @@ export function matchDevice(text) {
   if (has(/aura|аур/)) return 'xreal-aura';
   if (has(/beast|бист/)) return 'viture-beast';
   if (has(/air|эйр|аир|эир/)) return has(/ultra|ультра/) ? 'xreal-air2-ultra' : 'xreal-air2-pro';
-  if (has(/one|ван/)) return has(/pro|про/) ? 'xreal-one-pro' : 'xreal-one';
+  if (has(/one|ван/)) return has(/pro|про/) ? (has(/eye|ай|камер/) ? 'xreal-one-pro-eye' : 'xreal-one-pro') : 'xreal-one';
   if (has(/luma|люма|лума/) || brand === 'VITURE') return has(/ultra|ультра/) ? 'viture-luma-ultra' : has(/pro|про/) ? 'viture-luma-pro' : 'viture-luma-ultra';
   if (brand === 'XREAL') return has(/pro|про/) ? 'xreal-one-pro' : 'xreal-one';
   if (has(/ultra|ультра/)) return 'viture-luma-ultra';

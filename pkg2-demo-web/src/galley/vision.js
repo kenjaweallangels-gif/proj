@@ -609,13 +609,32 @@ export class VisionRenderer {
     this.lodReal = Math.max(0, Math.floor(Math.log2(Math.max(W, H))) - 4);
   }
 
-  /** Поза камеры с задержкой latency (интерполяция по истории). */
+  /**
+   * Поза для голограмм: с задержкой «движение → фотон» и с выборкой по частоте дисплея (кадр держится до
+   * следующего обновления: 60/90/120 Гц), плюс ошибка трекинга (дрожание позы VIO/IMU, мм и °).
+   */
   delayedPose(now) {
-    const t = now - this.latencyMs / 1000;
+    const hz = this.hz || 0;
+    const tq = hz > 0 ? Math.floor(now * hz) / hz : now;
+    this.poseAt(tq - this.latencyMs / 1000);
+    const n = this.trackNoise;
+    if (n && (n.mm > 0 || n.deg > 0)) {
+      // плавный шум из нескольких частот (0,4–9 Гц): дрожание и «плавание» позы, детерминированный по времени
+      const w = (a, b, c) => (Math.sin(tq * a + b) * 0.55 + Math.sin(tq * a * 2.7 + c) * 0.3 + Math.sin(tq * a * 7.3 + b * 2) * 0.15);
+      const m = n.mm / 1000, r = THREE.MathUtils.degToRad(n.deg);
+      this._nv ??= new THREE.Vector3(); this._ne ??= new THREE.Euler(); this._nq ??= new THREE.Quaternion();
+      this._nv.set(w(2.6, 0.3, 1.9) * m, w(3.1, 2.2, 0.7) * m, w(2.2, 4.1, 3.3) * m).applyQuaternion(this.holoCam.quaternion);
+      this.holoCam.position.add(this._nv);
+      this._ne.set(w(2.9, 1.1, 2.6) * r, w(2.4, 3.7, 0.2) * r, w(1.7, 5.3, 4.4) * r * 0.5);
+      this.holoCam.quaternion.multiply(this._nq.setFromEuler(this._ne));
+    }
+  }
+
+  poseAt(t) {
     const H = this.history;
     for (let i = H.length - 1; i > 0; i--) {
       if (H[i - 1].t <= t) {
-        const a = H[i - 1], b = H[i], k = (t - a.t) / Math.max(1e-6, b.t - a.t);
+        const a = H[i - 1], b = H[i], k = Math.min(1, (t - a.t) / Math.max(1e-6, b.t - a.t));
         this.holoCam.position.lerpVectors(a.p, b.p, k);
         this.holoCam.quaternion.slerpQuaternions(a.q, b.q, k);
         return;

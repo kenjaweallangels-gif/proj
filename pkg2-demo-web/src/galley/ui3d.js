@@ -223,12 +223,18 @@ export class PanelManager {
     if (mode === '3dof') {
       Object.assign(this.rig, { theta: 0, drift: 0, yaw0 });
       this.rig.origin.copy(origin);
+    } else if (mode === 'head') {
+      // штатное ПО (очки — просто внешний экран): окна «приклеены» к голове, поворачиваются вместе с ней
+      // раскладка окон задана для места origin и курса yaw0 — поворачиваем её вместе с головой
+      this.rig.origin.copy(origin);
+      this.rig.q0 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw0).invert();
     } else { this.root.position.set(0, 0, 0); this.root.quaternion.identity(); }
     this.root.updateMatrixWorld(true);
   }
 
   /** 3DoF: развернуть систему окон к текущему направлению взгляда (кнопка/жест «по центру»). */
   recenter() {
+    if (this.tracking === 'head') return false;
     if (this.tracking !== '3dof') return false;
     this.rig.theta = this.camYaw() - this.rig.yaw0; this.rig.drift = 0;
     return true;
@@ -344,6 +350,10 @@ export class PanelManager {
       const th = r.theta + r.drift;
       this.root.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), th);
       this.root.position.copy(cam.position).sub(r.origin.clone().applyQuaternion(this.root.quaternion));
+      this.root.updateMatrixWorld(true);
+    } else if (this.tracking === 'head') {
+      this.root.quaternion.copy(cam.quaternion).multiply(this.rig.q0);
+      this.root.position.copy(cam.position).sub(this.rig.origin.clone().applyQuaternion(this.root.quaternion));
       this.root.updateMatrixWorld(true);
     }
     let timedDone = false;

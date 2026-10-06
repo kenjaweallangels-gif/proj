@@ -26,6 +26,7 @@ import { buildGlassesModel } from './glasses_model.js';
 import { AssemblyPlayer, SPEEDS } from './assembly_player.js';
 import { galleyTarget } from './galley_player.js';
 import { trainingTarget } from './training_view.js';
+import { capsFor, compareRows, snapTransmit } from './software.js';
 import { buildCatalog, findAlgorithm } from './algorithms.js';
 import { tickHolo } from './virtual.js';
 import { buildWorker } from './humanoid.js';
@@ -46,6 +47,7 @@ for (const t of location.hash.slice(1).split(/[-_.~]/).filter(Boolean)) {      /
   else if (t === 'virtual') { q.set('asm', '1'); q.set('intro', '0'); }
   else if (t === 'train' || t === 'training') { q.set('train', '1'); q.set('intro', '0'); }
   else if (t === 'tp') q.set('tp', '1');
+  else if (t === 'stock' || t === 'sdk') q.set('sw', t);
   else if (['em1', 'sl1', 'me1'].includes(t)) { q.set('place', t); q.set('intro', '0'); }
   else if (t === 'narrow') q.set('field', '0');
   else if (t === 'clean') q.set('view', 'clean');
@@ -181,7 +183,7 @@ async function main() {
     const st = activeSt || app.simInfo?.()?.st;                       // у участка рядом или где идёт имитация
     return st && !st.done ? { st, step: st.step, index: st.index, total: st.steps.length } : null;
   };
-  const holoOn = (st) => st === activeSt && !!sim.glasses && !!sim.display && !asm?.open && app.aligned;
+  const holoOn = (st) => st === activeSt && !!sim.glasses && !!sim.display && !asm?.open && app.aligned && !!sim.caps?.holoOnPart;
 
   let asm = null;                                                     // плеер виртуальной сборки (создаётся ниже)
   function applyState() {
@@ -219,7 +221,9 @@ async function main() {
   // адаптивное качество полного поля: долгий кадр (> 90 мс) несколько секунд подряд — разрешение ниже
   const perf = { ema: 0.016, slow: 0, shadowEvery: 2, gazeMs: 0 };
   const sim = { glasses: 0, display: 0, boot: 0, dimLevel: params.dim, dimMode: q.get('vision') === 'dimmed' ? 'manual' : 'auto', bright: 1, occlusion: false, tts: true,
-    device: deviceById.get(q.get('glasses')) || deviceById.get(DEFAULT_DEVICE), wearMin: 0 };
+    device: deviceById.get(q.get('glasses')) || deviceById.get(DEFAULT_DEVICE), wearMin: 0,
+    // ПО очков: 'sdk' — наш клиент на SDK производителя (поза, камера, метки, стерео); 'stock' — очки как экран
+    sw: q.get('sw') === 'stock' ? 'stock' : 'sdk', caps: null, brightAuto: true };
   const STAND = V(0, 1.68, 3.4);            // место сборщика у стапеля: для него задана раскладка окон
   let lumCd = 150;
   vision.beforeHolo = (hc) => {
@@ -231,6 +235,29 @@ async function main() {
       placeCorner(p, hc, vision.win, vision.u.disp.value.y, sim.device.distM, full ? 'c' : p.corner || 'tr', full ? 0.94 : 0.5);
     }
   };
+  /**
+   * Возможности очков в текущем режиме ПО (software.js): как держатся окна (с головой / 3DoF / 6DoF),
+   * голограммы на изделии, задержка и частота дисплея, дрожание позы, кто управляет затемнением и яркостью.
+   */
+  function applyCaps() {
+    const d = sim.device, c = sim.caps = capsFor(d, sim.sw);
+    mgr.setTracking(c.windows, c.driftDegMin, STAND, 0);
+    viz.setAnchored(c.holoOnPart);
+    vision.latencyMs = c.windows === 'head' ? 0 : c.latencyMs;      // экран «с головой» — без задержки относительно головы
+    vision.hz = c.hz;
+    vision.trackNoise = c.windows === '6dof' ? { mm: c.trackMM, deg: c.trackDeg } : c.windows === '3dof' ? { mm: 0, deg: c.trackDeg * 0.4 } : null;
+    // штатно очки — просто экран компьютера: одна плоская картинка по центру дисплея (окно «Система» целиком),
+    // окна в цеху (КД, переход, задание) показать негде — они вернутся со своим ПО
+    if (c.windows === 'head') {
+      if (!sim.headSaved) { sim.headSaved = mgr.panels.filter((p) => p.mode === 'world' && p.visible); sim.headSaved.forEach((p) => mgr.toggle(p, false)); }
+      panels.algo.setView('full'); cornerAlgo(true, true);
+    } else if (sim.headSaved) {
+      sim.headSaved.forEach((p) => mgr.toggle(p, true)); sim.headSaved = null;
+      panels.algo.setView('compact');
+    }
+    if (sim.dimMode === 'auto' && !c.dimAuto) sim.dimMode = 'manual';
+    if (c.dimAuto && sim.dimMode === 'manual' && !q.get('vision')) sim.dimMode = 'auto';
+  }
   /** Выбрать очки: окно дисплея, яркость, линзы, оптика, трекинг, задержка, расстояние экрана, коррекция. */
   function setDevice(id, { quiet = false } = {}) {
     const d = deviceById.get(id) || sim.device;
@@ -239,13 +266,12 @@ async function main() {
     eye.distM = d.distM;
     params.dial = Math.max(d.dial, params.dial);                  // у XREAL колеса диоптрий нет (dial 0) — только вставки
     if (!d.dimLevels) { sim.dimLevel = 0; }
-    mgr.setTracking(d.tracking, d.driftDegMin, STAND, 0);
     if (glasses && glasses.parent && glasses.userData.device !== d.id && (scen.state === 'intro' || scen.state === 'desk')) {
       const ng = buildGlassesModel(d.id);
       ng.position.copy(glasses.position); ng.quaternion.copy(glasses.quaternion); ng.visible = glasses.visible;
       scene.remove(glasses); scene.add(ng); glasses = ng;
     }
-    viz.setAnchored(d.tracking === '6dof');
+    applyCaps();
     markerFrames?.forEach((f) => { f.visible = false; });
     q.set('glasses', d.short);
     const dl = world.hall.dockLabel;                                     // табличка станции — по выбранным очкам
@@ -407,8 +433,9 @@ async function main() {
       }
     }
     if (scen.state === 'goJig' && Math.hypot(player.pos.x, player.pos.z) < 4.2) { scen.state = 'align'; scen.t = 0; prompt(''); }
-    if (scen.state === 'align' && sim.device.tracking === '3dof') {
-      say(`${sim.device.brand} ${sim.device.name}: трекинг 3DoF — очки не видят стапель, привязки к меткам нет. Окна выставлены вокруг головы.`);
+    if (scen.state === 'align' && !sim.caps.holoOnPart) {
+      say(sim.caps.windows === 'head' ? `${sim.device.brand} ${sim.device.name}, штатное ПО: очки — внешний экран, окна движутся вместе с головой, привязки к стапелю нет.`
+        : `${sim.device.brand} ${sim.device.name}: ${sim.caps.windows === '6dof' ? 'без своего ПО метки не читаются' : 'трекинг 3DoF — очки не видят стапель'}, привязки к меткам нет. Окна выставлены вокруг головы.`);
       if (scen.t > 2.2) { app.aligned = true; mgr.setEnabled(true); scen.state = 'free'; setTimeout(() => say(''), 7000); }
       return;
     }
@@ -530,6 +557,7 @@ async function main() {
     }
     if (k === 'Tab') { e.preventDefault(); act('field'); }
     if (k === 'Backslash') act('zones');
+    if (k === 'Semicolon') act('sw');
   });
   function featureOf(o) { while (o) { if (o.userData?.featureId) return o.userData.featureId; o = o.parent; } return null; }
 
@@ -553,7 +581,7 @@ async function main() {
     mgr.toggle(panels.local, true);
     panels.local.state.scroll = 0; panels.local.dirty = true;
     viz.show(null, { features: near.slice(0, 6).map((x) => x.f.id), focus: pm.toArray() });
-    if (sim.device.tracking === '3dof') app.notify(`${sim.device.name} (3DoF): список элементов есть, но голограммы на узле не показать — очки не знают, где узел`, 5);
+    if (!sim.caps.holoOnPart) app.notify(`${sim.device.name} (${sim.caps.label}): список элементов есть, но голограммы на узле не показать — очки не знают, где узел`, 5);
   }
 
   // ---------- единый диспетчер: клавиатура, голос, планшет ----------
@@ -646,7 +674,8 @@ async function main() {
         app.notify(`Затемнение: ступень ${Math.max(0, i) + 1}/${n}, пропускание ${(transmitAt(d, sim.dimLevel) * 100).toFixed(1).replace('.0', '')} %`);
         break;
       }
-      case 'dim_auto': if (sim.device.dimLevels) { sim.dimMode = 'auto'; app.notify('Затемнение: авто по освещённости'); } else app.notify('Затемнения нет у этих очков'); break;
+      case 'dim_auto': if (sim.device.dimLevels && !sim.caps.dimAuto) app.notify(sim.sw === 'stock' ? 'Штатное ПО: затемнение только кнопкой на очках — автомата нет' : `${sim.device.name}: SDK не управляет затемнением — только кнопкой на очках`, 5);
+        else if (sim.device.dimLevels) { sim.dimMode = 'auto'; app.notify('Затемнение: авто по освещённости'); } else app.notify('Затемнения нет у этих очков'); break;
       case 'dim_set': sim.dimMode = 'manual'; sim.dimLevel = sim.device.dimLevels ? THREE.MathUtils.clamp(Number(arg) || 0, 0, 1) : 0; break;
       case 'auto_start': auto.start(); break;
       case 'auto_free': auto.setCam('free'); if (!auto.on) auto.start(); break;
@@ -734,8 +763,21 @@ async function main() {
         if (id) setDevice(id); else app.notify(`Нет профиля очков: ${arg}`);
         break;
       }
-      case 'bright_up': sim.bright = Math.min(1, sim.bright + 0.15); app.notify(`Яркость дисплея ${Math.round(sim.bright * sim.device.nits)} нит`); break;
-      case 'bright_down': sim.bright = Math.max(0.2, sim.bright - 0.15); app.notify(`Яркость дисплея ${Math.round(sim.bright * sim.device.nits)} нит`); break;
+      case 'sw_stock': act('sw', 'stock', src); break;
+      case 'sw_sdk': act('sw', 'sdk', src); break;
+      case 'sw': {
+        sim.sw = arg === 'stock' || arg === 'sdk' ? arg : sim.sw === 'sdk' ? 'stock' : 'sdk';
+        applyCaps(); q.set('sw', sim.sw);
+        const c = sim.caps;
+        app.notify(c.mode === 'stock'
+          ? `Штатное ПО: ${sim.device.name} — ${c.windows === 'head' ? 'внешний экран, окна движутся с головой' : '3DoF-якорь экрана в очках'}; голограмм на изделии нет, затемнение и яркость — кнопками`
+          : `Своё ПО на SDK: ${sim.device.name} — ${c.windows === '6dof' ? `6DoF${c.markers ? ', метки стапеля, голограммы на изделии' : ''}` : '3DoF вокруг головы'}, ${c.latencyMs} мс, ${c.hz} Гц${c.hands ? ', жесты' : ''}`, 7);
+        if (scen.state === 'free' && app.aligned) mgr.setEnabled(true);
+        updateBar(); if (!$('card').hidden && $('card').dataset.kind === 'vision') { toggleCard('x'); toggleCard('vision'); }
+        break;
+      }
+      case 'bright_up': sim.brightAuto = false; sim.bright = Math.min(1, sim.bright + 0.15); app.notify(`Яркость дисплея ${Math.round(sim.bright * sim.device.nits)} нит`); break;
+      case 'bright_down': sim.brightAuto = false; sim.bright = Math.max(0.2, sim.bright - 0.15); app.notify(`Яркость дисплея ${Math.round(sim.bright * sim.device.nits)} нит`); break;
       case 'bright_set': sim.bright = THREE.MathUtils.clamp(Number(arg) || 1, 0.2, 1); break;
       case 'pin': { const h = mgr.pick(center); if (h) mgr.pinHere(h.panel); break; }
       case 'pull': { const h = (arg && PANEL_OF[arg] && { panel: PANEL_OF[arg] }) || mgr.pick(center); if (h?.panel) app.notify(mgr.pull(h.panel) ? 'Окно ближе — для чтения' : 'Окно на месте'); break; }
@@ -887,6 +929,10 @@ async function main() {
       Окно КД 1,2 × 0,86 м видно целиком с ${fitDistance(dv, 1.2, 0.864).toFixed(2).replace('.', ',')} м (окно ${wd.h.toFixed(0)}×${wd.v.toFixed(0)}°). ${dv.note}
       ${dv.estimates.length ? `<br><i>Оценка (не опубликовано): ${dv.estimates.join(', ')}.</i>` : ''}
       <br>Источники: ${dv.sources.map((u, i) => `<a href="${u}" target="_blank" rel="noopener">[${i + 1}]</a>`).join(' ')}</div>
+      <h3>ПО очков <small>(клавиша ;)</small></h3>
+      <div class="presets"><button data-sw="stock" aria-pressed="${sim.sw === 'stock'}">Штатное ПО<small>очки как экран + кнопки</small></button><button data-sw="sdk" aria-pressed="${sim.sw === 'sdk'}">Своё ПО на SDK<small>наш клиент: поза, камера, метки</small></button></div>
+      <table class="swcmp"><tr><th></th><th>штатное</th><th>своё ПО</th></tr>${compareRows(dv).map(([k, a, b]) => `<tr><td>${k}</td><td>${a}</td><td>${b}</td></tr>`).join('')}</table>
+      <div class="note dev">${sim.caps.note}${sim.caps.unsure.length ? `<br><i>Уточнить по SDK: ${sim.caps.unsure.join('; ')}.</i>` : ''}</div>
       <div class="presets"><button id="b_insp">🔍 Рассмотреть модель ${dv.brand} ${dv.name} на витрине</button></div>
       <h3>Два глаза и поле зрения</h3>
       <div class="presets">
@@ -912,6 +958,7 @@ async function main() {
       Вес ${dv.weightG} г: усталость за смену <b id="v_wear"></b>.</div>`;
     c.querySelectorAll('[data-dev]').forEach((b) => b.onclick = () => setDevice(b.dataset.dev));
     $('b_insp').onclick = () => act('inspect_glasses');
+    c.querySelectorAll('[data-sw]').forEach((b) => b.onclick = () => act('sw', b.dataset.sw));
     c.querySelectorAll('[data-fm]').forEach((b) => b.onclick = () => { act('field', b.dataset.fm); toggleCard('x'); toggleCard('vision'); });
     $('b_zones').onclick = () => { act('zones'); toggleCard('x'); toggleCard('vision'); };
     c.querySelectorAll('[data-eyes]').forEach((b) => b.onclick = () => { params.eyes = b.dataset.eyes; toggleCard('x'); toggleCard('vision'); });
@@ -945,6 +992,7 @@ async function main() {
       [tp.on ? '👁 От первого лица (5)' : '🧍 Вид от третьего лица (5)', 'tp', tp.on ? 'on' : ''],
       [activeSt ? `📍 ${activeSt.short.split(' · ')[0]}` : '📍 Участки', 'places', activeSt ? 'on' : ''],
       [`👓 ${sim.device.brand} ${sim.device.name} (K)`, 'dev', ''],
+      [`⚙ ${sim.caps?.mode === 'stock' ? 'Штатное ПО' : 'Своё ПО (SDK)'} (;)`, 'sw', sim.caps?.mode === 'stock' ? 'on' : ''],
       [`👁 ${VIEW_LABEL[vision.view]} (Tab)`, 'field', vision.view !== 'center' ? 'on' : ''], ['Клавиши (H)', 'help', ''], ['Зрение (O)', 'vision', ''], ['Окна 1–4', 'win', ''],
       [`Время ×${app.speed} (T)`, 'time', ''], ['Очки (V)', 'glasses', ''], ['Планшет (J)', 'tablet', ''], ['Голос', 'voice', ''],
     ].map(([t, k, c]) => `<button data-b="${k}" class="${c}">${t}</button>`).join('');
@@ -953,7 +1001,7 @@ async function main() {
       const k = b.dataset.b;
       if (k === 'auto') act('auto_toggle'); if (k === 'stop') act('auto_stop');
       if (k === 'cam') act('auto_cam'); if (k === 'corner') act('corner'); if (k === 'field') act('field'); if (k === 'asm') act('player'); if (k === 'train') act('training'); if (k === 'tp') act('tp'); if (k === 'places') toggleCard('places');
-      if (k === 'dev') toggleCard('vision');
+      if (k === 'dev') toggleCard('vision'); if (k === 'sw') act('sw');
       if (k === 'help') toggleCard('help'); if (k === 'vision') toggleCard('vision');
       if (k === 'win') for (const p of [panels.kd, panels.step, panels.sys, panels.task]) mgr.toggle(p, true);
       if (k === 'time') { app.speed = { 1: 60, 60: 600, 600: 1 }[app.speed] || 60; updateBar(); }
@@ -1001,13 +1049,13 @@ async function main() {
   asm = new AssemblyPlayer();
   const galleyAsm = galleyTarget(world, viz, {
     onBegin: () => { auto.pause(); app.notify('Виртуальная сборка: реальных деталей нет — изделие собирается из голограмм на месте настоящих. Пробел — пуск/пауза, , . — по шагу, [ ] — скорость, − — назад во времени, 6 — закрыть', 7); },
-    onEnd: () => { applyState(); showStep(); viz.setAnchored(sim.device.tracking === '6dof'); },
+    onEnd: () => { applyState(); showStep(); viz.setAnchored(sim.caps.holoOnPart); },
   });
   // обучающая сборка: учебная цветная модель, уроки с пояснениями, советами и предупреждениями, 10 с на урок
   const tr = { tts: q.get('tts') !== '0', lastSaid: -1, guide: q.get('trguide') !== '0', lastFocus: -1 };
   const trainingAsm = trainingTarget(world, viz, {
     onBegin: () => { auto.pause(); app.notify('Обучающая сборка КМ-2: детали — цветные полупрозрачные, у деталей — номера позиций. Пробел — пауза, , . — урок назад/вперёд, ⇧6 — закрыть', 7); },
-    onEnd: () => { $('train').hidden = true; applyState(); showStep(); viz.setAnchored(sim.device.tracking === '6dof'); },
+    onEnd: () => { $('train').hidden = true; applyState(); showStep(); viz.setAnchored(sim.caps.holoOnPart); },
     onLesson: (L, i) => { trainCard(L, i); trainPlace(L, i); },
   });
   const esc = (x) => String(x).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
@@ -1415,11 +1463,19 @@ async function main() {
     }
     lights.forEach((l, i) => { l.intensity = baseI[i] * params.light; });
     // электрохромное затемнение «авто»: по освещённости, отклик ≈ 0,1 с (как у плёнки очков)
-    if (sim.dimMode === 'auto' && sim.device.dimLevels) {
+    if (sim.dimMode === 'auto' && sim.device.dimLevels && sim.caps?.dimAuto) {
       // при открытом полностью окне «Система» линзы темнеют сильнее — окно читается на светлом фоне
       const focus = panels.algo.visible && panels.algo.state.view === 'full' ? 0.55 : 0;
-      const want = Math.max(focus, THREE.MathUtils.clamp((lumCd - 60) / 260, 0, 0.7));
+      let want = Math.max(focus, THREE.MathUtils.clamp((lumCd - 60) / 260, 0, 0.7));
+      // SDK даёт только ступени (у VITURE Unity SDK — вкл/выкл): программа выбирает ближайшую
+      const dl = sim.device.dimLevels, a = dl[0], b = dl[dl.length - 1];
+      if (sim.caps.dimSteps) want = (a - snapTransmit(sim.caps.dimSteps, transmitAt(sim.device, want))) / (a - b);
       sim.dimLevel += (want - sim.dimLevel) * (1 - Math.exp(-dt / 0.1));
+    }
+    // яркость дисплея: своё ПО подстраивает её по освещённости, штатно — только кнопками на очках
+    if (sim.caps?.brightAuto && sim.brightAuto) {
+      const want = THREE.MathUtils.clamp(0.4 + lumCd / 450, 0.4, 1);
+      sim.bright += (want - sim.bright) * (1 - Math.exp(-dt / 0.6));
     }
     // вес на переносице и сухость глаз: усталость копится за время в очках (минуты участка), снятые — отдых
     const dMin = (dt * app.speed) / 60;
@@ -1469,7 +1525,7 @@ async function main() {
     });
     vision.u.flash.value = Math.max(0, vision.u.flash.value - dt * 2.5);
     if (frame % 10 === 0) {
-      $('status').textContent = `${VIEW_LABEL[vision.view].toLowerCase()}${params.eyes === 'both' ? '' : params.eyes === 'L' ? ', левый глаз' : ', правый глаз'} · ${app.plantClock()} ×${app.speed} · ${run.step.id} · фокус ${eye.focusDist > 20 ? '∞' : `${eye.focusDist.toFixed(2)} м`} · зрачок ${eye.pupil.toFixed(1)} мм · ${sim.glasses ? `${sim.device.name} ${sim.device.tracking === '6dof' ? '6DoF' : '3DoF'}, пропускание ${(transmitAt(sim.device, sim.dimLevel) * 100).toFixed(0)} %${sim.dimMode === 'auto' && sim.device.dimLevels ? ' (авто)' : ''}` : 'без очков'}${player.mode === 'inspect' ? ' · осмотр (Esc)' : ''}${auto.on ? (auto.paused ? ' · имитация: пауза (I)' : ` · имитация: ${auto.phaseLabel()}`) : ''}`;
+      $('status').textContent = `${VIEW_LABEL[vision.view].toLowerCase()}${params.eyes === 'both' ? '' : params.eyes === 'L' ? ', левый глаз' : ', правый глаз'} · ${app.plantClock()} ×${app.speed} · ${run.step.id} · фокус ${eye.focusDist > 20 ? '∞' : `${eye.focusDist.toFixed(2)} м`} · зрачок ${eye.pupil.toFixed(1)} мм · ${sim.glasses ? `${sim.device.name} ${sim.caps.mode === 'stock' ? 'штатное ПО' : sim.caps.windows === '6dof' ? '6DoF' : '3DoF'}, пропускание ${(transmitAt(sim.device, sim.dimLevel) * 100).toFixed(0)} %${sim.dimMode === 'auto' && sim.device.dimLevels ? ' (авто)' : ''}` : 'без очков'}${player.mode === 'inspect' ? ' · осмотр (Esc)' : ''}${auto.on ? (auto.paused ? ' · имитация: пауза (I)' : ` · имитация: ${auto.phaseLabel()}`) : ''}`;
       const c = $('card');
       if (!c.hidden && c.dataset.kind === 'vision' && $('v_focus')) {
         $('v_focus').textContent = eye.focusDist > 20 ? '∞' : `${eye.focusDist.toFixed(2)} м`;

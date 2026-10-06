@@ -22,6 +22,7 @@ export const DESIGN = {
   'xreal-air2-ultra': { W: 150, lw: 56, lh: 40, rim: 4.5, brow: 13, mod: 25, optics: 'birdbath', frame: 'titanium', dial: false, cams: ['grayL', 'grayR'], temple: 146, logo: 'XREAL' },
   'xreal-one': { W: 150, lw: 57, lh: 41, rim: 4.5, brow: 13, mod: 25, optics: 'birdbath', frame: 'black', dial: false, cams: [], temple: 148, logo: 'XREAL', eyeCam: true },
   'xreal-one-pro': { W: 158, lw: 60, lh: 40, rim: 4, brow: 11, mod: 17, optics: 'flat', frame: 'black', dial: false, cams: [], temple: 150, logo: 'XREAL', eyeCam: true, wrap: 0.09 },
+  'xreal-one-pro-eye': { W: 158, lw: 60, lh: 40, rim: 4, brow: 11, mod: 17, optics: 'flat', frame: 'black', dial: false, cams: [], temple: 150, logo: 'XREAL', eyeCam: true, wrap: 0.09 },
   'xreal-aura': { W: 160, lw: 60, lh: 44, rim: 6, brow: 15, mod: 22, optics: 'flat', frame: 'gloss', dial: false, cams: ['grayL', 'grayR', 'rgbC'], temple: 152, logo: 'XREAL', puck: true, privacy: true, wrap: 0.07 },
 };
 

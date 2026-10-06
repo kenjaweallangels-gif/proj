@@ -54,6 +54,9 @@ const cases = [
   ['galley_third_person', 'galley.html?intro=0&tp=1&glasses=aura'],
   // обучающая сборка: цветная учебная модель, уроки с советами и предупреждениями
   ['galley_training', 'galley.html?intro=0&train=1&field=0&tts=0'],
+  // режим ПО очков: штатно (очки как экран) и своё ПО на SDK для закупаемого комплекта XREAL One Pro + Eye
+  ['galley_sw_stock', 'galley.html?step=090.02&field=0&sw=stock'],
+  ['galley_sw_sdk_oneproeye', 'galley.html?step=090.02&field=0&glasses=oneproeye&sw=sdk'],
 ];
 let failed = 0;
 const only = process.env.SMOKE_ONLY?.split(',');            // SMOKE_ONLY=galley_manual,tablet — только эти сценарии
