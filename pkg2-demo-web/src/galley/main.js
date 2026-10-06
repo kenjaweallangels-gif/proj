@@ -27,6 +27,11 @@ import { AssemblyPlayer, SPEEDS } from './assembly_player.js';
 import { galleyTarget } from './galley_player.js';
 import { trainingTarget } from './training_view.js';
 import { capsFor, compareRows, snapTransmit } from './software.js';
+import { installMeasurements } from './measured.js';
+import { DEFAULT_POSE_URL, PoseLink } from './pose_link.js';
+
+// замеры реальных очков (measurements/*.json) — поверх профилей, до первого выбора очков
+const MEASURED = installMeasurements();
 import { buildCatalog, findAlgorithm } from './algorithms.js';
 import { tickHolo } from './virtual.js';
 import { buildWorker } from './humanoid.js';
@@ -756,7 +761,7 @@ async function main() {
         app.notify(VIEW_NOTE[vision.view], 5); updateBar(); break;
       }
       case 'zones': sim.zones = !sim.zones; app.notify(sim.zones ? 'Схема зон: фовеа 2°, 5°, 10°, 30° (центр), 60° (периферия); зелёным — границы полей глаз; красным/синим — видит только правый/левый глаз; белым — линзы' : 'Схема зон скрыта', 7); break;
-      case 'recenter': app.notify(mgr.recenter() ? 'Окна — по центру взгляда' : 'Окна закреплены у стапеля (6DoF) — центрировать не нужно'); break;
+      case 'recenter': poseLink?.recenter(); app.notify(mgr.recenter() ? 'Окна — по центру взгляда' : 'Окна закреплены у стапеля (6DoF) — центрировать не нужно'); break;
       case 'device': {
         const i = DEVICES.indexOf(sim.device);
         const id = typeof arg === 'number' ? DEVICES[(i + arg + DEVICES.length) % DEVICES.length].id : deviceById.has(arg) ? arg : matchDevice(arg);
@@ -928,6 +933,7 @@ async function main() {
       ${dv.dial ? `Колесо диоптрий до ${dv.dial} дптр.` : 'Колеса диоптрий нет — близоруким нужны линзы-вставки.'} Экран ≈ ${dv.distM} м.<br>
       Окно КД 1,2 × 0,86 м видно целиком с ${fitDistance(dv, 1.2, 0.864).toFixed(2).replace('.', ',')} м (окно ${wd.h.toFixed(0)}×${wd.v.toFixed(0)}°). ${dv.note}
       ${dv.estimates.length ? `<br><i>Оценка (не опубликовано): ${dv.estimates.join(', ')}.</i>` : ''}
+      ${dv.measured ? `<br><b>Измерено ${dv.measured.date}${dv.measured.by ? ` (${dv.measured.by})` : ''}:</b> ${[...dv.measured.keys, ...Object.keys(dv.measured.info), ...Object.keys(dv.measured.sdk).map((k) => `SDK ${k}`)].join(', ')}.` : ''}
       <br>Источники: ${dv.sources.map((u, i) => `<a href="${u}" target="_blank" rel="noopener">[${i + 1}]</a>`).join(' ')}</div>
       <h3>ПО очков <small>(клавиша ;)</small></h3>
       <div class="presets"><button data-sw="stock" aria-pressed="${sim.sw === 'stock'}">Штатное ПО<small>очки как экран + кнопки</small></button><button data-sw="sdk" aria-pressed="${sim.sw === 'sdk'}">Своё ПО на SDK<small>наш клиент: поза, камера, метки</small></button></div>
@@ -1425,6 +1431,15 @@ async function main() {
   }
   addEventListener('resize', resize); resize();
 
+  // ---------- реальные очки: поза головы с моста позы (pkg1-sim-vm/tools/glasses_lab/pose_bridge.py) ----------
+  // ?pose=1 — адрес по умолчанию, ?pose=ws://host:port — свой; камера поворачивается вместе с головой в очках
+  let poseLink = null, poseBase = null;
+  if (q.get('pose')) {
+    const url = q.get('pose') === '1' ? DEFAULT_POSE_URL : q.get('pose');
+    poseLink = new PoseLink(url, { onState: (st) => { if (st === 'связь есть') poseBase = null; app.notify(`Очки (мост позы ${url}): ${st}`, 4); } });
+  }
+  if (MEASURED.length) console.info('[замеры] подставлены для', MEASURED.join(', '));
+
   // ---------- кадр ----------
   const eyeOnV = new THREE.Vector2(1, 1);
   const gazeRay = new THREE.Raycaster();
@@ -1452,6 +1467,13 @@ async function main() {
     tickHolo(t);
     if (frame % perf.shadowEvery === 0) renderer.shadowMap.needsUpdate = true;
     if (debug) orbit.update(); else player.update(dt);
+    // голова в реальных очках (мост позы): курс и тангаж камеры — от очков, ходьба — как обычно
+    if (poseLink?.fresh && player.mode !== 'inspect') {
+      const r = poseLink.last.rel;
+      poseBase ??= player.yaw;
+      player.yaw = poseBase + r.yaw;
+      player.pitch = THREE.MathUtils.clamp(r.pitch, -1.4, 1.4);
+    }
     updateScenario(dt);
     // время участка и таймеры
     run.tick((dt * app.speed) / 60);
@@ -1525,7 +1547,7 @@ async function main() {
     });
     vision.u.flash.value = Math.max(0, vision.u.flash.value - dt * 2.5);
     if (frame % 10 === 0) {
-      $('status').textContent = `${VIEW_LABEL[vision.view].toLowerCase()}${params.eyes === 'both' ? '' : params.eyes === 'L' ? ', левый глаз' : ', правый глаз'} · ${app.plantClock()} ×${app.speed} · ${run.step.id} · фокус ${eye.focusDist > 20 ? '∞' : `${eye.focusDist.toFixed(2)} м`} · зрачок ${eye.pupil.toFixed(1)} мм · ${sim.glasses ? `${sim.device.name} ${sim.caps.mode === 'stock' ? 'штатное ПО' : sim.caps.windows === '6dof' ? '6DoF' : '3DoF'}, пропускание ${(transmitAt(sim.device, sim.dimLevel) * 100).toFixed(0)} %${sim.dimMode === 'auto' && sim.device.dimLevels ? ' (авто)' : ''}` : 'без очков'}${player.mode === 'inspect' ? ' · осмотр (Esc)' : ''}${auto.on ? (auto.paused ? ' · имитация: пауза (I)' : ` · имитация: ${auto.phaseLabel()}`) : ''}`;
+      $('status').textContent = `${VIEW_LABEL[vision.view].toLowerCase()}${params.eyes === 'both' ? '' : params.eyes === 'L' ? ', левый глаз' : ', правый глаз'} · ${app.plantClock()} ×${app.speed} · ${run.step.id} · фокус ${eye.focusDist > 20 ? '∞' : `${eye.focusDist.toFixed(2)} м`} · зрачок ${eye.pupil.toFixed(1)} мм · ${sim.glasses ? `${sim.device.name} ${sim.caps.mode === 'stock' ? 'штатное ПО' : sim.caps.windows === '6dof' ? '6DoF' : '3DoF'}, пропускание ${(transmitAt(sim.device, sim.dimLevel) * 100).toFixed(0)} %${sim.dimMode === 'auto' && sim.device.dimLevels ? ' (авто)' : ''}` : 'без очков'}${poseLink ? ` · очки: ${poseLink.fresh ? `${poseLink.hz.toFixed(0)} Гц` : poseLink.state}` : ''}${player.mode === 'inspect' ? ' · осмотр (Esc)' : ''}${auto.on ? (auto.paused ? ' · имитация: пауза (I)' : ` · имитация: ${auto.phaseLabel()}`) : ''}`;
       const c = $('card');
       if (!c.hidden && c.dataset.kind === 'vision' && $('v_focus')) {
         $('v_focus').textContent = eye.focusDist > 20 ? '∞' : `${eye.focusDist.toFixed(2)} м`;
@@ -1550,7 +1572,7 @@ async function main() {
   if (q.get('train') === '1') startTraining(true);
   if (tp.on) setTP(true);
   window.__demo = {
-    ready: true, scene, world, run, cam, player, eye, vision, app, mgr, panels, viz, finishIntro, inspectAtGaze, sim, params, auto, setDevice, act, asm, tp, worker, stations, perf,
+    ready: true, poseLink, measured: MEASURED, scene, world, run, cam, player, eye, vision, app, mgr, panels, viz, finishIntro, inspectAtGaze, sim, params, auto, setDevice, act, asm, tp, worker, stations, perf,
     get activeStation() { return activeSt; },
     // для проверок: перескочить к этапу сценария
     jump(state) {

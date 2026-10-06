@@ -1,0 +1,30 @@
+{
+  "device": "viture-luma-ultra",
+  "date": "2026-11-20",
+  "by": "Пример: файлы с «_» в начале имени симулятор не читает",
+  "values": {
+    "nits": 1300,
+    "fovDiag": 51.5,
+    "transmit": 0.38,
+    "refresh": 90,
+    "latencyMs": 22,
+    "driftDegMin": 0,
+    "weightG": 84,
+    "distM": 4,
+    "imuHz": 1000,
+    "poseNoiseDeg": 0.03
+  },
+  "sdk": {
+    "latencyMs": 19,
+    "hz": 90,
+    "trackMM": 1.2,
+    "trackDeg": 0.05
+  },
+  "method": {
+    "nits": "люксметр через линзу очков, lab.html → «Яркость», белое поле 100 %, пересчёт лк → кд/м²",
+    "fovDiag": "lab.html → «Поле», края окна по градусной сетке",
+    "latencyMs": "lab.html → «Задержка»: съёмка телефоном 240 к/с, счётчик кадров на мониторе и в очках",
+    "driftDegMin": "make lab-record + make lab-analyze, очки неподвижно 5 мин"
+  },
+  "notes": "Скопируйте в <id-модели>.json (id — из src/galley/glasses.js) и впишите свои значения."
+}

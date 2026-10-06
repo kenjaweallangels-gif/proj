@@ -28,8 +28,18 @@
 11. **Коммиты** после каждого зелёного шага, сообщение: `pkgN: что сделано`.
 
 ## Как запускать
+- Первый раз на ПК: Windows — `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1`, Linux/mac/WSL — `bash scripts/setup.sh`
+  (`--full` / `-Full` — полный набор pkg1: сервер, CAD, голос).
 - pkg1: `cd pkg1-sim-vm && make venv && make test` · сервер: `make server` · симулятор: `make sim`
+  (на Windows без WSL: `.venv\Scripts\python -m pytest -q tests` при `PYTHONPATH=core;.;tools`)
 - pkg2: `cd pkg2-demo-web && npm install && npm run dev` · тесты: `npm test` · браузерный тест: `npm run build && npm run smoke`
+- Стенд очков: `make lab-detect | lab-pose-demo | lab-pose SRC=viture | lab-record | lab-analyze DEVICE=… | lab-camera CAM=…`
+  (Windows: `scripts\lab.ps1 detect | pose-demo | pose | record | analyze | camera`), страница `pkg2-demo-web/lab.html`.
+- Симулятор с головой в реальных очках: `galley.html?pose=1` (мост позы `tools/glasses_lab/pose_bridge.py`).
+
+## Git
+- Работай в ветке задачи, коммит после каждого зелёного шага (п. 11), `git push`, затем PR в `main`.
+- Не коммить: `vendor/` (SDK очков — закрытые лицензии), записи сеансов `rec/`, реальные модели и КД (`data/real/`).
 
 ## Где что лежит
 - Архитектура: `docs/01_architecture.md`
@@ -39,3 +49,5 @@
 - Алгоритмы: `docs/05_algorithms.md`
 - Тесты: `docs/06_testing.md`
 - Дорожная карта: `docs/07_roadmap.md`
+- Очки: `docs/09_hardware_glasses.md`, своё ПО на SDK `docs/10_sdk_glasses.md`, стенд очков `docs/12_glasses_lab.md`
+- Замеры очков → симулятор: `pkg2-demo-web/measurements/*.json` (пишет стенд, читает `src/galley/measured.js`)

@@ -2,7 +2,7 @@
 PY := .venv/bin/python
 PKG := ../data/examples/op040_shelf_bench.json
 
-.PHONY: venv test server sim sim-cli sim-test sim-shot replay-test godot-assets markers package-040 db-up db-down clean
+.PHONY: venv test server sim sim-cli sim-test sim-shot replay-test godot-assets markers package-040 db-up db-down clean lab-detect lab-pose lab-pose-demo lab-record lab-analyze lab-camera
 
 venv:
 	python3 -m venv .venv && .venv/bin/pip install -U pip wheel && .venv/bin/pip install -r requirements.txt
@@ -44,6 +44,21 @@ godot-assets:       ## текстуры меток, GLB-заглушки, усл
 
 package-040:        ## собрать пакет 040 из CSV технолога
 	PYTHONPATH=core:. $(PY) tools/tp_csv_to_json.py ../data/examples/op040_csv out/op040.json
+
+# ---------- стенд очков (docs/12_glasses_lab.md) ----------
+LAB := PYTHONPATH=core:.:tools $(PY) -m glasses_lab
+lab-detect:         ## найти очки: USB, мониторы, камеры
+	$(LAB).detect --cameras --json out/lab/detect.json
+lab-pose-demo:      ## мост позы с синтетикой (проверка связи с симулятором без очков)
+	$(LAB).pose_bridge --source demo
+lab-pose:           ## мост позы с очков: SRC=viture | xrlinux | replay:rec/pose.csv
+	$(LAB).pose_bridge --source $(or $(SRC),viture)
+lab-record:         ## запись позы в покое 300 с: SRC=… OUT=rec/still.csv
+	$(LAB).pose_bridge --source $(or $(SRC),viture) --record $(or $(OUT),rec/still.csv) --seconds 300
+lab-analyze:        ## дрейф и шум записи: IN=rec/still.csv DEVICE=viture-luma-ultra (DEVICE — сохранить в замеры)
+	$(LAB).imu_analyze $(or $(IN),rec/still.csv) --still $(if $(DEVICE),--save $(DEVICE),)
+lab-camera:         ## камера очков: CAM=индекс
+	$(LAB).camera_check --cam $(or $(CAM),0)
 
 db-up:
 	docker compose up -d db

@@ -8,8 +8,41 @@
 | `pkg1-sim-vm/` | имитация очков, ядро (трекинг, шаги, голос), сервер цеха, конвейер CAD → GLB, клиент Godot |
 | `pkg2-demo-web/` | веб-демо Vite + Three.js, фотореалистичный рендер — `pkg2-demo-web/README.md` |
 | `pkg2-demo-web/galley.html` | **симулятор участка**: приход сборщика, AR-очки, сборка кухонного модуля КМ-2 на стапеле, автоматическая имитация сборки, профили очков VITURE и XREAL (до Aura 70°), окна КД/ТП/чата, модель зрения, голосовое управление |
+| `pkg2-demo-web/lab.html` | **стенд очков**: тестовые картинки на дисплее очков (поле, резкость, читаемость, яркость, стерео, задержка), поза головы с очков, форма замеров → профили симулятора |
+| `pkg1-sim-vm/tools/glasses_lab/` | стенд очков на Python: поиск очков на USB, мост позы → симулятор, запись и анализ дрейфа, камера и метки |
 | `pkg2-demo-web/tablet.html` | **планшет сборщика** — пульт к очкам (переход, контроль, КД, чат, настройки); связь через сервер участка `/ws/remote/{стапель}` |
 | `data/examples/` | пакеты операций 040 (верстак) и 070 (полка в фюзеляже), GLB, листы КД |
+
+## Развернуть у себя на ПК и продолжить работу
+
+Репозиторий: **https://github.com/kenjaweallangels-gif/proj**. Пока PR не слит в `main`, вся работа лежит в ветке `claude/photorealistic-project-qfsnz2`.
+
+```bash
+git clone https://github.com/kenjaweallangels-gif/proj.git
+cd proj
+git checkout claude/photorealistic-project-qfsnz2      # после слияния PR — просто main
+```
+
+Установка: проверяет инструменты, ставит зависимости, прогоняет тесты.
+- **Windows 10/11:** `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1`.
+  Нужны Git, Node.js 22 LTS, Python 3.11+: `winget install Git.Git OpenJS.NodeJS.LTS Python.Python.3.12`.
+- **Linux, macOS, WSL:** `bash scripts/setup.sh`. С ключом `--full` ставится полный набор pkg1 (сервер, CAD, голос).
+
+Запуск:
+```bash
+cd pkg2-demo-web && npm run dev
+# симулятор участка  http://localhost:5173/galley.html   (обучение — #train, голова в очках — ?pose=1)
+# стенд очков        http://localhost:5173/lab.html
+```
+
+Работа с ИИ-ассистентом:
+- открыть папку `proj` в **Cursor**, **Codex** или **Claude Code**;
+- правила проекта ассистенты читают сами: Codex и Cursor — `AGENTS.md`, Claude Code — `CLAUDE.md`, Cursor — также `.cursor/rules/`;
+- задачи — по промптам `*/prompts/NN_*.md`;
+- после каждого зелёного шага: `git add -A && git commit -m "pkgN: что сделано" && git push`, затем PR в `main` на GitHub.
+
+Когда приедут очки: подключить к ПК по USB-C и пройти `docs/12_glasses_lab.md`. Там описаны тестовые картинки на дисплее очков, замеры,
+поза головы в симуляторе, запись и анализ дрейфа, а также подключение VITURE SDK (`pkg1-sim-vm/prompts/11`, `12`).
 
 ## Быстрый старт демо
 ```bash

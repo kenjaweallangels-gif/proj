@@ -56,6 +56,8 @@ const cases = [
   ['galley_training', 'galley.html?intro=0&train=1&field=0&tts=0'],
   // режим ПО очков: штатно (очки как экран) и своё ПО на SDK для закупаемого комплекта XREAL One Pro + Eye
   ['galley_sw_stock', 'galley.html?step=090.02&field=0&sw=stock'],
+  // стенд очков: тестовые картинки на экране очков (2D и стерео SBS)
+  ['lab_field', 'lab.html?p=field&glasses=lumaultra'],
   ['galley_sw_sdk_oneproeye', 'galley.html?step=090.02&field=0&glasses=oneproeye&sw=sdk'],
 ];
 let failed = 0;
