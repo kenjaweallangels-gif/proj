@@ -1,0 +1,21 @@
+# Переводы строк: в репозитории — LF (скрипты bash, Makefile, Python, JS работают на Linux/mac и в WSL),
+# PowerShell и .bat — CRLF для Windows. Git на Windows сам отдаёт нужные окончания.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+# таблицы технолога (выгрузка Excel, CRLF) — как есть
+*.csv -text
+
+# Двоичные файлы — без преобразований
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.glb binary
+*.gltf -text
+*.pdf binary
+*.step binary
+*.stp binary
+*.zip binary
+*.onnx binary

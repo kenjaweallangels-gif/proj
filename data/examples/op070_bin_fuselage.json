@@ -1,0 +1,779 @@
+{
+ "schema_version": "1.0",
+ "operation": {
+  "id": "070",
+  "title": "Монтаж полки багажной, шп. 17–19",
+  "product": "АИ.8120.300 МЧ",
+  "revision": "Б",
+  "workplace": "Секция Ф3, стапель 2",
+  "units": "mm"
+ },
+ "models": [
+  {
+   "id": "m_op070",
+   "uri": "models/op070_bin_module.glb"
+  }
+ ],
+ "anchors": {
+  "reference_frame": "fuselage_frame_18",
+  "markers": [
+   {
+    "id": 17,
+    "dictionary": "DICT_6X6_250",
+    "size_mm": 100,
+    "pose": {
+     "position": [
+      -1000,
+      1450.8,
+      -1785.6
+     ],
+     "rotation": [
+      0.78071,
+      0.0,
+      -0.0,
+      0.6249
+     ]
+    },
+    "note": "струбцина на шп. 17"
+   },
+   {
+    "id": 19,
+    "dictionary": "DICT_6X6_250",
+    "size_mm": 100,
+    "pose": {
+     "position": [
+      1000,
+      1450.8,
+      -1785.6
+     ],
+     "rotation": [
+      0.78071,
+      0.0,
+      -0.0,
+      0.6249
+     ]
+    },
+    "note": "струбцина на шп. 19"
+   },
+   {
+    "id": 3,
+    "dictionary": "DICT_6X6_250",
+    "size_mm": 100,
+    "pose": {
+     "position": [
+      -900,
+      16,
+      -1250
+     ],
+     "rotation": [
+      0,
+      0,
+      0,
+      1
+     ]
+    },
+    "note": "рельс пола, левый"
+   },
+   {
+    "id": 5,
+    "dictionary": "DICT_6X6_250",
+    "size_mm": 100,
+    "pose": {
+     "position": [
+      900,
+      16,
+      -1250
+     ],
+     "rotation": [
+      0,
+      0,
+      0,
+      1
+     ]
+    },
+    "note": "рельс пола, правый"
+   }
+  ],
+  "check_distance": {
+   "from": [
+    -1000,
+    1450.8,
+    -1785.6
+   ],
+   "to": [
+    1000,
+    1450.8,
+    -1785.6
+   ],
+   "nominal_mm": 2000,
+   "tol_mm": 2
+  }
+ },
+ "parts": [
+  {
+   "id": "K3140-L",
+   "designation": "К-3140",
+   "name": "Кронштейн подвески левый",
+   "model": "m_op070",
+   "node": "K3140_L",
+   "fallback": {
+    "type": "plate",
+    "size_mm": [
+     7,
+     120,
+     180
+    ],
+    "color": "#a9b0b7"
+   },
+   "target": {
+    "position": [
+     -528.5,
+     2060.5,
+     -1609.0
+    ],
+    "rotation": [
+     0,
+     0,
+     0,
+     1
+    ]
+   },
+   "source": {
+    "kind": "cart",
+    "cell": "A",
+    "position": [
+     920,
+     870,
+     -520
+    ]
+   },
+   "kd": {
+    "sheet": "kd2",
+    "position": "1"
+   },
+   "mass_kg": 0.35
+  },
+  {
+   "id": "K3140-R",
+   "designation": "К-3140",
+   "name": "Кронштейн подвески правый",
+   "model": "m_op070",
+   "node": "K3140_R",
+   "fallback": {
+    "type": "plate",
+    "size_mm": [
+     7,
+     120,
+     180
+    ],
+    "color": "#a9b0b7"
+   },
+   "target": {
+    "position": [
+     528.5,
+     2060.5,
+     -1609.0
+    ],
+    "rotation": [
+     0,
+     0,
+     0,
+     1
+    ]
+   },
+   "source": {
+    "kind": "cart",
+    "cell": "A",
+    "position": [
+     1060,
+     870,
+     -520
+    ]
+   },
+   "kd": {
+    "sheet": "kd2",
+    "position": "1"
+   },
+   "mass_kg": 0.35
+  },
+  {
+   "id": "PB12",
+   "designation": "ПБ-12",
+   "name": "Полка багажная, модуль 1560",
+   "model": "m_op070",
+   "node": "PB12",
+   "fallback": {
+    "type": "box",
+    "size_mm": [
+     1560,
+     495,
+     620
+    ],
+    "color": "#d9d7d0"
+   },
+   "target": {
+    "position": [
+     0,
+     1745,
+     -1330
+    ],
+    "rotation": [
+     0,
+     0,
+     0,
+     1
+    ]
+   },
+   "source": {
+    "kind": "lift",
+    "position": [
+     0,
+     1025,
+     -1210
+    ]
+   },
+   "kd": {
+    "sheet": "kd2",
+    "position": "2"
+   },
+   "mass_kg": 14.5
+  },
+  {
+   "id": "T45-L",
+   "designation": "Т-45",
+   "name": "Тяга регулируемая",
+   "model": "m_op070",
+   "node": "T45_L",
+   "fallback": {
+    "type": "cylinder",
+    "size_mm": [
+     16,
+     857,
+     16
+    ],
+    "color": "#b9bec4"
+   },
+   "target": {
+    "position": [
+     -455.0,
+     2366.9,
+     -1019.0
+    ],
+    "rotation": [
+     0.28148,
+     -0.0,
+     0.06702,
+     0.95722
+    ]
+   },
+   "source": {
+    "kind": "cart",
+    "cell": "B",
+    "position": [
+     1050,
+     875,
+     -330
+    ]
+   },
+   "kd": {
+    "sheet": "kd2",
+    "position": "3"
+   },
+   "mass_kg": 0.3
+  },
+  {
+   "id": "T45-R",
+   "designation": "Т-45",
+   "name": "Тяга регулируемая",
+   "model": "m_op070",
+   "node": "T45_R",
+   "fallback": {
+    "type": "cylinder",
+    "size_mm": [
+     16,
+     857,
+     16
+    ],
+    "color": "#b9bec4"
+   },
+   "target": {
+    "position": [
+     455.0,
+     2366.9,
+     -1019.0
+    ],
+    "rotation": [
+     0.28148,
+     0.0,
+     -0.06702,
+     0.95722
+    ]
+   },
+   "source": {
+    "kind": "cart",
+    "cell": "B",
+    "position": [
+     1050,
+     875,
+     -210
+    ]
+   },
+   "kd": {
+    "sheet": "kd2",
+    "position": "3"
+   },
+   "mass_kg": 0.3
+  },
+  {
+   "id": "PP7",
+   "designation": "ПП-7",
+   "name": "Панель потолочная",
+   "model": "m_op070",
+   "node": "PP7",
+   "fallback": {
+    "type": "plate",
+    "size_mm": [
+     1046,
+     14,
+     1080
+    ],
+    "color": "#e6e2d9"
+   },
+   "target": {
+    "position": [
+     0,
+     2160,
+     -580
+    ],
+    "rotation": [
+     0.14142,
+     0.0,
+     0.0,
+     0.98995
+    ]
+   },
+   "source": {
+    "kind": "rack",
+    "position": [
+     -950,
+     780,
+     550
+    ]
+   },
+   "kd": {
+    "sheet": "kd2",
+    "position": "4"
+   },
+   "mass_kg": 3.2
+  }
+ ],
+ "fasteners": [
+  {
+   "id": "B1",
+   "type": "bolt",
+   "designation": "Болт M6×20",
+   "part": "K3140-L",
+   "position": [
+    -516.5,
+    2090.5,
+    -1629.0
+   ],
+   "axis": [
+    1,
+    0,
+    0
+   ],
+   "torque_nm": 6.8,
+   "lock": "self_locking_nut",
+   "new_only": true
+  },
+  {
+   "id": "B2",
+   "type": "bolt",
+   "designation": "Болт M6×20",
+   "part": "K3140-L",
+   "position": [
+    -516.5,
+    2080.5,
+    -1574.0
+   ],
+   "axis": [
+    1,
+    0,
+    0
+   ],
+   "torque_nm": 6.8,
+   "lock": "self_locking_nut",
+   "new_only": true
+  },
+  {
+   "id": "B3",
+   "type": "bolt",
+   "designation": "Болт M6×20",
+   "part": "K3140-R",
+   "position": [
+    516.5,
+    2090.5,
+    -1629.0
+   ],
+   "axis": [
+    -1,
+    0,
+    0
+   ],
+   "torque_nm": 6.8,
+   "lock": "self_locking_nut",
+   "new_only": true
+  },
+  {
+   "id": "B4",
+   "type": "bolt",
+   "designation": "Болт M6×20",
+   "part": "K3140-R",
+   "position": [
+    516.5,
+    2080.5,
+    -1574.0
+   ],
+   "axis": [
+    -1,
+    0,
+    0
+   ],
+   "torque_nm": 6.8,
+   "lock": "self_locking_nut",
+   "new_only": true
+  },
+  {
+   "id": "Q1",
+   "type": "qpin",
+   "designation": "Палец быстросъёмный Ø6",
+   "part": "PB12",
+   "position": [
+    -500,
+    1972,
+    -1460
+   ],
+   "axis": [
+    1,
+    0,
+    0
+   ],
+   "lock": "none"
+  },
+  {
+   "id": "Q2",
+   "type": "qpin",
+   "designation": "Палец быстросъёмный Ø6",
+   "part": "PB12",
+   "position": [
+    500,
+    1972,
+    -1460
+   ],
+   "axis": [
+    -1,
+    0,
+    0
+   ],
+   "lock": "none"
+  },
+  {
+   "id": "P1",
+   "type": "cpin",
+   "designation": "Палец Ø6 + шплинт 1,6×16",
+   "part": "T45-L",
+   "position": [
+    -400,
+    2010,
+    -1250
+   ],
+   "axis": [
+    -1,
+    0,
+    0
+   ],
+   "lock": "cotter"
+  },
+  {
+   "id": "P2",
+   "type": "cpin",
+   "designation": "Палец Ø6 + шплинт 1,6×16",
+   "part": "T45-L",
+   "position": [
+    -510,
+    2723.8,
+    -788.0
+   ],
+   "axis": [
+    -1,
+    0,
+    0
+   ],
+   "lock": "cotter"
+  },
+  {
+   "id": "P3",
+   "type": "cpin",
+   "designation": "Палец Ø6 + шплинт 1,6×16",
+   "part": "T45-R",
+   "position": [
+    400,
+    2010,
+    -1250
+   ],
+   "axis": [
+    1,
+    0,
+    0
+   ],
+   "lock": "cotter"
+  },
+  {
+   "id": "P4",
+   "type": "cpin",
+   "designation": "Палец Ø6 + шплинт 1,6×16",
+   "part": "T45-R",
+   "position": [
+    510,
+    2723.8,
+    -788.0
+   ],
+   "axis": [
+    1,
+    0,
+    0
+   ],
+   "lock": "cotter"
+  },
+  {
+   "id": "L1",
+   "type": "qturn",
+   "designation": "Замок ¼ оборота",
+   "part": "PP7",
+   "position": [
+    -460,
+    2013.5,
+    -1070
+   ],
+   "axis": [
+    0,
+    -1,
+    0
+   ],
+   "lock": "none"
+  },
+  {
+   "id": "L2",
+   "type": "qturn",
+   "designation": "Замок ¼ оборота",
+   "part": "PP7",
+   "position": [
+    460,
+    2013.5,
+    -1070
+   ],
+   "axis": [
+    0,
+    -1,
+    0
+   ],
+   "lock": "none"
+  },
+  {
+   "id": "L3",
+   "type": "qturn",
+   "designation": "Замок ¼ оборота",
+   "part": "PP7",
+   "position": [
+    -460,
+    2262.7,
+    -120
+   ],
+   "axis": [
+    0,
+    -1,
+    0
+   ],
+   "lock": "none"
+  },
+  {
+   "id": "L4",
+   "type": "qturn",
+   "designation": "Замок ¼ оборота",
+   "part": "PP7",
+   "position": [
+    460,
+    2262.7,
+    -120
+   ],
+   "axis": [
+    0,
+    -1,
+    0
+   ],
+   "lock": "none"
+  }
+ ],
+ "kd_sheets": [
+  {
+   "id": "kd2",
+   "uri": "kd/AI.8120.300_MCH_list2.png",
+   "title": "АИ.8120.300 МЧ, лист 2",
+   "positions": {
+    "1": [
+     80,
+     70,
+     160,
+     80
+    ],
+    "2": [
+     300,
+     70,
+     160,
+     80
+    ],
+    "3": [
+     520,
+     70,
+     160,
+     80
+    ],
+    "4": [
+     80,
+     220,
+     160,
+     80
+    ]
+   }
+  }
+ ],
+ "steps": [
+  {
+   "id": "S1",
+   "n": 1,
+   "title": "Привязка к шпангоутам 17–19",
+   "kind": "align",
+   "confirm": "voice",
+   "norm_s": 45,
+   "notes": "4 метки: 2 на шпангоутах, 2 на рельсах пола"
+  },
+  {
+   "id": "S2",
+   "n": 2,
+   "title": "Кронштейны подвески К-3140",
+   "kind": "install",
+   "parts": [
+    "K3140-L",
+    "K3140-R"
+   ],
+   "fasteners": [
+    "B1",
+    "B2",
+    "B3",
+    "B4"
+   ],
+   "tool": "Ключ динамометрический 2–10 Н·м",
+   "params": {
+    "torque_nm": 6.8
+   },
+   "confirm": "voice",
+   "norm_s": 300,
+   "kd": [
+    "kd2"
+   ],
+   "notes": "Гайки самоконтрящиеся только новые"
+  },
+  {
+   "id": "S3",
+   "n": 3,
+   "title": "Полка багажная ПБ-12",
+   "kind": "install",
+   "parts": [
+    "PB12"
+   ],
+   "fasteners": [
+    "Q1",
+    "Q2"
+   ],
+   "tool": "Подъёмник полок",
+   "confirm": "voice",
+   "norm_s": 240,
+   "kd": [
+    "kd2"
+   ],
+   "notes": "Подъём 0,72 м плавно, вдвоём"
+  },
+  {
+   "id": "S4",
+   "n": 4,
+   "title": "Тяги регулируемые Т-45",
+   "kind": "adjust",
+   "parts": [
+    "T45-L",
+    "T45-R"
+   ],
+   "fasteners": [
+    "P1",
+    "P2",
+    "P3",
+    "P4"
+   ],
+   "tool": "Шаблон зазора 3 мм, плоскогубцы",
+   "params": {
+    "gap_mm": 3
+   },
+   "check": {
+    "type": "gap",
+    "nominal_mm": 3,
+    "tol_mm": 1
+   },
+   "critical": true,
+   "confirm": "value",
+   "norm_s": 360,
+   "kd": [
+    "kd2"
+   ],
+   "notes": "Шплинты развести"
+  },
+  {
+   "id": "S5",
+   "n": 5,
+   "title": "Панель потолочная ПП-7",
+   "kind": "install",
+   "parts": [
+    "PP7"
+   ],
+   "fasteners": [
+    "L1",
+    "L2",
+    "L3",
+    "L4"
+   ],
+   "tool": "Отвёртка шлицевая",
+   "check": {
+    "type": "flush",
+    "nominal_mm": 0,
+    "tol_mm": 1
+   },
+   "confirm": "voice",
+   "norm_s": 240,
+   "kd": [
+    "kd2"
+   ]
+  },
+  {
+   "id": "S6",
+   "n": 6,
+   "title": "Контроль и фото",
+   "kind": "check",
+   "check": {
+    "type": "lock",
+    "text": "Зазоры, контровка шплинтов, открывание крышки"
+   },
+   "critical": true,
+   "confirm": "photo",
+   "norm_s": 120
+  }
+ ]
+}

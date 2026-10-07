@@ -1,0 +1,10 @@
+---
+description: Клиент и симулятор на Godot 4 (pkg1-sim-vm/godot)
+globs: pkg1-sim-vm/godot/**
+alwaysApply: false
+---
+- Godot 4.7, GDScript со статической типизацией (var x: float). Сцены только .tscn (текст).
+- Клиент получает позу и события шагов от ядра по UDP JSON (порт 47100) — формат в docs/02_hal_contracts.md.
+- Голограммы: материал unshaded, additive, без записи глубины. HUD — Control-узлы в SubViewport, наложенные на 3D.
+- SimRig: камера SubViewport с параметрами очков из docs/09_hardware_glasses.md; кадры отдавать ядру через v4l2loopback или UDP.
+- Не используй сторонние платные плагины. OpenXR — только через встроенный модуль Godot.

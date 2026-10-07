@@ -1,0 +1,19 @@
+; Godot 4.7 — клиент отображения и симулятор очков. Открыть: godot --path pkg1-sim-vm/godot
+config_version=5
+
+[application]
+
+config/name="AR-сборка: клиент и симулятор очков"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+anti_aliasing/quality/msaa_3d=2

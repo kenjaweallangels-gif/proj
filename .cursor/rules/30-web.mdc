@@ -1,0 +1,13 @@
+---
+description: Веб-демо Vite + Three.js (pkg2-demo-web)
+globs: pkg2-demo-web/**
+alwaysApply: false
+---
+- Three.js из npm (версия в package.json), ES-модули, без фреймворков UI. Vite для сборки.
+- Сцена, движок шагов, HUD и постобработка — в отдельных модулях src/engine и src/scene.
+- Эталон поведения и вида — страницы в pkg2-demo-web/reference/*.html. Переноси оттуда идеи, не копируй монолит целиком.
+- Данные операции, GLB и листы КД копируются из ../data/examples в public/data скриптом scripts/sync-data.mjs
+  (запускается перед dev/build). Не правь public/data руками — правь data/examples.
+- Модели GLB — public/data/models (uri из пакета). Если файла или узла нет — fallback на примитивы, демо не должно падать.
+- Голограммы — слой 1 (LAYER_HOLO), реальность — слой 0. Голограммы видны только в окне 52° (src/engine/composite.js).
+- Тесты: vitest для движка шагов, разбора пакета и голоса (`npm test`); браузерный дымовой тест `npm run smoke`.
