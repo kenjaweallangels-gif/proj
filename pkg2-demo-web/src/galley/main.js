@@ -334,7 +334,7 @@ async function main() {
       </div>
     </div>
     <div class="train pe" id="train" hidden>
-      <div class="tr-head"><span id="tr_n"></span><b id="tr_title"></b><span class="tr-btns"><button id="tr_guide" title="Камера ведёт по урокам (выкл. — ходите сами)">🎥</button><button id="tr_tts" title="Озвучивать уроки">🔊</button></span></div>
+      <div class="tr-head"><span id="tr_n"></span><b id="tr_title"></b><span class="tr-btns"><button id="tr_guide" class="off" title="Камера ведёт по урокам (по умолчанию выкл. — ходите сами)">🎥</button><button id="tr_tts" title="Озвучивать уроки">🔊</button></span></div>
       <div id="tr_body"></div>
     </div>
     <div class="status" id="status"></div>
@@ -1058,9 +1058,9 @@ async function main() {
     onEnd: () => { applyState(); showStep(); viz.setAnchored(sim.caps.holoOnPart); },
   });
   // обучающая сборка: учебная цветная модель, уроки с пояснениями, советами и предупреждениями, 10 с на урок
-  const tr = { tts: q.get('tts') !== '0', lastSaid: -1, guide: q.get('trguide') !== '0', lastFocus: -1 };
+  const tr = { tts: q.get('tts') !== '0', lastSaid: -1, guide: q.get('trguide') === '1', lastFocus: -1 };   // по умолчанию сборщик ходит сам; 🎥 — камера ведёт
   const trainingAsm = trainingTarget(world, viz, {
-    onBegin: () => { auto.pause(); app.notify('Обучающая сборка КМ-2: детали — цветные полупрозрачные, у деталей — номера позиций. Пробел — пауза, , . — урок назад/вперёд, ⇧6 — закрыть', 7); },
+    onBegin: () => { auto.pause(); app.notify('Обучающая сборка КМ-2: детали цветные полупрозрачные, у деталей — номера позиций. Ходите и смотрите сами (WASD, мышь); 🎥 в карточке — камера поведёт по урокам. Пробел — пауза, , . — урок назад/вперёд, ⇧6 — закрыть', 8); },
     onEnd: () => { $('train').hidden = true; applyState(); showStep(); viz.setAnchored(sim.caps.holoOnPart); },
     onLesson: (L, i) => { trainCard(L, i); trainPlace(L, i); },
   });
@@ -1110,6 +1110,7 @@ async function main() {
     if (asm.open) asm.close();
     auto.pause();
     tr.lastSaid = -1; tr.lastFocus = -1;
+    if (!tr.guide && player.mode === 'auto') { player.path = null; player.mode = 'walk'; }   // персонаж свободен
     asm.openFor(trainingAsm, 0); asm.play(1);
     updateBar();
   }

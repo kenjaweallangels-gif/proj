@@ -35,13 +35,24 @@ const MATS = {};
 function mat(cat, hi = false) {
   const key = `${cat}${hi ? '+' : ''}`;
   if (MATS[key]) return MATS[key];
+  // окрашенная обшивка («…P»): цвет панели на 20 % к слоновой кости — окраска видна, а панели различимы
+  if (!CAT[cat] && cat.endsWith('P') && CAT[cat.slice(0, -1)]) {
+    const [c0, op0] = CAT[cat.slice(0, -1)];
+    CAT[cat] = [`#${new THREE.Color(c0).lerp(new THREE.Color(CAT.skinPainted[0]), 0.2).getHexString()}`, Math.max(op0, 0.5)];
+  }
   const [c, op] = CAT[cat];
   const m = new THREE.MeshStandardMaterial({
-    color: c, transparent: true, opacity: hi ? Math.min(1, op + 0.15) : op, roughness: 0.45, metalness: 0.1,
-    emissive: new THREE.Color(c), emissiveIntensity: hi ? 0.75 : cat.startsWith('skin') ? 0.12 : 0.22, depthWrite: op >= 0.7, side: THREE.DoubleSide,
+    // матовые (без бликов окружения, которые «белят» цвет), слегка светятся своим цветом — различимы в тени стапеля
+    color: c, transparent: true, opacity: hi ? Math.min(1, op + 0.15) : op, roughness: 0.85, metalness: 0, envMapIntensity: 0.35,
+    emissive: new THREE.Color(c), emissiveIntensity: hi ? 0.6 : 0.16, depthWrite: op >= 0.7, side: THREE.DoubleSide,
   });
   MATS[key] = m;
   return m;
+}
+
+const OUTL = {};
+function outlineMat(cat) {
+  return (OUTL[cat] ??= new THREE.LineBasicMaterial({ color: new THREE.Color(CAT[cat][0]).multiplyScalar(0.45), transparent: true, opacity: 0.85 }));
 }
 
 /** Текстура сот: шестигранные ячейки (≈ 20 мм на ячейку в учебном масштабе — чтобы было видно). */
@@ -66,8 +77,8 @@ function honeycombTexture() {
   return HEX;
 }
 function coreMaterial() {
-  return (MATS.core ??= new THREE.MeshStandardMaterial({ map: honeycombTexture(), color: '#ffc46a', transparent: true, opacity: 0.6,
-    roughness: 0.6, emissive: new THREE.Color('#ff8c00'), emissiveIntensity: 0.28, side: THREE.DoubleSide, depthWrite: false, alphaTest: 0.02 }));
+  return (MATS.core ??= new THREE.MeshStandardMaterial({ map: honeycombTexture(), color: '#ffb347', transparent: true, opacity: 0.5, envMapIntensity: 0.3,
+    roughness: 0.9, emissive: new THREE.Color('#ff8c00'), emissiveIntensity: 0.2, side: THREE.DoubleSide, depthWrite: false, alphaTest: 0.02 }));
 }
 
 const shapeOf = (pts, holes = []) => {
@@ -159,7 +170,7 @@ export function trainingTarget(world, viz, { onBegin, onEnd, onLesson } = {}) {
   const N = lessons.length;
   const states = [];
   const stAt = (i) => (states[i] ??= stateAt(lessons, i));
-  let style = 'glasses';
+  let style = 'holo';                               // учебная модель видна целиком и освещена; «Вид» — только в окне очков
   let B = null;                                     // построенная модель
   let lastI = -1;
   const kitWas = new Map();
@@ -181,13 +192,13 @@ export function trainingTarget(world, viz, { onBegin, onEnd, onLesson } = {}) {
     const PANEL_COL = ['#3d9bff', '#3fcf7a', '#a77bff', '#ffc23d', '#ff7aa8', '#2fd3c6', '#7fa8ff', '#ff9d4d', '#c6e04a', '#e47cff'];
     for (const [k, p] of S.PANELS.entries()) {
       const sk = `skin${k}`;
-      CAT[sk] = [PANEL_COL[k % PANEL_COL.length], 0.26];
+      CAT[sk] = [PANEL_COL[k % PANEL_COL.length], 0.45];
       const o = new THREE.Group();
       const shape = shapeOf(p.outline, p.holes), M = planeMatrix(p.plane, p.offset);
       const ext = (z0, d) => { const e = new THREE.ExtrudeGeometry(shape, { depth: d, bevelEnabled: false, curveSegments: 4 }); e.translate(0, 0, z0); e.applyMatrix4(M); return e; };
       const lo = new THREE.Mesh(ext(0, 0.8), mat(sk)), hi = new THREE.Mesh(ext(p.t - 0.8, 0.8), mat(sk));
       const core = new THREE.Mesh(ext(0.8, p.t - 1.6), coreMaterial());
-      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(ext(0, p.t), 25), new THREE.LineBasicMaterial({ color: CAT.edge[0], transparent: true, opacity: 0.7 }));
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(ext(0, p.t), 25), outlineMat(sk));
       o.add(lo, core, hi, edges);
       const outer = p.outerFace ? (p.outerFace === 'lo' ? hi : lo) : null;      // наружная (под плёнку) — не красится
       const gr = S.GROOVES.filter((x) => x.panel === p.id).map((x) => { const b = new THREE.BoxGeometry(...x.max.map((v, i) => v - x.min[i] + 1)); b.translate(...x.min.map((v, i) => (v + x.max[i]) / 2)); return b; });
@@ -219,6 +230,10 @@ export function trainingTarget(world, viz, { onBegin, onEnd, onLesson } = {}) {
       } else {
         const geo = mergeGeometries(ms.map((m) => { m4.multiplyMatrices(inv, m.matrixWorld); return pn(m.geometry, m4); }), false);
         const x = new THREE.Mesh(geo, cat === 'film' ? mat('film').clone() : mat(cat)); o.add(x); meshes.push({ m: x, cat });
+        // контур детали тёмным оттенком её цвета — соседние детали не сливаются
+        if (cat !== 'film' && (geo.index ? geo.index.count : geo.attributes.position.count) / 3 < 20000) {
+          const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 35), outlineMat(cat)); e.raycast = () => {}; o.add(e);
+        }
       }
       add(id, o, meshes);
     }
@@ -341,7 +356,7 @@ export function trainingTarget(world, viz, { onBegin, onEnd, onLesson } = {}) {
       for (const x of e.meshes) {
         x.m.material = x.cat === 'film' ? x.m.material : mat(x.cat);
         if (x.grow) x.m.geometry.setDrawRange(0, Infinity);
-        if (x.skin && st.painted) x.m.material = mat('skinPainted');
+        if (x.skin && st.painted) x.m.material = mat(`${x.cat}P`);
       }
     }
     // боковина на столе (плёнка уже наклеена или клеится сейчас)
@@ -497,7 +512,7 @@ export function trainingTarget(world, viz, { onBegin, onEnd, onLesson } = {}) {
       tool(k > 0 && k < 1 ? 'spray' : null, V(x, 1900 - row * 320, 1150));
       // окрашено всё, что выше текущего прохода краскопульта (проходы сверху вниз)
       const yNow = k >= 1 || stAt(lessons.indexOf(L)).painted ? -1e9 : 1900 - row * 320;     // второй слой — по окрашенному
-      for (const e of B.P.values()) for (const x2 of e.meshes) if (x2.skin) x2.m.material = e.center.y > yNow ? mat('skinPainted') : mat(x2.cat, L.parts.includes(e.f?.id));
+      for (const e of B.P.values()) for (const x2 of e.meshes) if (x2.skin) x2.m.material = e.center.y > yNow ? mat(`${x2.cat}P`) : mat(x2.cat, L.parts.includes(e.f?.id));
       return;
     }
     if (a === 'wire') {
