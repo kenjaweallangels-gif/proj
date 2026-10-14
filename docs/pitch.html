@@ -1,0 +1,947 @@
+<title>Чёрная капля</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya:ital,wght@0,400;0,500;0,700;1,400&family=Bad+Script&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=Cormorant+SC:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Marck+Script&display=swap">
+<style>
+/* Layout: one long nocturne. Bands darken and cool through the acts, then warm into mauve half-mourning and a lavender dawn at the end. Single deliberate dark look. */
+:root{
+  color-scheme: dark;
+  --ink:#08090d;
+  --soot:#111218;
+  --crepe:#181920;
+  --bone:#e8e0d0;
+  --ash:#a69e8b;
+  --dim:#736d62;
+  --gas:#e2a556;
+  --ember:#b8492c;
+  --mauve:#9c7db7;
+  --lav:#cdc1dd;
+  --dawn:#ece5ee;
+  --dawn-ink:#211c28;
+  --dawn-ash:#5e5569;
+  --line:rgba(232,224,208,.13);
+  --line-strong:rgba(232,224,208,.24);
+  --f-display:"Cormorant SC","Cormorant Garamond",Georgia,serif;
+  --f-serif:"Cormorant Garamond",Georgia,"Times New Roman",serif;
+  --f-body:"Alegreya",Georgia,"Times New Roman",serif;
+  --f-her:"Marck Script","Segoe Script","Apple Chancery",cursive;
+  --f-his:"Bad Script","Segoe Print","Bradley Hand",cursive;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--ink);color:var(--bone);font-family:var(--f-body);font-size:17px;line-height:1.62;margin:0;overflow-x:hidden}
+a{color:var(--gas)}
+:focus-visible{outline:2px solid var(--gas);outline-offset:3px}
+.band{width:100%;padding-block:clamp(56px,8vw,104px)}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.eyebrow{font-family:var(--f-mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--gas);margin:0 0 14px}
+h1,h2,h3{text-wrap:balance;font-weight:600;margin:0}
+h2{font-family:var(--f-display);font-size:clamp(32px,4.6vw,50px);line-height:1.04;letter-spacing:.02em}
+h3{font-family:var(--f-display);font-size:22px;letter-spacing:.03em;line-height:1.2}
+p{margin:0}
+.lede{font-size:clamp(18px,1.9vw,21px);max-width:62ch;color:var(--bone)}
+.muted{color:var(--ash)}
+.her{font-family:var(--f-her)}
+.his{font-family:var(--f-his)}
+.head{display:grid;gap:14px;margin-bottom:clamp(28px,4vw,44px);max-width:760px}
+
+/* ---------- hero ---------- */
+.hero{background:#05060a;padding-block:clamp(18px,3vw,32px) clamp(48px,7vw,88px)}
+.hero .wrap{max-width:1320px}
+figure{margin:0}
+.frame{position:relative;width:100%;aspect-ratio:21/9;max-width:100%;border:1px solid var(--line);background:#000;overflow:hidden}
+.frame canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.hud{position:absolute;left:clamp(10px,2.2%,28px);top:clamp(8px,3%,26px);display:grid;gap:clamp(4px,.8vw,10px);pointer-events:none;opacity:0;transition:opacity 1.2s ease}
+.hud.on,.hud-count.on{opacity:1}
+.hud-title{font-family:var(--f-display);font-size:clamp(12px,1.9vw,24px);letter-spacing:.06em;color:#efe7d6;text-shadow:0 1px 8px #000}
+.hud-tag{font-family:var(--f-serif);font-style:italic;font-size:clamp(11px,1.45vw,18px);color:#d3c8b3;text-shadow:0 1px 8px #000}
+.hud svg{width:clamp(110px,16vw,190px);height:auto;margin-top:4px}
+.hud-count{position:absolute;right:clamp(10px,2.4%,30px);bottom:clamp(8px,4%,28px);font-family:var(--f-display);font-size:clamp(11px,1.5vw,18px);letter-spacing:.08em;color:#d8cdb8;opacity:0;transition:opacity 1s ease;pointer-events:none;text-shadow:0 1px 6px #000}
+figcaption{font-family:var(--f-mono);font-size:12px;color:var(--dim);margin-top:10px;letter-spacing:.02em}
+.title-block{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:clamp(24px,5vw,72px);align-items:end;margin-top:clamp(28px,4vw,48px)}
+.title-block h1{font-family:var(--f-display);font-size:clamp(54px,10.5vw,138px);line-height:.86;letter-spacing:.015em;color:var(--bone)}
+.title-block h1 span{display:block;font-family:var(--f-serif);font-style:italic;font-weight:500;font-size:.24em;letter-spacing:.02em;color:var(--ash);margin-top:.5em;line-height:1.3}
+.epigraph{font-family:var(--f-her);font-size:clamp(22px,2.6vw,30px);line-height:1.35;color:#d9cfbd}
+.epigraph small{display:block;font-family:var(--f-mono);font-size:12px;color:var(--dim);margin-top:10px;letter-spacing:.04em}
+.logline{margin-top:clamp(28px,4vw,40px);max-width:70ch;font-size:clamp(18px,1.9vw,21px)}
+.facts{display:flex;flex-wrap:wrap;gap:10px 28px;margin-top:26px;padding-top:20px;border-top:1px solid var(--line);font-family:var(--f-mono);font-size:13px;color:var(--ash)}
+.facts b{font-family:var(--f-display);font-size:22px;font-weight:600;color:var(--bone);margin-right:6px;letter-spacing:.02em}
+
+/* ---------- requirements ---------- */
+.req{background:#0a0b12}
+.req-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 48px}
+.req-item{display:grid;grid-template-columns:minmax(0,150px) minmax(0,1fr);gap:18px;padding:16px 0;border-top:1px solid var(--line);align-content:start}
+.req-item dt{font-family:var(--f-display);font-size:18px;line-height:1.25;color:var(--gas);letter-spacing:.02em}
+.req-item dd{margin:0;color:var(--bone);font-size:16px}
+
+/* ---------- two planes ---------- */
+.planes{background:#0c0d12}
+.split{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:clamp(24px,4vw,56px);align-items:start}
+.frame.wide{aspect-ratio:16/9}
+.zoom-hint{position:absolute;left:12px;bottom:10px;font-family:var(--f-mono);font-size:11px;color:#b8ad98;background:rgba(0,0,0,.45);padding:4px 8px;letter-spacing:.04em;pointer-events:none}
+.bg-list{display:grid;gap:0;margin:0;padding:0;list-style:none}
+.bg-list li{display:grid;grid-template-columns:minmax(0,1fr);gap:4px;padding:14px 0;border-top:1px solid var(--line);align-content:start}
+.bg-list b{font-family:var(--f-display);font-weight:600;font-size:18px;letter-spacing:.02em}
+.bg-list span{color:var(--ash);font-size:15.5px}
+.layers{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;margin-top:clamp(40px,6vw,64px);border:1px solid var(--line)}
+.layer{padding:20px 18px 22px;border-left:1px solid var(--line);display:grid;gap:8px;align-content:start}
+.layer:first-child{border-left:0}
+.layer .n{font-family:var(--f-mono);font-size:11px;color:var(--dim);letter-spacing:.12em;text-transform:uppercase}
+.layer h3{font-size:24px}
+.layer p{font-size:15.5px;color:var(--ash)}
+.layer.truth{background:rgba(156,125,183,.10)}
+.layer.truth h3{color:var(--lav)}
+.voice{margin-top:22px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0;border:1px solid var(--line)}
+.voice div{padding:18px;display:grid;gap:6px}
+.voice div+div{border-left:1px solid var(--line)}
+.voice q{font-family:var(--f-serif);font-style:italic;font-size:22px;quotes:"«" "»"}
+.voice small{font-family:var(--f-mono);font-size:11px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase}
+
+/* ---------- chapters ---------- */
+.chapters{background:#0d0e11}
+.script{display:grid;grid-template-columns:repeat(15,minmax(0,1fr));height:54px;border:1px solid var(--line)}
+.script i{display:block}
+.stages{display:grid;grid-template-columns:4fr 3fr 3fr 1fr 2fr 2fr;margin-top:8px;font-family:var(--f-mono);font-size:11px;color:var(--dim);letter-spacing:.06em}
+.stages span{border-left:1px solid var(--line-strong);padding:4px 0 0 6px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.toggle-row{display:flex;flex-wrap:wrap;gap:14px 24px;align-items:center;justify-content:space-between;margin:34px 0 22px}
+.seg{display:inline-flex;border:1px solid var(--line-strong)}
+.seg button{font:500 14px var(--f-body);color:var(--ash);background:transparent;border:0;padding:9px 16px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--bone);color:var(--ink)}
+.toggle-row p{font-size:15px;color:var(--ash);max-width:56ch}
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px 22px}
+.card{display:grid;grid-template-rows:auto 1fr;min-width:0}
+.card .img{position:relative;aspect-ratio:2.25/1;overflow:hidden;border:1px solid var(--line);background:#000}
+.card img{width:100%;height:100%;object-fit:cover;display:block;filter:saturate(.95)}
+.card .swatch{position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:space-between;padding:10px 12px}
+.card .swatch b{font-family:var(--f-display);font-size:44px;line-height:1;font-weight:600;opacity:.9}
+.card .swatch small{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;opacity:.8}
+.card .body{display:grid;gap:6px;padding-top:12px;align-content:start}
+.card .meta{display:flex;gap:10px;flex-wrap:wrap;font-family:var(--f-mono);font-size:11px;color:var(--dim);letter-spacing:.06em;text-transform:uppercase}
+.card .meta .layer-tag{color:var(--gas)}
+.card h3{font-size:20px}
+.card .tag{font-family:var(--f-serif);font-style:italic;font-size:18px;color:#d6cbb6;line-height:1.3}
+.card .txt{font-size:15px;color:var(--ash)}
+.card .txt.second{display:none;color:var(--lav)}
+.chapters[data-reading="2"] .txt.first{display:none}
+.chapters[data-reading="2"] .txt.second{display:block}
+.chapters[data-reading="2"] .card .img{border-color:rgba(156,125,183,.5)}
+.chips{display:flex;gap:4px;margin-top:4px}
+.chips i{width:18px;height:8px;display:block}
+
+/* ---------- demo ---------- */
+.demo{background:#0b0c10}
+.tl{display:flex;width:100%;height:46px;border:1px solid var(--line);overflow:hidden}
+.tl div{height:100%;min-width:0;border-left:1px solid rgba(0,0,0,.6);position:relative}
+.tl div:first-child{border-left:0}
+.tl div span{position:absolute;left:6px;top:50%;transform:translateY(-50%);font-family:var(--f-mono);font-size:11px;color:rgba(255,248,235,.85);white-space:nowrap;text-shadow:0 1px 3px #000}
+.tl-axis{display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:11px;color:var(--dim);margin-top:6px}
+.beats{list-style:none;margin:28px 0 0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 28px}
+.beats li{display:grid;grid-template-columns:minmax(0,1fr);gap:4px;padding:16px 0;border-top:1px solid var(--line);align-content:start}
+.beats time{font-family:var(--f-mono);font-size:12px;color:var(--gas);letter-spacing:.04em}
+.beats b{font-family:var(--f-display);font-weight:600;font-size:19px;letter-spacing:.02em}
+.beats span{font-size:15px;color:var(--ash)}
+.beats .line{font-family:var(--f-her);font-size:19px;color:#d9cfbd}
+
+/* ---------- picture ---------- */
+.picture{background:#0f0e12}
+.cols3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;border:1px solid var(--line)}
+.cols3>div{padding:22px 20px 24px;display:grid;gap:12px;align-content:start}
+.cols3>div+div{border-left:1px solid var(--line)}
+.cols3 ul{margin:0;padding-left:18px;display:grid;gap:8px;font-size:15.5px;color:var(--bone)}
+.cols3 li::marker{color:var(--gas)}
+.fixes{margin-top:36px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 40px}
+.fix{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:16px;padding:14px 0;border-top:1px solid var(--line);font-size:15.5px}
+.fix .was{color:var(--ash)}
+.fix .now{color:var(--bone)}
+.fix .now::before{content:"→ ";color:var(--gas)}
+
+/* ---------- music ---------- */
+.music{background:linear-gradient(180deg,#0f0e12 0%,#16121c 100%)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 22px;font-family:var(--f-mono);font-size:12px;color:var(--ash);margin-bottom:10px}
+.legend i{display:inline-block;width:22px;height:3px;vertical-align:middle;margin-right:8px}
+.chart{width:100%;overflow-x:auto}
+.chart svg{display:block;width:100%;min-width:620px;height:auto}
+.chart .grid{stroke:rgba(232,224,208,.10);stroke-width:1}
+.chart .axis{fill:#8e8778;font-family:"IBM Plex Mono",monospace;font-size:12px}
+.chart .pow-area{fill:rgba(226,165,86,.14)}
+.chart .pow{fill:none;stroke:#e2a556;stroke-width:2.5}
+.chart .dark{fill:none;stroke:#8f88a6;stroke-width:2;stroke-dasharray:5 5}
+.chart .dot{fill:#e2a556}
+.chart .ann{fill:#e8e0d0;font-family:"Cormorant Garamond",Georgia,serif;font-style:italic;font-size:17px}
+.chart .mode-min{fill:#2a2431}
+.chart .mode-maj{fill:#e9d7a6}
+.chart .mode-t{font-family:"IBM Plex Mono",monospace;font-size:11px}
+.chart .mode-t.min{fill:#a99fb6}
+.chart .mode-t.maj{fill:#2b2418}
+.listen{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:34px}
+.play{display:grid;grid-template-columns:auto minmax(0,1fr);gap:16px;align-items:center;text-align:left;width:100%;padding:18px 20px;border:1px solid var(--line-strong);background:rgba(255,255,255,.02);color:var(--bone);cursor:pointer;font:inherit}
+.play:hover{border-color:var(--gas)}
+.play .ico{width:44px;height:44px;border-radius:50%;border:1px solid var(--gas);display:grid;place-items:center;color:var(--gas);font-size:16px}
+.play b{display:block;font-family:var(--f-display);font-weight:600;font-size:20px;letter-spacing:.02em}
+.play span{display:block;font-size:14.5px;color:var(--ash)}
+.notes{font-family:var(--f-mono);font-size:12.5px;color:var(--dim);margin-top:4px}
+.tech{margin-top:34px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border-top:1px solid var(--line)}
+.tech div{padding:16px 16px 0 0;display:grid;gap:6px;align-content:start}
+.tech b{font-family:var(--f-display);font-weight:600;font-size:18px}
+.tech span{font-size:14.5px;color:var(--ash)}
+
+/* ---------- fourth wall ---------- */
+.wall{background:#1a1422}
+.wall .eyebrow{color:var(--lav)}
+.moments{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;border:1px solid rgba(205,193,221,.2)}
+.moment{padding:24px 22px 26px;display:grid;gap:12px;align-content:start}
+.moment+.moment{border-left:1px solid rgba(205,193,221,.2)}
+.moment .where{font-family:var(--f-mono);font-size:11px;color:#9a8fab;letter-spacing:.12em;text-transform:uppercase}
+.moment q{font-family:var(--f-her);font-size:28px;line-height:1.2;color:#efe6f7;quotes:"«" "»"}
+.moment p{font-size:15.5px;color:#c4b8d2}
+
+/* ---------- finale ---------- */
+.finale{background:var(--dawn);color:var(--dawn-ink)}
+.finale .eyebrow{color:#7b5a2a}
+.finale .muted{color:var(--dawn-ash)}
+.finale .frame{border-color:rgba(33,28,40,.2);background:#2a2520;touch-action:none;cursor:crosshair}
+.glass-tools{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;margin-top:12px}
+.glass-tools p{font-size:15px;color:var(--dawn-ash)}
+.btn{font:500 14px var(--f-body);border:1px solid rgba(33,28,40,.35);background:transparent;color:var(--dawn-ink);padding:9px 16px;cursor:pointer}
+.btn:hover{border-color:var(--dawn-ink)}
+.diary{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:clamp(24px,5vw,64px);margin-top:clamp(36px,5vw,56px);align-items:start}
+.page{font-family:var(--f-his);font-size:clamp(18px,1.9vw,21px);line-height:1.6;color:#2a2219;display:grid;gap:4px}
+.page .date{font-size:.9em;color:#6c5a43}
+.page .best{font-size:1.25em;color:#1d140a;margin-top:6px}
+.song{font-family:var(--f-her);font-size:clamp(20px,2.1vw,24px);line-height:1.5;color:#3d2f4c}
+.song .cap{font-family:var(--f-mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--dawn-ash);display:block;margin-bottom:10px}
+.hands{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:22px;font-family:var(--f-mono);font-size:12px;color:var(--dawn-ash)}
+.closing{margin-top:clamp(40px,6vw,64px);padding-top:22px;border-top:1px solid rgba(33,28,40,.18);display:flex;flex-wrap:wrap;gap:10px 24px;justify-content:space-between;font-family:var(--f-mono);font-size:12.5px;color:var(--dawn-ash)}
+.closing code{font-family:var(--f-mono);color:var(--dawn-ink)}
+
+@media (max-width:980px){
+  .cards{grid-template-columns:minmax(0,1fr)}
+  .card{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);grid-template-rows:auto;gap:18px;align-items:start}
+  .card .body{padding-top:0}
+  .beats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .tech{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .layers{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .layer:nth-child(3){border-left:0}
+  .layer:nth-child(n+3){border-top:1px solid var(--line)}
+}
+@media (max-width:760px){
+  .frame{aspect-ratio:4/3}
+  .frame.wide{aspect-ratio:4/3}
+  .title-block,.split,.diary{grid-template-columns:minmax(0,1fr)}
+  .req-list,.fixes,.listen{grid-template-columns:minmax(0,1fr)}
+  .req-item{grid-template-columns:minmax(0,1fr);gap:4px}
+  .cols3,.moments{grid-template-columns:minmax(0,1fr)}
+  .cols3>div+div,.moment+.moment{border-left:0;border-top:1px solid var(--line)}
+  .voice{grid-template-columns:minmax(0,1fr)}
+  .voice div+div{border-left:0;border-top:1px solid var(--line)}
+  .fix{grid-template-columns:minmax(0,1fr);gap:4px}
+  .stages{display:none}
+}
+@media (max-width:620px){
+  .card{grid-template-columns:minmax(0,1fr);gap:0}
+  .card .body{padding-top:12px}
+  .beats,.tech,.layers{grid-template-columns:minmax(0,1fr)}
+  .layer{border-left:0}
+  .layer+.layer{border-top:1px solid var(--line)}
+  .tl div span{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  .hud,.hud-count{transition:none}
+}
+</style>
+
+<!-- ============ HERO ============ -->
+<header class="band hero">
+  <div class="wrap">
+    <figure>
+      <div class="frame" id="heroFrame">
+        <canvas id="cvHero" role="img" aria-label="Схема кадра из демо: стеклянный купол обсерватории ночью, звёзды на стекле переднего плана собираются в надпись «НЕ УХОДИ», за стеклом стоит силуэт героя; затем высокий фонарщик гасит газовые рожки, и мир смывается в чернила."></canvas>
+        <div class="hud" id="hud">
+          <div class="hud-title">1. Обсерватория «Наблюдатель»</div>
+          <div class="hud-tag">Где звёзды пишут письма на стекле.</div>
+          <svg viewBox="0 0 200 64" aria-hidden="true">
+            <circle cx="30" cy="32" r="26" fill="rgba(0,0,0,.35)" stroke="#c9b48c" stroke-width="1.2"/>
+            <circle cx="30" cy="32" r="20" fill="none" stroke="#c9b48c" stroke-opacity=".45" stroke-width=".8"/>
+            <path d="M30 32 m0 -24 a24 24 0 0 1 21 36" fill="none" stroke="#d9874a" stroke-width="3"/>
+            <path d="M23 21 h14 l-6 11 l6 11 h-14 l6 -11 z" fill="none" stroke="#efe2c4" stroke-width="1.3"/>
+            <path d="M27 40 h6 l-3 -4 z" fill="#efe2c4"/>
+            <rect x="62" y="22" width="120" height="5" fill="#2b2420" stroke="#c9b48c" stroke-width=".6"/>
+            <rect x="62" y="22" width="78" height="5" fill="#c4643a"/>
+            <path d="M182 19.5 l8 5 l-8 5 z" fill="none" stroke="#c9b48c" stroke-width=".8"/>
+            <rect x="62" y="36" width="88" height="4" fill="#1f2328" stroke="#c9b48c" stroke-width=".6"/>
+            <rect x="62" y="36" width="52" height="4" fill="#5d7f9a"/>
+          </svg>
+        </div>
+        <div class="hud-count" id="hudCount">Отголоски: 1/12</div>
+      </div>
+      <figcaption>Живая схема кадров K6–K7 демо (3:15–4:20): свет, композиция, движение. Это не финальная графика.</figcaption>
+    </figure>
+
+    <div class="title-block">
+      <h1>Чёрная капля<span>2.5D-платформер · готический психоделический хоррор · Лондон, 1879–1889</span></h1>
+      <p class="epigraph">Помни меня — но, ах, забудь мою судьбу.<small>Г. Пёрселл, «Дидона и Эней», 1689</small></p>
+    </div>
+    <p class="logline">Человек без имени просыпается в комнате с завешенным зеркалом. Часы стоят на 17:42. Он спускается в глубины памяти, чтобы понять, кем был и что не успел сказать. Чем глубже он идёт, тем сильнее распадается мир, и тем яснее становится, что эта память ему не принадлежит. Это память его жены, которая пытается пережить его смерть.</p>
+    <div class="facts" aria-label="Ключевые цифры">
+      <span><b>13</b>глав + пролог и эпилог</span>
+      <span><b>≈24,5 ч</b>неспешного прохождения</span>
+      <span><b>4</b>слоя правды</span>
+      <span><b>2</b>концовки</span>
+      <span><b>19</b>сломов четвёртой стены</span>
+      <span><b>5:00</b>демо одним кадром</span>
+    </div>
+  </div>
+</header>
+
+<!-- ============ REQUIREMENTS ============ -->
+<section class="band req" id="req">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">Требования</p>
+      <h2>Как я понял задачу</h2>
+      <p class="lede muted">Каждое требование превращено в конкретное решение. Подробности, допущения и вопросы — в docs/01_requirements.md.</p>
+    </div>
+    <dl class="req-list">
+      <div class="req-item"><dt>Макеты 2.5D</dt><dd>Сохранены все 10 локаций, их порядок и подписи. Добавлены пролог, главы 11–13 и эпилог. HUD оказывается вещами жены: брошь с его волосами и ридикюль.</dd></div>
+      <div class="req-item"><dt>Готика, психоделия, хоррор</dt><dd>Готика через викторианский траур. Психоделия через оптику эпохи: калейдоскоп, волшебный фонарь, «призрак Пеппера», анилиновый мов, лауданум. Страх от узнавания, без скримеров.</dd></div>
+      <div class="req-item"><dt>Викторианская эпоха</dt><dd>Реальные обычаи и события: остановленные часы, завешенные зеркала, посмертное фото, «лечение покоем», фонарщики, прохождение Венеры 6 декабря 1882 года.</dd></div>
+      <div class="req-item"><dt>Как в «Вечном сиянии»</dt><dd>Процедура «метод Леты» гасит воспоминания изнутри, как фонарщик гасит фонари. Голоса из палаты слышны сквозь стену. В финале выбор: забыть или помнить.</dd></div>
+      <div class="req-item"><dt>Герой ищет себя</dt><dd>Его вопросы «кем я был» и «что я хотел сказать» оказываются её вопросами о нём.</dd></div>
+      <div class="req-item"><dt>Смысл на фоне</dt><dd>Два плана в каждом кадре: впереди путь героя, в глубине правда. Глагол «Сесть» отводит камеру, и фон доигрывает сцену.</dd></div>
+      <div class="req-item"><dt>Твист с женой</dt><dd>Четыре слоя правды, 22 улики с первой минуты, реплики с двойным смыслом. Камера — её взгляд, субтитры написаны её почерком.</dd></div>
+      <div class="req-item"><dt>Хаос по нарастающей</dt><dd>Идеализация, трещины, распад, голос. Мир, механики и музыка ломаются по одной кривой.</dd></div>
+      <div class="req-item"><dt>12+ глав, 20+ часов</dt><dd>13 глав, ≈24,5 часа в неспешном темпе, ≈30 часов на 100%. Время набирают сцены и смысл, а не беготня.</dd></div>
+      <div class="req-item"><dt>Уровень Inside и LN</dt><dd>Непрерывная камера, один ключевой свет, читаемый силуэт, физичная анимация, живой фон, диорама и гротеск.</dd></div>
+      <div class="req-item"><dt>Мрак → свет в музыке</dt><dd>Бас «Плача Дидоны» под всей игрой в финале разрешается в мажор. Фальшивая нота шкатулки чинится.</dd></div>
+      <div class="req-item"><dt>Четвёртая стена</dt><dd>Четвёртая стена и есть Вивиан. Игрок занимает её место, и каждый слом оказывается уликой.</dd></div>
+    </dl>
+  </div>
+</section>
+
+<!-- ============ TWO PLANES ============ -->
+<section class="band planes" id="planes">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">Приём</p>
+      <h2>Фон говорит правду</h2>
+      <p class="lede muted">Пока герой ищет себя на переднем плане, в глубине кадра разыгрывается настоящая история. Кадр K2 демо, 1:10: в комнате стул пуст, а в отражении на нём сидит женщина.</p>
+    </div>
+    <div class="split">
+      <figure>
+        <div class="frame wide" id="reflFrame" tabindex="0" aria-label="Вглядеться: наведите курсор или коснитесь кадра">
+          <canvas id="cvRefl" role="img" aria-label="Схема кадра: викторианская спальня, пустой стул у кровати, завешенное крепом зеркало; герой стоит у окна, в стекле отражается женщина в чёрном на стуле; за окном под дождём проезжает катафалк."></canvas>
+          <span class="zoom-hint" id="zoomHint">Вглядеться: наведите или коснитесь</span>
+        </div>
+        <figcaption>Схема кадра K2. В демо «вглядеться» — удержание кнопки: камера наезжает на улицу.</figcaption>
+      </figure>
+      <ul class="bg-list">
+        <li><b>Женщина в отражении</b><span>Это Вивиан в 18:31: она вернулась из театра слишком поздно. В главе 12 кадр повторится с её стороны.</span></li>
+        <li><b>Катафалк за окном</b><span>Герой говорит: «Кого-то хоронят». Хоронят его.</span></li>
+        <li><b>Фонарщик гасит фонари ночью</b><span>Первое появление процедуры доктора Вейла.</span></li>
+        <li><b>Горничная с двумя чашками</b><span>Одну она ставит на столик, вторую уносит. Вдова привыкает к одной чашке.</span></li>
+        <li><b>Окно напротив</b><span>Женщина у кровати. До главы 11 кажется, что это жена у его постели. На самом деле в кровати лежит Вивиан.</span></li>
+      </ul>
+    </div>
+
+    <div class="layers" role="list" aria-label="Четыре слоя правды">
+      <div class="layer" role="listitem"><span class="n">Слой 1 · пролог–гл. 3</span><h3>Кома</h3><p>Герой лежит без сознания, его разум блуждает по прошлому. Жена сидит у постели. Цель: вернуться к ней.</p></div>
+      <div class="layer" role="listitem"><span class="n">Слой 2 · гл. 4–6</span><h3>Призрак</h3><p>В саду часов он находит свою могилу. Он мёртв и не успел ей что-то сказать.</p></div>
+      <div class="layer" role="listitem"><span class="n">Слой 3 · гл. 7–9</span><h3>Изгнание</h3><p>Договор: она согласилась его «угасить». Гаситель кажется экзорцистом. Обида и погоня.</p></div>
+      <div class="layer truth" role="listitem"><span class="n">Слой 4 · гл. 10–13</span><h3>Её память</h3><p>Его голос становится её голосом. Камера поворачивается: наблюдательница — она. Игрок становится Вивиан.</p></div>
+    </div>
+    <div class="voice">
+      <div><small>Голос из-за стены, пролог</small><q>Нет, мадам. Уже нет.</q></div>
+      <div><small>Первое прочтение → правда</small><p>Врач говорит жене, что больной без сознания. На самом деле доктор говорит Вивиан, что её муж мёртв.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CHAPTERS ============ -->
+<section class="band chapters" id="chapters" data-reading="1">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">Главы</p>
+      <h2>Тринадцать глав по ступеням траура</h2>
+      <p class="lede muted">Палитра игры идёт по викторианскому траурному этикету вдовы: от чёрного крепа через пепел и чугун к лиловому полутрауру и утреннему свету. Цвет сам подсказывает, чьими глазами мы смотрим.</p>
+    </div>
+    <div class="script" id="script" aria-hidden="true"></div>
+    <div class="stages" aria-hidden="true"><span>глубокий траур · П–3</span><span>второй траур · 4–6</span><span>обычный траур · 7–9</span><span>мов · 10</span><span>чужие слова, сцена · 11–12</span><span>свет · 13–Э</span></div>
+
+    <div class="toggle-row">
+      <div class="seg" role="group" aria-label="Прочтение">
+        <button type="button" id="r1" aria-pressed="true">Первое прочтение</button>
+        <button type="button" id="r2" aria-pressed="false">Второе прочтение</button>
+      </div>
+      <p>Каждая подпись главы работает дважды. Переключите, чтобы увидеть, что значит та же глава после твиста.</p>
+    </div>
+    <div class="cards" id="cards"></div>
+  </div>
+</section>
+
+<!-- ============ DEMO ============ -->
+<section class="band demo" id="demo">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">Демо · 5:00 · один непрерывный кадр</p>
+      <h2>Пять минут, восемь реплик, восемнадцать улик</h2>
+      <p class="lede muted">Сжатый пролог и начало главы 1. Цвет полосы показывает ключевой свет каждой сцены. Покадровое описание по секундам лежит в docs/04_demo_5min.md.</p>
+    </div>
+    <div class="tl" id="tl" aria-hidden="true"></div>
+    <div class="tl-axis" aria-hidden="true"><span>0:00</span><span>1:00</span><span>2:00</span><span>3:00</span><span>4:00</span><span>5:00</span></div>
+    <ol class="beats" id="beats"></ol>
+  </div>
+</section>
+
+<!-- ============ PICTURE ============ -->
+<section class="band picture" id="picture">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">Картинка и анимация</p>
+      <h2>Что значит «уровень Inside и Little Nightmares»</h2>
+      <p class="lede muted">Это набор проверяемых решений. Цветовой сценарий, правила камеры, модельный лист и промпты ключевых кадров — в docs/05_art_direction.md.</p>
+    </div>
+    <div class="cols3">
+      <div><h3>Берём у Inside</h3><ul>
+        <li>Сдержанность: кадр читается за полсекунды</li>
+        <li>Непрерывная камера без склеек</li>
+        <li>Силуэт героя всегда самое читаемое пятно</li>
+        <li>Физичная анимация: вес, инерция, колебание на краю</li>
+        <li>Важное происходит на фоне и не объясняется</li>
+      </ul></div>
+      <div><h3>Берём у Little Nightmares</h3><ul>
+        <li>Мир как кукольный дом в разрезе</li>
+        <li>Гротескные существа с тактильными материалами</li>
+        <li>Тёплый свет внутри против холодного снаружи</li>
+        <li>Уязвимый герой прячется, а не дерётся</li>
+        <li>«Ручная» камера (у нас её держит Вивиан)</li>
+      </ul></div>
+      <div><h3>Добавляем своё</h3><ul>
+        <li>Живописная поверхность гравюры и масла, как в макетах</li>
+        <li>Цвет как ступень траура</li>
+        <li>Психоделия через викторианскую оптику</li>
+        <li>Камера как персонаж: три нарушения плоскости за всю игру</li>
+        <li>Существа: викторианский предмет плюс символ горя</li>
+      </ul></div>
+    </div>
+    <div class="fixes">
+      <div class="fix"><span class="was">Герой 5–7% кадра, теряется в фоне</span><span class="now">10–14% в игровом кадре, контровой свет, тон фона за героем контрастен</span></div>
+      <div class="fix"><span class="was">Шум мелких деталей в игровой плоскости</span><span class="now">Иерархия: чистая игровая плоскость, детали в среднем плане, туман в дальнем</span></div>
+      <div class="fix"><span class="was">Неясная линия пола</span><span class="now">Каждая опора читается по силуэту и блику на кромке</span></div>
+      <div class="fix"><span class="was">Много источников света одной силы</span><span class="now">Один ключевой источник на сцену, свет ведёт к цели</span></div>
+      <div class="fix"><span class="was">HUD всегда на экране</span><span class="now">Адаптивный HUD: появляется по событию и растворяется (как в кадре выше)</span></div>
+      <div class="fix"><span class="was">Герой выглядит по-разному</span><span class="now">Модельный лист: длинное пальто, без шляпы, сутулость</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ MUSIC ============ -->
+<section class="band music" id="music">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">Музыка</p>
+      <h2>От ре минора к ре мажору</h2>
+      <p class="lede muted">Два эпических пика (17:42 в саду и Гора шепотов), шторм бега в главе 12 и тишина перед финалом. Последний аккорд игры — первый чистый мажор за 24 часа.</p>
+    </div>
+    <div class="legend"><span><i style="background:#e2a556"></i>сила звучания</span><span><i style="background:repeating-linear-gradient(90deg,#8f88a6 0 5px,transparent 5px 10px)"></i>мрак</span></div>
+    <div class="chart" id="chart"></div>
+    <div class="listen">
+      <button class="play" type="button" id="playBroken"><span class="ico" aria-hidden="true">▶</span><span><b>Шкатулка всю игру</b><span>Мотив «Наблюдатель»: последняя нота фальшивит, конец в миноре.</span><span class="notes">ре · фа · ми · ля♭↓ → ре минор</span></span></button>
+      <button class="play" type="button" id="playFixed"><span class="ico" aria-hidden="true">▶</span><span><b>Шкатулка в финале</b><span>Та же мелодия, нота починена, пикардийская терция.</span><span class="notes">ре · фа · ми · ля → ре мажор</span></span></button>
+    </div>
+    <div class="tech">
+      <div><b>Бас Дидоны</b><span>Нисходящий хроматический бас под всей игрой разрешается в мажор, когда капля отрывается от Солнца.</span></div>
+      <div><b>Починенная нота</b><span>Фальшь, которую игрок слышал сотни раз, в финале звучит чисто.</span></div>
+      <div><b>Тиканье</b><span>С главы 5 часы стоят. В эпилоге Вивиан заводит их.</span></div>
+      <div><b>Тембр</b><span>Уходят медь, орган и стеклянная гармоника. Остаются голос, челеста и струнные.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOURTH WALL ============ -->
+<section class="band wall" id="wall">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">Четвёртая стена</p>
+      <h2>Камера — это она</h2>
+      <p class="lede" style="color:#d4c9e0">Двадцать часов камера смотрит на героя со стороны, потому что так его помнит Вивиан. Игрок сидит на её месте. Девятнадцать сломов стены, и каждый оказывается уликой.</p>
+    </div>
+    <div class="moments">
+      <div class="moment"><span class="where">Глава 11 · поворот камеры</span><q>Ты всё это время смотрела.</q><p>Герой впервые смотрит прямо в объектив. Глагол в женском роде выдаёт наблюдательницу раньше, чем камера разворачивается на 180° и показывает Вивиан.</p></div>
+      <div class="moment"><span class="where">Глава 12 · 17:42</span><q>Нажмите, чтобы аплодировать.</q><p>Игрок аплодирует актрисе на поклонах, и громкость растёт от его нажатий. Часы показывают 17:42: под эти аплодисменты умирает Элиас.</p></div>
+      <div class="moment"><span class="where">Меню · после финала</span><q>Иди. Опоздаешь.</q><p>Весь третий и четвёртый акт диалог выхода спрашивал «Ты тоже уходишь?». После истинной концовки он говорит последними словами Элиаса.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FINALE ============ -->
+<section class="band finale" id="finale">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">Глава 13 · Прохождение</p>
+      <h2>Облака. Ничего не видно.</h2>
+      <p class="lede muted">6 декабря 1882 года, кухонное окно, стекло закопчено над свечой. Его буква уже написана. Напишите свою. Позади облаков Венера касается края Солнца и на миг прилипает к нему чёрной каплей.</p>
+    </div>
+    <figure>
+      <div class="frame wide" id="glassFrame">
+        <canvas id="cvGlass" role="img" aria-label="Интерактивное закопчённое стекло: проведите пальцем или курсором, чтобы стереть сажу. За стеклом облачное небо и Солнце с маленькой чёрной точкой Венеры у края."></canvas>
+      </div>
+    </figure>
+    <div class="glass-tools">
+      <p>Проведите пальцем или курсором по стеклу. В игре так пишут буквы во время титров, и они попадают в музейную витрину 2004 года.</p>
+      <button class="btn" type="button" id="resoot">Закоптить заново</button>
+    </div>
+
+    <div class="diary">
+      <div>
+        <div class="page" aria-label="Запись из дневника Элиаса">
+          <span class="date">6 декабря 1882 г. Прохождение Венеры по диску Солнца.</span>
+          <span>«Пенелопа» сейчас где-то у мыса Доброй Надежды, и наши, верно, бранят облака над Мадагаскаром. А я у кухонного окна. Закоптили стекло над свечой, как дети. В. перепачкала нос сажей.</span>
+          <span>Облака. Ничего не видно.</span>
+          <span>В. смеялась — впервые с августа.</span>
+          <span>Следующее прохождение — в 2004 году. Мы на него опоздаем. Ничего. Своё мы уже видели.</span>
+          <span class="best">Лучший день в моей жизни.</span>
+        </div>
+        <div class="hands"><span>Его почерк: появляется один раз, в последней главе.</span><span>Её почерк: все субтитры игры.</span></div>
+      </div>
+      <p class="song"><span class="cap">Звёздное стекло · поёт Вивиан, титры</span>Облака — ничего не видать,<br>Только сажа, стекло и свеча.<br>Мне не надо Венеру искать:<br>Вот она — у меня у плеча.<br><br>А когда я уйду в облака,<br>Не ищи меня в медной трубе.<br>Это сажа, стекло и рука —<br>Я всегда у плеча, при тебе.</p>
+    </div>
+
+    <div class="closing">
+      <span>Документы: <code>docs/01_requirements.md</code> · <code>02_story_bible.md</code> · <code>03_scenario.md</code> · <code>04_demo_5min.md</code> · <code>05_art_direction.md</code> · <code>06_music_and_sound.md</code> · <code>07_fourth_wall.md</code></span>
+      <span>Все кадры на странице — рабочие схемы, а не финальная графика.</span>
+    </div>
+  </div>
+</section>
+
+<script>
+(function(){
+'use strict';
+var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+var DPR = Math.min(2, window.devicePixelRatio || 1);
+function rng(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function c01(v){return v<0?0:v>1?1:v;}
+function lerp(a,b,k){return a+(b-a)*k;}
+function ease(k){return k*k*(3-2*k);}
+function sprite(r,stops){var c=document.createElement('canvas');c.width=c.height=r*2;var g=c.getContext('2d');var gr=g.createRadialGradient(r,r,0,r,r,r);stops.forEach(function(s){gr.addColorStop(s[0],s[1]);});g.fillStyle=gr;g.fillRect(0,0,r*2,r*2);return c;}
+var noise=(function(){var c=document.createElement('canvas');c.width=c.height=160;var g=c.getContext('2d');var d=g.createImageData(160,160);var R=rng(99);for(var i=0;i<d.data.length;i+=4){var v=R()*255|0;d.data[i]=d.data[i+1]=d.data[i+2]=v;d.data[i+3]=255;}g.putImageData(d,0,0);return c;})();
+function grain(ctx,w,h,a){if(!ctx._np)ctx._np=ctx.createPattern(noise,'repeat');ctx.save();ctx.globalAlpha=a;ctx.globalCompositeOperation='overlay';ctx.translate((Math.random()*160)|0,(Math.random()*160)|0);ctx.fillStyle=ctx._np;ctx.fillRect(-160,-160,w+160,h+160);ctx.restore();}
+function vignette(ctx,w,h,a){var g=ctx.createRadialGradient(w*.5,h*.5,Math.min(w,h)*.25,w*.5,h*.5,Math.max(w,h)*.75);g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(1,'rgba(0,0,0,'+a+')');ctx.fillStyle=g;ctx.fillRect(0,0,w,h);}
+
+function run(canvas,scene){
+  var ctx=canvas.getContext('2d');var w=1,h=1,raf=0,vis=true,t0=performance.now();
+  function frame(now){scene.draw(ctx,w,h,reduce?scene.still:(now-t0)/1000);}
+  function loop(now){frame(now);raf=requestAnimationFrame(loop);}
+  function resize(){var r=canvas.getBoundingClientRect();w=Math.max(1,Math.round(r.width));h=Math.max(1,Math.round(r.height));canvas.width=Math.round(w*DPR);canvas.height=Math.round(h*DPR);ctx.setTransform(DPR,0,0,DPR,0,0);ctx._np=null;if(scene.resize)scene.resize(w,h);frame(performance.now());}
+  if(window.ResizeObserver){new ResizeObserver(resize).observe(canvas);}else{window.addEventListener('resize',resize);}
+  resize();
+  if(!reduce){
+    if(window.IntersectionObserver){new IntersectionObserver(function(es){vis=es[0].isIntersecting;cancelAnimationFrame(raf);if(vis)raf=requestAnimationFrame(loop);}).observe(canvas);}
+    else raf=requestAnimationFrame(loop);
+  }
+  return {redraw:function(){frame(performance.now());},size:function(){return [w,h];}};
+}
+
+/* ---------- figures ---------- */
+function man(ctx,x,fy,H,f,br,col){
+  var u=H/100;function X(v){return x+v*u*f;}function Y(v){return fy-v*u*(v>17?1+br:1);}
+  ctx.fillStyle=col;
+  ctx.beginPath();ctx.ellipse(X(3.2),Y(92),6.2*u,7.2*u,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.moveTo(X(8.6),Y(94));ctx.lineTo(X(11),Y(91));ctx.lineTo(X(8.4),Y(89.5));ctx.fill();
+  ctx.beginPath();ctx.rect(Math.min(X(-1),X(5)),Y(87),Math.abs(X(5)-X(-1)),5*u);ctx.fill();
+  ctx.beginPath();ctx.ellipse(X(2.4),Y(82.5),7.4*u,3.6*u,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.moveTo(X(-6.5),Y(81));ctx.quadraticCurveTo(X(-10.5),Y(74),X(-10),Y(62));ctx.lineTo(X(-12.6),Y(30));ctx.quadraticCurveTo(X(-13.6),Y(22),X(-14.2),Y(17));ctx.lineTo(X(11.4),Y(17));ctx.quadraticCurveTo(X(11.8),Y(30),X(10.2),Y(45));ctx.quadraticCurveTo(X(10.8),Y(62),X(10.4),Y(72));ctx.quadraticCurveTo(X(10.2),Y(80),X(5),Y(82.5));ctx.closePath();ctx.fill();
+  ctx.beginPath();ctx.moveTo(X(-6),Y(17.5));ctx.lineTo(X(-2),Y(17.5));ctx.lineTo(X(-2.6),Y(1));ctx.lineTo(X(-6.6),Y(1));ctx.closePath();ctx.fill();
+  ctx.beginPath();ctx.moveTo(X(1.6),Y(17.5));ctx.lineTo(X(5.6),Y(17.5));ctx.lineTo(X(6.4),Y(1));ctx.lineTo(X(2.4),Y(1));ctx.closePath();ctx.fill();
+  ctx.beginPath();ctx.ellipse(X(-3.6),Y(0.9),4.2*u,1.4*u,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(X(5.4),Y(0.9),4.2*u,1.4*u,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(X(10.8),Y(44),1.8*u,2.6*u,0,0,Math.PI*2);ctx.fill();
+}
+function manLit(ctx,x,fy,H,f,br,rimCol,rimDx){man(ctx,x+rimDx,fy-0.6,H,f,br,rimCol);man(ctx,x,fy,H,f,br,'#040508');}
+
+function extinguisher(ctx,x,fy,H,t,flash){
+  var u=H/120;function X(v){return x+v*u;}function Y(v){return fy-v*u;}
+  var sway=Math.sin(t*2.2)*1.2,bob=Math.sin(t*4.4)*0.6*u;
+  ctx.save();ctx.translate(0,bob);
+  var dark='#020204';
+  ctx.strokeStyle='rgba(150,170,205,.30)';ctx.lineWidth=1.2;
+  ctx.fillStyle=dark;
+  ctx.beginPath();ctx.moveTo(X(-7),Y(90));ctx.quadraticCurveTo(X(-11),Y(70),X(-11),Y(56));ctx.lineTo(X(-13.5+sway),Y(1));ctx.lineTo(X(13.5+sway),Y(1));ctx.lineTo(X(11),Y(56));ctx.quadraticCurveTo(X(11),Y(72),X(7),Y(90));ctx.closePath();ctx.fill();ctx.stroke();
+  ctx.lineCap='round';ctx.lineJoin='round';
+  ctx.strokeStyle=dark;ctx.lineWidth=3.2*u;
+  ctx.beginPath();ctx.moveTo(X(-6),Y(86));ctx.quadraticCurveTo(X(-10),Y(60),X(-9.5),Y(34));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(X(6),Y(86));ctx.lineTo(X(16),Y(73));ctx.lineTo(X(24),Y(71));ctx.stroke();
+  ctx.fillStyle=dark;ctx.beginPath();ctx.ellipse(X(-9.5),Y(32),2*u,3.2*u,0,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#5c4a2c';ctx.lineWidth=1.6*u;ctx.beginPath();ctx.moveTo(X(16),Y(77));ctx.lineTo(X(52),Y(48));ctx.stroke();
+  ctx.fillStyle='#6d5631';ctx.beginPath();ctx.moveTo(X(48),Y(52));ctx.lineTo(X(56),Y(50));ctx.lineTo(X(52),Y(43));ctx.closePath();ctx.fill();
+  ctx.fillStyle=dark;ctx.beginPath();ctx.rect(X(-3),Y(93),6*u,4*u);ctx.fill();
+  ctx.beginPath();ctx.ellipse(X(0),Y(90),8*u,2.6*u,0,0,Math.PI*2);ctx.fill();
+  var hg=ctx.createRadialGradient(X(0),Y(99),0,X(0),Y(99),8*u);hg.addColorStop(0,'rgba(190,195,205,.55)');hg.addColorStop(1,'rgba(90,95,105,.25)');
+  ctx.fillStyle=hg;ctx.beginPath();ctx.ellipse(X(0),Y(99),5.6*u,7.6*u,0,0,Math.PI*2);ctx.fill();
+  var e=0.25+0.75*flash;var eg=ctx.createRadialGradient(X(0),Y(97),0,X(0),Y(97),5*u);eg.addColorStop(0,'rgba(255,190,110,'+(0.85*e)+')');eg.addColorStop(1,'rgba(255,140,60,0)');
+  ctx.fillStyle=eg;ctx.beginPath();ctx.ellipse(X(0),Y(97),4.5*u,5*u,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle=dark;ctx.beginPath();ctx.ellipse(X(0),Y(107.5),9.5*u,1.7*u,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.moveTo(X(-6),Y(107.5));ctx.lineTo(X(-6.6),Y(123));ctx.lineTo(X(6.6),Y(123));ctx.lineTo(X(6),Y(107.5));ctx.closePath();ctx.fill();
+  ctx.restore();
+}
+
+/* ---------- HERO: observatory ---------- */
+var hudEl=document.getElementById('hud'),cntEl=document.getElementById('hudCount');
+var hudOn=null,cntOn=null;
+function setHud(a,b){if(a!==hudOn){hudOn=a;hudEl.classList.toggle('on',a);}if(b!==cntOn){cntOn=b;cntEl.classList.toggle('on',b);}}
+var hero=(function(){
+  var W=1,H=1,stars=[],roofs=[],parts=[],sky=null,drips=[];
+  var lampsX=[0.05,0.16,0.27,0.43,0.55,0.67,0.79];
+  var px=0,py=0,tx=0,ty=0;
+  var gLamp=sprite(64,[[0,'rgba(255,220,160,.95)'],[0.16,'rgba(255,180,95,.45)'],[0.5,'rgba(220,130,60,.10)'],[1,'rgba(0,0,0,0)']]);
+  var gStar=sprite(16,[[0,'rgba(240,246,255,1)'],[0.22,'rgba(190,210,255,.55)'],[1,'rgba(0,0,0,0)']]);
+  function buildSky(){
+    sky=document.createElement('canvas');sky.width=Math.round(W*DPR);sky.height=Math.round(H*DPR);var g=sky.getContext('2d');g.scale(DPR,DPR);
+    var gr=g.createLinearGradient(0,0,0,H);gr.addColorStop(0,'#03050b');gr.addColorStop(.55,'#0a1120');gr.addColorStop(1,'#141c2e');g.fillStyle=gr;g.fillRect(0,0,W,H);
+    var R=rng(11);g.globalCompositeOperation='lighter';
+    for(var i=0;i<60;i++){var k=R(),x=lerp(-.1,1.1,k)*W,y=(0.6-k*0.5+(R()-.5)*0.5)*H,r=(0.10+R()*0.16)*H;var b=g.createRadialGradient(x,y,0,x,y,r);b.addColorStop(0,'rgba(90,110,160,'+(0.010+R()*0.016)+')');b.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=b;g.fillRect(x-r,y-r,r*2,r*2);}
+  }
+  function build(){
+    var R=rng(5);stars=[];var n=Math.round(W*H/1500);
+    for(var i=0;i<n;i++)stars.push({x:R(),y:R()*0.8,r:0.4+Math.pow(R(),3)*1.6,ph:R()*6.28,sp:0.5+R()*2});
+    roofs=[];var x=0;var R2=rng(17);while(x<1.05){var wdt=0.04+R2()*0.07;roofs.push({x:x,w:wdt,h:0.025+R2()*0.06,ch:R2()<0.5,cx:R2()});x+=wdt;}
+    drips=[];var R3=rng(23);for(var j=0;j<34;j++)drips.push({y:R3(),l:0.05+R3()*0.35,o:R3()*0.06,sp:0.5+R3()});
+    buildSky();computeTargets();
+  }
+  function computeTargets(){
+    var gx0=0.08*W,gx1=0.70*W;var fs=Math.min((gx1-gx0)*0.13,H*0.15);
+    var c=document.createElement('canvas');c.width=Math.ceil(gx1-gx0);c.height=Math.ceil(fs*1.6);var g=c.getContext('2d');
+    g.fillStyle='#fff';g.textAlign='center';g.textBaseline='middle';g.font='700 '+fs+'px "Cormorant SC", Georgia, serif';
+    g.fillText('НЕ УХОДИ',c.width*0.61,c.height/2);
+    var d=g.getImageData(0,0,c.width,c.height).data;var step=Math.max(2,Math.round(fs/24));var pts=[];
+    for(var y=0;y<c.height;y+=step)for(var x=0;x<c.width;x+=step){if(d[(y*c.width+x)*4+3]>140)pts.push([x,y]);}
+    var R=rng(31);while(pts.length>1800)pts.splice((R()*pts.length)|0,1);
+    var cy=0.33*H;parts=pts.map(function(p){return{tx:gx0+p[0],ty:cy-c.height/2+p[1],hx:gx0+R()*(gx1-gx0),hy:(0.08+R()*0.6)*H,d:R()*1.4,ph:R()*6.28,s:0.7+R()*0.9};});
+  }
+  function drawDome(ctx,t,ox,oy){
+    var cx=0.5*W+ox,cy=0.80*H+oy,rx=0.72*W,ry=0.80*H;
+    ctx.save();ctx.beginPath();ctx.ellipse(cx,cy,rx,ry,0,Math.PI,2*Math.PI);ctx.closePath();ctx.fillStyle='rgba(70,95,140,.05)';ctx.fill();ctx.restore();
+    ctx.save();ctx.beginPath();ctx.rect(-50,-50,W+100,H+100);ctx.ellipse(cx,cy,rx,ry,0,Math.PI,2*Math.PI);ctx.closePath();ctx.fillStyle='#05060a';ctx.fill('evenodd');ctx.restore();
+    var ks=[0.15,0.34,0.54,0.74,0.9];
+    ctx.lineWidth=3;ctx.strokeStyle='#07080d';
+    ks.forEach(function(k){ctx.beginPath();ctx.ellipse(cx,cy,rx*k,ry,0,Math.PI,2*Math.PI);ctx.stroke();});
+    ctx.lineWidth=1;ctx.strokeStyle='rgba(130,150,195,.16)';
+    ks.forEach(function(k){ctx.beginPath();ctx.ellipse(cx-2,cy,rx*k,ry,0,Math.PI*1.02,Math.PI*1.5);ctx.stroke();});
+    [0.42,0.66,0.86].forEach(function(s){var yy=cy-ry*s,hw=rx*Math.sqrt(1-s*s);ctx.lineWidth=2.4;ctx.strokeStyle='#07080d';ctx.beginPath();ctx.moveTo(cx-hw,yy);ctx.quadraticCurveTo(cx,yy+0.025*H,cx+hw,yy);ctx.stroke();ctx.lineWidth=1;ctx.strokeStyle='rgba(130,150,195,.12)';ctx.beginPath();ctx.moveTo(cx-hw,yy-1.5);ctx.quadraticCurveTo(cx,yy+0.025*H-1.5,cx+hw,yy-1.5);ctx.stroke();});
+    ctx.lineWidth=9;ctx.strokeStyle='#040508';ctx.beginPath();ctx.ellipse(cx,cy,rx,ry,0,Math.PI,2*Math.PI);ctx.stroke();
+    ctx.save();ctx.globalAlpha=.05;ctx.fillStyle='#cfe0ff';ctx.beginPath();ctx.moveTo(0.18*W+ox,0);ctx.lineTo(0.24*W+ox,0);ctx.lineTo(0.06*W+ox,0.7*H);ctx.lineTo(0.02*W+ox,0.7*H);ctx.closePath();ctx.fill();ctx.restore();
+  }
+  function draw(ctx,w,h,t){
+    var C=24,tc=t%C;
+    px+=(tx-px)*0.05;py+=(ty-py)*0.05;
+    ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;
+    if(sky)ctx.drawImage(sky,px*-4,py*-3,w,h);
+    ctx.globalCompositeOperation='lighter';
+    for(var i=0;i<stars.length;i++){var s=stars[i];var a=0.35+0.65*(0.5+0.5*Math.sin(t*s.sp+s.ph));ctx.globalAlpha=a*(s.r>1.2?0.9:0.6);var r=s.r*3;ctx.drawImage(gStar,s.x*w-r+px*-5,s.y*h-r+py*-3,r*2,r*2);}
+    ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+    drawDome(ctx,t,px*-8,py*-4);
+    var ox=px*-11,oy=py*-5;
+    ctx.fillStyle='#090b12';ctx.beginPath();ctx.moveTo(-10,0.76*h);
+    roofs.forEach(function(r){var x0=r.x*w+ox,x1=(r.x+r.w)*w+ox,top=(0.745-r.h)*h+oy;ctx.lineTo(x0,top+0.012*h);ctx.lineTo(x0+(x1-x0)*0.5,top);ctx.lineTo(x1,top+0.012*h);if(r.ch){var chx=x0+(x1-x0)*(0.2+r.cx*0.5);ctx.lineTo(chx,top+0.01*h);ctx.lineTo(chx,top-0.02*h);ctx.lineTo(chx+0.008*w,top-0.02*h);ctx.lineTo(chx+0.008*w,top+0.01*h);}});
+    ctx.lineTo(w+10,0.76*h);ctx.closePath();ctx.fill();
+    var winX=0.865*w+ox,winY=0.705*h+oy;ctx.fillStyle='rgba(255,196,120,.85)';ctx.fillRect(winX,winY,0.006*w,0.012*h);ctx.globalCompositeOperation='lighter';ctx.globalAlpha=.35;ctx.drawImage(gLamp,winX-0.02*h,winY-0.02*h,0.045*h,0.045*h);ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+    var sx=0.93*w+ox;ctx.strokeStyle='#05060a';ctx.lineWidth=2.4;for(var j=0;j<9;j++){var yy=(0.38+j*0.055)*h+oy;ctx.beginPath();ctx.ellipse(sx,yy,0.035*w,0.012*h,0,0,Math.PI);ctx.stroke();}ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(sx,0.34*h+oy);ctx.lineTo(sx,0.82*h+oy);ctx.stroke();
+    var exN=lerp(-0.12,0.52,c01((tc-13)/7.4)),exX=exN*w,exOn=tc>13&&tc<23.6;
+    var on=[],flash=0;
+    for(var li=0;li<lampsX.length;li++){var lx=lampsX[li]*w;var off=exOn?c01((exX+0.03*w-lx)/(0.018*w)):0;on.push(1-off);if(exOn)flash=Math.max(flash,Math.exp(-Math.pow((exX+0.03*w-lx)/(0.012*w),2)));}
+    var railY=0.745*h+oy*0.6;
+    ctx.globalCompositeOperation='lighter';
+    for(li=0;li<lampsX.length;li++){var a=on[li]*(0.86+0.14*Math.sin(t*11+li*2.1)*Math.sin(t*3.7+li));if(a<=0.01)continue;var lx2=lampsX[li]*w+ox*0.6,ly=0.668*h+oy*0.6,R1=0.13*h;ctx.globalAlpha=a;ctx.drawImage(gLamp,lx2-R1,ly-R1,R1*2,R1*2);ctx.globalAlpha=a*0.35;ctx.drawImage(gLamp,lx2-0.02*h,0.83*h,0.04*h,0.16*h);}
+    ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+    var fl=ctx.createLinearGradient(0,0.79*h,0,h);fl.addColorStop(0,'#0b0d14');fl.addColorStop(1,'#040507');ctx.fillStyle=fl;ctx.fillRect(0,0.795*h+oy*0.6,w,h);
+    ctx.globalCompositeOperation='lighter';
+    for(li=0;li<lampsX.length;li++){if(on[li]<0.02)continue;var rx2=lampsX[li]*w+ox*0.6;var rg=ctx.createLinearGradient(0,0.8*h,0,0.98*h);rg.addColorStop(0,'rgba(255,190,110,'+(0.16*on[li])+')');rg.addColorStop(1,'rgba(255,190,110,0)');ctx.fillStyle=rg;ctx.fillRect(rx2-0.006*w,0.8*h,0.012*w,0.18*h);}
+    ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle='#030407';
+    for(li=0;li<lampsX.length;li++){var lx3=lampsX[li]*w+ox*0.6,ly3=0.668*h+oy*0.6;ctx.fillRect(lx3-1.2,ly3,2.4,railY-ly3);ctx.globalAlpha=1;var gl=on[li];ctx.fillStyle=gl>0.05?'rgba(255,214,150,'+(0.55+0.45*gl)+')':'#16171c';ctx.beginPath();ctx.ellipse(lx3,ly3,0.007*h+2,0.011*h+2,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#030407';ctx.fillRect(lx3-0.006*h,ly3-0.016*h,0.012*h,0.004*h);}
+    if(exOn)extinguisher(ctx,exX+ox*0.6,0.80*h+oy*0.6,0.34*h,t,flash);
+    ctx.fillStyle='#030407';ctx.fillRect(0,railY,w,Math.max(2,0.005*h));ctx.fillRect(0,0.79*h+oy*0.6,w,Math.max(2,0.004*h));
+    for(var p=0;p<w;p+=0.03*w){ctx.fillRect(p+ox*0.6,railY,Math.max(1.5,0.003*w),0.05*h);}
+    ctx.fillStyle='rgba(150,170,210,.18)';ctx.fillRect(0,railY-1,w,1);
+    var tox=px*-16,toy=py*-6;var pvx=0.17*w+tox,pvy=0.64*h+toy;
+    ctx.fillStyle='#05060a';ctx.beginPath();ctx.moveTo(pvx-0.012*w,pvy);ctx.lineTo(pvx+0.012*w,pvy);ctx.lineTo(pvx+0.032*w,0.905*h+toy);ctx.lineTo(pvx-0.032*w,0.905*h+toy);ctx.closePath();ctx.fill();
+    ctx.save();ctx.translate(pvx,pvy);ctx.rotate(-1.15);
+    var L=0.19*w,r0=0.016*h,r1=0.028*h;
+    var tg=ctx.createLinearGradient(0,-r1,0,r1);tg.addColorStop(0,'#3a2c18');tg.addColorStop(.28,'#8c6a37');tg.addColorStop(.36,'#2a2014');tg.addColorStop(1,'#07070a');ctx.fillStyle=tg;
+    ctx.beginPath();ctx.moveTo(-0.05*w,-r0);ctx.lineTo(L,-r1);ctx.lineTo(L,r1);ctx.lineTo(-0.05*w,r0);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#8f6d3b';[0.0,0.12,0.26].forEach(function(f){ctx.fillRect(f*L,-r1*1.05,0.006*w,r1*2.1);});
+    ctx.fillStyle='#b48a4a';ctx.fillRect(L-0.008*w,-r1*1.1,0.01*w,r1*2.2);
+    ctx.fillStyle='#07070a';ctx.fillRect(-0.075*w,-r0*0.6,0.03*w,r0*1.2);ctx.fillStyle='#5a4426';ctx.fillRect(-0.08*w,-r0*0.75,0.007*w,r0*1.5);
+    ctx.restore();
+    var hx=0.585*w+px*-18,hfy=0.905*h+py*-7,HH=0.215*h;var br=Math.sin(t*1.5)*0.006;
+    var form=c01((tc-5.4)/3)*(1-c01((tc-15)/2.5));
+    if(form>0){ctx.globalCompositeOperation='lighter';ctx.globalAlpha=form*0.35;var R5=0.16*h;ctx.drawImage(gStar,hx-0.02*h-R5,hfy-HH*0.9-R5,R5*2,R5*2);ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';}
+    manLit(ctx,hx,hfy,HH,-1,br,'rgba(150,172,215,.55)',-1.4);
+    if(exOn){
+      var front=exX-0.04*w;
+      if(front>0){
+        ctx.fillStyle='#010103';ctx.beginPath();ctx.moveTo(-10,-10);
+        for(var yy2=-10;yy2<=h+10;yy2+=6){ctx.lineTo(front+Math.sin(yy2*0.021+t*0.7)*7+Math.sin(yy2*0.057+1.3)*4,yy2);}
+        ctx.lineTo(-10,h+10);ctx.closePath();ctx.fill();
+        for(var di=0;di<drips.length;di++){var dr=drips[di];var dx=front+dr.o*w;var y0=dr.y*h*0.7;var len=Math.min(h,(dr.l*h)*(0.4+0.6*c01((tc-13)/4)))*(0.6+0.4*Math.sin(t*dr.sp));var dg=ctx.createLinearGradient(0,y0,0,y0+len);dg.addColorStop(0,'rgba(1,1,3,.95)');dg.addColorStop(1,'rgba(1,1,3,0)');ctx.fillStyle=dg;ctx.fillRect(dx-2.5,y0,5,len);ctx.beginPath();ctx.arc(dx,y0+len*0.85,3,0,Math.PI*2);ctx.fill();}
+        ctx.globalCompositeOperation='lighter';
+        for(var si=0;si<stars.length;si+=3){var s2=stars[si];var sx2=s2.x*w;if(sx2>front-10)continue;ctx.globalAlpha=0.25*(0.5+0.5*Math.sin(t*s2.sp+s2.ph));ctx.drawImage(gStar,sx2-3,s2.y*h+0.15*h-3,6,6);}
+        ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+      }
+    }
+    ctx.globalCompositeOperation='lighter';
+    [[0.56,0.05,0.10],[0.80,0.07,0.08],[0.95,0.06,0.10]].forEach(function(b,bi){var yc=b[0]*h+Math.sin(t*0.07+bi)*0.01*h;var fg=ctx.createLinearGradient(0,yc-b[2]*h,0,yc+b[2]*h);fg.addColorStop(0,'rgba(110,130,175,0)');fg.addColorStop(.5,'rgba(110,130,175,'+b[1]+')');fg.addColorStop(1,'rgba(110,130,175,0)');ctx.fillStyle=fg;ctx.fillRect(0,yc-b[2]*h,w,b[2]*2*h);});
+    ctx.globalCompositeOperation='source-over';
+    var gox=px*-26,goy=py*-10;var gx0=0.08*w+gox,gx1=0.70*w+gox,gy0=0.04*h+goy,gy1=0.76*h+goy;
+    ctx.save();ctx.globalAlpha=.06;var sh=ctx.createLinearGradient(gx0,gy0,gx1,gy1);sh.addColorStop(0,'rgba(200,220,255,0)');sh.addColorStop(.42,'rgba(200,220,255,.0)');sh.addColorStop(.5,'rgba(200,220,255,1)');sh.addColorStop(.58,'rgba(200,220,255,0)');ctx.fillStyle=sh;ctx.fillRect(gx0,gy0,gx1-gx0,gy1-gy0);ctx.restore();
+    ctx.save();if('filter' in ctx)ctx.filter='blur(3px)';ctx.fillStyle='#020203';var fw=Math.max(8,0.014*w);
+    ctx.fillRect(gx0-fw,gy0-fw,fw,gy1-gy0+fw*2);ctx.fillRect(gx1,gy0-fw,fw,gy1-gy0+fw*2);ctx.fillRect(gx0-fw,gy1,gx1-gx0+fw*2,fw);ctx.fillRect(gx0,0.585*h+goy,gx1-gx0,fw*0.45);
+    ctx.restore();
+    ctx.globalCompositeOperation='lighter';
+    for(var q=0;q<parts.length;q++){var P=parts[q];var k=ease(c01((tc-4-P.d)/2.6));var X=lerp(P.hx+Math.sin(t*0.35+P.ph)*10,P.tx+Math.sin(t*1.7+P.ph)*0.6,k)+gox;var Yy=lerp(P.hy+Math.cos(t*0.3+P.ph*1.3)*8,P.ty+Math.cos(t*1.3+P.ph)*0.6,k)+goy;var al=(0.30+0.70*k)*(0.75+0.25*Math.sin(t*3+P.ph*5));var dd=c01((tc-15.2-P.d*0.9)/3.2);if(dd>0){Yy+=dd*dd*(h*0.3+P.s*30);X+=Math.sin(P.ph*7)*dd*14;al*=1-dd;}
+      if(al<=0.01)continue;var sz=P.s*(1.4+k*1.4);ctx.globalAlpha=al*0.8;ctx.drawImage(gStar,X-sz*3,Yy-sz*3,sz*6,sz*6);}
+    ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+    ctx.save();if('filter' in ctx)ctx.filter='blur(7px)';ctx.fillStyle='rgba(1,1,2,.93)';ctx.beginPath();ctx.moveTo(-20,h+20);ctx.lineTo(-20,0.70*h);ctx.quadraticCurveTo(0.02*w,0.62*h,0.06*w,0.665*h);ctx.quadraticCurveTo(0.085*w,0.70*h,0.09*w,0.75*h);ctx.quadraticCurveTo(0.14*w,0.80*h,0.17*w,h+20);ctx.closePath();ctx.fill();ctx.restore();
+    vignette(ctx,w,h,.62);grain(ctx,w,h,.08);
+    var fin=c01(tc/1.5),fout=c01((tc-21.6)/2.2);var bl=Math.max(1-fin,fout);if(!reduce&&bl>0){ctx.fillStyle='rgba(0,0,0,'+bl+')';ctx.fillRect(0,0,w,h);}
+    if(reduce)setHud(true,true);else setHud(tc>1.6&&tc<7.4,tc>9&&tc<12.8);
+  }
+  return{resize:function(w,h){W=w;H=h;build();},draw:draw,still:10.5,point:function(x,y){tx=x;ty=y;},retarget:computeTargets};
+})();
+var heroRun=run(document.getElementById('cvHero'),hero);
+var hf=document.getElementById('heroFrame');
+hf.addEventListener('pointermove',function(e){var r=hf.getBoundingClientRect();hero.point((e.clientX-r.left)/r.width*2-1,(e.clientY-r.top)/r.height*2-1);});
+hf.addEventListener('pointerleave',function(){hero.point(0,0);});
+if(document.fonts&&document.fonts.load){document.fonts.load('600 40px "Cormorant SC"').then(function(){hero.retarget();heroRun.redraw();}).catch(function(){});}
+
+/* ---------- REFLECTION ---------- */
+var refl=(function(){
+  var W=1,H=1,rain=[],drops=[],dust=[],zoom=1,want=1;
+  var gWarm=sprite(48,[[0,'rgba(255,206,140,.9)'],[0.2,'rgba(255,170,90,.35)'],[1,'rgba(0,0,0,0)']]);
+  function build(){var R=rng(41);rain=[];for(var i=0;i<140;i++)rain.push({x:R(),y:R(),s:0.6+R()*0.6});drops=[];for(i=0;i<34;i++)drops.push({x:R(),y:R(),s:0.03+R()*0.08,r:0.6+R()*1.2});dust=[];for(i=0;i<40;i++)dust.push({x:R(),y:R(),ph:R()*6.28});}
+  function chair(ctx,x,fy,Hc,ang,col,lw){var u=Hc/100;ctx.save();ctx.translate(x,fy);ctx.rotate(ang);ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.lineCap='round';
+    ctx.beginPath();ctx.ellipse(-8*u,-68*u,7*u,15*u,-0.08,0,Math.PI*2);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-12*u,-56*u);ctx.lineTo(-13*u,-40*u);ctx.stroke();
+    ctx.beginPath();ctx.ellipse(0,-40*u,14*u,3*u,0,0,Math.PI*2);ctx.stroke();
+    [[-11,-12],[11,13],[-5,-6],[6,8]].forEach(function(l){ctx.beginPath();ctx.moveTo(l[0]*u,-40*u);ctx.lineTo(l[1]*u,0);ctx.stroke();});
+    ctx.beginPath();ctx.ellipse(0,-16*u,11*u,2*u,0,0,Math.PI*2);ctx.stroke();ctx.restore();}
+  function woman(ctx,x,fy,Hw,col){var u=Hw/100;ctx.fillStyle=col;
+    ctx.beginPath();ctx.ellipse(x+3*u,fy-82*u,5.4*u,6.4*u,0.35,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.moveTo(x-1*u,fy-89*u);ctx.quadraticCurveTo(x+11*u,fy-90*u,x+10*u,fy-74*u);ctx.lineTo(x+12*u,fy-60*u);ctx.lineTo(x-9*u,fy-60*u);ctx.quadraticCurveTo(x-10*u,fy-80*u,x-1*u,fy-89*u);ctx.fill();
+    ctx.beginPath();ctx.moveTo(x-9*u,fy-72*u);ctx.lineTo(x+8*u,fy-72*u);ctx.lineTo(x+7*u,fy-46*u);ctx.lineTo(x-7*u,fy-46*u);ctx.closePath();ctx.fill();
+    ctx.beginPath();ctx.moveTo(x-8*u,fy-47*u);ctx.lineTo(x+18*u,fy-45*u);ctx.quadraticCurveTo(x+22*u,fy-25*u,x+21*u,fy-2*u);ctx.lineTo(x-13*u,fy-2*u);ctx.quadraticCurveTo(x-12*u,fy-30*u,x-8*u,fy-47*u);ctx.fill();
+    ctx.beginPath();ctx.ellipse(x+14*u,fy-47*u,3.4*u,2*u,0,0,Math.PI*2);ctx.fill();}
+  function hearse(ctx,x,base,q,t){ctx.fillStyle='#04050a';
+    for(var m=0;m<3;m++){var mx=x+(26+m*6.5)*q,bob=Math.sin(t*3+m)*0.4*q;ctx.beginPath();ctx.ellipse(mx,base-13.5*q+bob,3.2*q,1.5*q,0,Math.PI,0);ctx.fill();ctx.fillRect(mx-1.1*q,base-13*q+bob,2.2*q,13*q);}
+    ctx.fillRect(x,base-16*q,18*q,10*q);ctx.fillStyle='rgba(70,80,100,.55)';ctx.fillRect(x+2*q,base-14.5*q,14*q,6.5*q);ctx.fillStyle='#04050a';
+    ctx.fillRect(x-0.6*q,base-17.2*q,19.2*q,1.4*q);
+    [1,6,12,17].forEach(function(p){ctx.beginPath();ctx.ellipse(x+p*q,base-19.6*q,1.1*q,2.8*q,0,0,Math.PI*2);ctx.fill();});
+    [3,14].forEach(function(p){ctx.save();ctx.translate(x+p*q,base-3.2*q);ctx.strokeStyle='#04050a';ctx.lineWidth=0.5*q;ctx.beginPath();ctx.arc(0,0,3.1*q,0,Math.PI*2);ctx.stroke();ctx.rotate(-t*1.6);for(var s=0;s<6;s++){ctx.rotate(Math.PI/3);ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(3*q,0);ctx.stroke();}ctx.restore();});
+    ctx.fillRect(x-4*q,base-13*q,4.5*q,1.2*q);ctx.beginPath();ctx.ellipse(x-1.8*q,base-15.6*q,1.5*q,1.9*q,0,0,Math.PI*2);ctx.fill();ctx.fillRect(x-2.9*q,base-20.3*q,2.2*q,2.8*q);
+    ctx.strokeStyle='#04050a';ctx.lineWidth=0.5*q;ctx.beginPath();ctx.moveTo(x,base-8*q);ctx.lineTo(x-9*q,base-8.5*q);ctx.stroke();
+    for(var hI=0;hI<2;hI++){var hx=x-11*q-hI*10*q;ctx.beginPath();ctx.ellipse(hx,base-8.2*q,4.2*q,2.2*q,0,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.moveTo(hx-3*q,base-9.4*q);ctx.lineTo(hx-5.6*q,base-13*q);ctx.lineTo(hx-4.2*q,base-13.8*q);ctx.lineTo(hx-1.6*q,base-9.8*q);ctx.fill();
+      ctx.beginPath();ctx.ellipse(hx-6*q,base-12.6*q,1.8*q,0.9*q,-0.5,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.ellipse(hx-5*q,base-15.4*q,0.6*q,1.6*q,0,0,Math.PI*2);ctx.fill();
+      ctx.lineWidth=0.7*q;for(var lg=0;lg<4;lg++){var lx=hx+(lg<2?-2.8:2.6)*q+(lg%2)*0.9*q;var sw=Math.sin(t*5.5+lg*1.7+hI)*1.1*q;ctx.beginPath();ctx.moveTo(lx,base-6.6*q);ctx.lineTo(lx+sw,base);ctx.stroke();}
+      ctx.beginPath();ctx.moveTo(hx+4*q,base-9*q);ctx.quadraticCurveTo(hx+5.5*q,base-7*q,hx+5*q,base-4.5*q);ctx.stroke();}
+  }
+  function draw(ctx,w,h,t){
+    zoom+=(want-zoom)*0.06;
+    var fx=0.75*w,fy=0.42*h,k=(zoom-1)/0.8;
+    ctx.setTransform(DPR,0,0,DPR,0,0);ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;
+    ctx.fillStyle='#000';ctx.fillRect(0,0,w,h);
+    ctx.save();ctx.translate(fx+(w*0.5-fx)*k,fy+(h*0.5-fy)*k);ctx.scale(zoom,zoom);ctx.translate(-fx,-fy);
+    var wall=ctx.createLinearGradient(0,0,0,h);wall.addColorStop(0,'#0a0c12');wall.addColorStop(1,'#0e1018');ctx.fillStyle=wall;ctx.fillRect(-w,-h,w*3,h*3);
+    ctx.fillStyle='rgba(160,175,210,.025)';for(var sx=0;sx<w;sx+=0.03*w)ctx.fillRect(sx,0,1,0.83*h);
+    var x0=0.60*w,x1=0.90*w,y0=0.10*h,y1=0.74*h;
+    ctx.save();ctx.beginPath();ctx.rect(x0,y0,x1-x0,y1-y0);ctx.clip();
+    var st=ctx.createLinearGradient(0,y0,0,y1);st.addColorStop(0,'#0c1322');st.addColorStop(1,'#1a2230');ctx.fillStyle=st;ctx.fillRect(x0,y0,x1-x0,y1-y0);
+    ctx.fillStyle='#070a12';ctx.fillRect(x0,y0+0.10*h,0.09*w,0.6*h);ctx.fillRect(x0+0.11*w,y0+0.05*h,0.12*w,0.6*h);ctx.fillRect(x0+0.24*w,y0+0.14*h,0.08*w,0.6*h);
+    ctx.fillStyle='rgba(255,196,120,.8)';ctx.fillRect(x0+0.15*w,y0+0.17*h,0.012*w,0.03*h);
+    var lampX=x0+0.07*w,lampY=0.40*h;ctx.fillStyle='#05070b';ctx.fillRect(lampX-1.5,lampY,3,0.30*h);
+    ctx.globalCompositeOperation='lighter';ctx.globalAlpha=0.95;ctx.drawImage(gWarm,lampX-0.16*h,lampY-0.16*h,0.32*h,0.32*h);ctx.globalAlpha=0.3;ctx.drawImage(gWarm,lampX-0.05*h,0.66*h,0.1*h,0.12*h);ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle='#0b0e15';ctx.fillRect(x0,0.70*h,x1-x0,0.05*h);
+    var cyc=18,hp=(t%cyc)/13;if(hp<1){var hxs=lerp(x1+0.06*w,x0-0.40*w,hp);hearse(ctx,hxs,0.705*h,0.0068*h,t);}
+    ctx.strokeStyle='rgba(165,180,205,.22)';ctx.lineWidth=1;ctx.beginPath();
+    for(var i=0;i<rain.length;i++){var r=rain[i];var ry=y0+((r.y+t*0.9*r.s)%1)*(y1-y0);var rx=x0+r.x*(x1-x0);ctx.moveTo(rx,ry);ctx.lineTo(rx-2,ry+0.03*h);}ctx.stroke();
+    ctx.globalCompositeOperation='screen';ctx.globalAlpha=0.24+0.03*Math.sin(t*0.9);
+    if('filter' in ctx)ctx.filter='blur(0.6px)';
+    chair(ctx,x0+0.075*w,0.725*h,0.26*h,0,'rgba(170,190,220,1)',2);
+    woman(ctx,x0+0.075*w,0.70*h,0.36*h,'rgba(170,190,220,1)');
+    ctx.filter='none';ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+    for(i=0;i<drops.length;i++){var d=drops[i];var dy=y0+((d.y+t*d.s)%1)*(y1-y0);var dx=x0+d.x*(x1-x0);ctx.fillStyle='rgba(200,215,235,.10)';ctx.fillRect(dx-0.5,dy-0.06*h,1,0.06*h);ctx.fillStyle='rgba(220,232,250,.55)';ctx.beginPath();ctx.ellipse(dx,dy,d.r,d.r*1.4,0,0,Math.PI*2);ctx.fill();}
+    ctx.restore();
+    ctx.fillStyle='#05060a';var fw=0.012*w;ctx.fillRect(x0-fw,y0-fw,x1-x0+fw*2,fw);ctx.fillRect(x0-fw,y1,x1-x0+fw*2,fw*1.4);ctx.fillRect(x0-fw,y0,fw,y1-y0);ctx.fillRect(x1,y0,fw,y1-y0);ctx.fillRect((x0+x1)/2-fw*0.35,y0,fw*0.7,y1-y0);ctx.fillRect(x0,(y0+y1)/2-fw*0.3,x1-x0,fw*0.6);
+    ctx.globalCompositeOperation='lighter';var sh=ctx.createLinearGradient(x0,y1,x0-0.14*w,h);sh.addColorStop(0,'rgba(120,150,205,.12)');sh.addColorStop(1,'rgba(120,150,205,0)');ctx.fillStyle=sh;ctx.beginPath();ctx.moveTo(x0,y1+fw*1.4);ctx.lineTo(x1,y1+fw*1.4);ctx.lineTo(x1-0.10*w,h);ctx.lineTo(x0-0.22*w,h);ctx.closePath();ctx.fill();
+    for(i=0;i<dust.length;i++){var du=dust[i];var ddx=lerp(x0-0.15*w,x1,du.x)+Math.sin(t*0.3+du.ph)*8,ddy=lerp(y1,h,du.y)-((t*6+du.ph*40)%(0.25*h));ctx.fillStyle='rgba(200,215,240,'+(0.18+0.15*Math.sin(t+du.ph))+')';ctx.fillRect(ddx,ddy,1.4,1.4);}
+    var fire=ctx.createRadialGradient(0,0.98*h,0,0,0.98*h,0.45*h);fire.addColorStop(0,'rgba(210,90,40,.20)');fire.addColorStop(1,'rgba(210,90,40,0)');ctx.fillStyle=fire;ctx.fillRect(0,0.5*h,0.5*w,0.5*h);
+    ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle='#07080c';ctx.fillRect(0,0.83*h,w*1.2,h);ctx.fillStyle='rgba(150,170,210,.06)';ctx.fillRect(0,0.83*h,w,1);
+    ctx.fillStyle='#14151c';ctx.fillRect(0.40*w,0.15*h,0.10*w,0.58*h);
+    ctx.fillStyle='#050508';ctx.beginPath();ctx.moveTo(0.395*w,0.14*h);ctx.quadraticCurveTo(0.45*w,0.12*h,0.505*w,0.14*h);ctx.lineTo(0.51*w,0.74*h);ctx.quadraticCurveTo(0.45*w,0.77*h,0.39*w,0.74*h);ctx.closePath();ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,.045)';ctx.lineWidth=1;for(var f=0;f<5;f++){var fxp=0.405*w+f*0.022*w;ctx.beginPath();ctx.moveTo(fxp,0.16*h);ctx.quadraticCurveTo(fxp+0.006*w,0.45*h,fxp-0.004*w,0.73*h);ctx.stroke();}
+    ctx.fillStyle='#090a0f';ctx.fillRect(0.045*w,0.06*h,0.014*w,0.78*h);
+    ctx.beginPath();ctx.moveTo(-0.02*w,0.60*h);ctx.lineTo(0.27*w,0.60*h);ctx.quadraticCurveTo(0.29*w,0.61*h,0.29*w,0.64*h);ctx.lineTo(0.29*w,0.84*h);ctx.lineTo(-0.02*w,0.84*h);ctx.closePath();ctx.fillStyle='#0c0e15';ctx.fill();
+    ctx.fillStyle='rgba(120,140,185,.08)';ctx.fillRect(0,0.60*h,0.27*w,0.012*h);
+    ctx.fillStyle='#11131b';ctx.beginPath();ctx.ellipse(0.10*w,0.595*h,0.05*w,0.02*h,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#07080c';ctx.beginPath();ctx.moveTo(0.05*w,0.06*h);ctx.quadraticCurveTo(0.12*w,0.30*h,0.08*w,0.58*h);ctx.lineTo(0.06*w,0.58*h);ctx.closePath();ctx.fill();
+    var wob=(t%10);var ang=reduce?0.02:0.045*Math.sin(wob*3.2)*Math.exp(-wob/2.6);
+    chair(ctx,0.355*w,0.845*h,0.26*h,ang,'#0f1118',Math.max(2.5,0.004*w));
+    ctx.save();ctx.translate(0.355*w,0.845*h);ctx.rotate(ang);ctx.fillStyle='#030305';var u=0.26*h/100;ctx.beginPath();ctx.moveTo(-15*u,-80*u);ctx.quadraticCurveTo(-6*u,-88*u,1*u,-80*u);ctx.lineTo(3*u,-52*u);ctx.quadraticCurveTo(-4*u,-48*u,-6*u,-58*u);ctx.lineTo(-15*u,-56*u);ctx.closePath();ctx.fill();ctx.restore();
+    manLit(ctx,0.565*w,0.885*h,0.46*h,1,Math.sin(t*1.5)*0.005,'rgba(140,165,215,.55)',1.6);
+    ctx.save();if('filter' in ctx)ctx.filter='blur(6px)';ctx.fillStyle='rgba(1,1,2,.95)';ctx.beginPath();ctx.moveTo(0.92*w,h+20);ctx.quadraticCurveTo(0.93*w,0.80*h,1.05*w,0.78*h);ctx.lineTo(1.05*w,h+20);ctx.closePath();ctx.fill();ctx.restore();
+    ctx.restore();
+    vignette(ctx,w,h,.6);grain(ctx,w,h,.08);
+  }
+  return{resize:function(w,h){W=w;H=h;build();},draw:draw,still:4,zoom:function(on){want=on?1.8:1;}};
+})();
+var reflRun=run(document.getElementById('cvRefl'),refl);
+var rf=document.getElementById('reflFrame'),zh=document.getElementById('zoomHint'),zoomed=false;
+function setZoom(on){zoomed=on;refl.zoom(on);zh.textContent=on?'Вглядеться: улица под дождём':'Вглядеться: наведите или коснитесь';if(reduce)reflRun.redraw();}
+rf.addEventListener('pointerenter',function(e){if(e.pointerType==='mouse')setZoom(true);});
+rf.addEventListener('pointerleave',function(e){if(e.pointerType==='mouse')setZoom(false);});
+rf.addEventListener('click',function(){setZoom(!zoomed);});
+rf.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();setZoom(!zoomed);}});
+
+/* ---------- SMOKED GLASS ---------- */
+var glass=(function(){
+  var W=1,H=1,sky=null,soot=null,sg=null,ready=false;
+  function buildSky(){
+    sky=document.createElement('canvas');sky.width=Math.round(W*DPR);sky.height=Math.round(H*DPR);var g=sky.getContext('2d');g.scale(DPR,DPR);
+    var gr=g.createLinearGradient(0,0,0,H);gr.addColorStop(0,'#8e8a84');gr.addColorStop(1,'#d9d2c4');g.fillStyle=gr;g.fillRect(0,0,W,H);
+    var sxp=0.64*W,syp=0.42*H,R=0.13*H;
+    var sg2=g.createRadialGradient(sxp,syp,R*0.6,sxp,syp,R*4);sg2.addColorStop(0,'rgba(255,236,190,.95)');sg2.addColorStop(.3,'rgba(255,226,170,.35)');sg2.addColorStop(1,'rgba(255,220,170,0)');g.fillStyle=sg2;g.fillRect(0,0,W,H);
+    var sd=g.createRadialGradient(sxp-R*0.2,syp-R*0.2,0,sxp,syp,R);sd.addColorStop(0,'#fff6dc');sd.addColorStop(.8,'#f7dc98');sd.addColorStop(1,'#eec574');g.fillStyle=sd;g.beginPath();g.arc(sxp,syp,R,0,Math.PI*2);g.fill();
+    var Rn=rng(61);for(var i=0;i<90;i++){var x=Rn()*W,y=Rn()*H,r=(0.05+Rn()*0.18)*H;var c=g.createRadialGradient(x,y,0,x,y,r);var light=Rn()<0.55;c.addColorStop(0,light?'rgba(238,232,220,'+(0.12+Rn()*0.2)+')':'rgba(110,104,98,'+(0.08+Rn()*0.14)+')');c.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=c;g.fillRect(x-r,y-r,r*2,r*2);}
+  }
+  function soot0(){
+    soot=document.createElement('canvas');soot.width=Math.round(W*DPR);soot.height=Math.round(H*DPR);sg=soot.getContext('2d');sg.setTransform(DPR,0,0,DPR,0,0);
+    sg.globalCompositeOperation='source-over';sg.fillStyle='rgba(24,19,15,.86)';sg.fillRect(0,0,W,H);
+    var Rn=rng(71);for(var i=0;i<160;i++){var x=Rn()*W,y=Rn()*H,r=(0.02+Rn()*0.12)*H;var c=sg.createRadialGradient(x,y,0,x,y,r);var dk=Rn()<0.6;c.addColorStop(0,dk?'rgba(6,4,3,'+(0.05+Rn()*0.10)+')':'rgba(70,58,46,'+(0.04+Rn()*0.06)+')');c.addColorStop(1,'rgba(0,0,0,0)');sg.fillStyle=c;sg.fillRect(x-r,y-r,r*2,r*2);}
+    var eg=sg.createRadialGradient(W/2,H/2,Math.min(W,H)*0.3,W/2,H/2,Math.max(W,H)*0.7);eg.addColorStop(0,'rgba(0,0,0,0)');eg.addColorStop(1,'rgba(8,6,4,.5)');sg.fillStyle=eg;sg.fillRect(0,0,W,H);
+    sg.globalCompositeOperation='destination-out';sg.fillStyle='rgba(0,0,0,.92)';sg.textAlign='center';sg.textBaseline='middle';
+    sg.font=Math.round(H*0.42)+'px "Bad Script", "Segoe Print", cursive';
+    if('filter' in sg)sg.filter='blur(1.2px)';sg.fillText('Э',W*0.22,H*0.52);sg.filter='none';
+    sg.globalCompositeOperation='source-over';ready=true;
+  }
+  function wipe(x0,y0,x1,y1){if(!sg)return;var r=Math.max(9,Math.min(W,H)*0.028);var d=Math.hypot(x1-x0,y1-y0),n=Math.max(1,Math.ceil(d/(r*0.25)));sg.globalCompositeOperation='destination-out';for(var i=0;i<=n;i++){var x=lerp(x0,x1,i/n),y=lerp(y0,y1,i/n);var b=sg.createRadialGradient(x,y,0,x,y,r);b.addColorStop(0,'rgba(0,0,0,.9)');b.addColorStop(.6,'rgba(0,0,0,.55)');b.addColorStop(1,'rgba(0,0,0,0)');sg.fillStyle=b;sg.fillRect(x-r,y-r,r*2,r*2);}sg.globalCompositeOperation='source-over';}
+  function draw(ctx,w,h,t){
+    ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;
+    if(sky)ctx.drawImage(sky,0,0,w,h);
+    var sxp=0.64*w,syp=0.42*h,R=0.13*h,rv=0.013*h,yv=syp-R*0.35,limb=sxp-Math.sqrt(R*R-(yv-syp)*(yv-syp));
+    var cyc=11,p=reduce?0.48:(t%cyc)/cyc;var cx=limb-rv*1.2+p*rv*5;var dl=cx-limb;
+    if(soot)ctx.drawImage(soot,0,0,w,h);
+    ctx.globalCompositeOperation='lighter';var sun=ctx.createRadialGradient(sxp,syp,0,sxp,syp,R*1.25);sun.addColorStop(0,'rgba(255,150,60,.42)');sun.addColorStop(.75,'rgba(230,110,40,.30)');sun.addColorStop(1,'rgba(200,90,30,0)');ctx.fillStyle=sun;ctx.fillRect(sxp-R*1.3,syp-R*1.3,R*2.6,R*2.6);ctx.globalCompositeOperation='source-over';
+    ctx.save();ctx.beginPath();ctx.arc(sxp,syp,R,0,Math.PI*2);ctx.clip();ctx.fillStyle='#0a0806';
+    ctx.beginPath();ctx.arc(cx,yv,rv,0,Math.PI*2);ctx.fill();
+    if(dl>rv*0.55&&dl<rv*1.75){var k=1-(dl-rv*0.55)/(rv*1.2);var nh=rv*1.15*k;ctx.beginPath();ctx.moveTo(limb-2,yv-nh*1.6);ctx.quadraticCurveTo(limb+(cx-limb)*0.5,yv-nh*0.35,cx-rv*0.4,yv-rv*0.85);ctx.lineTo(cx-rv*0.4,yv+rv*0.85);ctx.quadraticCurveTo(limb+(cx-limb)*0.5,yv+nh*0.35,limb-2,yv+nh*1.6);ctx.closePath();ctx.fill();}
+    ctx.restore();
+    var gl=ctx.createLinearGradient(0,0,w,h);gl.addColorStop(0,'rgba(255,255,255,0)');gl.addColorStop(.45,'rgba(255,255,255,0)');gl.addColorStop(.5,'rgba(255,255,255,.05)');gl.addColorStop(.55,'rgba(255,255,255,0)');ctx.fillStyle=gl;ctx.fillRect(0,0,w,h);
+    ctx.strokeStyle='rgba(20,16,12,.85)';ctx.lineWidth=Math.max(6,w*0.008);ctx.strokeRect(0,0,w,h);
+  }
+  return{resize:function(w,h){W=w;H=h;buildSky();soot0();},draw:draw,still:5,wipe:wipe,reset:soot0};
+})();
+var glassRun=run(document.getElementById('cvGlass'),glass);
+var gf=document.getElementById('glassFrame'),drawing=false,last=null;
+function gpos(e){var r=gf.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top];}
+gf.addEventListener('pointerdown',function(e){drawing=true;last=gpos(e);try{gf.setPointerCapture(e.pointerId);}catch(_){}glass.wipe(last[0],last[1],last[0],last[1]);if(reduce)glassRun.redraw();});
+gf.addEventListener('pointermove',function(e){if(!drawing)return;var p=gpos(e);glass.wipe(last[0],last[1],p[0],p[1]);last=p;if(reduce)glassRun.redraw();});
+['pointerup','pointercancel','pointerleave'].forEach(function(ev){gf.addEventListener(ev,function(){drawing=false;last=null;});});
+document.getElementById('resoot').addEventListener('click',function(){glass.reset();glassRun.redraw();});
+if(document.fonts&&document.fonts.load){document.fonts.load('40px "Bad Script"').then(function(){glass.reset();glassRun.redraw();}).catch(function(){});}
+
+/* ---------- CHAPTERS ---------- */
+var CH=[
+ ['П','Комната с завешенным зеркалом','Зеркала завешивают, чтобы душа не заблудилась.','0,5','кома',null,['#0B0F1A','#1C2333','#E0A050'],'Герой просыпается: часы стоят на 17:42, зеркало не открывается, из-за стены звучат голоса врача и женщины.','Это комната его смерти после 18:31. «Не надо» шепчет сама Вивиан: она не может посмотреть на себя.'],
+ ['1','Обсерватория «Наблюдатель»','Где звёзды пишут письма на стекле.','1,75','кома','01_observatory',['#0B0F1A','#C9D3E0','#E0A050'],'Стеклянный купол, где он был счастлив. Звёзды складываются в «НЕ УХОДИ». Появляется Гаситель.','Купол назвала она, в честь человека из седьмого ряда. Надпись сделана с её стороны стекла.'],
+ ['2','Театр теней','Здесь аплодисменты звучат без зрителей.','2,25','кома','02_theater',['#1A120D','#D8C7A6','#7A1E1E'],'Пустой театр. На дыму идёт спектакль о его жизни, Суфлёр подсказывает ему реплики.','Это её сцена. Аплодисменты те, под которые он умер в 17:42. Его реплики записаны её рукой.'],
+ ['3','Причал отхода','Корабли уходят туда, где нет карты.','1,75','кома','03_pier',['#0A1414','#9FB3AE','#E8C070'],'«Пенелопа» уходит на Мадагаскар без него. Огонёк ведёт его под причалом. Почему он остался?','В августе дочь родилась мёртвой. Он остался ради жены, а она решила, что отняла у него небо.'],
+ ['4','Лабиринт молчания','Каждая стена помнит то, что ты забыл.','2,25','кома → трещина','04_labyrinth',['#141210','#8A7F70','#C98A3A'],'Дом стал лабиринтом, где опасен любой звук. Семь попыток дойти до двери, за которой плачут.','Семь раз он подходил к её двери и не стучал. Она слышала и считала.'],
+ ['5','Сад уснувших часов','Время здесь остановилось, чтобы слушать.','1,75','призрак','05_garden',['#0E120E','#E8E4D8','#6E8F7A'],'Все часы стоят на 17:42. На одну минуту время идёт, и он видит свою могилу.','Часы остановили в минуту смерти. Она до сих пор слушает по ночам его шаги.'],
+ ['6','Дом без имени','Комнаты меняются, когда ты отворачиваешься.','2,25','призрак','06_house',['#0D0C0B','#2F3A2A','#D9A441'],'Пять эпох одного дома. На фото он чёткий, а она размыта. Безымянная дверь ждёт имени.','Посмертный снимок: мёртвые не шевелятся. Безымянная комната — детская. Имя дочери дала она.'],
+ ['7','Хранилище запрещённых книг','Некоторые истории нельзя дочитать.','2','изгнание','07_vault',['#070707','#CBB48A','#F2C66D'],'Четыре печати, четыре правды. Договор: она согласилась его «угасить».','«Лечение покоем» запретило ей читать. Она боялась прочесть его дневник.'],
+ ['8','Площадь размытых лиц','Их лица стираются, когда на них смотришь.','1,75','изгнание','08_square',['#0A0C10','#5E6670','#F0B860'],'Похороны под дождём. Найдены девять лиц из десяти, его лица нет нигде.','Она не могла смотреть людям в глаза и начинает забывать его лицо.'],
+ ['9','Вокзал пересечений','Здесь все дороги ведут в одно и то же воспоминание.','2,25','изгнание','09_station',['#101214','#DCE3E8','#B3261E'],'Четыре поезда «если бы». Каждый приходит в 17:42.','Её торг. Даже будь она рядом, последних слов бы не было: он не мог говорить.'],
+ ['10','Гора шепотов','Чем выше поднимаешься, тем громче слышишь себя.','1,75','трещина в герое','10_mountain',['#1A1022','#4B2F5C','#C2291F'],'Подъём к собору. Шёпоты его голосом становятся женским голосом.','Лиловый — её полутраур. «Себя» значит её.'],
+ ['11','Комната, где остановили часы','Всё здесь построено из чужих слов.','1','её память',null,['#EDE8DF','#8D8A84','#8B1A1A'],'Комната смерти нарисована как эскиз. Герой смотрит в камеру: «Ты всё это время смотрела».','Её там не было. Комнату она знает только со слов горничной.'],
+ ['12','Последний выход','Теперь смотрят на тебя.','1,5','её память',null,['#120B0A','#9E1B32','#F4E3C1'],'Игрок становится Вивиан. Джульетта, поклоны, аплодисменты игрока в 17:42, бег домой.','Выбор: погасить последний фонарь и забыть или снять креп с зеркала.'],
+ ['13','Прохождение','Облака. Ничего не видно.','1,25','её память',null,['#3A3632','#C9C6BF','#F6D88A'],'Кухня, 6 декабря 1882 года. Его дневник: «Лучший день в моей жизни».','Седьмой ряд. «Иди. Опоздаешь». «Я никуда не денусь». Капля отрывается от Солнца.'],
+ ['Э','Полутраур','Лиловый — это чёрный, который учится светлеть.','0,5','правда',null,['#EFE9DD','#B7A6C9','#A8C49A'],'Утро. Она заводит часы и снимает креп с зеркал.','8 июня 2004 года: стекло с буквами лежит в музейной витрине.']
+];
+var cards=document.getElementById('cards'),script=document.getElementById('script');
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function lum(hex){var n=parseInt(hex.slice(1),16);return(0.299*(n>>16&255)+0.587*(n>>8&255)+0.114*(n&255))/255;}
+var html='',strip='';
+CH.forEach(function(c){
+  var pal=c[6];strip+='<i style="background:linear-gradient(180deg,'+pal[0]+' 0%,'+pal[1]+' 78%,'+pal[2]+' 100%)"></i>';
+  var label=c[0]==='П'?'Пролог':c[0]==='Э'?'Эпилог':'Глава '+c[0];
+  var img=c[5]?'<img src="mockups/'+c[5]+'.jpg" alt="Макет: '+esc(c[1])+'">':'<div class="swatch" style="background:linear-gradient(115deg,'+pal[0]+' 0%,'+pal[1]+' 70%,'+pal[2]+' 100%);color:'+(lum(pal[0])>0.5?'#211c28':'#efe6d6')+'"><b>'+esc(c[0])+'</b><small>нет макета · палитра</small></div>';
+  html+='<article class="card"><div class="img">'+img+'</div><div class="body"><div class="meta"><span>'+label+'</span><span>'+c[3]+' ч</span><span class="layer-tag">'+esc(c[4])+'</span></div><h3>'+esc(c[1])+'</h3><p class="tag">'+esc(c[2])+'</p><p class="txt first">'+esc(c[7])+'</p><p class="txt second">'+esc(c[8])+'</p><div class="chips" aria-hidden="true"><i style="background:'+pal[0]+';outline:1px solid rgba(255,255,255,.12)"></i><i style="background:'+pal[1]+'"></i><i style="background:'+pal[2]+'"></i></div></div></article>';
+});
+cards.innerHTML=html;script.innerHTML=strip;
+var secCh=document.getElementById('chapters'),b1=document.getElementById('r1'),b2=document.getElementById('r2');
+function setReading(n){secCh.setAttribute('data-reading',n);b1.setAttribute('aria-pressed',n===1?'true':'false');b2.setAttribute('aria-pressed',n===2?'true':'false');try{localStorage.setItem('bd-reading',String(n));}catch(_){}}
+b1.addEventListener('click',function(){setReading(1);});b2.addEventListener('click',function(){setReading(2);});
+try{if(localStorage.getItem('bd-reading')==='2')setReading(2);}catch(_){}
+
+/* ---------- DEMO TIMELINE ---------- */
+var BEATS=[
+ [0,20,'#08080a','Тьма и аплодисменты','Аплодисменты обрываются на полухлопке, часы останавливаются, её почерком пишется эпиграф.',''],
+ [20,55,'#1f2a44','Пробуждение','Спальня в разрезе. Он садится, кашляет в платок и прячет его привычным жестом. Часы на 17:42.',''],
+ [55,90,'#2b3a5c','Отражение в окне','В стекле на стуле сидит женщина, в комнате стул пуст. За окном катафалк и фонарщик.','Кого-то хоронят.'],
+ [90,125,'#121318','Зеркало','Рука сама останавливается на крепе. Голоса из-за стены: «Он меня слышит?» — «Нет, мадам. Уже нет».','Не надо.'],
+ [125,165,'#3d3020','Коридор и лестница','Сундук «Пенелопы» без штемпеля, прыжок через пролом. Горничная несёт две чашки и оставляет одну.',''],
+ [165,225,'#5a6f96','Обсерватория','Заголовок главы, пазл с куполом, звёзды пишут «НЕ УХОДИ». Первый отголосок: Сатурн.','Кто-то пишет с той стороны стекла.'],
+ [225,270,'#b27a3a','Гаситель','Рожки гаснут один за другим, мир смывается в чернила. Погоня по трубе телескопа.',''],
+ [270,290,'#7a1e1e','Линза','Камера впервые покидает плоскость. Театр из седьмого ряда, женщина на сцене начинает оборачиваться.',''],
+ [290,300,'#000000','Обрыв','Один тик. Капля чернил складывается в название.','']
+];
+var tl=document.getElementById('tl'),beats=document.getElementById('beats');var th='',bh='';
+function mmss(s){return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
+BEATS.forEach(function(b){var wpc=(b[1]-b[0])/3;th+='<div style="width:'+wpc+'%;background:linear-gradient(180deg,'+b[2]+','+shade(b[2])+')">'+(b[1]-b[0]>=30?'<span>'+mmss(b[0])+'</span>':'')+'</div>';
+  bh+='<li><time>'+mmss(b[0])+'–'+mmss(b[1])+'</time><b>'+esc(b[3])+'</b><span>'+esc(b[4])+'</span>'+(b[5]?'<span class="line">«'+esc(b[5])+'»</span>':'')+'</li>';});
+function shade(hex){var n=parseInt(hex.slice(1),16);var r=(n>>16&255)*0.55|0,g=(n>>8&255)*0.55|0,bb=(n&255)*0.55|0;return'rgb('+r+','+g+','+bb+')';}
+tl.innerHTML=th;beats.innerHTML=bh;
+
+/* ---------- MUSIC CHART ---------- */
+(function(){
+  var lab=['П','1','2','3','4','5','6','7','8','9','10','11','12','13','Э'];
+  var dark=[8,7,7,8,8,9,9,9,10,9,7,8,9,3,1];
+  var pow=[1,3,4,4,2,8,4,6,7,7,10,1,10,5,3];
+  var Wd=920,Hd=330,m={l:44,r:22,t:34,b:70};
+  var step=(Wd-m.l-m.r)/(lab.length-1);
+  function X(i){return m.l+i*step;}function Y(v){return m.t+(10-v)*(Hd-m.t-m.b)/10;}
+  var s='<svg viewBox="0 0 '+Wd+' '+Hd+'" role="img" aria-label="График: сила звучания и мрак по главам. Пики в главах 5, 10 и 12; в главе 13 мрак падает до 3, тональность становится мажорной.">';
+  [0,5,10].forEach(function(v){s+='<line class="grid" x1="'+m.l+'" x2="'+(Wd-m.r)+'" y1="'+Y(v)+'" y2="'+Y(v)+'"/><text class="axis" x="'+(m.l-10)+'" y="'+(Y(v)+4)+'" text-anchor="end">'+v+'</text>';});
+  var area='M'+X(0)+' '+Y(0);pow.forEach(function(v,i){area+=' L'+X(i)+' '+Y(v);});area+=' L'+X(lab.length-1)+' '+Y(0)+' Z';
+  s+='<path class="pow-area" d="'+area+'"/>';
+  s+='<polyline class="dark" points="'+dark.map(function(v,i){return X(i)+','+Y(v);}).join(' ')+'"/>';
+  s+='<polyline class="pow" points="'+pow.map(function(v,i){return X(i)+','+Y(v);}).join(' ')+'"/>';
+  pow.forEach(function(v,i){s+='<circle class="dot" cx="'+X(i)+'" cy="'+Y(v)+'" r="'+([5,10,12,13].indexOf(i)>=0?5:3)+'"/>';});
+  [[5,'17:42'],[10,'Гора шепотов'],[12,'Бег'],[13,'свет']].forEach(function(a){var i=a[0];var anchor=i===13?'start':'middle';var dx=i===13?10:0;var dy=i===13?-2:-14;s+='<text class="ann" x="'+(X(i)+dx)+'" y="'+(Y(pow[i])+dy)+'" text-anchor="'+anchor+'">'+a[1]+'</text>';});
+  lab.forEach(function(l,i){s+='<text class="axis" x="'+X(i)+'" y="'+(Hd-m.b+20)+'" text-anchor="middle">'+l+'</text>';});
+  var by=Hd-m.b+34,bh2=20;var xm=X(12)+step/2;
+  s+='<rect class="mode-min" x="'+(X(0)-step/2)+'" y="'+by+'" width="'+(xm-(X(0)-step/2))+'" height="'+bh2+'"/>';
+  s+='<rect class="mode-maj" x="'+xm+'" y="'+by+'" width="'+(X(14)+step/2-xm)+'" height="'+bh2+'"/>';
+  s+='<text class="mode-t min" x="'+(X(0)-step/2+10)+'" y="'+(by+14)+'">ре минор · бас «Плача Дидоны»</text>';
+  s+='<text class="mode-t maj" x="'+(xm+8)+'" y="'+(by+14)+'">ре мажор</text>';
+  s+='</svg>';
+  document.getElementById('chart').innerHTML=s;
+})();
+
+/* ---------- MUSIC BOX ---------- */
+var actx=null;
+function ac(){if(!actx){var A=window.AudioContext||window.webkitAudioContext;if(!A)return null;actx=new A();}if(actx.state==='suspended')actx.resume();return actx;}
+function pling(a,f,t,dur,vol){var out=a.createGain();out.gain.setValueAtTime(0.0001,t);out.gain.exponentialRampToValueAtTime(vol,t+0.006);out.gain.exponentialRampToValueAtTime(0.0001,t+dur);var lp=a.createBiquadFilter();lp.type='lowpass';lp.frequency.value=5200;out.connect(lp);lp.connect(a.destination);
+  [[1,1],[2,0.28],[3.01,0.08],[5.43,0.035]].forEach(function(p){var o=a.createOscillator();o.type='sine';o.frequency.value=f*p[0];var g=a.createGain();g.gain.value=p[1];o.connect(g);g.connect(out);o.start(t);o.stop(t+dur+0.05);});}
+function pad(a,fs,t,dur,vol,cut){var out=a.createGain();out.gain.setValueAtTime(0.0001,t);out.gain.exponentialRampToValueAtTime(vol,t+0.5);out.gain.setValueAtTime(vol,t+dur*0.55);out.gain.exponentialRampToValueAtTime(0.0001,t+dur);var lp=a.createBiquadFilter();lp.type='lowpass';lp.frequency.value=cut;out.connect(lp);lp.connect(a.destination);
+  fs.forEach(function(f){[-4,4].forEach(function(dt){var o=a.createOscillator();o.type='triangle';o.frequency.value=f;o.detune.value=dt;o.connect(out);o.start(t);o.stop(t+dur+0.1);});});}
+function playBox(fixed){var a=ac();if(!a)return;var t=a.currentTime+0.06;var n=[587.33,698.46,659.26];n.forEach(function(f,i){pling(a,f,t+i*0.6,1.9,0.16);});
+  if(fixed){pling(a,880,t+1.8,2.4,0.17);pad(a,[146.83,293.66,369.99,440],t+2.45,4.8,0.05,2600);pling(a,1174.66,t+2.5,3.2,0.09);pling(a,739.99,t+2.9,2.8,0.07);}
+  else{pling(a,880*Math.pow(2,-48/1200),t+1.93,2.0,0.15);pad(a,[73.42,146.83,174.61,220],t+2.5,4.2,0.06,900);}}
+document.getElementById('playBroken').addEventListener('click',function(){playBox(false);});
+document.getElementById('playFixed').addEventListener('click',function(){playBox(true);});
+})();
+</script>
