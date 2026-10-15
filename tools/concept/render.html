@@ -1,0 +1,16 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Cormorant+SC:wght@500;600;700&family=Marck+Script&family=Bad+Script&display=swap">
+<style>body{margin:0;background:#111}</style></head><body>
+<script src="lib.js"></script><script src="scenes.js"></script>
+<script>
+window.ready = (async () => {
+  await Promise.all(['600 40px "Cormorant SC"','500 40px "Cormorant Garamond"','italic 500 40px "Cormorant Garamond"','40px "Marck Script"','40px "Bad Script"'].map(f => document.fonts.load(f, 'Обсерватория НЕ УХОДИ Пенелопа ё').catch(() => null)));
+  return true;
+})();
+window.renderScene = async (name) => {
+  await window.ready;
+  const [c, x] = mk();
+  const ui = await SCENES[name](x);
+  return { img: c.toDataURL('image/png'), ui: ui ? ui.toDataURL('image/png') : null };
+};
+</script></body></html>

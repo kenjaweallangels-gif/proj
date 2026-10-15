@@ -100,11 +100,13 @@
 | 9 | Обычный траур | `#101214` | `#3A3F44` чугун | `#DCE3E8` пар | `#B3261E` / `#3E8E5A` сигналы |
 | 10 | **Полутраур** | `#1A1022` | `#4B2F5C` мовеин | `#9C7FB5` сирень | `#C2291F` витраж |
 | 11 | — (эскиз) | `#EDE8DF` бумага | `#8D8A84` карандаш | — | `#8B1A1A` шаль |
-| 12 | — (сцена) | `#120B0A` | `#9E1B32` алый Джульетты | `#F4E3C1` рампа | `#9FB8D0` Гаситель |
+| 12 | — (сцена) | `#120B0A` | `#E9E4DA` белое платье Леоноры | `#F4E3C1` рампа | `#8E0F14` кровь |
 | 13 | Свет | `#3A3632` сажа | `#C9C6BF` облака | `#F6D88A` солнце | `#050505` капля |
 | Эпилог | Полутраур → жизнь | `#EFE9DD` утро | `#B7A6C9` лаванда | `#FFF4DC` | `#A8C49A` первая зелень |
 
 **Правило насыщенности.** До гл. 10 насыщенность выше 35% допускается только у акцента и только в одном пятне на кадр. Первый «по-настоящему цветной» кадр игры — лиловая гора.
+
+**Правило красного.** Чистый насыщенный красный (`#8E0F14`–`#C0141C`) зарезервирован **только для крови**. Бархат театра, витражи собора, сигнальные огни вокзала приглушены до ржавчины и вина (насыщенность ниже 45%). Поэтому кровь на платке — первое, что видит глаз в любом кадре. Это наш аналог красной кофты мальчика из Inside, только у нас красный означает болезнь и смерть.
 
 ---
 
@@ -129,7 +131,7 @@
 | **Волшебный фонарь, фантасмагория** | Проекции с виньеткой, дрожащий луч, проекция на дым | Отголоски, аппарат доктора, лицо на облаках в гл. 12 |
 | **Зоотроп / праксиноскоп** | Зацикленное движение, видимое через прорези | Окна вагонов в гл. 9: чужие жизни крутятся по кругу |
 | **Стереоскоп** | Двоение изображения, сдвиг двух кадров | Сомнение, ложное воспоминание, двойник на «Пенелопе» |
-| **«Призрак Пеппера»** | Полупрозрачное отражение на наклонном стекле | Гл. 2, отголоски |
+| **«Стеклянный призрак»** (прототип — «призрак Пеппера») | Полупрозрачное отражение на наклонном стекле | Гл. 2, отголоски |
 | **Спиритическая фотография** | Двойная экспозиция, марлевая «эктоплазма» | Свадьба и отпевание одновременно в гл. 10, материя памяти |
 | **Мовеин, фуксин** (1856–59) | Кислотные анилиновые цвета, вспыхивающие в сепии | Эффект лауданума, Гора шепотов |
 | **Долгая выдержка** | Размытие живых, резкость неподвижного | Фотокарточка, лица в гл. 8 |
@@ -224,7 +226,7 @@
 
 ## 11. Ключевые кадры демо (для концепт-художника)
 
-Восемь кадров, которые должны быть нарисованы до старта производства демо. Для каждого — композиция, свет, состояние героя и, ниже, промпт для генерации чернового концепта (на английском: так генераторы изображений работают точнее).
+Готовые кадры — в [08_concept_art.md](08_concept_art.md). Ниже исходное техзадание на них. Восемь кадров, которые должны быть нарисованы до старта производства демо. Для каждого — композиция, свет, состояние героя и, ниже, промпт для генерации чернового концепта (на английском: так генераторы изображений работают точнее).
 
 | # | Кадр | Таймкод | Композиция | Свет |
 |---|---|---|---|---|
@@ -240,8 +242,8 @@
 ### Промпты для чернового концепта
 
 ```
-K1 — 2.5D side-scrolling game screenshot, Victorian bedroom in cross-section like a dollhouse,
-1888 London, a tall thin man in a long dark-grey greatcoat sitting up on a canopy bed, a large
+K1 — 2.5D side-scrolling game screenshot, Victorian-style bedroom in cross-section like a dollhouse,
+fictional gaslamp-era city, a tall thin man in a long dark-grey greatcoat sitting up on a canopy bed coughing bright red blood into a white handkerchief, a large
 standing mirror draped in black mourning crepe in the center, tall rain-streaked window on the
 right, an empty bentwood chair with a black shawl beside the bed, cold blue moonlight shafts
 with dust motes, dying warm embers in the fireplace, deep shadows, minimal detail on the
@@ -259,7 +261,7 @@ blue-black palette with warm gaslight accents
 ```
 K5 — wide establishing shot, 2.5D platformer, a Victorian glass-domed rooftop observatory at
 night, cast-iron ribs, large brass refracting telescope on a heavy mount, spiral iron staircase,
-gas lamps along a gallery railing, star field through the glass, London rooftops below, tiny
+gas lamps along a gallery railing, star field through the glass, rooftops of a fictional foggy city below, tiny
 silhouette of a man in a long coat (6% of frame height), volumetric fog, cold starlight and warm
 gaslight, painterly oil texture, melancholic, cinematic composition, style of Inside and Little
 Nightmares, 16:9
