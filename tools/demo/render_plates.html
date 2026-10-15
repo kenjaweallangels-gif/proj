@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Cormorant+SC:wght@500;600;700&family=Marck+Script&family=Bad+Script&display=swap">
+<style>body{margin:0;background:#111}</style></head><body>
+<script src="../concept/lib.js"></script><script src="../concept/scenes.js"></script><script src="plates.js"></script>
+<script>
+window.ready = (async () => {
+  await Promise.all(['600 40px "Cormorant SC"','500 40px "Cormorant Garamond"','italic 500 40px "Cormorant Garamond"','40px "Marck Script"'].map(f => document.fonts.load(f, 'Обсерватория СОЛМАР Пенелопа ё').catch(() => null)));
+  return true;
+})();
+window.renderPlate = async (name) => {
+  await window.ready;
+  const p = PLATES[name];
+  setCanvasSize(p.size[0], p.size[1], p.scale); setOrigin(p.origin[0], p.origin[1]);
+  const [c, x] = mk();
+  await p.draw(x);
+  setOrigin(0, 0); setCanvasSize(1920, 1080, 1.5);
+  return c.toDataURL('image/png');
+};
+</script></body></html>

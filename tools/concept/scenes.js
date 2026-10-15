@@ -608,7 +608,7 @@ SCENES.K4 = (ctx) => {
 };
 
 /* ================= K8 · Театр из седьмого ряда ================= */
-SCENES.K8 = (ctx) => {
+SCENES.K8 = (ctx, o = {}) => {
   vgrad(ctx, 0, 0, W, H, [[0, '#0b0806'], [1, '#050403']]);
   // painted ceiling sliver: stars and a mirrored Orion
   vgrad(ctx, 0, 0, W, 120, [[0, '#0d1424'], [1, '#090c14']]);
@@ -632,7 +632,7 @@ SCENES.K8 = (ctx) => {
   lightPool(ctx, 1005, 690, 150, 18, [255, 236, 200], .7);
   dust(ctx, 260, [560, 150, 580, 560], 95, [255, 240, 210], { a: .5, inside: (x, y) => { const t = (y - 150) / 550; return x > lerp(560, 880, t) && x < lerp(640, 1130, t); } });
   // the woman in mourning, back to us, beginning to turn
-  litFigure(ctx, c => inFig(c, 1005, 694, 250, 1, f => woman(f, 'back')), { body: '#070607', rim: [[255, 236, 200], .9, [-1.6, -1.2]], halo: [[255, 230, 190], .3, 8] });
+  if (!o.noWoman) litFigure(ctx, c => inFig(c, 1005, 694, 250, 1, f => woman(f, 'back')), { body: '#070607', rim: [[255, 236, 200], .9, [-1.6, -1.2]], halo: [[255, 230, 190], .3, 8] });
   ctx.restore();
   // proscenium: dulled gilding, curtains, the stopped clock
   const gold = '#3f3220';

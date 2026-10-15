@@ -1,8 +1,12 @@
 // Painting toolkit for concept frames. Runs in a browser page (Chromium via Playwright).
 // All scene code draws in logical 1920x1080 coordinates; canvases are rendered at S times that.
 'use strict';
-const W = 1920, H = 1080;
-const S = 1.5;
+let W = 1920, H = 1080;
+let S = 1.5;
+let OFF = [0, 0]; // world origin of the canvas (plates are painted in world coordinates)
+function setCanvasSize(w, h, s) { W = w; H = h; S = s; }
+function setOrigin(x, y) { OFF = [x, y]; }
+function blit(ctx, c, dx = 0, dy = 0) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(c, dx * S, dy * S); ctx.restore(); }
 
 /* ---------- math & color ---------- */
 function rng(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -15,21 +19,21 @@ function mixc(a, b, t) { if (typeof a === 'string') a = hex(a); if (typeof b ===
 const blurF = px => `blur(${px * S}px)`;
 
 /* ---------- canvases ---------- */
-function mk(w = W, h = H) { const c = document.createElement('canvas'); c.width = Math.round(w * S); c.height = Math.round(h * S); const x = c.getContext('2d'); x.scale(S, S); return [c, x]; }
+function mk(w = W, h = H) { const c = document.createElement('canvas'); c.width = Math.round(w * S); c.height = Math.round(h * S); const x = c.getContext('2d'); x.scale(S, S); x.translate(-OFF[0], -OFF[1]); return [c, x]; }
 // Draw fn into an offscreen layer, optionally tint toward fog, blur, then composite.
 function layer(ctx, fn, o = {}) {
   const [c, x] = mk();
   fn(x);
-  if (o.fog) { x.globalCompositeOperation = 'source-atop'; x.fillStyle = rgba(o.fog[0], o.fog[1]); x.fillRect(0, 0, W, H); x.globalCompositeOperation = 'source-over'; }
+  if (o.fog) { x.globalCompositeOperation = 'source-atop'; x.fillStyle = rgba(o.fog[0], o.fog[1]); x.fillRect(OFF[0], OFF[1], W, H); x.globalCompositeOperation = 'source-over'; }
   ctx.save();
   if (o.blur) ctx.filter = blurF(o.blur);
   if (o.alpha != null) ctx.globalAlpha = o.alpha;
   if (o.comp) ctx.globalCompositeOperation = o.comp;
-  ctx.drawImage(c, 0, 0, W, H);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(c, 0, 0);
   ctx.restore();
   return c;
 }
-function snapshot(ctx) { const [c, x] = mk(); x.drawImage(ctx.canvas, 0, 0, W, H); return c; }
+function snapshot(ctx) { const [c, x] = mk(); x.setTransform(1, 0, 0, 1, 0, 0); x.drawImage(ctx.canvas, 0, 0); return c; }
 
 /* ---------- noise ---------- */
 function makeNoise(seed) {
@@ -87,8 +91,8 @@ function shaft(ctx, pts, color, a0, a1, p0, p1, blur = 14, comp = 'screen') {
 function fog(ctx, nc, y0, y1, color, a, o = {}) {
   layer(ctx, x => {
     const g = x.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, rgba(color, 0)); g.addColorStop(.5, rgba(color, a)); g.addColorStop(1, rgba(color, 0));
-    x.fillStyle = g; x.fillRect(0, y0, W, y1 - y0);
-    x.globalCompositeOperation = 'destination-in'; x.imageSmoothingQuality = 'high'; x.drawImage(nc, (o.dx || 0), y0 - (o.pad || 0), W, (y1 - y0) + 2 * (o.pad || 0));
+    x.fillStyle = g; x.fillRect(OFF[0], y0, W, y1 - y0);
+    x.globalCompositeOperation = 'destination-in'; x.imageSmoothingQuality = 'high'; x.drawImage(nc, OFF[0] + (o.dx || 0), y0 - (o.pad || 0), W, (y1 - y0) + 2 * (o.pad || 0));
   }, { comp: o.comp || 'screen', blur: o.blur || 0 });
 }
 function dust(ctx, n, area, seed, color, o = {}) {
@@ -309,16 +313,16 @@ function extinguisher(ctx, o = {}) {
 // Render a figure with rim light and soft body gradient. draw(x) paints the silhouette with current fillStyle.
 function litFigure(ctx, draw, o) {
   const [m, mx] = mk(); mx.fillStyle = '#fff'; mx.strokeStyle = '#fff'; draw(mx);
-  const tinted = (fill, src = m) => { const [c, x] = mk(); x.drawImage(src, 0, 0, W, H); x.globalCompositeOperation = 'source-in'; x.fillStyle = typeof fill === 'function' ? fill(x) : fill; x.fillRect(0, 0, W, H); return c; };
-  if (o.halo) { ctx.save(); ctx.filter = blurF(o.halo[2] || 10); ctx.globalCompositeOperation = 'screen'; ctx.globalAlpha = o.halo[1]; ctx.drawImage(tinted(rgba(o.halo[0], 1)), 0, 0, W, H); ctx.restore(); }
+  const tinted = (fill, src = m) => { const [c, x] = mk(); x.save(); x.setTransform(1, 0, 0, 1, 0, 0); x.drawImage(src, 0, 0); x.restore(); x.globalCompositeOperation = 'source-in'; x.fillStyle = typeof fill === 'function' ? fill(x) : fill; x.fillRect(OFF[0], OFF[1], W, H); return c; };
+  if (o.halo) { ctx.save(); ctx.filter = blurF(o.halo[2] || 10); ctx.globalCompositeOperation = 'screen'; ctx.globalAlpha = o.halo[1]; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(tinted(rgba(o.halo[0], 1)), 0, 0); ctx.restore(); }
   if (o.rim) {
     const rimC = tinted(rgba(o.rim[0], 1));
-    ctx.save(); ctx.globalAlpha = o.rim[1]; ctx.filter = blurF(o.rim[3] || .5); ctx.drawImage(rimC, o.rim[2][0], o.rim[2][1], W, H); ctx.restore();
-    if (o.rim2) { ctx.save(); ctx.globalAlpha = o.rim2[1]; ctx.drawImage(tinted(rgba(o.rim2[0], 1)), o.rim2[2][0], o.rim2[2][1], W, H); ctx.restore(); }
+    ctx.save(); ctx.globalAlpha = o.rim[1]; ctx.filter = blurF(o.rim[3] || .5); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(rimC, o.rim[2][0] * S, o.rim[2][1] * S); ctx.restore();
+    if (o.rim2) { ctx.save(); ctx.globalAlpha = o.rim2[1]; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(tinted(rgba(o.rim2[0], 1)), o.rim2[2][0] * S, o.rim2[2][1] * S); ctx.restore(); }
   }
   let fill = rgba(o.body || '#06070a');
   if (o.grad) fill = x => { const gr = x.createLinearGradient(o.grad[0][0], o.grad[0][1], o.grad[1][0], o.grad[1][1]); gr.addColorStop(0, rgba(o.grad[2])); gr.addColorStop(1, rgba(o.body || '#06070a')); return gr; };
-  ctx.drawImage(tinted(fill), 0, 0, W, H);
+  blit(ctx, tinted(fill));
   return m;
 }
 

@@ -1,0 +1,86 @@
+{
+ "house": {
+  "origin": [
+   200,
+   120
+  ],
+  "size": [
+   2420,
+   1300
+  ],
+  "scale": 1.5,
+  "alpha": true
+ },
+ "street": {
+  "origin": [
+   1200,
+   600
+  ],
+  "size": [
+   200,
+   320
+  ],
+  "scale": 2.5,
+  "alpha": false
+ },
+ "outside": {
+  "origin": [
+   -600,
+   -300
+  ],
+  "size": [
+   3800,
+   1900
+  ],
+  "scale": 0.6,
+  "alpha": false
+ },
+ "obs_sky": {
+  "origin": [
+   1100,
+   -1500
+  ],
+  "size": [
+   3800,
+   1800
+  ],
+  "scale": 0.6,
+  "alpha": false
+ },
+ "obs_dome": {
+  "origin": [
+   1250,
+   -1340
+  ],
+  "size": [
+   3500,
+   1560
+  ],
+  "scale": 0.75,
+  "alpha": true
+ },
+ "obs_mid": {
+  "origin": [
+   1250,
+   -560
+  ],
+  "size": [
+   3500,
+   800
+  ],
+  "scale": 1,
+  "alpha": true
+ },
+ "theatre": {
+  "origin": [
+   0,
+   0
+  ],
+  "size": [
+   1920,
+   1080
+  ],
+  "scale": 1,
+  "alpha": false
+ }
+}
