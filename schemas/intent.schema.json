@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "zero-echo.intent.v1",
+  "title": "NPC intent proposal (model output)",
+  "description": "What a model may propose. Host-owned fields (task_id, actor_id, world_revision, deadline) are NEVER accepted from the model; any unknown field is rejected. Per-request schemas narrow `action`, `target_id`, `companion_id` and `fact_ids` to enums of what was offered in allowed_actions/visible_facts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["action", "style"],
+  "properties": {
+    "action": { "type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[a-z_]+$" },
+    "target_id": { "type": ["string", "null"], "maxLength": 48, "pattern": "^[a-z0-9_]+$" },
+    "companion_id": { "type": ["string", "null"], "maxLength": 32, "pattern": "^[a-z0-9_]+$" },
+    "fact_ids": { "type": "array", "maxItems": 4, "uniqueItems": true, "items": { "type": "string", "maxLength": 48, "pattern": "^[a-z0-9_]+$" } },
+    "style": { "type": "string", "enum": ["neutral", "concerned", "firm", "warm", "tense", "dry", "apologetic", "curious"] },
+    "gesture": { "type": "string", "enum": ["none", "nod", "point_at_target", "look_at_player", "pause", "wary", "shrug", "check_device"] }
+  },
+  "x-limits": { "max_bytes": 2048, "max_depth": 4, "duplicate_keys": "reject", "unknown_fields": "reject" }
+}

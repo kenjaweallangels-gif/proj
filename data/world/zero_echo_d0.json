@@ -1,0 +1,126 @@
+{
+  "format": "zero-echo.world.v1",
+  "id": "zero_echo_d0",
+  "title_ru": "D0 · Колония в марсианской долине",
+  "seed": 20261021,
+  "start_time_s": 0,
+  "player_id": "alex",
+  "zones": [
+    { "id": "hab_main", "name_ru": "жилой модуль", "kind": "habitat", "pressurized": true, "suit_required": false, "anchors": ["hab_table", "hab_wall_n", "hab_shelf"] },
+    { "id": "airlock_a", "name_ru": "шлюз A", "kind": "airlock", "pressurized": true, "suit_required": false, "anchors": ["airlock_bench", "airlock_panel"] },
+    { "id": "niche_a", "name_ru": "ниша A", "kind": "technical", "pressurized": true, "suit_required": false, "anchors": ["niche_a_panel", "niche_a_floor"] },
+    { "id": "niche_b", "name_ru": "ниша B", "kind": "technical", "pressurized": true, "suit_required": false, "anchors": ["niche_b_rack", "niche_b_floor"] },
+    { "id": "lab_geo", "name_ru": "геолаборатория", "kind": "lab", "pressurized": true, "suit_required": false, "anchors": ["lab_bench", "lab_cold_box"] },
+    { "id": "medbay", "name_ru": "медотсек", "kind": "medical", "pressurized": true, "suit_required": false, "anchors": ["med_cot", "med_cabinet"] },
+    { "id": "workshop", "name_ru": "мастерская", "kind": "workshop", "pressurized": true, "suit_required": false, "anchors": ["ws_bench", "ws_wall_tools", "ws_drone_dock"] },
+    { "id": "power_hub", "name_ru": "энергоузел", "kind": "power", "pressurized": true, "suit_required": false, "anchors": ["pw_console", "pw_cabinet"] },
+    { "id": "garage", "name_ru": "гараж ровера", "kind": "garage", "pressurized": false, "suit_required": true, "anchors": ["garage_rack", "garage_charger"] },
+    { "id": "sector_c", "name_ru": "пустой сектор C", "kind": "storage", "pressurized": true, "suit_required": false, "anchors": ["sector_c_door", "sector_c_corner"] },
+    { "id": "surface", "name_ru": "поверхность", "kind": "outside", "pressurized": false, "suit_required": true, "anchors": ["surface_path", "surface_ridge"] }
+  ],
+  "doors": [
+    { "id": "d_hab_airlock", "a": "hab_main", "b": "airlock_a", "state": "open" },
+    { "id": "d_hab_niche_a", "a": "hab_main", "b": "niche_a", "state": "open" },
+    { "id": "d_hab_niche_b", "a": "hab_main", "b": "niche_b", "state": "open" },
+    { "id": "d_hab_lab", "a": "hab_main", "b": "lab_geo", "state": "open" },
+    { "id": "d_hab_med", "a": "hab_main", "b": "medbay", "state": "open" },
+    { "id": "d_hab_ws", "a": "hab_main", "b": "workshop", "state": "open" },
+    { "id": "d_hab_power", "a": "hab_main", "b": "power_hub", "state": "open" },
+    { "id": "d_ws_sector_c", "a": "workshop", "b": "sector_c", "state": "open" },
+    { "id": "d_airlock_surface", "a": "airlock_a", "b": "surface", "state": "closed", "cycle_s": 90 },
+    { "id": "d_power_garage", "a": "power_hub", "b": "garage", "state": "closed", "cycle_s": 60 },
+    { "id": "d_garage_surface", "a": "garage", "b": "surface", "state": "closed", "cycle_s": 30 }
+  ],
+  "resources": [
+    { "id": "oxygen_kg", "name_ru": "кислород", "unit": "кг", "amount": 420, "min_safe": 120 },
+    { "id": "power_kwh", "name_ru": "энергия в аккумуляторах", "unit": "кВт·ч", "amount": 180, "min_safe": 40 },
+    { "id": "water_l", "name_ru": "вода", "unit": "л", "amount": 900, "min_safe": 200 },
+    { "id": "spare_seals", "name_ru": "запасные уплотнители", "unit": "шт", "amount": 4, "min_safe": 0 },
+    { "id": "sealant", "name_ru": "картриджи герметика", "unit": "шт", "amount": 3, "min_safe": 0 },
+    { "id": "drone_battery", "name_ru": "батареи дрона", "unit": "шт", "amount": 2, "min_safe": 0 },
+    { "id": "medkits", "name_ru": "медкомплекты", "unit": "шт", "amount": 5, "min_safe": 1 }
+  ],
+  "items": [
+    { "id": "diag_kit", "name_ru": "диагностический набор", "zone": "workshop", "kind": "tool" },
+    { "id": "isolation_kit", "name_ru": "комплект изоляции", "zone": "airlock_a", "kind": "tool" },
+    { "id": "mech_gauge_a", "name_ru": "механический манометр ниши A", "zone": "niche_a", "kind": "fixture" },
+    { "id": "drone_d1", "name_ru": "дрон D1", "zone": "workshop", "kind": "tool" },
+    { "id": "rover_r1", "name_ru": "ровер R1", "zone": "garage", "kind": "vehicle" },
+    { "id": "sample_07", "name_ru": "образец 07", "zone": "lab_geo", "kind": "sample" },
+    { "id": "oxygen_tank_3", "name_ru": "кислородный баллон 3", "zone": "niche_b", "kind": "consumable_store" },
+    { "id": "suit_rack", "name_ru": "стойка скафандров", "zone": "airlock_a", "kind": "fixture" }
+  ],
+  "sensors": [
+    { "id": "sensor_a", "name_ru": "датчик давления A", "zone": "niche_a", "kind": "pressure", "unit": "кПа",
+      "truth": { "value": 101.2, "trend": "stable" }, "reading": { "value": 101.2, "trend": "stable" }, "fault": null },
+    { "id": "sensor_b", "name_ru": "датчик давления B", "zone": "niche_b", "kind": "pressure", "unit": "кПа",
+      "truth": { "value": 101.3, "trend": "stable" }, "reading": { "value": 101.3, "trend": "stable" }, "fault": null },
+    { "id": "power_bus", "name_ru": "главная шина питания", "zone": "power_hub", "kind": "power", "unit": "кВт",
+      "truth": { "value": 6.4, "trend": "stable" }, "reading": { "value": 6.4, "trend": "stable" }, "fault": null }
+  ],
+  "facts": [
+    { "id": "pressure_disagreement", "layer": "instrument", "protected": false,
+      "text_ru": "Датчик в нише A показывает падение давления, а механический манометр там же стабилен.",
+      "about": ["sensor_a", "mech_gauge_a", "niche_a"] },
+    { "id": "sensor_a_drop", "layer": "instrument", "protected": false,
+      "text_ru": "Датчик A показывает падение давления до 92 кПа.", "about": ["sensor_a", "niche_a"] },
+    { "id": "mech_gauge_stable", "layer": "instrument", "protected": false,
+      "text_ru": "Механический манометр в нише A показывает стабильные 101 кПа.", "about": ["mech_gauge_a", "niche_a"] },
+    { "id": "sensor_a_drift_confirmed", "layer": "physical", "protected": false,
+      "text_ru": "Проверка на месте: давление в нише A в норме, датчик A дрейфует.", "about": ["sensor_a", "niche_a"] },
+    { "id": "yun_sent_alone", "layer": "history", "protected": false,
+      "text_ru": "Алекс отправил Юна одного за контейнером.", "about": ["yun", "alex"] },
+    { "id": "mira_objected_solo", "layer": "history", "protected": false,
+      "text_ru": "Мира возражала против одиночной вылазки Юна.", "about": ["mira", "yun"] },
+    { "id": "yun_low_sleep", "layer": "physical", "protected": false,
+      "text_ru": "Юн спал меньше пяти часов за последние сутки.", "about": ["yun"] },
+    { "id": "drone_d1_ready", "layer": "physical", "protected": false,
+      "text_ru": "Дрон D1 заряжен и готов к короткому облёту.", "about": ["drone_d1"] },
+    { "id": "power_budget_tight", "layer": "physical", "protected": false,
+      "text_ru": "До вечерней подзарядки запас энергии ограничен: лишние 10 кВт·ч придётся отнять у оранжереи.", "about": ["power_hub"] },
+    { "id": "sample_07_needs_cold", "layer": "physical", "protected": false,
+      "text_ru": "Образец 07 из лавовой трубы нужно держать в холоде, иначе следы льда испарятся.", "about": ["sample_07", "lab_geo"] },
+    { "id": "rover_charge_low", "layer": "physical", "protected": false,
+      "text_ru": "Ровер R1 заряжен на 35 процентов.", "about": ["rover_r1"] },
+    { "id": "sector_c_checked_empty", "layer": "history", "protected": false,
+      "text_ru": "Сектор C проверяли вчера: он пуст.", "about": ["sector_c"] },
+    { "id": "echo_phrase_known", "layer": "history", "protected": false,
+      "text_ru": "Экипаж уже слышал фразу «Мы вернулись раньше» в радиошуме.", "about": ["sector_c"] },
+    { "id": "sound_heard_sector_c", "layer": "interpretation", "protected": false,
+      "text_ru": "Из сектора C послышалась знакомая фраза. Источник не проверен.", "about": ["sector_c"] },
+    { "id": "airlock_override_code", "layer": "canon", "protected": true,
+      "text_ru": "Код ручного отпирания шлюза — точный фрагмент сценария.", "about": ["airlock_a"] },
+    { "id": "choir_truth", "layer": "canon", "protected": true,
+      "text_ru": "Истина о Хоре (спойлер финала; не выдаётся моделям).", "about": [] }
+  ],
+  "initial_knowledge": {
+    "mira":   [ { "fact": "yun_sent_alone", "source": "event:hist_1" }, { "fact": "mira_objected_solo", "source": "event:hist_1" }, { "fact": "sector_c_checked_empty", "source": "event:hist_2" } ],
+    "yun":    [ { "fact": "yun_sent_alone", "source": "event:hist_1" }, { "fact": "rover_charge_low", "source": "observation:garage" } ],
+    "leila":  [ { "fact": "yun_sent_alone", "source": "event:hist_1" }, { "fact": "sample_07_needs_cold", "source": "observation:lab_geo" }, { "fact": "echo_phrase_known", "source": "event:hist_3" } ],
+    "thomas": [ { "fact": "yun_sent_alone", "source": "event:hist_1" }, { "fact": "yun_low_sleep", "source": "observation:medbay" } ],
+    "nika":   [ { "fact": "yun_sent_alone", "source": "event:hist_1" }, { "fact": "drone_d1_ready", "source": "observation:workshop" }, { "fact": "sector_c_checked_empty", "source": "event:hist_2" }, { "fact": "echo_phrase_known", "source": "event:hist_3" } ],
+    "samir":  [ { "fact": "yun_sent_alone", "source": "event:hist_1" }, { "fact": "power_budget_tight", "source": "observation:power_hub" } ],
+    "alex":   [ { "fact": "yun_sent_alone", "source": "event:hist_1" }, { "fact": "mira_objected_solo", "source": "event:hist_1" }, { "fact": "sector_c_checked_empty", "source": "event:hist_2" }, { "fact": "echo_phrase_known", "source": "event:hist_3" } ]
+  },
+  "history_events": [
+    { "id": "hist_1", "time_s": -7200, "type": "player_order", "summary_ru": "Алекс отправил Юна одного за контейнером; Мира возражала.", "actors": ["alex", "yun", "mira"] },
+    { "id": "hist_2", "time_s": -86400, "type": "inspection", "summary_ru": "Сектор C осмотрен и признан пустым.", "actors": ["mira", "nika"] },
+    { "id": "hist_3", "time_s": -43200, "type": "anomaly", "summary_ru": "В радиошуме прозвучала фраза «Мы вернулись раньше».", "actors": ["leila", "nika", "alex"] }
+  ],
+  "initial_opinions": {
+    "mira": [ { "about": "alex", "text_ru": "Алекс рискует людьми, когда торопится.", "confidence": 0.6, "source": "event:hist_1" } ],
+    "yun":  [ { "about": "alex", "text_ru": "Алекс доверяет мне сложные выезды.", "confidence": 0.5, "source": "event:hist_1" } ]
+  },
+  "scripted_triggers": [
+    { "id": "trg_pressure_alarm", "at_time_s": 20, "type": "sensor_fault",
+      "sensor": "sensor_a", "reading": { "value": 92.0, "trend": "falling" },
+      "reveal": [ { "fact": "sensor_a_drop", "to": ["mira", "alex"], "source": "event:alarm" }, { "fact": "pressure_disagreement", "to": ["mira"], "source": "observation:niche_a_panel" } ],
+      "initiative": { "actor": "mira", "kind": "initiative", "situation_ru": "Сработала тревога: датчик в нише A показывает падение давления." } }
+  ],
+  "inspection_reveals": [
+    { "target": "sensor_a", "reveal": ["mech_gauge_stable", "sensor_a_drift_confirmed"], "condition": "sensor_fault_active" },
+    { "target": "niche_a", "reveal": ["mech_gauge_stable", "sensor_a_drift_confirmed"], "condition": "sensor_fault_active" },
+    { "target": "mech_gauge_a", "reveal": ["mech_gauge_stable"], "condition": "always" },
+    { "target": "sector_c", "reveal": ["sector_c_checked_empty"], "condition": "always" }
+  ]
+}

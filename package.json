@@ -1,0 +1,22 @@
+{
+  "name": "zero-echo-runtime",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ZERO ECHO — Echo Runtime research branch: shared C++20 core (native + WASM), WebGPU browser client, Agent Gateway, Intent Authority.",
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build:web": "node web/build.mjs",
+    "test:gateway": "node --test gateway/test/",
+    "gateway": "node gateway/src/server.ts",
+    "serve": "node tools/serve.mjs web/dist 8080"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@webgpu/types": "^0.1.60",
+    "esbuild": "^0.25.0",
+    "playwright-core": "1.56.1",
+    "typescript": "5.9.3"
+  }
+}

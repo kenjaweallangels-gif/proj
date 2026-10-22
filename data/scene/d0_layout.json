@@ -1,0 +1,71 @@
+{
+  "format": "zero-echo.scene.v1",
+  "note_ru": "Метры, правая система координат, Y вверх. Колония на дне долины около начала координат; рельеф вокруг генерируется процедурно с seed и выравнивается в радиусе flatten_radius_m.",
+  "seed": 20261021,
+  "terrain": {
+    "size_m": 12000, "height_scale_m": 900, "flatten_center": [0, 0], "flatten_radius_m": 140, "flatten_falloff_m": 220,
+    "valley_axis_deg": 35, "valley_width_m": 1600, "crater": { "center": [2600, -3200], "radius_m": 1400 },
+    "cave_mouth": { "position": [-150, 0, 70], "facing_deg": 120, "width_m": 22, "height_m": 13 }
+  },
+  "sun": { "azimuth_deg": 250, "elevation_deg": 17, "illuminance": 590 },
+  "modules": [
+    { "zone": "hab_main",   "kind": "dome",     "position": [0, 0, 0],      "rotation_y_deg": 0,   "size": [9, 7, 9] },
+    { "zone": "airlock_a",  "kind": "airlock",  "position": [13, 0, 0],     "rotation_y_deg": 0,   "size": [5, 3.4, 3.6] },
+    { "zone": "niche_a",    "kind": "cylinder", "position": [-6, 0, 11],    "rotation_y_deg": 60,  "size": [4, 3.2, 4] },
+    { "zone": "niche_b",    "kind": "cylinder", "position": [6, 0, 11],     "rotation_y_deg": 120, "size": [4, 3.2, 4] },
+    { "zone": "lab_geo",    "kind": "cylinder", "position": [-15, 0, -3],   "rotation_y_deg": 10,  "size": [7, 3.6, 4.2] },
+    { "zone": "medbay",     "kind": "cylinder", "position": [-8, 0, -13],   "rotation_y_deg": -40, "size": [6, 3.4, 4] },
+    { "zone": "workshop",   "kind": "cylinder", "position": [8, 0, -13],    "rotation_y_deg": 40,  "size": [7, 3.8, 4.6] },
+    { "zone": "power_hub",  "kind": "box",      "position": [22, 0, -14],   "rotation_y_deg": 15,  "size": [6, 3.2, 5] },
+    { "zone": "garage",     "kind": "garage",   "position": [25, 0, 11],    "rotation_y_deg": -20, "size": [10, 5, 8] },
+    { "zone": "sector_c",   "kind": "box",      "position": [16, 0, -25],   "rotation_y_deg": 40,  "size": [5, 3, 5] }
+  ],
+  "props": [
+    { "kind": "solar_field", "position": [44, 0, -26], "size": [36, 1.6, 22], "rows": 6, "cols": 10 },
+    { "kind": "antenna", "position": [-24, 0, 16], "size": [1.2, 14, 1.2] },
+    { "kind": "rover", "id": "rover_r1", "position": [34, 0, 19], "rotation_y_deg": -35 },
+    { "kind": "tank_cluster", "position": [-22, 0, -14], "size": [5, 4, 5] },
+    { "kind": "light_mast", "position": [4, 0, 22], "size": [0.5, 8, 0.5] },
+    { "kind": "light_mast", "position": [30, 0, -4], "size": [0.5, 8, 0.5] }
+  ],
+  "anchors": {
+    "hab_table": [0, 0, 1.5], "hab_wall_n": [0, 0, -3.5], "hab_shelf": [-3, 0, 0],
+    "airlock_bench": [12.5, 0, 0.8], "airlock_panel": [15.6, 0, 0],
+    "niche_a_panel": [-6, 0, 11], "niche_a_floor": [-5, 0, 9.6],
+    "niche_b_rack": [6, 0, 11], "niche_b_floor": [5, 0, 9.6],
+    "lab_bench": [-15, 0, -3], "lab_cold_box": [-17, 0, -2],
+    "med_cot": [-8, 0, -13], "med_cabinet": [-9.5, 0, -12],
+    "ws_bench": [8, 0, -13], "ws_wall_tools": [9.5, 0, -12], "ws_drone_dock": [6.8, 0, -14],
+    "pw_console": [22, 0, -14], "pw_cabinet": [23.5, 0, -15],
+    "garage_rack": [25, 0, 11], "garage_charger": [27, 0, 9],
+    "sector_c_door": [15, 0, -23.5], "sector_c_corner": [17, 0, -26],
+    "surface_path": [20, 0, 4], "surface_ridge": [-60, 0, 40]
+  },
+  "zone_stand_points": {
+    "hab_main": [1.5, 0, 4.2], "airlock_a": [16.5, 0, 1.5], "niche_a": [-4.2, 0, 8.4], "niche_b": [4.2, 0, 8.4],
+    "lab_geo": [-12, 0, 0.5], "medbay": [-5.5, 0, -10.2], "workshop": [5.5, 0, -10.2], "power_hub": [19, 0, -11],
+    "garage": [21, 0, 15.5], "sector_c": [13.5, 0, -22], "surface": [24, 0, 2]
+  },
+  "control_route": {
+    "note_ru": "Контрольный маршрут 3–5 минут: тёмный шлюз → широкий вид долины → к скалам → поездка ровера → спуск к пещере → освещённый жилой модуль → разговор лицом к лицу → аварийный свет и частицы → выход к горизонту. Камера и события фиксированы.",
+    "duration_s": 240,
+    "keys": [
+      { "t": 0,   "segment": "airlock_dark",   "pos": [15.2, 1.7, 0.4],    "look": [30, 1.6, 2],     "event": "lights_dim" },
+      { "t": 14,  "segment": "airlock_exit",   "pos": [19, 1.8, 1.5],      "look": [120, 30, 60],    "event": null },
+      { "t": 34,  "segment": "valley_wide",    "pos": [40, 14, 30],        "look": [900, 160, 900],  "event": null },
+      { "t": 62,  "segment": "toward_rocks",   "pos": [-30, 3, 55],        "look": [-150, 6, 70],    "event": null },
+      { "t": 90,  "segment": "rover_ride",     "pos": [-90, 2.4, 62],      "look": [-150, 3, 72],    "event": "rover_follow" },
+      { "t": 118, "segment": "cave_descent",   "pos": [-138, 2.2, 68],     "look": [-160, 0, 66],    "event": "torch_on" },
+      { "t": 142, "segment": "habitat_lit",    "pos": [6, 2.0, 8],         "look": [0, 1.6, 0],      "event": "torch_off" },
+      { "t": 168, "segment": "face_to_face",   "pos": [-3.0, 1.65, 7.2],   "look": [-4.2, 1.6, 8.4], "event": "focus_mira" },
+      { "t": 196, "segment": "emergency",      "pos": [2, 2.2, 14],        "look": [-6, 1.5, 11],    "event": "emergency_on" },
+      { "t": 220, "segment": "horizon",        "pos": [30, 22, 40],        "look": [2000, 120, 2400],"event": "emergency_off" },
+      { "t": 240, "segment": "end",            "pos": [30, 22, 40],        "look": [2000, 120, 2400],"event": null }
+    ],
+    "reference_shots": [
+      { "id": "mars_horizon",      "t": 46 },
+      { "id": "surface_to_cave",   "t": 124 },
+      { "id": "mira_at_equipment", "t": 172 }
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "zero-echo.gateway.result.v1",
+  "title": "Normalized provider result (gateway -> game)",
+  "description": "proposal_text is the RAW model text; the game core parses it strictly (duplicate keys, unknown fields, byte limit). An action can be executed only when status == ok AND Intent Authority accepts it. A partial stream is never applied.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task_id", "status", "proposal_text", "usage", "latency_ms", "provider", "model", "finish_reason", "attempts"],
+  "properties": {
+    "task_id": { "type": "string" },
+    "status": { "enum": ["ok", "timeout", "refused", "invalid_output", "unavailable", "rate_limited", "budget_exceeded", "cancelled"] },
+    "proposal_text": { "type": ["string", "null"], "maxLength": 8192 },
+    "usage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["input_tokens", "output_tokens", "measured"],
+      "properties": { "input_tokens": {"type": "integer"}, "output_tokens": {"type": "integer"}, "cached_input_tokens": {"type": "integer"}, "reasoning_tokens": {"type": "integer"}, "measured": {"type": "boolean"} }
+    },
+    "latency_ms": { "type": "object", "additionalProperties": false, "required": ["total"], "properties": { "total": {"type": "number"}, "first_token": {"type": ["number", "null"]}, "queue": {"type": "number"} } },
+    "provider": { "type": "string" },
+    "model": { "type": "string" },
+    "provider_revision": { "type": ["string", "null"] },
+    "finish_reason": { "type": "string" },
+    "attempts": { "type": "integer", "minimum": 0 },
+    "cost_usd": { "type": ["number", "null"] },
+    "cost_is_fictional": { "type": "boolean" },
+    "error": { "type": ["object", "null"], "additionalProperties": false, "properties": { "code": {"type": "string"}, "message": {"type": "string"}, "retry_after_ms": {"type": ["number", "null"]} } }
+  }
+}

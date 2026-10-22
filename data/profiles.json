@@ -1,0 +1,96 @@
+{
+  "format": "zero-echo.profiles.v1",
+  "note_ru": "Все значения — проектные бюджеты и стартовые пороги для калибровки, а не результаты замеров на RTX 3060.",
+  "frame_budget_ms": 16.667,
+  "pause_threshold_ms": 33.3,
+  "quality_profiles": [
+    {
+      "id": "N60_quality", "label_ru": "N60 / качество", "platform": "native",
+      "output": [1920, 1080], "render_scale": 1.0, "dynamic_resolution": null, "target_fps": 60,
+      "llm_default": "cpu_or_off",
+      "render": { "shadow_map_size": 2048, "shadow_cascades": 3, "terrain_grid": 256, "terrain_view_distance_m": 6000,
+                  "rock_instances": 4000, "ao": "half", "bloom": true, "depth_prepass": true, "max_dpr": 2.0,
+                  "dust_particles": 3000, "bake_resolution": 2048, "msaa": 1 }
+    },
+    {
+      "id": "N60_balance", "label_ru": "N60 / баланс", "platform": "native",
+      "output": [1920, 1080], "render_scale": 1.0, "dynamic_resolution": { "min_scale": 0.833, "max_scale": 1.0 }, "target_fps": 60,
+      "llm_default": "gpu_small_after_calibration",
+      "render": { "shadow_map_size": 2048, "shadow_cascades": 2, "terrain_grid": 192, "terrain_view_distance_m": 5000,
+                  "rock_instances": 2500, "ao": "half", "bloom": true, "depth_prepass": true, "max_dpr": 2.0,
+                  "dust_particles": 2000, "bake_resolution": 2048, "msaa": 1 }
+    },
+    {
+      "id": "N1440_exp", "label_ru": "N1440 / эксперимент", "platform": "native",
+      "output": [2560, 1440], "render_scale": 0.75, "dynamic_resolution": null, "target_fps": 60,
+      "llm_default": "remaining_budget",
+      "render": { "shadow_map_size": 2048, "shadow_cascades": 3, "terrain_grid": 256, "terrain_view_distance_m": 6000,
+                  "rock_instances": 4000, "ao": "half", "bloom": true, "depth_prepass": true, "max_dpr": 2.0,
+                  "dust_particles": 3000, "bake_resolution": 2048, "msaa": 1 }
+    },
+    {
+      "id": "W60", "label_ru": "W60 / браузер", "platform": "browser",
+      "output": [1920, 1080], "render_scale": 0.833, "dynamic_resolution": null, "target_fps": 60,
+      "llm_default": "off_until_calibrated",
+      "render": { "shadow_map_size": 2048, "shadow_cascades": 2, "terrain_grid": 160, "terrain_view_distance_m": 4500,
+                  "rock_instances": 1800, "ao": "half", "bloom": true, "depth_prepass": false, "max_dpr": 1.5,
+                  "dust_particles": 1500, "bake_resolution": 1024, "msaa": 1 }
+    },
+    {
+      "id": "W_low", "label_ru": "W-low / совместимость", "platform": "browser",
+      "output": [1280, 720], "render_scale": 1.0, "dynamic_resolution": null, "target_fps": 30,
+      "llm_default": "scripted_reactions",
+      "render": { "shadow_map_size": 1024, "shadow_cascades": 1, "terrain_grid": 96, "terrain_view_distance_m": 3000,
+                  "rock_instances": 500, "ao": "off", "bloom": false, "depth_prepass": false, "max_dpr": 1.0,
+                  "dust_particles": 300, "bake_resolution": 512, "msaa": 1 }
+    }
+  ],
+  "ai_modes": [
+    { "id": "smooth", "label_ru": "Приоритет плавности", "graphics": "max", "generation": "cpu_if_capable_else_prepared", "gpu_llm_allowed": false },
+    { "id": "live", "label_ru": "Живые диалоги", "graphics": "moderate", "generation": "small_gpu_model_one_at_a_time", "gpu_llm_allowed": true },
+    { "id": "extended", "label_ru": "Расширенный разговор", "graphics": "calm_scene", "generation": "longer_answer_bigger_model", "gpu_llm_allowed": true, "forbidden_during_emergency": true }
+  ],
+  "admission": {
+    "max_active_generations": 1,
+    "max_queue_length": 4,
+    "deadline_ms": { "direct_reply": 2500, "initiative": 4000, "ambient": 6000 },
+    "priority": { "emergency": 100, "direct_reply": 80, "initiative": 60, "ambient": 20 },
+    "gpu_gate": { "p95_gpu_ms_max": 11.5, "p99_frame_ms_max": 14.0, "vram_reserve_gib_min": 1.5, "stable_window_s": 2.0, "cooldown_s": 5.0, "stats_max_age_s": 1.0 },
+    "cpu_threads": { "default": "physical_cores_minus_2", "min": 2, "max": 6 },
+    "token_budget": { "max_input_tokens": 1800, "max_output_tokens": 160 },
+    "memory_layers_tokens": {
+      "role":        [150, 250],
+      "knowledge":   [200, 400],
+      "situation":   [200, 350],
+      "recent":      [200, 400],
+      "relations":   [150, 250],
+      "format":      [150, 250]
+    }
+  },
+  "gpu_budget_n60_ms": [
+    { "group": "culling_depth_service", "label_ru": "Culling, depth, служебные проходы", "ms": 1.0 },
+    { "group": "shadows", "label_ru": "Солнечные и локальные тени", "ms": 2.0 },
+    { "group": "opaque", "label_ru": "Непрозрачные материалы и свет", "ms": 4.3 },
+    { "group": "character", "label_ru": "Кожа/волосы и character-проходы", "ms": 1.2 },
+    { "group": "atmosphere_transparency", "label_ru": "Атмосфера и ограниченная прозрачность", "ms": 1.0 },
+    { "group": "ao_reflections_post_ui", "label_ru": "AO, отражения, temporal/post, UI", "ms": 2.0 },
+    { "group": "upload_reserve", "label_ru": "Upload и запас графических задач", "ms": 0.5 }
+  ],
+  "vram_budget_gib": {
+    "columns": ["llm_cpu", "llm_gpu_small"],
+    "rows": [
+      { "id": "resident_textures", "label_ru": "Resident textures", "values": [4.00, 3.20] },
+      { "id": "geometry_skinning", "label_ru": "Геометрия и skinning buffers", "values": [0.70, 0.70] },
+      { "id": "render_targets", "label_ru": "Render targets, shadows, histories", "values": [0.90, 0.90] },
+      { "id": "light_upload_service", "label_ru": "Свет, upload staging, служебные", "values": [0.65, 0.65] },
+      { "id": "llm_weights", "label_ru": "Веса LLM (оценочный резерв)", "values": [0.00, 1.25] },
+      { "id": "kv_cache_scratch", "label_ru": "KV-cache + inference scratch", "values": [0.00, 1.00] },
+      { "id": "driver_desktop", "label_ru": "Драйвер, desktop, другие процессы", "values": [1.25, 1.25] },
+      { "id": "unallocated", "label_ru": "Нераспределённый резерв", "values": [2.00, 2.00] }
+    ]
+  },
+  "acceptance": {
+    "warm_passes": 3, "pass_duration_s": 600, "frame_generation": false,
+    "p99_ready_ms_max": 16.67, "max_pauses_over_33ms": 0
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node", "@webgpu/types"],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": false,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["gateway/src/**/*.ts", "gateway/test/**/*.ts", "web/src/**/*.ts", "eval/**/*.ts", "shared/**/*.ts"]
+}

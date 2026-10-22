@@ -1,0 +1,142 @@
+{
+  "format": "zero-echo.actions.v1",
+  "styles": ["neutral", "concerned", "firm", "warm", "tense", "dry", "apologetic", "curious"],
+  "gestures": ["none", "nod", "point_at_target", "look_at_player", "pause", "wary", "shrug", "check_device"],
+  "physical_rules": {
+    "eva_max_fatigue": 0.85,
+    "eva_min_skill": 0.5,
+    "busy_actor_can_be_companion": false
+  },
+  "actions": [
+    {
+      "id": "inspect", "label_ru": "осмотреть",
+      "description_ru": "Пойти и проверить датчик, предмет или отсек на месте.",
+      "target": { "kinds": ["sensor", "zone", "item"], "required": true },
+      "companion": "optional",
+      "fact_ids": { "min": 0, "max": 4 },
+      "roles": ["*"], "min_skill": {},
+      "tools": [], "consumes": {},
+      "duration_s": 90, "cooldown_s": 30,
+      "approval": "if_companion",
+      "effects": ["reveal_inspection"],
+      "gesture_default": "point_at_target"
+    },
+    {
+      "id": "prepare_isolation", "label_ru": "подготовить изоляцию",
+      "description_ru": "Загерметизировать отсек: закрыть и уплотнить дверь из жилого модуля.",
+      "target": { "kinds": ["zone"], "required": true, "zone_kinds": ["technical", "storage"] },
+      "companion": "optional",
+      "fact_ids": { "min": 0, "max": 4 },
+      "roles": ["life_support", "logistics", "robotics"], "min_skill": { "repair": 0.5 },
+      "tools": ["isolation_kit"], "consumes": { "sealant": 1 },
+      "duration_s": 120, "cooldown_s": 60,
+      "approval": "always",
+      "effects": ["seal_zone"],
+      "gesture_default": "check_device"
+    },
+    {
+      "id": "repair", "label_ru": "отремонтировать",
+      "description_ru": "Заменить уплотнитель или откалибровать датчик.",
+      "target": { "kinds": ["sensor", "item"], "required": true },
+      "companion": "optional",
+      "fact_ids": { "min": 0, "max": 4 },
+      "roles": ["life_support", "robotics", "logistics"], "min_skill": { "repair": 0.5 },
+      "tools": ["diag_kit"], "consumes": { "spare_seals": 1 },
+      "duration_s": 180, "cooldown_s": 60,
+      "approval": "never",
+      "effects": ["clear_sensor_fault"],
+      "gesture_default": "check_device"
+    },
+    {
+      "id": "report_observation", "label_ru": "сообщить наблюдение",
+      "description_ru": "Рассказать Алексу известный факт со ссылкой на источник.",
+      "target": { "kinds": [], "required": false },
+      "companion": "none",
+      "fact_ids": { "min": 1, "max": 3 },
+      "roles": ["*"], "min_skill": {},
+      "tools": [], "consumes": {},
+      "duration_s": 0, "cooldown_s": 5,
+      "approval": "never",
+      "effects": ["share_facts"],
+      "gesture_default": "look_at_player"
+    },
+    {
+      "id": "propose_rest", "label_ru": "предложить отдых",
+      "description_ru": "Отправить себя или другого члена экипажа отдыхать.",
+      "target": { "kinds": ["actor"], "required": true, "self_allowed": true, "others_roles": ["medic"] },
+      "companion": "none",
+      "fact_ids": { "min": 0, "max": 3 },
+      "roles": ["*"], "min_skill": {},
+      "tools": [], "consumes": {},
+      "duration_s": 600, "cooldown_s": 120,
+      "approval": "if_target_other",
+      "effects": ["rest"],
+      "gesture_default": "nod"
+    },
+    {
+      "id": "refuse", "label_ru": "отказаться",
+      "description_ru": "Отказаться от опасного или невозможного поручения и объяснить причину.",
+      "target": { "kinds": [], "required": false },
+      "companion": "none",
+      "fact_ids": { "min": 0, "max": 3 },
+      "roles": ["*"], "min_skill": {},
+      "tools": [], "consumes": {},
+      "duration_s": 0, "cooldown_s": 5,
+      "approval": "never",
+      "effects": [],
+      "gesture_default": "wary"
+    },
+    {
+      "id": "drone_survey", "label_ru": "облёт дроном",
+      "description_ru": "Отправить дрон D1 осмотреть отсек без захода людей.",
+      "target": { "kinds": ["zone"], "required": true },
+      "companion": "none",
+      "fact_ids": { "min": 0, "max": 3 },
+      "roles": ["robotics"], "min_skill": { "robotics": 0.6 },
+      "tools": ["drone_d1"], "consumes": { "drone_battery": 1 },
+      "duration_s": 60, "cooldown_s": 90,
+      "approval": "never",
+      "effects": ["reveal_inspection"],
+      "gesture_default": "check_device"
+    },
+    {
+      "id": "prepare_rover", "label_ru": "подготовить ровер",
+      "description_ru": "Зарядить и проверить ровер R1 перед выездом.",
+      "target": { "kinds": ["item"], "required": true, "item_kinds": ["vehicle"] },
+      "companion": "optional",
+      "fact_ids": { "min": 0, "max": 3 },
+      "roles": ["pilot", "robotics"], "min_skill": { "piloting": 0.4 },
+      "tools": [], "consumes": { "power_kwh": 12 },
+      "duration_s": 300, "cooldown_s": 120,
+      "approval": "always",
+      "effects": ["rover_ready"],
+      "gesture_default": "check_device"
+    },
+    {
+      "id": "preserve_sample", "label_ru": "сохранить образец",
+      "description_ru": "Перенести образец в холодный бокс.",
+      "target": { "kinds": ["item"], "required": true, "item_kinds": ["sample"] },
+      "companion": "none",
+      "fact_ids": { "min": 0, "max": 3 },
+      "roles": ["geologist"], "min_skill": { "geology": 0.5 },
+      "tools": [], "consumes": { "power_kwh": 2 },
+      "duration_s": 60, "cooldown_s": 60,
+      "approval": "never",
+      "effects": ["preserve_sample"],
+      "gesture_default": "check_device"
+    },
+    {
+      "id": "acknowledge", "label_ru": "ответить",
+      "description_ru": "Короткий ответ без действия в мире.",
+      "target": { "kinds": [], "required": false },
+      "companion": "none",
+      "fact_ids": { "min": 0, "max": 2 },
+      "roles": ["*"], "min_skill": {},
+      "tools": [], "consumes": {},
+      "duration_s": 0, "cooldown_s": 0,
+      "approval": "never",
+      "effects": [],
+      "gesture_default": "nod"
+    }
+  ]
+}

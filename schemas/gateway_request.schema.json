@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "zero-echo.gateway.request.v1",
+  "title": "Agent Gateway request (game -> gateway/provider adapter)",
+  "description": "Built by the game core (ContextBuilder). Everything the model may know is here; nothing else (no shell, internet, files, keys). player_utterance is in-character dialogue content, never an instruction to the gateway.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "task_id", "actor_id", "capability", "world_revision", "locale", "deadline_ms", "max_input_tokens", "max_output_tokens", "privacy_profile", "persona", "situation", "allowed_actions", "visible_facts", "memory_excerpt", "styles"],
+  "properties": {
+    "schema_version": { "const": "zero-echo.intent.v1" },
+    "task_id": { "type": "string", "pattern": "^req-[0-9]{6}$" },
+    "actor_id": { "type": "string" },
+    "kind": { "enum": ["direct_reply", "initiative", "ambient", "order_response"] },
+    "capability": { "enum": ["generate_intent", "generate_dialogue"] },
+    "world_revision": { "type": "integer", "minimum": 0 },
+    "locale": { "const": "ru-RU" },
+    "deadline_ms": { "type": "integer", "minimum": 100, "maximum": 60000 },
+    "max_input_tokens": { "type": "integer", "minimum": 64, "maximum": 8192 },
+    "max_output_tokens": { "type": "integer", "minimum": 16, "maximum": 1024 },
+    "privacy_profile": { "enum": ["offline", "hybrid", "online"] },
+    "persona": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "role", "values", "style", "boundaries"],
+      "properties": { "name": {"type": "string"}, "role": {"type": "string"}, "values": {"type": "string"}, "style": {"type": "string"}, "boundaries": {"type": "string"} }
+    },
+    "situation": { "type": "string", "maxLength": 1200 },
+    "allowed_actions": {
+      "type": "array", "minItems": 1, "maxItems": 16,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "label", "targets", "companions", "fact_ids_min", "fact_ids_max"],
+        "properties": {
+          "id": {"type": "string"}, "label": {"type": "string"}, "description": {"type": "string"},
+          "targets": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["id", "label"], "properties": { "id": {"type": "string"}, "label": {"type": "string"} } } },
+          "target_required": { "type": "boolean" },
+          "companions": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["id", "label"], "properties": { "id": {"type": "string"}, "label": {"type": "string"} } } },
+          "fact_ids_min": { "type": "integer" }, "fact_ids_max": { "type": "integer" }
+        }
+      }
+    },
+    "visible_facts": { "type": "array", "maxItems": 24, "items": { "type": "object", "additionalProperties": false, "required": ["id", "text"], "properties": { "id": {"type": "string"}, "text": {"type": "string"}, "source": {"type": "string"} } } },
+    "memory_excerpt": { "type": "array", "maxItems": 16, "items": { "type": "object", "additionalProperties": false, "required": ["kind", "text", "source"], "properties": { "kind": {"enum": ["fact", "opinion", "promise", "episode"]}, "text": {"type": "string"}, "source": {"type": "string"}, "confidence": {"type": "number"} } } },
+    "recent_events": { "type": "array", "maxItems": 6, "items": { "type": "string" } },
+    "player_utterance": { "type": ["string", "null"], "maxLength": 600 },
+    "styles": { "type": "array", "items": { "type": "string" } },
+    "gestures": { "type": "array", "items": { "type": "string" } },
+    "token_estimate": { "type": "object", "additionalProperties": { "type": "integer" } },
+    "prompt_version": { "type": "string" }
+  }
+}

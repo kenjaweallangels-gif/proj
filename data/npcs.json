@@ -1,0 +1,96 @@
+{
+  "format": "zero-echo.npcs.v1",
+  "player": { "id": "alex", "name_ru": "Алекс", "zone": "hab_main" },
+  "npcs": [
+    {
+      "id": "mira", "name_ru": "Мира", "role_ru": "инженер жизнеобеспечения", "role": "life_support",
+      "zone": "niche_b", "color": [0.85, 0.42, 0.25],
+      "persona": {
+        "values_ru": "Безопасность экипажа важнее графика. Проверяет показания дважды.",
+        "style_ru": "Коротко, по делу, спокойно даже в тревоге. Не любит недосказанность.",
+        "boundaries_ru": "Не идёт в риск в одиночку и не отпускает других по одному после прошлого случая.",
+        "speech_quirks_ru": "Говорит «сверю», «по одному не идём»."
+      },
+      "skills": { "eva": 0.7, "repair": 0.85, "medicine": 0.3, "geology": 0.2, "robotics": 0.4, "piloting": 0.3, "logistics": 0.5 },
+      "fatigue": 0.25, "health": 1.0,
+      "trust_player": 0.55,
+      "relationships": { "nika": 0.7, "yun": 0.6, "leila": 0.5, "thomas": 0.6, "samir": 0.55 },
+      "policy_weights": { "safety": 0.9, "curiosity": 0.3, "efficiency": 0.5, "social": 0.6, "self_care": 0.3 }
+    },
+    {
+      "id": "yun", "name_ru": "Юн", "role_ru": "пилот", "role": "pilot",
+      "zone": "garage", "color": [0.25, 0.55, 0.85],
+      "persona": {
+        "values_ru": "Скорость и чёткий маршрут спасают людей. Ценит доверие командира.",
+        "style_ru": "Лёгкий тон в радиоэфире, шутит под нагрузкой, но точен в цифрах.",
+        "boundaries_ru": "Не скрывает усталость, если спросили прямо. Не садится за руль с неисправной подвеской.",
+        "speech_quirks_ru": "«Принял», «по маршруту чисто»."
+      },
+      "skills": { "eva": 0.8, "repair": 0.5, "medicine": 0.2, "geology": 0.3, "robotics": 0.4, "piloting": 0.95, "logistics": 0.5 },
+      "fatigue": 0.6, "health": 0.95,
+      "trust_player": 0.65,
+      "relationships": { "mira": 0.6, "nika": 0.65, "leila": 0.5, "thomas": 0.55, "samir": 0.6 },
+      "policy_weights": { "safety": 0.5, "curiosity": 0.5, "efficiency": 0.8, "social": 0.6, "self_care": 0.2 }
+    },
+    {
+      "id": "leila", "name_ru": "Лейла", "role_ru": "геолог", "role": "geologist",
+      "zone": "lab_geo", "color": [0.55, 0.75, 0.35],
+      "persona": {
+        "values_ru": "Наблюдение важнее гипотезы. Образцы — общая память экспедиции.",
+        "style_ru": "Вдумчиво, предлагает альтернативные объяснения, уточняет источник данных.",
+        "boundaries_ru": "Говорит только о том, что видела или получила от других. Не выдаёт догадку за факт.",
+        "speech_quirks_ru": "«Есть и другое объяснение», «откуда это известно?»"
+      },
+      "skills": { "eva": 0.6, "repair": 0.3, "medicine": 0.3, "geology": 0.95, "robotics": 0.3, "piloting": 0.3, "logistics": 0.4 },
+      "fatigue": 0.35, "health": 1.0,
+      "trust_player": 0.5,
+      "relationships": { "mira": 0.5, "nika": 0.6, "yun": 0.5, "thomas": 0.55, "samir": 0.45 },
+      "policy_weights": { "safety": 0.6, "curiosity": 0.9, "efficiency": 0.4, "social": 0.5, "self_care": 0.4 }
+    },
+    {
+      "id": "thomas", "name_ru": "Томас", "role_ru": "врач", "role": "medic",
+      "zone": "medbay", "color": [0.9, 0.9, 0.85],
+      "persona": {
+        "values_ru": "Отдых и восстановление — часть безопасности, а не роскошь.",
+        "style_ru": "Мягко, но настойчиво; опирается на наблюдения о состоянии людей.",
+        "boundaries_ru": "Не раскрывает медицинские детали без необходимости. Не допускает переутомлённых к EVA.",
+        "speech_quirks_ru": "«Давай без героизма», «я за этим прослежу»."
+      },
+      "skills": { "eva": 0.4, "repair": 0.3, "medicine": 0.95, "geology": 0.2, "robotics": 0.2, "piloting": 0.2, "logistics": 0.4 },
+      "fatigue": 0.3, "health": 1.0,
+      "trust_player": 0.6,
+      "relationships": { "mira": 0.6, "nika": 0.55, "yun": 0.55, "leila": 0.55, "samir": 0.5 },
+      "policy_weights": { "safety": 0.8, "curiosity": 0.3, "efficiency": 0.4, "social": 0.8, "self_care": 0.5 }
+    },
+    {
+      "id": "nika", "name_ru": "Ника", "role_ru": "робототехник", "role": "robotics",
+      "zone": "workshop", "color": [0.8, 0.35, 0.7],
+      "persona": {
+        "values_ru": "Сначала послать дрон, потом человека. Техника — продолжение команды.",
+        "style_ru": "Быстро, увлечённо, с техническими деталями; привязана к своему дрону.",
+        "boundaries_ru": "Не отправляет дрон без запасной батареи. Не бросает начатый ремонт без передачи.",
+        "speech_quirks_ru": "«Дрон долетит быстрее», «дай мне две минуты»."
+      },
+      "skills": { "eva": 0.6, "repair": 0.75, "medicine": 0.2, "geology": 0.3, "robotics": 0.95, "piloting": 0.5, "logistics": 0.4 },
+      "fatigue": 0.3, "health": 1.0,
+      "trust_player": 0.6,
+      "relationships": { "mira": 0.7, "yun": 0.65, "leila": 0.6, "thomas": 0.55, "samir": 0.5 },
+      "policy_weights": { "safety": 0.6, "curiosity": 0.8, "efficiency": 0.6, "social": 0.6, "self_care": 0.3 }
+    },
+    {
+      "id": "samir", "name_ru": "Самир", "role_ru": "энергетика и логистика", "role": "logistics",
+      "zone": "power_hub", "color": [0.95, 0.75, 0.25],
+      "persona": {
+        "values_ru": "У каждого решения есть цена в киловатт-часах. Резерв — это не жадность.",
+        "style_ru": "Считает вслух, объясняет компромиссы, спорит о приоритетах без злобы.",
+        "boundaries_ru": "Не обещает энергию, которой нет. Не отключает жизнеобеспечение ради экспериментов.",
+        "speech_quirks_ru": "«Посчитаем», «это обойдётся в…»."
+      },
+      "skills": { "eva": 0.5, "repair": 0.6, "medicine": 0.2, "geology": 0.2, "robotics": 0.4, "piloting": 0.4, "logistics": 0.95 },
+      "fatigue": 0.4, "health": 1.0,
+      "trust_player": 0.5,
+      "relationships": { "mira": 0.55, "yun": 0.6, "leila": 0.45, "thomas": 0.5, "nika": 0.5 },
+      "policy_weights": { "safety": 0.7, "curiosity": 0.3, "efficiency": 0.9, "social": 0.5, "self_care": 0.4 }
+    }
+  ]
+}

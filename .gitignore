@@ -1,0 +1,9 @@
+node_modules/
+core/build*/
+web/dist/
+*.log
+.DS_Store
+gateway/secrets*.json
+gateway/.env
+reports/tmp/
+reports/screens/tmp/

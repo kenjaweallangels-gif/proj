@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "zero-echo.dialogue.v1",
+  "title": "Free-speech line (experimental, optional)",
+  "description": "Only for the free-speech experiment. Text is unverified: entity/protected-term filters do not guarantee absence of lies or spoilers. Critical facts, codes and plot reveals are never taken from this field.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["line", "fact_ids"],
+  "properties": {
+    "line": { "type": "string", "minLength": 1, "maxLength": 280 },
+    "fact_ids": { "type": "array", "maxItems": 3, "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z0-9_]+$" } },
+    "style": { "type": "string", "enum": ["neutral", "concerned", "firm", "warm", "tense", "dry", "apologetic", "curious"] }
+  }
+}
