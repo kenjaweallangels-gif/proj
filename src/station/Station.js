@@ -1,37 +1,90 @@
 import * as THREE from 'three';
+import { LAYOUT } from './parts/Layout.js';
+import { Builder } from './parts/Builder.js';
+import { Handrails } from './parts/Handrails.js';
+import { buildTruss } from './parts/Truss.js';
+import { buildModules } from './parts/Modules.js';
+import { buildDocking } from './parts/Docking.js';
+import { HabitatRing } from './parts/Ring.js';
+import { SolarArrays, Radiators } from './parts/Arrays.js';
+import { Antennas } from './parts/Antennas.js';
+import { AirlockModule } from './parts/Airlock.js';
+import { StationLights } from './parts/Lights.js';
 
-/** STUB — replaced by the real Station module. Implements the contract in docs/ARCHITECTURE.md. */
+/**
+ * Orbital station «Аврора» — near scene, meters, fixed at the origin.
+ * Implements the Station contract (docs/ARCHITECTURE.md): colliders, handrails, dockingPorts,
+ * airlock, ring, viewpoints, update(dt, ctx).
+ *
+ * Layout (see parts/Layout.js): 176 m truss spine along X; pressurised cluster hanging 8 m below the
+ * spine (x -30..43); gravity ring (R 40 m) at x = -42; radiators aft of it; four solar wings on rotary
+ * joints at x = ±76; antennas forward of the docking hub.
+ */
 export class Station extends THREE.Group {
   constructor(ctx) {
     super();
     this.ctx = ctx;
-    const m = ctx.materials;
-    const core = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 4.2, 48, 48), m.get('hullWhite'));
-    core.rotation.z = Math.PI / 2; core.castShadow = core.receiveShadow = true;
-    this.add(core);
-    const node = new THREE.Mesh(new THREE.BoxGeometry(10, 10, 10), m.get('mliGold'));
-    node.position.set(0, 0, 0); node.castShadow = node.receiveShadow = true;
-    this.add(node);
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(2, 0.2, 30), m.get('solarCell'));
-    panel.position.set(0, 10, 0); panel.castShadow = panel.receiveShadow = true;
-    this.add(panel);
+    this.name = LAYOUT.stationName;
+    this.colliders = [];
+    this.handrails = [];
+    this.dockingPorts = [];
+    const t0 = performance.now();
 
-    this.colliders = [
-      { type: 'capsule', a: new THREE.Vector3(-24, 0, 0), b: new THREE.Vector3(24, 0, 0), radius: 4.2, name: 'core' },
-      { type: 'box', center: new THREE.Vector3(0, 0, 0), halfSize: new THREE.Vector3(5, 5, 5), quaternion: new THREE.Quaternion(), name: 'node' },
-    ];
-    this.handrails = [{ a: new THREE.Vector3(-10, 4.4, 1), b: new THREE.Vector3(10, 4.4, 1), radius: 0.03 }];
-    this.dockingPorts = [
-      { id: 'fwd', name: 'Forward', position: new THREE.Vector3(24, 0, 0), quaternion: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(1, 0, 0)), size: 'large', occupant: null, approachAxis: new THREE.Vector3(1, 0, 0) },
-      { id: 'aft', name: 'Aft', position: new THREE.Vector3(-24, 0, 0), quaternion: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(-1, 0, 0)), size: 'large', occupant: null, approachAxis: new THREE.Vector3(-1, 0, 0) },
-    ];
-    this.airlock = {
-      standPosition: new THREE.Vector3(0, 0, 5.5), exitDirection: new THREE.Vector3(0, 0, 1), lookDirection: new THREE.Vector3(0, 0, 1),
-      hatch: { isOpen: false, progress: 0, open: async () => { this.airlock.hatch.isOpen = true; this.airlock.hatch.progress = 1; }, close: async () => { this.airlock.hatch.isOpen = false; this.airlock.hatch.progress = 0; } },
-      interiorColliders: [],
+    const b = new Builder(ctx.materials);
+    const rails = new Handrails(ctx.materials, this.handrails);
+
+    const truss = buildTruss(ctx, this, b, rails);
+    const mods = buildModules(ctx, this, b, rails);
+    const dock = buildDocking(ctx, this, b, rails, mods);
+    this.ringPart = new HabitatRing(ctx, this, b);
+    this.arrays = new SolarArrays(ctx, this, b);
+    this.radiators = new Radiators(ctx, this, b);
+    this.antennas = new Antennas(ctx, this, b);
+    this.airlockPart = new AirlockModule(ctx, this, b, rails);
+    this.lights = new StationLights(ctx, this, this.ringPart, this.airlockPart.info);
+
+    this.staticMeshes = b.build(this, { name: 'station' });
+    rails.build(this);
+
+    // contract fields
+    this.dockingPorts = dock.ports;
+    this.airlock = this.airlockPart.info;
+    this.ring = { group: this.ringPart.group, angularSpeed: this.ringPart.angularSpeed, radius: this.ringPart.radius };
+    this.colliders.push(...truss.colliders, ...mods.colliders, ...dock.colliders, ...this.ringPart.staticColliders, ...this.ringPart.colliders,
+      ...this.arrays.colliders, ...this.radiators.colliders, ...this.antennas.colliders, ...this.airlockPart.colliders);
+    this.modules = mods;
+
+    const CY = LAYOUT.clusterY, AX = LAYOUT.airlock.x, HZ = this.airlockPart.hatchZ, HX = LAYOUT.hubX, RX = LAYOUT.ringX;
+    this.viewpoints = {
+      docking: { position: [HX + 26, CY - 9, 24], target: [HX + 2, CY, 0] },
+      ring: { position: [RX + 46, 32, 78], target: [RX, 0, 0] },
+      airlockExt: { position: [AX + 3.2, CY + 1.8, HZ + 6.5], target: [AX, CY, HZ] },
+      solar: { position: [52, 22, 58], target: [76, 0, 18] },
+      closeup: { position: [-13.5, CY + 3.5, 3.4], target: [-4, CY + 2.3, 0.8] },
+      hub: { position: [RX + 14, 7, 15], target: [RX, 0, 0] },
+      cupola: { position: [AX + 4, CY - 9, 6], target: [AX, CY - 3.5, 0] },
+      aft: { position: [-150, 30, 90], target: [-50, 0, 0] },
     };
-    this.ring = { group: new THREE.Group(), angularSpeed: 0.3, radius: 40 };
-    this.viewpoints = { docking: { position: [60, 20, 40], target: [24, 0, 0] }, ring: { position: [0, 60, 90], target: [0, 0, 0] }, airlockExt: { position: [10, 6, 25], target: [0, 0, 6] } };
+
+    this.ringPart.update(0);
+    this.lights.update(0, ctx);
+    const ms = performance.now() - t0;
+    this.buildTimeMs = ms;
+    if (ms > 2000) console.warn(`[Station] build took ${ms.toFixed(0)} ms`);
   }
-  update(dt, ctx) {}
+
+  async load() {}
+
+  update(dt, ctx) {
+    this.ringPart.update(dt);
+    this.arrays.update(dt, ctx);
+    this.radiators.update(dt, ctx);
+    this.antennas.update(dt, ctx);
+    this.airlockPart.update(dt);
+    this.lights.update(dt, ctx);
+  }
+
+  dispose() {
+    this.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+  }
 }
