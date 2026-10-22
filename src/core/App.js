@@ -7,13 +7,25 @@ import { Textures } from './Textures.js';
 import { ParticleSystem } from './Particles.js';
 import { Input } from './Input.js';
 import { QUALITY_PRESETS, LAYERS, SUN_LIGHT_INTENSITY, SUN_COLOR, NEAR_TO_FAR } from './constants.js';
-import { Earth } from '../world/Earth.js';
-import { Sky } from '../world/Sky.js';
-import { Station } from '../station/Station.js';
-import { Ships } from '../ships/Ships.js';
-import { Player } from '../player/Player.js';
-import { Hud } from '../ui/Hud.js';
-import { Audio } from '../audio/Audio.js';
+
+/**
+ * Scene modules are imported dynamically with a fallback to the stub implementation in src/stubs,
+ * so a broken module never takes the whole app down (and shows up as a console error instead).
+ */
+const MODULE_LOADERS = {
+  Earth: [() => import('../world/Earth.js'), () => import('../stubs/Earth.js')],
+  Sky: [() => import('../world/Sky.js'), () => import('../stubs/Sky.js')],
+  Station: [() => import('../station/Station.js'), () => import('../stubs/Station.js')],
+  Ships: [() => import('../ships/Ships.js'), () => import('../stubs/Ships.js')],
+  Player: [() => import('../player/Player.js'), () => import('../stubs/Player.js')],
+  Hud: [() => import('../ui/Hud.js'), () => import('../stubs/Hud.js')],
+  Audio: [() => import('../audio/Audio.js'), () => import('../stubs/Audio.js')],
+};
+async function loadModuleClass(name) {
+  const [real, stub] = MODULE_LOADERS[name];
+  try { const m = await real(); if (!m[name]) throw new Error(`module does not export ${name}`); return m[name]; }
+  catch (e) { console.error(`[App] module ${name} failed to load, using stub:`, e); window.__MODULE_ERRORS__ = (window.__MODULE_ERRORS__ || []).concat([`${name}: ${e.message}`]); return (await stub())[name]; }
+}
 
 class Emitter {
   constructor() { this.map = new Map(); }
@@ -108,6 +120,7 @@ export class App {
     };
 
     // Modules (order matters: later modules may use earlier ones through ctx)
+    const [Earth, Sky, Station, Ships, Player, Hud, Audio] = await Promise.all(['Earth', 'Sky', 'Station', 'Ships', 'Player', 'Hud', 'Audio'].map(loadModuleClass));
     this.earth = ctx.earth = new Earth(ctx);
     this.sky = ctx.sky = new Sky(ctx);
     this.station = ctx.station = new Station(ctx);

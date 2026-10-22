@@ -140,3 +140,18 @@ node tools/screenshot.mjs --view=overview --t=600 --out=/tmp/x.png   # headless 
 URL params: `?autostart=1` skip menu · `?observer=1` free camera · `?view=overview|docking|ring|earth|airlock|eva|sunrise`
 · `?t=<sim seconds>` · `?quality=ultra|high|medium|low` · `?timescale=<n>` · `?shot=1` (fixed dt).
 `window.__app` exposes the App for console debugging.
+
+## Stubs and module loading
+
+`src/stubs/*.js` hold minimal reference implementations of every module contract. `App.js` imports
+the real modules dynamically and falls back to the stub (with a console error and an entry in
+`window.__MODULE_ERRORS__`) if a module fails to import or does not export the expected class.
+Always write complete, syntactically valid files (run `node --check <file>`) — a dev server shared
+with other people transforms files on demand.
+
+## Player extras
+
+`player.setView('airlock' | 'eva' | 'eva-far')` poses the player for screenshots;
+`player.setActive(bool)` is called when switching between play and observer modes.
+`station.viewpoints = { name: { position: [x,y,z], target: [x,y,z] } }` adds observer views.
+`station.airlock.tetherAnchor` (Vector3) is where the EVA tether attaches.
