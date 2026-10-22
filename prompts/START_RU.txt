@@ -14,7 +14,7 @@
      частоту монитора, режим питания. Ничего не придумывай: неизвестное = null.
   2. Сборка: `tools/build_all.sh` (нужны g++/clang, cmake, ninja, Node ≥22.18, Emscripten для WASM).
      Проверки: `tools/test_all.sh` → reports/validation.json.
-  3. Контрольный маршрут: `node tools/serve.mjs web/dist 8080`, открыть http://127.0.0.1:8080/ → вкладка
+  3. Контрольный маршрут: `node tools/serve.mjs web/dist 8000`, открыть http://127.0.0.1:8000/ → вкладка
      «Метрики» → «Контрольный маршрут». Для приёмки: 3 прогретых прохода по 10 минут, без генерации кадров,
      фиксированный render scale. Сохрани RouteReport JSON и видео. Только эти данные на RTX 3060 — замер.
   4. Локальная модель: llama.cpp (CUDA и CPU), Qwen3-1.7B Q4 (режим без рассуждений через chat template).

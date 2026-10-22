@@ -5,7 +5,7 @@
     "host": "127.0.0.1",
     "port": 8787,
     "max_body_bytes": 65536,
-    "allowed_origins": ["http://127.0.0.1:8080", "http://localhost:8080"],
+    "allowed_origins": ["http://127.0.0.1:8000", "http://localhost:8000"],
     "session_ttl_s": 3600,
     "max_sessions": 1000,
     "note_ru": "Шлюз слушает только loopback; другой адрес — только с явным --allow-lan. allowed_origins — страницы, которым разрешены CORS-запросы (браузерный клиент из tools/serve.mjs)."
@@ -60,7 +60,7 @@
       "retry": { "max_attempts": 1, "base_backoff_ms": 100, "max_backoff_ms": 500, "min_remaining_ms": 400 },
       "breaker": { "failure_threshold": 3, "cooldown_ms": 10000, "max_cooldown_ms": 120000 },
       "options": { "mode": "chat", "stream": true, "disable_thinking": true, "cache_prompt": true },
-      "note_ru": "llama-server на loopback (разрешён в offline). Одна активная генерация на общий экземпляр модели (Документ §11). Запуск: llama-server -m Qwen3-1.7B-Q4_K_M.gguf --jinja --host 127.0.0.1 --port 8080. Порт 8080 по умолчанию совпадает с tools/serve.mjs — при одновременном запуске смените порт одного из них. Модель не скачивается автоматически; handshake сверяет имя GGUF с /props и /v1/models."
+      "note_ru": "llama-server на loopback (разрешён в offline). Одна активная генерация на общий экземпляр модели (Документ §11). Запуск: llama-server -m Qwen3-1.7B-Q4_K_M.gguf --jinja --host 127.0.0.1 --port 8080. Модель не скачивается автоматически; handshake сверяет имя GGUF с /props и /v1/models."
     },
     {
       "id": "openai",

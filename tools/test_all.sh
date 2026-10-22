@@ -30,6 +30,7 @@ if command -v emcc >/dev/null; then
 else
   printf '{"id":"core_wasm","rc":-1,"seconds":0,"log":"","blocked":"emcc not installed"}\n' >> "$STEPS"
 fi
+step gateway_deps    npm ci --prefix gateway
 step typecheck       npx tsc -p tsconfig.json
 step gateway_tests   node --test gateway/test/
 step web_build       node web/build.mjs

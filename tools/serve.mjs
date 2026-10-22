@@ -8,7 +8,7 @@ import path from 'node:path';
 
 const args = process.argv.slice(2);
 const root = path.resolve(args[0] ?? '.');
-const port = Number(args.find((a, i) => i > 0 && /^\d+$/.test(a)) ?? 8080);
+const port = Number(args.find((a, i) => i > 0 && /^\d+$/.test(a)) ?? 8000);
 const coopCoep = args.includes('--coop-coep');
 const hostIdx = args.indexOf('--host');
 const host = hostIdx >= 0 ? args[hostIdx + 1] : '127.0.0.1';

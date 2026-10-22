@@ -1,7 +1,7 @@
 // Agent Gateway HTTP server (docs/SPEC.md §7), node:http without frameworks.
 //
 //   node gateway/src/server.ts --config data/providers.example.json [--local-helper] [--allow-lan]
-//        [--host 127.0.0.1] [--port 8787] [--origin http://127.0.0.1:8080]... [--secrets file]
+//        [--host 127.0.0.1] [--port 8787] [--origin http://127.0.0.1:8000]... [--secrets file]
 //        [--log-file path] [--debug-content]
 //
 // Security model (README «Модель безопасности»): binds to loopback unless --allow-lan; Origin must be in

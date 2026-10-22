@@ -6,7 +6,7 @@ cd "$ROOT"
 
 echo "== npm dependencies"
 [ -d node_modules ] || npm ci
-[ -f gateway/package.json ] && [ ! -d gateway/node_modules ] && (cd gateway && npm ci)
+[ -f gateway/package.json ] && npm ci --prefix gateway
 
 echo "== core: native"
 bash core/build_native.sh

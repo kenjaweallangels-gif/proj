@@ -25,7 +25,7 @@ npm ci --prefix gateway        # официальный @anthropic-ai/sdk (ну�
 node gateway/src/server.ts --config data/providers.example.json
 
 # локальный помощник для браузера: loopback, проверка Host и Origin, токен на каждом методе
-node gateway/src/server.ts --config data/providers.example.json --local-helper --origin http://127.0.0.1:8080
+node gateway/src/server.ts --config data/providers.example.json --local-helper --origin http://127.0.0.1:8000
 
 # тесты (только loopback, без ключей и внешней сети) и проверка типов
 node --test gateway/test/
