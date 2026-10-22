@@ -31,6 +31,18 @@ const pages = [
   { entry: 'src/render/dev_main.ts', html: 'render-dev.html', out: 'render-dev.html' },
 ];
 
+// A claude.ai Artifact page is wrapped in its own document skeleton (doctype, charset and viewport metas, reset),
+// so the publishable variant keeps only the head's title/styles/metas and the body content.
+function toArtifactBody(html) {
+  const head = /<head[^>]*>([\s\S]*?)<\/head>/i.exec(html)?.[1] ?? '';
+  const body = /<body[^>]*>([\s\S]*)<\/body>/i.exec(html)?.[1] ?? html;
+  const headKept = head
+    .replace(/<meta\s+charset[^>]*>/gi, '')
+    .replace(/<meta\s+name=["']viewport["'][^>]*>/gi, '')
+    .trim();
+  return `${headKept}\n${body.trim()}\n`;
+}
+
 let failed = false;
 for (const p of pages) {
   const entry = path.join(here, p.entry);
@@ -58,6 +70,7 @@ for (const p of pages) {
     if (!html.includes('<!--APP_SCRIPT-->')) throw new Error(`${p.html} must contain <!--APP_SCRIPT-->`);
     const out = html.replace('<!--APP_SCRIPT-->', () => `<script type="module">\n${js}\n</script>`);
     fs.writeFileSync(path.join(dist, p.out), out);
+    if (p.out === 'index.html') fs.writeFileSync(path.join(dist, 'artifact.html'), toArtifactBody(out));
     console.log(`built web/dist/${p.out} (${(out.length / 1024).toFixed(0)} KiB)${p.entry === 'src/main.ts' && !fs.existsSync(wasmCore) ? ' [WARNING: WASM core not built — stub linked]' : ''}`);
   } catch (e) {
     failed = true;
