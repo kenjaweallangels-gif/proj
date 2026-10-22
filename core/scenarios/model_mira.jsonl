@@ -1,0 +1,7 @@
+# Скриптовая «модель» для `echo_cli scenario --provider script:core/scenarios/model_mira.jsonl`.
+# Строка = ответ на очередной запрос (фильтр по actor/kind). latency_ms — имитация задержки (часы хоста),
+# first_token_ms и токены — как их вернул бы провайдер. Никакой реальной модели здесь нет.
+{"actor":"leila","status":"ok","proposal_text":"{\"action\":\"preserve_sample\",\"target_id\":\"sample_07\",\"companion_id\":null,\"fact_ids\":[\"sample_07_needs_cold\"],\"style\":\"curious\",\"gesture\":\"check_device\"}","latency_ms":900,"first_token_ms":240,"input_tokens":1012,"output_tokens":41}
+{"actor":"thomas","status":"ok","proposal_text":"{\"action\":\"propose_rest\",\"target_id\":\"yun\",\"companion_id\":null,\"fact_ids\":[\"yun_low_sleep\"],\"style\":\"warm\",\"gesture\":\"nod\"}","latency_ms":1300,"first_token_ms":310,"input_tokens":1105,"output_tokens":39}
+{"actor":"mira","status":"ok","proposal_text":"{\"action\":\"inspect\",\"target_id\":\"sensor_a\",\"companion_id\":\"nika\",\"fact_ids\":[\"pressure_disagreement\",\"yun_sent_alone\"],\"style\":\"concerned\",\"gesture\":\"point_at_target\"}","latency_ms":1700,"first_token_ms":420,"input_tokens":1240,"output_tokens":52}
+{"actor":"mira","status":"ok","proposal_text":"{\"action\":\"repair\",\"target_id\":\"sensor_a\",\"companion_id\":\"nika\",\"fact_ids\":[\"sensor_a_drift_confirmed\"],\"style\":\"neutral\",\"gesture\":\"check_device\"}","latency_ms":1500,"first_token_ms":380,"input_tokens":1198,"output_tokens":47}

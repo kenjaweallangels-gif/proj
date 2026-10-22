@@ -1,0 +1,68 @@
+{
+  "format": "zero-echo.pricing.v1",
+  "currency": "USD",
+  "unit": "USD за 1 000 000 токенов",
+  "note_ru": "ВСЕ тарифы в этом файле ВЫМЫШЛЕННЫЕ (fictional: true) — арифметический пример Документа §18 ($1 за 1M входных и $5 за 1M выходных токенов), а не цены OpenAI, Anthropic, Google или аренды GPU. Реальный тариф владелец вносит с fictional: false, verified_on (дата проверки) и source (ссылка на прайс). Стоимость запросов считается по ИЗМЕРЕННОМУ usage провайдера; reasoning/thinking-токены входят в выходные.",
+  "prices": [
+    {
+      "route": "mock",
+      "model": "*",
+      "input_per_mtok": 0,
+      "output_per_mtok": 0,
+      "fictional": true,
+      "note_ru": "mock не тарифицируется; usage — оценка шлюза."
+    },
+    {
+      "route": "local_llamacpp",
+      "model": "*",
+      "input_per_mtok": 0,
+      "output_per_mtok": 0,
+      "fictional": true,
+      "note_ru": "Локальный инференс без платы за токены; электричество, износ и нагрузка на ПК игрока здесь не учитываются."
+    },
+    {
+      "route": "openai",
+      "model": "gpt-5-mini-2025-08-07",
+      "input_per_mtok": 1,
+      "output_per_mtok": 5,
+      "cached_input_per_mtok": 0.1,
+      "fictional": true,
+      "note_ru": "Вымышленный тариф из примера Документа §18."
+    },
+    {
+      "route": "anthropic",
+      "model": "claude-opus-5-5",
+      "input_per_mtok": 1,
+      "output_per_mtok": 5,
+      "cached_input_per_mtok": 0.1,
+      "cache_write_per_mtok": 1.25,
+      "fictional": true,
+      "note_ru": "Вымышленный тариф из примера Документа §18 (не прайс Anthropic)."
+    },
+    {
+      "route": "gemini",
+      "model": "gemini-2.5-flash-lite",
+      "input_per_mtok": 1,
+      "output_per_mtok": 5,
+      "cached_input_per_mtok": 0.1,
+      "fictional": true,
+      "note_ru": "Вымышленный тариф из примера Документа §18."
+    },
+    {
+      "route": "vllm_selfhost",
+      "model": "*",
+      "input_per_mtok": 1,
+      "output_per_mtok": 5,
+      "fictional": true,
+      "note_ru": "Условная внутренняя цена собственного сервера; реальная стоимость self-host = GPU + электричество + простой + эксплуатация на обслуженные player-hours (Документ §18)."
+    },
+    {
+      "route": "custom_endpoint",
+      "model": "*",
+      "input_per_mtok": 1,
+      "output_per_mtok": 5,
+      "fictional": true,
+      "note_ru": "Условная оценка для лимита стоимости сессии; счёт за свой endpoint оплачивает его владелец."
+    }
+  ]
+}

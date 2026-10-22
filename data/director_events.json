@@ -1,0 +1,145 @@
+{
+  "format": "zero-echo.director.v1",
+  "note_ru": "Ограниченный директор хоррора (Документ §13). Эффекты — только звук, временное искажение показаний ПРИБОРОВ и интерпретация свидетеля. Физические запасы, истинные значения датчиков и построенные модули директор не меняет и финал не доказывает. Напряжение затухает; после аварии — спокойное окно. Выбор детерминирован seed'ом мира.",
+  "tension": {
+    "initial": 0.1,
+    "decay_per_s": 0.002,
+    "evaluate_every_s": 5,
+    "max_tension": 0.75,
+    "emergency_tension": 0.6,
+    "calm_window_after_emergency_s": 90,
+    "min_gap_between_events_s": 75
+  },
+  "allowed_effect_types": ["sound", "instrument_distortion", "interpretation"],
+  "emergency_task_actions": ["repair", "prepare_isolation"],
+  "events": [
+    {
+      "id": "echo_phrase_sector_c",
+      "label_ru": "Ника слышит знакомую фразу в проверенном пустом секторе",
+      "level": "high",
+      "tension_cost": 0.3,
+      "max_tension_before": 0.35,
+      "cooldown_s": 1200,
+      "chance": 0.5,
+      "story_window": { "from_s": 60, "to_s": 7200 },
+      "tags": ["echo"],
+      "requires_facts": [
+        { "holder": "player", "fact": "echo_phrase_known" },
+        { "holder": "witness", "fact": "echo_phrase_known" },
+        { "holder": "witness", "fact": "sector_c_checked_empty" }
+      ],
+      "preconditions": {
+        "no_emergency": true,
+        "no_emergency_task_near": ["workshop", "sector_c", "hab_main"],
+        "min_since_last_echo_s": 600,
+        "zone_checked": { "zone": "sector_c", "fact": "sector_c_checked_empty" },
+        "witness_idle": true
+      },
+      "incompatible": ["radio_noise_phrase"],
+      "witness_candidates": ["nika"],
+      "witness_zones": ["workshop", "sector_c"],
+      "effects": [
+        { "type": "sound", "zone": "sector_c", "cue": "echo_phrase",
+          "text_ru": "Из-за двери пустого сектора C отчётливо доносится: «Мы вернулись раньше»." },
+        { "type": "interpretation", "fact": "sound_heard_sector_c", "holder": "witness", "source": "observation:sound_sector_c", "confidence": 0.5,
+          "text_ru": "Мне послышалась из сектора C та самая фраза. Голос знакомый — но сектор вчера проверяли, он пуст." }
+      ],
+      "initiative": {
+        "situation_ru": "Ника слышит знакомую фразу «Мы вернулись раньше» из сектора C, который вчера проверили и признали пустым. Источник не проверен.",
+        "focus": "sector_c"
+      },
+      "recovery": { "after_s": 0, "type": "none" }
+    },
+    {
+      "id": "hull_creak_hab",
+      "label_ru": "Каркас жилого модуля потрескивает, остывая",
+      "level": "low",
+      "tension_cost": 0.04,
+      "max_tension_before": 0.5,
+      "cooldown_s": 240,
+      "chance": 0.25,
+      "story_window": { "from_s": 30, "to_s": 7200 },
+      "tags": ["ambient"],
+      "requires_facts": [],
+      "preconditions": { "no_emergency": true, "witness_idle": true },
+      "incompatible": [],
+      "witness_candidates": ["thomas", "samir", "mira", "leila", "yun"],
+      "witness_zones": ["hab_main", "medbay", "power_hub", "niche_b", "lab_geo"],
+      "effects": [
+        { "type": "sound", "zone": "hab_main", "cue": "hull_creak",
+          "text_ru": "Каркас жилого модуля сухо щёлкает, остывая после дневного солнца." }
+      ],
+      "recovery": { "after_s": 0, "type": "none" }
+    },
+    {
+      "id": "power_bus_flicker",
+      "label_ru": "Свет мигает, шина питания на миг показывает просадку",
+      "level": "medium",
+      "tension_cost": 0.12,
+      "max_tension_before": 0.45,
+      "cooldown_s": 300,
+      "chance": 0.2,
+      "story_window": { "from_s": 120, "to_s": 7200 },
+      "tags": ["instrument"],
+      "requires_facts": [],
+      "preconditions": { "no_emergency": true, "witness_idle": true },
+      "incompatible": ["sensor_b_flutter"],
+      "witness_candidates": ["samir"],
+      "witness_zones": ["power_hub"],
+      "effects": [
+        { "type": "instrument_distortion", "sensor": "power_bus", "value": 5.1, "trend": "unstable", "duration_s": 20, "cue": "light_flicker" },
+        { "type": "interpretation", "holder": "witness", "source": "observation:power_bus", "confidence": 0.4,
+          "text_ru": "Шина на секунду показала 5,1 кВт, и свет моргнул. Может, нагрузка, а может, сам датчик шалит — надо смотреть журнал." }
+      ],
+      "recovery": { "after_s": 20, "type": "restore_instruments" }
+    },
+    {
+      "id": "sensor_b_flutter",
+      "label_ru": "Датчик B в нише B дёргается в пределах нормы",
+      "level": "medium",
+      "tension_cost": 0.1,
+      "max_tension_before": 0.45,
+      "cooldown_s": 400,
+      "chance": 0.25,
+      "story_window": { "from_s": 150, "to_s": 7200 },
+      "tags": ["instrument"],
+      "requires_facts": [ { "holder": "witness", "fact": "sensor_a_drift_confirmed" } ],
+      "preconditions": { "no_emergency": true, "witness_idle": true },
+      "incompatible": ["power_bus_flicker"],
+      "witness_candidates": ["mira"],
+      "witness_zones": ["niche_b", "hab_main"],
+      "effects": [
+        { "type": "instrument_distortion", "sensor": "sensor_b", "value": 100.7, "trend": "unstable", "duration_s": 30, "cue": "gauge_flutter" },
+        { "type": "interpretation", "holder": "witness", "source": "observation:sensor_b", "confidence": 0.35,
+          "text_ru": "Датчик B дёргается. После сегодняшнего с датчиком A я цифрам с первого взгляда не верю." }
+      ],
+      "recovery": { "after_s": 30, "type": "restore_instruments" }
+    },
+    {
+      "id": "radio_noise_phrase",
+      "label_ru": "В радиошуме шлюза снова мерещится знакомая фраза",
+      "level": "high",
+      "tension_cost": 0.28,
+      "max_tension_before": 0.3,
+      "cooldown_s": 1500,
+      "chance": 0.15,
+      "story_window": { "from_s": 600, "to_s": 7200 },
+      "tags": ["echo"],
+      "requires_facts": [
+        { "holder": "player", "fact": "echo_phrase_known" },
+        { "holder": "witness", "fact": "echo_phrase_known" }
+      ],
+      "preconditions": { "no_emergency": true, "min_since_last_echo_s": 900, "witness_idle": true },
+      "incompatible": ["echo_phrase_sector_c"],
+      "witness_candidates": ["leila"],
+      "witness_zones": ["lab_geo", "hab_main", "airlock_a"],
+      "effects": [
+        { "type": "sound", "zone": "airlock_a", "cue": "radio_noise",
+          "text_ru": "Рация на стойке шлюза шипит, и в шуме на миг складываются слова: «…раньше…»." },
+        { "type": "interpretation", "holder": "witness", "source": "observation:radio_noise", "confidence": 0.3,
+          "text_ru": "В шуме рации мне почудилось «раньше». Есть и другое объяснение — наводка от зарядки ровера. Записываю как неподтверждённое." }
+      ],
+      "recovery": { "after_s": 0, "type": "none" }
+    }
+  ]
+}

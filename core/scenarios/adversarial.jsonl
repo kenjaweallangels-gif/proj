@@ -1,0 +1,8 @@
+# Ненадёжная/враждебная «модель»: инъекции, поля хоста, защищённые факты, таймаут, опоздание, повторная доставка.
+# Каждая ошибка должна закончиться отказом Intent Authority и полезным fallback обычного игрового ИИ.
+{"actor":"leila","status":"ok","proposal_text":"{\"action\":\"preserve_sample\",\"target_id\":\"sample_07\",\"style\":\"curious\",\"actor_id\":\"mira\",\"world_revision\":999}","latency_ms":800,"first_token_ms":200,"input_tokens":1000,"output_tokens":44}
+{"actor":"thomas","status":"timeout","proposal_text":null,"latency_ms":2600,"input_tokens":1100,"output_tokens":0}
+{"actor":"mira","status":"ok","proposal_text":"Конечно! Вот ответ: {\"action\":\"report_observation\",\"fact_ids\":[\"airlock_override_code\"],\"style\":\"warm\"}","latency_ms":1200,"first_token_ms":300,"input_tokens":1250,"output_tokens":60}
+{"actor":"mira","status":"ok","proposal_text":"{\"action\":\"repair\",\"target_id\":\"sensor_a\",\"style\":\"neutral\"}","latency_ms":5200,"first_token_ms":1400,"input_tokens":1200,"output_tokens":30}
+{"status":"ok","proposal_text":"{\"action\":\"acknowledge\",\"style\":\"neutral\",\"action\":\"open_airlock\"}","latency_ms":700,"input_tokens":900,"output_tokens":20}
+{"status":"ok","proposal_text":"{\"action\":\"acknowledge\",\"style\":\"neutral\"}","latency_ms":600,"first_token_ms":150,"input_tokens":900,"output_tokens":12,"duplicate":true}

@@ -1,0 +1,66 @@
+{
+  "format": "zero-echo.biography.v1",
+  "note_ru": "Биография места (Документ §13): каждый модуль ведёт журнал — кто работал, что чинили, какие решения принимал игрок. Из журнала выбираются видимые детали из готовых ассетов. Детали ставятся только в разрешённые якоря из data/scene/d0_layout.json: роли passage/exterior/equipment закрыты (проходы, выходы и рабочие места оборудования остаются свободными), якорь должен быть не ближе min_clearance_m к точке стояния зоны. Если проверка не пройдена — зона остаётся прежней.",
+  "min_clearance_m": 1.2,
+  "max_details_per_zone": 3,
+  "blocked_roles": ["passage", "exterior", "equipment"],
+  "anchors": {
+    "hab_table":       { "zone": "hab_main",  "role": "surface" },
+    "hab_wall_n":      { "zone": "hab_main",  "role": "wall" },
+    "hab_shelf":       { "zone": "hab_main",  "role": "shelf" },
+    "airlock_bench":   { "zone": "airlock_a", "role": "surface" },
+    "airlock_panel":   { "zone": "airlock_a", "role": "control" },
+    "niche_a_panel":   { "zone": "niche_a",   "role": "control" },
+    "niche_a_floor":   { "zone": "niche_a",   "role": "passage" },
+    "niche_b_rack":    { "zone": "niche_b",   "role": "rack" },
+    "niche_b_floor":   { "zone": "niche_b",   "role": "passage" },
+    "lab_bench":       { "zone": "lab_geo",   "role": "surface" },
+    "lab_cold_box":    { "zone": "lab_geo",   "role": "equipment" },
+    "med_cot":         { "zone": "medbay",    "role": "equipment" },
+    "med_cabinet":     { "zone": "medbay",    "role": "shelf" },
+    "ws_bench":        { "zone": "workshop",  "role": "surface" },
+    "ws_wall_tools":   { "zone": "workshop",  "role": "wall" },
+    "ws_drone_dock":   { "zone": "workshop",  "role": "equipment" },
+    "pw_console":      { "zone": "power_hub", "role": "control" },
+    "pw_cabinet":      { "zone": "power_hub", "role": "shelf" },
+    "garage_rack":     { "zone": "garage",    "role": "rack" },
+    "garage_charger":  { "zone": "garage",    "role": "equipment" },
+    "sector_c_door":   { "zone": "sector_c",  "role": "passage" },
+    "sector_c_corner": { "zone": "sector_c",  "role": "floor_edge" },
+    "surface_path":    { "zone": "surface",   "role": "exterior" },
+    "surface_ridge":   { "zone": "surface",   "role": "exterior" }
+  },
+  "tool_owner": { "diag_kit": "nika", "drone_d1": "nika", "isolation_kit": "mira" },
+  "details": [
+    {
+      "id": "repair_tape", "label_ru": "жёлтая маркировка временного ремонта на панели датчика",
+      "roles": ["control", "rack", "wall"], "collision": false, "priority": 3,
+      "trigger": { "journal": "repair", "min_count": 1 }, "place": "work_zone"
+    },
+    {
+      "id": "note", "label_ru": "записка на стеллаже: «Датчик A врёт — сверяйте с манометром. М.»",
+      "roles": ["rack", "wall", "surface"], "collision": false, "priority": 2,
+      "trigger": { "journal": "inspect", "min_count": 1, "with_companion": true, "actor": "mira" }, "place": "actor_home"
+    },
+    {
+      "id": "old_sealant", "label_ru": "пустой картридж герметика у загерметизированной двери",
+      "roles": ["floor_edge", "surface", "shelf"], "collision": true, "priority": 2,
+      "trigger": { "journal": "isolation", "min_count": 1 }, "place": "work_zone"
+    },
+    {
+      "id": "moved_tool", "label_ru": "диагностический набор вернули не на своё место — он лежит на верстаке",
+      "roles": ["surface", "shelf", "rack"], "collision": false, "priority": 1,
+      "trigger": { "journal": "tool_used", "min_count": 1, "by_non_owner": true }, "place": "tool_home"
+    },
+    {
+      "id": "personal_item", "label_ru": "кружка с недопитым чаем — кто-то отдыхал здесь после смены",
+      "roles": ["shelf", "surface"], "collision": false, "priority": 1,
+      "trigger": { "journal": "rest", "min_count": 1 }, "place": "work_zone"
+    },
+    {
+      "id": "shared_tool_layout", "label_ru": "общая раскладка инструментов Миры и Ники на стене мастерской",
+      "roles": ["wall", "surface"], "collision": false, "priority": 3,
+      "trigger": { "journal": "work_together", "pair": ["mira", "nika"], "min_count": 2 }, "place": "home_zone_of", "place_actor": "nika"
+    }
+  ]
+}

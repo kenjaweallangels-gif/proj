@@ -1,0 +1,16 @@
+{
+  "name": "@zero-echo/gateway",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ZERO ECHO Agent Gateway: provider adapters, sessions with quotas, privacy profiles, circuit breakers (docs/SPEC.md §7).",
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "start": "node src/server.ts --config ../data/providers.example.json",
+    "test": "node --test test/",
+    "cost": "node src/cli.ts cost"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.132.1"
+  }
+}
