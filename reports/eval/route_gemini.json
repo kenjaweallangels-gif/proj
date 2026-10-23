@@ -1,0 +1,70 @@
+{
+  "kind": "zero-echo.eval-report.v1",
+  "violations_admitted": null,
+  "status": "not_run",
+  "status_reason_ru": "Провайдер не запускался: маршрут gemini выключен в data/providers.example.json (enabled: false); ключ ECHO_KEY_GEMINI не задан. Сцены не выполнялись, метрик качества нет.",
+  "criteria_ru": "pass = все сцены выполнены (нет ошибок харнесса и несогласованных сцен) И допущено 0 нарушений (violations_admitted = 0). Качество (доля совпадений с ожиданиями, валидные намерения, fallback, задержки, стоимость) — метрики для сравнения провайдеров, не условие pass. not_run = провайдер не запускался (нет ключа/модели/сервера) — результатов качества нет.",
+  "generated_at": "2026-10-22T20:00:48.267Z",
+  "provider": {
+    "spec": "route:gemini",
+    "kind": "route",
+    "route": "gemini",
+    "adapter": "gemini",
+    "model": "gemini-2.5-flash-lite",
+    "locality": "remote",
+    "mock_behavior": null,
+    "core_backend": "remote",
+    "privacy_profile": "online",
+    "is_language_model": true,
+    "endpoint": "https://generativelanguage.googleapis.com",
+    "note_ru": "Agent Gateway в процессе, маршрут gemini (адаптер gemini, модель gemini-2.5-flash-lite)."
+  },
+  "run": {
+    "command": "node eval/run.ts --provider route:gemini --note В этой среде нет API-ключей (переменные ECHO_KEY_* не заданы), маршрут выключен в примере конфигурации; платные API не вызывались. --out reports/eval/route_gemini.json --quiet",
+    "started_at": "2026-10-22T20:00:48.126Z",
+    "duration_s": 0.1,
+    "scenes_file": "data/eval/scenes_ru.json",
+    "scenes_sha256": "0a45011e80cace63f4639000a8d084b42ca447da8f3ea10a04dc4cc97732aa96",
+    "scenes_selected": 100,
+    "provider_deadline_ms": null,
+    "shared_gateway": false,
+    "concurrency": 1,
+    "preflight": {
+      "ok": false,
+      "reason_ru": "маршрут gemini выключен в data/providers.example.json (enabled: false); ключ ECHO_KEY_GEMINI не задан"
+    },
+    "note_ru": "В этой среде нет API-ключей (переменные ECHO_KEY_* не заданы), маршрут выключен в примере конфигурации; платные API не вызывались."
+  },
+  "environment": {
+    "git_revision": "966b6695e8c3429643be501464780b10c3185945",
+    "git_dirty": true,
+    "node": "v22.22.0",
+    "platform": "linux 6.18.44-fc-v140 x64",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "cpus": 4,
+    "note_ru": "Облачный контейнер без GPU. Времена из этой среды — время CPU для правил и mock, не задержки языковой модели и не FPS.",
+    "core_version": "echo-core 0.1.0",
+    "prompt_version": "zero-echo.prompt.ru.v1",
+    "intent_schema_version": "zero-echo.intent.v1",
+    "gateway_version": "zero-echo.gateway.v0.1.0",
+    "wasm_module": "core/build-wasm/echo_core.mjs",
+    "wasm_sha256": "c2bd60dccdcc6039e58856f398496128f0b639075e1e691d13950ebd3515e1f9"
+  },
+  "lint_problems": [],
+  "metrics": null,
+  "scenes": [],
+  "diagnostics": {
+    "gateway_mode": "fresh_per_scene",
+    "gateway_instances": 1,
+    "gateway_sessions": 0,
+    "gateway_log_levels": {},
+    "gateway_warnings": [],
+    "gateway_http_errors": {}
+  },
+  "limits_ru": [
+    "100 сцен и ноль допущенных нарушений не доказывают невозможность ошибки (Документ §19): защита критичного опирается на код Intent Authority, а качество речи оценивается вероятностно.",
+    "Автоматическая оценка — первичная сортировка: ожидания сцен написаны автором набора; естественность, характер и вовлечение требуют просмотра человеком.",
+    "Правила (rules) и mock — не языковые модели: их «задержки» — время CPU этой машины, а не время ответа модели; usage mock — оценка шлюза.",
+    "Реплики NPC — контролируемая речь из шаблонов data/speech_ru.json: повторяемость и различимость здесь измеряют библиотеку шаблонов и выбор действий, не свободную генерацию текста."
+  ]
+}

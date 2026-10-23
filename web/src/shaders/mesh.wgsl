@@ -94,9 +94,10 @@ fn fsMain(in: VSOut, @builtin(front_facing) front: bool) -> @location(0) vec4f {
   switch (matId) {
     case MAT_WINDOW: {
       // Interior glow behind glass: warm, flickers slightly; sealed modules pulse red; reflections from lighting below.
+      // The alarm colour does not depend on the normal window glow: a dark, sealed module still pulses red.
       let warm = vec3f(1.0, 0.72, 0.42) * 2.6 * modState.y;
       let alarm = vec3f(1.0, 0.08, 0.04) * 3.0 * (0.55 + 0.45 * sin(t * 5.0));
-      var glow = mix(warm, alarm, max(modState.x, emergency * 0.6));
+      var glow = mix(warm, alarm, max(max(modState.x, emergency * 0.6), modState.z * 0.8));
       glow *= 0.6 + 0.4 * vnoise(in.world.xy * 1.7 + in.world.zz * 0.9, 5u);
       emissive = glow * (1.0 - dimmed * 0.85);
       albedo = vec3f(0.02);
@@ -145,16 +146,33 @@ fn fsMain(in: VSOut, @builtin(front_facing) front: bool) -> @location(0) vec4f {
       emissive = vec3f(0.9, 0.75, 0.5) * 0.12 * inst.params.w;
     }
     case MAT_ROCK, MAT_CAVE: {
-      // Same basalt look as the terrain cliffs: grain + layered bands.
+      // Same basalt as the terrain cliffs (terrain.wgsl ALB_BASALT and bed banding), plus vesicular grain, rust
+      // stains and wind-blown dust on ledges.
       let grain = fbm3(in.world * 0.9, 3, 13u);
-      let band = 0.5 + 0.5 * sin(in.world.y * 0.55 + grain * 2.0);
-      albedo = mix(vec3f(0.065, 0.052, 0.044), vec3f(0.21, 0.105, 0.06), 0.35 + 0.3 * band + grain * 0.3);
-      rough = 0.88;
+      let yb = in.world.y + vnoise(in.world.xz / 220.0, 803u) * 6.0 + vnoise(in.world.xz / 37.0, 805u) * 0.8;
+      let band = clamp(0.5 + 0.28 * sin(yb * 0.61) + 0.16 * sin(yb * 0.233 + 1.3) + 0.12 * sin(yb * 1.71 + 0.4), 0.0, 1.0);
+      albedo = vec3f(0.065, 0.052, 0.044) * (0.85 + 0.3 * band) * (0.8 + 0.45 * grain);
+      let rust = smoothstep(0.1, 0.5, fbm3(in.world * 0.23 + 4.0, 3, 17u));
+      albedo = mix(albedo, vec3f(0.17, 0.075, 0.035), rust * 0.45);
+      rough = 0.9;
       metal = 0.0;
       let bump = vec3f(fbm3(in.world * 1.7, 2, 21u), fbm3(in.world * 1.7 + 7.3, 2, 22u), fbm3(in.world * 1.7 + 3.1, 2, 23u));
-      n = normalize(n + (bump - n * dot(bump, n)) * 0.6);
+      let bump2 = vec3f(vnoise3(in.world * 6.0, 24u), vnoise3(in.world * 6.0 + 2.1, 25u), vnoise3(in.world * 6.0 + 5.7, 26u));
+      n = normalize(n + (bump - n * dot(bump, n)) * 0.55 + (bump2 - n * dot(bump2, n)) * 0.15);
+      // Dust on ledges and on the tube floor near the mouth.
+      let ledge = smoothstep(0.35, 0.85, n.y) * (0.6 + 0.4 * grain);
+      albedo = mix(albedo, vec3f(0.34, 0.16, 0.075), ledge * 0.75);
     }
     default: {}
+  }
+
+  // Weathering of painted exterior panels: broad tonal variation and dust run-off streaks on vertical faces.
+  if ((matId == MAT_PAINT || matId == MAT_PLATE) && (flags & FLAG_INTERIOR) == 0u && (flags & FLAG_ACCENT) == 0u) {
+    let broad = fbm3(in.world * 0.6, 2, 41u);
+    let streak = vnoise(vec2f((in.world.x + in.world.z) * 9.0, in.world.y * 0.7), 42u);
+    let vertical = 1.0 - smoothstep(0.3, 0.7, abs(n.y));
+    albedo *= 0.93 + 0.1 * broad - vertical * smoothstep(0.2, 0.9, streak) * 0.07;
+    rough = clamp(rough + broad * 0.08, 0.05, 1.0);
   }
 
   // Dust settles on up-facing exterior surfaces.

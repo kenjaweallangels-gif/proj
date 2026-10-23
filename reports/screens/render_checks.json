@@ -1,0 +1,341 @@
+{
+  "kind": "zero-echo.render-checks.v1",
+  "created_at": "2026-10-22T20:40:01.369Z",
+  "git_revision": "966b669 (+ рабочее дерево)",
+  "environment_ru": "Headless Chromium + WebGPU на SwiftShader (CPU), без GPU. Функциональные проверки контракта рендера; это НЕ замер производительности.",
+  "adapter": {
+    "vendor": "google",
+    "architecture": "swiftshader",
+    "isSoftware": true,
+    "features": [
+      "bgra8unorm-storage",
+      "chromium-experimental-timestamp-query-inside-passes",
+      "chromium-experimental-unorm16-texture-formats",
+      "clip-distances",
+      "core-features-and-limits",
+      "depth-clip-control",
+      "depth32float-stencil8",
+      "float32-blendable",
+      "float32-filterable",
+      "indirect-first-instance",
+      "rg11b10ufloat-renderable",
+      "subgroups",
+      "texture-component-swizzle",
+      "texture-compression-astc",
+      "texture-compression-astc-sliced-3d",
+      "texture-compression-bc",
+      "texture-compression-bc-sliced-3d",
+      "texture-compression-etc2",
+      "timestamp-query"
+    ],
+    "preferredFormat": "bgra8unorm"
+  },
+  "checks": [
+    {
+      "id": "adapter_software_flag",
+      "status": "pass",
+      "detail": "google swiftshader, isSoftware=true"
+    },
+    {
+      "id": "timestamp_query",
+      "status": "pass",
+      "detail": "timestamp-query: GPU-время пишется кольцом readback"
+    },
+    {
+      "id": "camera_modes_focus",
+      "status": "pass",
+      "detail": "orbit/free/route + focusActor без исключений"
+    },
+    {
+      "id": "route_bench_report",
+      "status": "pass",
+      "detail": "status=blocked, кадров 9, GPU 8"
+    },
+    {
+      "id": "visibility_pause",
+      "status": "pass",
+      "detail": {
+        "pausedPhase": "paused",
+        "framesWhileHidden": 0,
+        "resumedFrames": 4,
+        "phaseAfter": "ready"
+      }
+    },
+    {
+      "id": "user_pause_resume",
+      "status": "pass",
+      "detail": {
+        "framesWhilePaused": 0,
+        "resumed": true
+      }
+    },
+    {
+      "id": "device_loss_recovery",
+      "status": "pass",
+      "detail": {
+        "phases": [
+          "ready",
+          "recovering",
+          "compiling",
+          "baking",
+          "ready"
+        ],
+        "recoveries": 1
+      }
+    },
+    {
+      "id": "profile_switch",
+      "status": "pass",
+      "detail": {
+        "phases": [
+          "ready",
+          "baking",
+          "ready"
+        ],
+        "profile": "W60",
+        "internal": [
+          800,
+          450
+        ],
+        "canvas": [
+          960,
+          540
+        ],
+        "renderScale": 0.833,
+        "phase": "ready"
+      }
+    },
+    {
+      "id": "webgpu_validation_errors_zero",
+      "status": "pass",
+      "detail": {
+        "validationErrors": [],
+        "consoleErrors": []
+      }
+    },
+    {
+      "id": "no_webgpu_compat_message",
+      "status": "pass",
+      "detail": "WebGPU недоступен (no-adapter): Адаптер WebGPU не получен (requestAdapter вернул null). Откройте tools/webgpu_probe.html для диагностики или используйте нативную сборку."
+    },
+    {
+      "id": "performance_60fps_rtx3060",
+      "status": "not_run",
+      "detail": "Нужен прогон контрольного маршрута на целевом ПК (RTX 3060); в этой среде нет GPU."
+    }
+  ],
+  "route_report_swiftshader": {
+    "kind": "zero-echo.route-report.v1",
+    "status": "blocked",
+    "reason": "SwiftShader/CPU — не доказательство производительности: нужен прогон на целевом GPU (RTX 3060); цифры ниже — только функциональная проверка.",
+    "profile": "W_low",
+    "adapter": {
+      "available": true,
+      "features": [
+        "bgra8unorm-storage",
+        "chromium-experimental-timestamp-query-inside-passes",
+        "chromium-experimental-unorm16-texture-formats",
+        "clip-distances",
+        "core-features-and-limits",
+        "depth-clip-control",
+        "depth32float-stencil8",
+        "float32-blendable",
+        "float32-filterable",
+        "indirect-first-instance",
+        "rg11b10ufloat-renderable",
+        "subgroups",
+        "texture-component-swizzle",
+        "texture-compression-astc",
+        "texture-compression-astc-sliced-3d",
+        "texture-compression-bc",
+        "texture-compression-bc-sliced-3d",
+        "texture-compression-etc2",
+        "timestamp-query"
+      ],
+      "limits": {
+        "maxTextureDimension2D": 8192,
+        "maxTextureArrayLayers": 256,
+        "maxBindGroups": 4,
+        "maxBufferSize": 1073741824,
+        "maxStorageBufferBindingSize": 1073741824,
+        "maxUniformBufferBindingSize": 65536,
+        "maxStorageBuffersPerShaderStage": 10,
+        "maxSampledTexturesPerShaderStage": 16,
+        "maxColorAttachments": 8,
+        "maxColorAttachmentBytesPerSample": 32,
+        "maxComputeInvocationsPerWorkgroup": 256,
+        "maxComputeWorkgroupStorageSize": 32768,
+        "maxComputeWorkgroupsPerDimension": 65535,
+        "maxVertexBuffers": 8,
+        "maxVertexAttributes": 16,
+        "maxInterStageShaderVariables": 28
+      },
+      "secureContext": true,
+      "crossOriginIsolated": false,
+      "vendor": "google",
+      "architecture": "swiftshader",
+      "isFallbackAdapter": true,
+      "isSoftware": true,
+      "preferredFormat": "bgra8unorm"
+    },
+    "passes": 1,
+    "passDurationS": 12,
+    "warmupPasses": 1,
+    "frameInterval": {
+      "p50": 1566.6,
+      "p95": 2783.2,
+      "p99": 2783.2,
+      "max": 2783.2,
+      "mean": 1474.022,
+      "count": 9
+    },
+    "cpu": {
+      "p50": 1.3,
+      "p95": 1.9,
+      "p99": 1.9,
+      "max": 1.9,
+      "mean": 1.333,
+      "count": 9
+    },
+    "gpu": {
+      "p50": 1561.973,
+      "p95": 2753.788,
+      "p99": 2753.788,
+      "max": 2753.788,
+      "mean": 1603.662,
+      "count": 8
+    },
+    "missedDeadlineRatio": 0.8889,
+    "pausesOver33ms": 8,
+    "maxPauseMs": 2783.2,
+    "coldStartMs": 9128,
+    "segments": {
+      "airlock_dark": {
+        "frameInterval": {
+          "p50": 966.7,
+          "p95": 966.7,
+          "p99": 966.7,
+          "max": 966.7,
+          "mean": 966.7,
+          "count": 1
+        },
+        "gpu": {
+          "p50": 1380.816,
+          "p95": 1380.816,
+          "p99": 1380.816,
+          "max": 1380.816,
+          "mean": 1380.816,
+          "count": 1
+        }
+      },
+      "valley_wide": {
+        "frameInterval": {
+          "p50": 16.7,
+          "p95": 2349.9,
+          "p99": 2349.9,
+          "max": 2349.9,
+          "mean": 1183.3,
+          "count": 2
+        },
+        "gpu": {
+          "p50": 922.845,
+          "p95": 945.048,
+          "p99": 945.048,
+          "max": 945.048,
+          "mean": 933.946,
+          "count": 2
+        }
+      },
+      "toward_rocks": {
+        "frameInterval": {
+          "p50": 916.6,
+          "p95": 966.6,
+          "p99": 966.6,
+          "max": 966.6,
+          "mean": 941.6,
+          "count": 2
+        },
+        "gpu": {
+          "p50": 1561.973,
+          "p95": 1572.729,
+          "p99": 1572.729,
+          "max": 1572.729,
+          "mean": 1567.351,
+          "count": 2
+        }
+      },
+      "rover_ride": {
+        "frameInterval": {
+          "p50": 1600,
+          "p95": 1600,
+          "p99": 1600,
+          "max": 1600,
+          "mean": 1600,
+          "count": 1
+        },
+        "gpu": {
+          "p50": 2084.405,
+          "p95": 2084.405,
+          "p99": 2084.405,
+          "max": 2084.405,
+          "mean": 2084.405,
+          "count": 1
+        }
+      },
+      "habitat_lit": {
+        "frameInterval": {
+          "p50": 1566.6,
+          "p95": 1566.6,
+          "p99": 1566.6,
+          "max": 1566.6,
+          "mean": 1566.6,
+          "count": 1
+        },
+        "gpu": {
+          "p50": 2753.788,
+          "p95": 2753.788,
+          "p99": 2753.788,
+          "max": 2753.788,
+          "mean": 2753.788,
+          "count": 1
+        }
+      },
+      "face_to_face": {
+        "frameInterval": {
+          "p50": 2099.9,
+          "p95": 2099.9,
+          "p99": 2099.9,
+          "max": 2099.9,
+          "mean": 2099.9,
+          "count": 1
+        },
+        "gpu": {
+          "p50": 1607.689,
+          "p95": 1607.689,
+          "p99": 1607.689,
+          "max": 1607.689,
+          "mean": 1607.689,
+          "count": 1
+        }
+      },
+      "horizon": {
+        "frameInterval": {
+          "p50": 2783.2,
+          "p95": 2783.2,
+          "p99": 2783.2,
+          "max": 2783.2,
+          "mean": 2783.2,
+          "count": 1
+        },
+        "gpu": "unavailable"
+      }
+    },
+    "notes": [
+      "SwiftShader/CPU — не доказательство производительности",
+      "Интервал rAF — ритм вызовов/представления кадров, а не чистое GPU-время (Документ §19).",
+      "GPU-время — timestamp-query (кольцо readback без блокировки CPU); без замера осталось кадров: 1.",
+      "Маршрут 240 с проигран за 12 с на проход (масштаб времени 20.00×); события и камера те же.",
+      "Пропущенный срок: интервал > 33.33 мс (1000 / target_fps профиля)."
+    ]
+  }
+}

@@ -36,7 +36,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let p = levelWorld(level, c);
   let noise = fbm(p / 37.0, 3, P.info.x + 400u);
   // Dust settles on flats and in hollows, is blown off steep faces and convex ridges.
-  var dust = (1.0 - smoothstep(0.06, 0.24, slope + noise * 0.05)) * (0.55 + 0.45 * smoothstep(-0.2, 0.4, cavity * 4.0 + noise));
+  var dust = (1.0 - smoothstep(0.06, 0.24, slope + noise * 0.05)) * (0.6 + 0.4 * smoothstep(-0.3, 0.5, cavity * 1.5 + noise * 0.7));
   dust *= 1.0 - raw.g * 0.6;
   dust *= 1.0 - raw.b * 0.5;
   let sediment = max(raw.r * (0.4 + 0.6 * rock), raw.b * 0.8);

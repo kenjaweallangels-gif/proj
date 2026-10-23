@@ -79,7 +79,7 @@ fn vsDust(@builtin(vertex_index) vi: u32) -> DustOut {
   let camDist = distance(p, frame.camPos.xyz);
   var a = (1.0 - smoothstep(1.5, 9.0, above)) * step(0.0, above);
   a *= smoothstep(0.6, 2.5, camDist) * (1.0 - smoothstep(box.x * 0.6, box.x * 0.95, camDist));
-  let size = mix(0.012, 0.045, rand1(id * 7u + 3u)) * (1.0 + camDist * 0.012);
+  let size = mix(0.006, 0.02, rand1(id * 7u + 3u)) * (1.0 + camDist * 0.01);
   let ax = cameraAxes();
   let wp = p + (ax[0] * out.uv.x + ax[1] * out.uv.y) * size;
   out.clip = frame.viewProj * vec4f(wp, 1.0);
@@ -89,7 +89,7 @@ fn vsDust(@builtin(vertex_index) vi: u32) -> DustOut {
   let sunLit = atmo.sunColor.rgb * terrainBakedLight(p.xz).x * (0.15 + 0.5 * phase);
   let col = (sunLit + shIrradiance(vec3f(0.0, 1.0, 0.0)) * 1.2 + particleLights(p) * 0.6) * vec3f(0.55, 0.32, 0.18);
   out.color = col;
-  out.alpha = a * 0.55;
+  out.alpha = a * 0.4;
   return out;
 }
 

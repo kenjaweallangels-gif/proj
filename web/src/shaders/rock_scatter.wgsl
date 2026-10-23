@@ -58,12 +58,22 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   var rMax = 380.0;
   var sMin = 0.12;
   var sMax = 1.8;
-  if (r0 > 0.62) { rMin = 380.0; rMax = 1400.0; sMin = 0.45; sMax = 4.5; }
-  if (r0 > 0.88) { rMin = 1400.0; rMax = 3400.0; sMin = 2.0; sMax = 11.0; }
+  var centre = P.center.xy;
+  if (r0 < 0.16) {
+    // Boulder field below the lava-bench cliff around the cave mouth (blocks fallen from the face).
+    centre = P.cave.xy + P.caveDir.xy * 26.0;
+    rMin = 6.0; rMax = 150.0; sMin = 0.2; sMax = 2.8;
+  } else if (r0 > 0.88) {
+    rMin = 1400.0; rMax = 3400.0; sMin = 2.0; sMax = 11.0;
+  } else if (r0 > 0.62) {
+    rMin = 380.0; rMax = 1400.0; sMin = 0.45; sMax = 4.5;
+  }
   let rad = sqrt(mix(rMin * rMin, rMax * rMax, r1));
   let ang = r2 * TAU;
-  let p = P.center.xy + vec2f(cos(ang), sin(ang)) * rad;
-  if (rad < S.padRadius) { return; }
+  let p = centre + vec2f(cos(ang), sin(ang)) * rad;
+  if (length(p - P.center.xy) < S.padRadius) { return; }
+  // Keep the cave mouth itself clear.
+  if (length(p - P.cave.xy) < P.cave.z * 0.8) { return; }
 
   let level = bestLevel(p);
   let tc = texelOf(p, level);

@@ -33,9 +33,10 @@ fn fsMain(in: VSOut) -> @location(0) vec4f {
     let t = 6000.0 / dir.y;
     let q = dir.xz * t / 9000.0 + vec2f(frame.camPos.w * 0.0015, 0.0);
     let streak = fbm(q * vec2f(1.0, 3.2), 5, 911u);
-    let cloud = smoothstep(0.12, 0.55, streak) * smoothstep(0.01, 0.12, dir.y) * 0.35;
+    let cloud = smoothstep(0.1, 0.55, streak) * smoothstep(0.01, 0.14, dir.y) * 0.5;
     let lit = 0.6 + 2.2 * pow(max(c, 0.0), 6.0);
-    col = mix(col, col * (1.0 + lit * 0.45) + atmo.sunColor.rgb * 0.004 * lit, cloud);
+    // Water-ice cirrus: slightly bluish-white, forward-scattering near the sun.
+    col = mix(col, col * (1.0 + lit * 0.5) * vec3f(0.96, 1.0, 1.08) + atmo.sunColor.rgb * 0.005 * lit, cloud);
   }
 
   // Sun disc (angular radius from frame.sunDir.w) with limb darkening; bloom spreads the glare.

@@ -9,7 +9,6 @@ import { SHADERS } from './shaders.ts';
 const VARIANTS = 6;
 const LOD_SUBDIV = [3, 2, 1];
 const INSTANCE_BYTES = 48;
-const VERTEX_BYTES = 32;
 
 interface LodMesh { vertexBase: number; vertexCount: number; firstIndex: number; indexCount: number }
 
@@ -26,7 +25,7 @@ export class RockSystem {
   readonly bindGroup: GPUBindGroup;
   private cullBindGroup: GPUBindGroup | null = null;
   private readonly lods: LodMesh[] = [];
-  private readonly argsInit: Uint32Array;
+  private readonly argsInit: Uint32Array<ArrayBuffer>;
   private readonly device: GPUDevice;
   private readonly cullData = new Float32Array(36);
 

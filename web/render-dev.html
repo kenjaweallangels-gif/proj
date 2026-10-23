@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZERO ECHO — рендер D0</title>
+<style>
+  :root {
+    --bg: #0d0b0a; --panel: rgba(18, 14, 12, 0.82); --line: rgba(255, 220, 190, 0.14); --text: #efe6dc; --muted: #b5a493;
+    --accent: #ff9a52; --good: #7ed69a; --warn: #ffcf5a; --bad: #ff6b5a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+  canvas#view { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; outline: none; }
+  .panel { position: fixed; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; backdrop-filter: blur(6px); }
+  #controls { top: 12px; left: 12px; width: 292px; max-height: calc(100vh - 24px); overflow: auto; }
+  #metrics { right: 12px; bottom: 12px; width: 300px; }
+  #status { left: 50%; top: 45%; transform: translate(-50%, -50%); min-width: 320px; max-width: 90vw; text-align: center; padding: 18px 22px; }
+  #status .bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,0.08); margin-top: 10px; overflow: hidden; }
+  #status .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
+  h1 { font-size: 14px; margin: 0 0 8px; letter-spacing: 0.04em; }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 12px 0 6px; font-weight: 600; }
+  label { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+  select, button { font: inherit; color: var(--text); background: rgba(255,255,255,0.06); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+  select { width: 100%; }
+  button { cursor: pointer; }
+  button:hover { background: rgba(255,255,255,0.12); }
+  button.on { border-color: var(--accent); color: var(--accent); }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .row > button { flex: 1 1 auto; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-variant-numeric: tabular-nums; }
+  .kv b { font-weight: 500; color: var(--muted); }
+  canvas#graph { width: 100%; height: 70px; display: block; margin: 6px 0; background: rgba(0,0,0,0.25); border-radius: 6px; }
+  #report { position: fixed; inset: 6vh 10vw; display: none; flex-direction: column; }
+  #report pre { flex: 1; overflow: auto; margin: 8px 0 0; font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+  .honest { color: var(--warn); font-size: 12px; margin-top: 6px; }
+  body.noui .panel:not(#status) { display: none; }
+  @media (max-width: 640px) { #controls { width: calc(100vw - 32px); left: 16px; max-height: 45vh; } #metrics { left: 16px; right: 16px; width: auto; } }
+</style>
+</head>
+<body>
+<canvas id="view" tabindex="0" aria-label="Сцена D0: долина Марса и колония"></canvas>
+
+<div id="controls" class="panel">
+  <h1>ZERO ECHO · рендер D0</h1>
+  <div class="muted" id="adapter">Адаптер: —</div>
+  <h2>Профиль качества</h2>
+  <select id="profile"></select>
+  <h2>Камера</h2>
+  <div class="row" id="camModes">
+    <button data-mode="orbit">Орбита</button>
+    <button data-mode="free">Свободная</button>
+    <button data-mode="route">Маршрут</button>
+  </div>
+  <div class="muted">Орбита: тянуть мышью, колесо — масштаб, Shift/правая кнопка — сдвиг. Свободная: WASD, Q/E, Shift — быстрее, мышь — обзор.</div>
+  <h2>Эталонные ракурсы</h2>
+  <div class="row" id="shots"></div>
+  <div class="row" style="margin-top:6px">
+    <button id="wideBtn">Колония сверху</button>
+    <button id="focusBtn">Крупный план: Мира</button>
+  </div>
+  <h2>Мир</h2>
+  <label><input type="checkbox" id="actorsChk" checked> Экипаж (6 NPC у точек зон)</label>
+  <label><input type="checkbox" id="cycleChk"> Перебирать жесты</label>
+  <label><input type="checkbox" id="emergencyChk"> Аварийный свет</label>
+  <label><input type="checkbox" id="sealChk"> Сектор C загерметизирован</label>
+  <label><input type="checkbox" id="bioChk" checked> Детали биографии места</label>
+  <h2>Контрольный маршрут</h2>
+  <div class="row">
+    <button id="routeBtn">Прогнать маршрут</button>
+    <button id="lossBtn" title="device.destroy() без согласия рендера">Потеря устройства</button>
+  </div>
+  <label class="muted">Проходы: <select id="routePasses" style="width:auto">
+    <option value="quick">быстро: 1 прогрев + 1 × 60 с</option>
+    <option value="full">приёмка: 1 прогрев + 3 × 240 с</option>
+  </select></label>
+  <div class="honest">Замеры в браузере на SwiftShader/CPU — не доказательство 60 FPS. Решает прогон на RTX 3060 (Документ §19).</div>
+</div>
+
+<div id="metrics" class="panel">
+  <div class="kv" id="kv"></div>
+  <canvas id="graph" width="560" height="140"></canvas>
+  <div class="muted" id="phase">—</div>
+</div>
+
+<div id="status" class="panel">
+  <div id="statusText">Запуск…</div>
+  <div class="bar"><i id="statusBar"></i></div>
+</div>
+
+<div id="report" class="panel">
+  <div class="row" style="justify-content:space-between;align-items:center">
+    <strong>Отчёт контрольного маршрута (JSON)</strong>
+    <span class="row" style="flex:0 0 auto"><button id="reportSave">Скачать JSON</button><button id="reportClose">Закрыть</button></span>
+  </div>
+  <pre id="reportText"></pre>
+</div>
+
+<!--APP_SCRIPT-->
+</body>
+</html>

@@ -7,7 +7,7 @@ import { DEPTH_FORMAT } from './pipelines.ts';
 
 export function shadowDistanceFor(profile: QualityProfile): number {
   const c = profile.render.shadow_cascades;
-  return c <= 1 ? 70 : c === 2 ? 130 : 180;
+  return c <= 1 ? 90 : c === 2 ? 200 : 260;
 }
 
 export class ShadowMaps {

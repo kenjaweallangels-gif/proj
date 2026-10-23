@@ -1,0 +1,225 @@
+{
+  "kind": "zero-echo.hardware-manifest.v1",
+  "generated_at": "2026-10-22T20:01:12+00:00",
+  "tool": {
+    "name": "tools/hw_manifest.py",
+    "version": "1.0",
+    "python": "3.13.16"
+  },
+  "note_ru": "Факты об этой машине, собранные её же инструментами. Неизвестное — null с причиной; ничего не угадывается. Это манифест условий теста, а не замер производительности.",
+  "git": {
+    "revision": "966b6695e8c3429643be501464780b10c3185945",
+    "dirty": true,
+    "reason": null
+  },
+  "os": {
+    "name": "Ubuntu 24.04.5 LTS",
+    "id": "ubuntu",
+    "version_id": "24.04",
+    "kernel": "6.18.44-fc-v140",
+    "arch": "x86_64",
+    "vm": "kvm",
+    "vm_reason": null,
+    "container": "docker",
+    "container_reason": null
+  },
+  "cpu": {
+    "model": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "vendor": "GenuineIntel",
+    "sockets": 1,
+    "physical_cores": 4,
+    "logical_threads": 4,
+    "max_mhz": null,
+    "virtual_cpu": true,
+    "isa_flags": [
+      "avx",
+      "avx2",
+      "fma",
+      "f16c",
+      "avx512f"
+    ],
+    "source": "lscpu",
+    "note_ru": "Виртуальные CPU (флаг hypervisor): ядра/потоки — выделенные гостю, модель и частота физического CPU хоста не определяются.",
+    "hypervisor": "KVM"
+  },
+  "memory": {
+    "total_gib": 15.71,
+    "available_gib": 14.6,
+    "swap_total_gib": 0.0
+  },
+  "gpu": {
+    "present": false,
+    "nvidia": null,
+    "nvidia_reason": "команда nvidia-smi не найдена",
+    "drm_devices": [],
+    "drm_reason": "нет /sys/class/drm/card* — ядро не видит видеоустройств (DRM)",
+    "pci_display": null,
+    "note_ru": "GPU не обнаружен: nvidia-smi нет, DRM-устройств нет. Рендер и локальная модель на GPU здесь не измеримы; браузерный WebGPU идёт через SwiftShader (CPU), это не доказательство производительности.",
+    "pci_display_reason": "команда lspci не найдена"
+  },
+  "vulkan": {
+    "available": null,
+    "reason": "команда vulkaninfo не найдена",
+    "instance_version": null,
+    "devices": [],
+    "icd_files": []
+  },
+  "display": {
+    "session_type": null,
+    "session_reason": "нет графической сессии (XDG_SESSION_TYPE, WAYLAND_DISPLAY и DISPLAY не заданы)",
+    "wayland_display": null,
+    "x11_display": null,
+    "desktop": null,
+    "monitors": null,
+    "monitors_source": null,
+    "monitors_reason": "нет графической сессии (XDG_SESSION_TYPE, WAYLAND_DISPLAY и DISPLAY не заданы)"
+  },
+  "power": {
+    "profile": null,
+    "profile_source": null,
+    "profile_reason": "команда powerprofilesctl не найдена; нет /sys/firmware/acpi/platform_profile",
+    "cpufreq_governors": null,
+    "governor_reason": "нет /sys/devices/system/cpu/*/cpufreq (частотой управляет гипервизор или драйвер не загружен)",
+    "on_ac_power": null
+  },
+  "storage": {
+    "devices": [
+      {
+        "name": "zram0",
+        "size_gib": 0.0,
+        "rotational_flag": false,
+        "transport": null,
+        "model": null,
+        "kind": "memory_or_loop",
+        "kind_reason": "zram/ramdisk/loop — не накопитель"
+      },
+      {
+        "name": "vda",
+        "size_gib": 256.0,
+        "rotational_flag": true,
+        "transport": "virtio",
+        "model": null,
+        "kind": "virtual",
+        "kind_reason": "виртуальный диск: тип физического носителя хоста неизвестен (флаг rotational у virtio ненадёжен)"
+      },
+      {
+        "name": "vdb",
+        "size_gib": 0.01,
+        "rotational_flag": true,
+        "transport": "virtio",
+        "model": null,
+        "kind": "virtual",
+        "kind_reason": "виртуальный диск: тип физического носителя хоста неизвестен (флаг rotational у virtio ненадёжен)"
+      },
+      {
+        "name": "vdc",
+        "size_gib": 0.3,
+        "rotational_flag": true,
+        "transport": "virtio",
+        "model": null,
+        "kind": "virtual",
+        "kind_reason": "виртуальный диск: тип физического носителя хоста неизвестен (флаг rotational у virtio ненадёжен)"
+      },
+      {
+        "name": "vdd",
+        "size_gib": 0.05,
+        "rotational_flag": true,
+        "transport": "virtio",
+        "model": null,
+        "kind": "virtual",
+        "kind_reason": "виртуальный диск: тип физического носителя хоста неизвестен (флаг rotational у virtio ненадёжен)"
+      },
+      {
+        "name": "vde",
+        "size_gib": 0.0,
+        "rotational_flag": true,
+        "transport": "virtio",
+        "model": null,
+        "kind": "virtual",
+        "kind_reason": "виртуальный диск: тип физического носителя хоста неизвестен (флаг rotational у virtio ненадёжен)"
+      },
+      {
+        "name": "vdf",
+        "size_gib": 0.01,
+        "rotational_flag": true,
+        "transport": "virtio",
+        "model": null,
+        "kind": "virtual",
+        "kind_reason": "виртуальный диск: тип физического носителя хоста неизвестен (флаг rotational у virtio ненадёжен)"
+      }
+    ],
+    "repo_device": "vda",
+    "repo_mount_source": "/dev/vda",
+    "reason": null
+  },
+  "browsers": [
+    {
+      "name": "Chromium (Playwright)",
+      "path": "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+      "version": "141.0.7390.37",
+      "version_text": "Chromium 141.0.7390.37",
+      "reason": null,
+      "source": "playwright"
+    },
+    {
+      "name": "Chromium headless shell (Playwright)",
+      "path": "/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell",
+      "version": "141.0.7390.37",
+      "version_text": "Chromium 141.0.7390.37",
+      "reason": null,
+      "source": "playwright"
+    }
+  ],
+  "toolchain": {
+    "python": "3.13.16",
+    "node": "v22.22.0",
+    "gcc": "g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+    "clang": "Ubuntu clang version 18.1.3 (1ubuntu1)",
+    "cmake": "cmake version 3.28.3",
+    "emcc": null,
+    "nvcc": null,
+    "reasons": {
+      "emcc": "команда emcc не найдена",
+      "nvcc": "команда nvcc не найдена"
+    }
+  },
+  "target_comparison": {
+    "target": {
+      "gpu": "NVIDIA GeForce RTX 3060",
+      "vram_gib": 12,
+      "ram_gib": 32
+    },
+    "is_target_bench": false,
+    "summary_ru": [
+      "GPU: нет. Это не целевой стенд; 60 FPS, GPU-LLM и время кадра здесь не проверяются.",
+      "RAM: 15.71 GiB < целевых 32 GB.",
+      "CPU: Intel(R) Xeon(R) Processor @ 2.80GHz, ядер 4, потоков 4 (виртуальные)."
+    ]
+  },
+  "unknowns": [
+    {
+      "field": "cpu.max_mhz",
+      "reason": "частота не сообщается (часто в виртуальных машинах)"
+    },
+    {
+      "field": "gpu.nvidia",
+      "reason": "команда nvidia-smi не найдена"
+    },
+    {
+      "field": "vulkan",
+      "reason": "команда vulkaninfo не найдена"
+    },
+    {
+      "field": "display",
+      "reason": "нет графической сессии (XDG_SESSION_TYPE, WAYLAND_DISPLAY и DISPLAY не заданы)"
+    },
+    {
+      "field": "power.profile",
+      "reason": "команда powerprofilesctl не найдена; нет /sys/firmware/acpi/platform_profile"
+    },
+    {
+      "field": "power.cpufreq_governor",
+      "reason": "нет /sys/devices/system/cpu/*/cpufreq (частотой управляет гипервизор или драйвер не загружен)"
+    }
+  ]
+}

@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebGPU диагностика</title>
+<style>
+  :root {
+    --bg: #faf7f4; --panel: #ffffff; --text: #221c18; --muted: #6d625a; --line: #e6ddd5; --accent: #b4521f;
+    --ok: #237a45; --warn: #9a6a00; --bad: #b3261e; --code: #f3eee9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141110; --panel: #1d1917; --text: #eee6de; --muted: #a8998c; --line: #352d28; --accent: #f08a4b;
+      --ok: #6fd292; --warn: #f2c14e; --bad: #ff7b6e; --code: #26201c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 28px 0 8px; }
+  p { margin: 6px 0; }
+  .lead { color: var(--muted); }
+  .notice { border: 1px solid var(--line); border-left: 4px solid var(--warn); background: var(--panel); padding: 12px 14px; border-radius: 8px; margin: 16px 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+  .card b { display: block; font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  .card span { overflow-wrap: anywhere; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  td { padding: 3px 8px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+  td:first-child { color: var(--muted); width: 55%; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tags code { background: var(--code); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  button { font: inherit; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+  button.secondary { background: transparent; color: var(--accent); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  pre { background: var(--code); padding: 12px; border-radius: 8px; overflow: auto; max-height: 420px; font-size: 12px; }
+  .scroll { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Диагностика WebGPU</h1>
+  <p class="lead">ZERO ECHO · Echo Runtime — проверка возможностей браузера и видеоадаптера (Документ §7, этап E0).</p>
+  <div class="notice">
+    <strong>Эта страница не измеряет FPS и не доказывает производительность.</strong>
+    Она только фиксирует, что браузер сообщает о WebGPU: адаптер, функции (features), лимиты, контекст безопасности.
+    Наличие WebGPU не означает 60 кадров в секунду: это проверяется отдельным контрольным маршрутом на целевом ПК
+    (RTX 3060) с замером интервалов кадров и GPU-времени. Программный адаптер (SwiftShader, llvmpipe, WARP) пригоден
+    только для функциональной проверки.
+  </div>
+
+  <h2>Итог</h2>
+  <div class="grid" id="summary"></div>
+
+  <h2>Окружение страницы</h2>
+  <div class="scroll"><table id="env"></table></div>
+
+  <h2>Адаптер</h2>
+  <div class="scroll"><table id="adapter"></table></div>
+
+  <h2>Функции адаптера (features)</h2>
+  <div class="tags" id="features"><span class="lead">—</span></div>
+
+  <h2>Лимиты адаптера</h2>
+  <div class="scroll"><table id="limits"></table></div>
+
+  <h2>Проверка устройства</h2>
+  <div class="scroll"><table id="device"></table></div>
+
+  <div class="row">
+    <button id="download">Скачать JSON</button>
+    <button id="copy" class="secondary">Скопировать JSON</button>
+    <span class="lead" id="copied"></span>
+  </div>
+  <h2>JSON-отчёт</h2>
+  <pre id="json">Сбор данных…</pre>
+</main>
+<script>
+(() => {
+  'use strict';
+  const report = {
+    kind: 'zero-echo.webgpu-probe.v1',
+    created_at: new Date().toISOString(),
+    measures_fps: false,
+    note_ru: 'Диагностика возможностей; не измеряет FPS и не является доказательством производительности.',
+    page: {}, adapter: null, adapter_low_power: null, device: null, webgl: null, verdict: {},
+  };
+  const $ = (id) => document.getElementById(id);
+  const fmt = (v) => (v === undefined || v === null || v === '' ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+  function table(id, rows) {
+    const t = $(id);
+    t.replaceChildren(...rows.map(([k, v, cls]) => {
+      const tr = document.createElement('tr');
+      const a = document.createElement('td'); a.textContent = k;
+      const b = document.createElement('td'); b.textContent = fmt(v); if (cls) b.className = cls;
+      tr.append(a, b);
+      return tr;
+    }));
+  }
+  function card(label, value, cls) {
+    const d = document.createElement('div'); d.className = 'card';
+    const b = document.createElement('b'); b.textContent = label;
+    const s = document.createElement('span'); s.textContent = value; if (cls) s.className = cls;
+    d.append(b, s);
+    return d;
+  }
+  const softwareRe = /swiftshader|llvmpipe|lavapipe|softpipe|warp|software|microsoft basic render/i;
+
+  async function collectPage() {
+    const nav = navigator;
+    const p = {
+      url_origin: location.origin,
+      secure_context: window.isSecureContext,
+      cross_origin_isolated: window.crossOriginIsolated === true,
+      shared_array_buffer: typeof SharedArrayBuffer === 'function',
+      webgpu_api: 'gpu' in nav && !!nav.gpu,
+      user_agent: nav.userAgent,
+      platform: nav.platform,
+      language: nav.language,
+      hardware_concurrency: nav.hardwareConcurrency ?? null,
+      device_memory_gib: nav.deviceMemory ?? null,
+      device_pixel_ratio: window.devicePixelRatio,
+      screen: { width: screen.width, height: screen.height, avail_width: screen.availWidth, avail_height: screen.availHeight, color_depth: screen.colorDepth },
+      viewport: { width: innerWidth, height: innerHeight },
+      visibility: document.visibilityState,
+    };
+    try {
+      if (nav.userAgentData?.getHighEntropyValues) {
+        p.ua_data = await nav.userAgentData.getHighEntropyValues(['platform', 'platformVersion', 'architecture', 'bitness', 'model', 'fullVersionList']);
+      }
+    } catch (e) { p.ua_data_error = String(e); }
+    try {
+      if (nav.storage?.estimate) { const est = await nav.storage.estimate(); p.storage_estimate_mib = { quota: Math.round((est.quota ?? 0) / 1048576), usage: Math.round((est.usage ?? 0) / 1048576) }; }
+    } catch (e) { p.storage_error = String(e); }
+    report.page = p;
+  }
+
+  function summarizeAdapter(adapter) {
+    const info = adapter.info || {};
+    const limits = {};
+    for (const k in adapter.limits) { const v = adapter.limits[k]; if (typeof v === 'number') limits[k] = v; }
+    // Some implementations expose limits as prototype getters.
+    for (const k of Object.getOwnPropertyNames(Object.getPrototypeOf(adapter.limits))) {
+      try { const v = adapter.limits[k]; if (typeof v === 'number') limits[k] = v; } catch { /* ignore */ }
+    }
+    const isFallback = Boolean(info.isFallbackAdapter ?? adapter.isFallbackAdapter ?? false);
+    const text = `${info.vendor || ''} ${info.architecture || ''} ${info.description || ''} ${info.device || ''}`;
+    return {
+      vendor: info.vendor || null, architecture: info.architecture || null, device: info.device || null, description: info.description || null,
+      subgroup_min_size: info.subgroupMinSize ?? null, subgroup_max_size: info.subgroupMaxSize ?? null,
+      is_fallback_adapter: isFallback,
+      is_software: isFallback || softwareRe.test(text),
+      features: [...adapter.features].map(String).sort(),
+      limits: Object.fromEntries(Object.entries(limits).sort(([a], [b]) => a.localeCompare(b))),
+      preferred_canvas_format: navigator.gpu.getPreferredCanvasFormat(),
+    };
+  }
+
+  async function collectWebGPU() {
+    if (!report.page.webgpu_api) return;
+    try {
+      const a = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+      if (a) {
+        report.adapter = summarizeAdapter(a);
+        const want = ['timestamp-query', 'shader-f16'].filter((f) => a.features.has(f));
+        const t0 = performance.now();
+        try {
+          const d = await a.requestDevice({ requiredFeatures: want, label: 'probe' });
+          const lostInfo = { lost: false };
+          d.lost.then((i) => { lostInfo.lost = true; lostInfo.reason = i.reason; });
+          // A trivial compute dispatch proves that queue submission works (no timing is reported on purpose).
+          const module = d.createShaderModule({ code: '@group(0) @binding(0) var<storage, read_write> o: array<u32>; @compute @workgroup_size(64) fn main(@builtin(global_invocation_id) g: vec3u) { o[g.x] = g.x * 2u; }' });
+          const info = await module.getCompilationInfo();
+          const pipe = d.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'main' } });
+          const buf = d.createBuffer({ size: 256, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+          const rb = d.createBuffer({ size: 256, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+          const enc = d.createCommandEncoder();
+          const pass = enc.beginComputePass(); pass.setPipeline(pipe);
+          pass.setBindGroup(0, d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: buf } }] }));
+          pass.dispatchWorkgroups(1); pass.end();
+          enc.copyBufferToBuffer(buf, 0, rb, 0, 256);
+          d.queue.submit([enc.finish()]);
+          await rb.mapAsync(GPUMapMode.READ);
+          const ok = new Uint32Array(rb.getMappedRange())[63] === 126;
+          rb.unmap();
+          report.device = {
+            created: true,
+            requested_features: want,
+            device_features: [...d.features].map(String).sort(),
+            shader_compile_messages: info.messages.length,
+            compute_roundtrip_ok: ok,
+            canvas_configure_ok: (() => { try { const c = document.createElement('canvas'); const ctx = c.getContext('webgpu'); ctx.configure({ device: d, format: navigator.gpu.getPreferredCanvasFormat() }); return true; } catch { return false; } })(),
+            setup_ms_not_performance: Math.round(performance.now() - t0),
+            lost: lostInfo.lost,
+          };
+          d.destroy();
+        } catch (e) {
+          report.device = { created: false, error: String(e && e.message || e) };
+        }
+      }
+      const lp = await navigator.gpu.requestAdapter({ powerPreference: 'low-power' });
+      if (lp) { const s = summarizeAdapter(lp); report.adapter_low_power = { vendor: s.vendor, architecture: s.architecture, description: s.description, is_software: s.is_software }; }
+    } catch (e) {
+      report.adapter_error = String(e && e.message || e);
+    }
+  }
+
+  function collectWebGL() {
+    try {
+      const gl = document.createElement('canvas').getContext('webgl2');
+      if (!gl) { report.webgl = { webgl2: false }; return; }
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      report.webgl = {
+        webgl2: true,
+        vendor: ext ? gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR),
+        renderer: ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
+        max_texture_size: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+      };
+    } catch (e) { report.webgl = { error: String(e) }; }
+  }
+
+  function verdict() {
+    const v = report.verdict;
+    const a = report.adapter;
+    if (!report.page.secure_context) { v.status = 'blocked'; v.reason_ru = 'Страница открыта не в безопасном контексте (нужен HTTPS или localhost).'; }
+    else if (!report.page.webgpu_api) { v.status = 'blocked'; v.reason_ru = 'navigator.gpu отсутствует: WebGPU не поддерживается или выключен.'; }
+    else if (!a) { v.status = 'blocked'; v.reason_ru = 'Адаптер WebGPU не получен (requestAdapter вернул null).'; }
+    else if (!report.device?.created) { v.status = 'fail'; v.reason_ru = 'Адаптер есть, но устройство не создано.'; }
+    else if (a.is_software) { v.status = 'pass'; v.reason_ru = 'WebGPU работает на программном адаптере: только функциональная проверка, не производительность.'; }
+    else { v.status = 'pass'; v.reason_ru = 'WebGPU доступен на аппаратном адаптере. Производительность этой страницей не измерялась.'; }
+    v.timestamp_query = Boolean(a?.features.includes('timestamp-query'));
+    v.multithreaded_wasm_possible = report.page.cross_origin_isolated && report.page.shared_array_buffer;
+  }
+
+  function render() {
+    const p = report.page, a = report.adapter, v = report.verdict;
+    const cls = v.status === 'pass' ? (a?.is_software ? 'warn' : 'ok') : 'bad';
+    $('summary').replaceChildren(
+      card('WebGPU', v.status === 'pass' ? 'доступен' : 'недоступен', cls),
+      card('Вывод', v.reason_ru, cls),
+      card('Адаптер', a ? [a.vendor, a.architecture, a.description].filter(Boolean).join(' · ') || 'без описания' : '—', a?.is_software ? 'warn' : undefined),
+      card('GPU-таймеры (timestamp-query)', v.timestamp_query ? 'есть — рендер сможет мерить GPU-время' : 'нет — GPU-время будет «unavailable»', v.timestamp_query ? 'ok' : 'warn'),
+      card('Многопоточный WASM', v.multithreaded_wasm_possible ? 'возможен (COOP/COEP + SharedArrayBuffer)' : 'нет изоляции — single-thread сборка', v.multithreaded_wasm_possible ? 'ok' : 'warn'),
+      card('FPS', 'не измеряется этой страницей', 'warn'),
+    );
+    table('env', [
+      ['Безопасный контекст (isSecureContext)', p.secure_context, p.secure_context ? 'ok' : 'bad'],
+      ['crossOriginIsolated', p.cross_origin_isolated],
+      ['SharedArrayBuffer', p.shared_array_buffer],
+      ['navigator.gpu', p.webgpu_api, p.webgpu_api ? 'ok' : 'bad'],
+      ['devicePixelRatio', p.device_pixel_ratio],
+      ['Экран', `${p.screen.width}×${p.screen.height} (доступно ${p.screen.avail_width}×${p.screen.avail_height}), глубина цвета ${p.screen.color_depth}`],
+      ['Окно', `${p.viewport.width}×${p.viewport.height}`],
+      ['hardwareConcurrency', p.hardware_concurrency],
+      ['deviceMemory (ГиБ, округлено браузером)', p.device_memory_gib],
+      ['Хранилище сайта', p.storage_estimate_mib ? `квота ${p.storage_estimate_mib.quota} МиБ, занято ${p.storage_estimate_mib.usage} МиБ` : '—'],
+      ['Платформа', p.ua_data ? `${p.ua_data.platform} ${p.ua_data.platformVersion} ${p.ua_data.architecture} ${p.ua_data.bitness}` : p.platform],
+      ['Браузер', p.ua_data?.fullVersionList?.map((b) => `${b.brand} ${b.version}`).join(', ')],
+      ['User-Agent', p.user_agent],
+      ['WebGL2 (для сравнения)', report.webgl ? `${report.webgl.vendor ?? ''} ${report.webgl.renderer ?? ''}`.trim() || String(report.webgl.webgl2) : '—'],
+    ]);
+    table('adapter', a ? [
+      ['vendor', a.vendor], ['architecture', a.architecture], ['device', a.device], ['description', a.description],
+      ['isFallbackAdapter', a.is_fallback_adapter], ['Программный адаптер', a.is_software, a.is_software ? 'warn' : 'ok'],
+      ['Предпочтительный формат canvas', a.preferred_canvas_format],
+      ['subgroup min/max', `${a.subgroup_min_size ?? '—'} / ${a.subgroup_max_size ?? '—'}`],
+      ['Адаптер low-power', report.adapter_low_power ? [report.adapter_low_power.vendor, report.adapter_low_power.architecture, report.adapter_low_power.description].filter(Boolean).join(' · ') : '—'],
+    ] : [['Адаптер', report.adapter_error || 'не получен', 'bad']]);
+    const tags = $('features');
+    if (a) tags.replaceChildren(...a.features.map((f) => { const c = document.createElement('code'); c.textContent = f; return c; }));
+    table('limits', a ? Object.entries(a.limits) : []);
+    const d = report.device;
+    table('device', d ? [
+      ['Устройство создано', d.created, d.created ? 'ok' : 'bad'],
+      ['Ошибка', d.error],
+      ['Запрошенные функции', d.requested_features?.join(', ') || '—'],
+      ['Тестовый compute-проход и чтение результата', d.compute_roundtrip_ok, d.compute_roundtrip_ok ? 'ok' : 'bad'],
+      ['Настройка canvas-контекста', d.canvas_configure_ok],
+      ['Время подготовки (мс) — не показатель производительности', d.setup_ms_not_performance],
+    ] : [['Устройство', 'не проверялось']]);
+    $('json').textContent = JSON.stringify(report, null, 2);
+  }
+
+  $('download').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `webgpu-probe-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+  $('copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(JSON.stringify(report, null, 2)); $('copied').textContent = 'Скопировано'; }
+    catch { $('copied').textContent = 'Буфер обмена недоступен — используйте «Скачать JSON»'; }
+  });
+
+  (async () => {
+    await collectPage();
+    collectWebGL();
+    await collectWebGPU();
+    verdict();
+    render();
+    window.__probe = report;
+    window.__probeDone = true;
+  })().catch((e) => { $('json').textContent = 'Ошибка диагностики: ' + String(e && e.message || e); window.__probeDone = true; });
+})();
+</script>
+</body>
+</html>

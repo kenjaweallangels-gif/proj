@@ -23,7 +23,6 @@ const QUERY_ALIGN = 256;
 
 export class GpuTimer {
   readonly enabled: boolean;
-  private readonly device: GPUDevice;
   private readonly maxPasses: number;
   private readonly slots: Slot[] = [];
   private querySet: GPUQuerySet | null = null;
@@ -37,7 +36,6 @@ export class GpuTimer {
   droppedFrames = 0;
 
   constructor(device: GPUDevice, enabled: boolean, maxPassesPerFrame = 32, ringSize = 6) {
-    this.device = device;
     this.enabled = enabled;
     this.maxPasses = maxPassesPerFrame;
     this.slotBytes = Math.ceil((maxPassesPerFrame * 2 * 8) / QUERY_ALIGN) * QUERY_ALIGN;

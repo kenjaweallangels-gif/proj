@@ -1,0 +1,185 @@
+{
+  "kind": "zero-echo.render-screens.v1",
+  "created_at": "2026-10-22T20:33:17.279Z",
+  "git_revision": "966b669 (+ рабочее дерево)",
+  "note_ru": "Скриншоты headless Chromium на SwiftShader (CPU): для визуальной оценки картинки. Это не замер производительности и не доказательство 60 FPS.",
+  "chromium_args": [
+    "--enable-unsafe-webgpu",
+    "--enable-features=Vulkan",
+    "--use-vulkan=swiftshader",
+    "--use-webgpu-adapter=swiftshader",
+    "--use-angle=swiftshader",
+    "--ignore-gpu-blocklist"
+  ],
+  "viewport": [
+    1280,
+    720
+  ],
+  "shots": [
+    {
+      "shot": "mars_horizon",
+      "file": "ref_mars_horizon.png",
+      "url": "render-dev.html?profile=W60&shot=mars_horizon&ui=0",
+      "profile": "W60",
+      "adapter": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "isSoftware": true
+      },
+      "route_time_s": 46,
+      "route_segment": "valley_wide",
+      "canvas": [
+        1280,
+        720
+      ],
+      "internal": [
+        1066,
+        600
+      ],
+      "render_scale": 0.833,
+      "validation_errors": 0,
+      "console_errors": 0,
+      "hdr_check": {
+        "pixels": 639600,
+        "nan": 0,
+        "inf": 0,
+        "black": 0,
+        "mean_luminance": 0.207
+      },
+      "auto_exposure": 0.619,
+      "capture_s_not_performance": 45
+    },
+    {
+      "shot": "surface_to_cave",
+      "file": "ref_surface_to_cave.png",
+      "url": "render-dev.html?profile=W60&shot=surface_to_cave&ui=0",
+      "profile": "W60",
+      "adapter": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "isSoftware": true
+      },
+      "route_time_s": 124,
+      "route_segment": "cave_descent",
+      "canvas": [
+        1280,
+        720
+      ],
+      "internal": [
+        1066,
+        600
+      ],
+      "render_scale": 0.833,
+      "validation_errors": 0,
+      "console_errors": 0,
+      "hdr_check": {
+        "pixels": 639600,
+        "nan": 0,
+        "inf": 0,
+        "black": 0,
+        "mean_luminance": 0.281
+      },
+      "auto_exposure": 1.357,
+      "capture_s_not_performance": 63.8
+    },
+    {
+      "shot": "mira_at_equipment",
+      "file": "ref_mira_at_equipment.png",
+      "url": "render-dev.html?profile=W60&shot=mira_at_equipment&ui=0",
+      "profile": "W60",
+      "adapter": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "isSoftware": true
+      },
+      "route_time_s": 172,
+      "route_segment": "face_to_face",
+      "canvas": [
+        1280,
+        720
+      ],
+      "internal": [
+        1066,
+        600
+      ],
+      "render_scale": 0.833,
+      "validation_errors": 0,
+      "console_errors": 0,
+      "hdr_check": {
+        "pixels": 639600,
+        "nan": 0,
+        "inf": 0,
+        "black": 0,
+        "mean_luminance": 0.453
+      },
+      "auto_exposure": 0.617,
+      "capture_s_not_performance": 73.3
+    },
+    {
+      "shot": "wide_colony",
+      "file": "wide_colony.png",
+      "url": "render-dev.html?profile=W60&shot=wide_colony&ui=0",
+      "profile": "W60",
+      "adapter": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "isSoftware": true
+      },
+      "route_time_s": null,
+      "route_segment": null,
+      "canvas": [
+        1280,
+        720
+      ],
+      "internal": [
+        1066,
+        600
+      ],
+      "render_scale": 0.833,
+      "validation_errors": 0,
+      "console_errors": 0,
+      "hdr_check": {
+        "pixels": 639600,
+        "nan": 0,
+        "inf": 0,
+        "black": 0,
+        "mean_luminance": 0.155
+      },
+      "auto_exposure": 0.686,
+      "capture_s_not_performance": 54.1
+    },
+    {
+      "shot": "emergency",
+      "file": "emergency.png",
+      "url": "render-dev.html?profile=W60&shot=emergency&ui=0",
+      "profile": "W60",
+      "adapter": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "isSoftware": true
+      },
+      "route_time_s": 197.5,
+      "route_segment": "emergency",
+      "canvas": [
+        1280,
+        720
+      ],
+      "internal": [
+        1066,
+        600
+      ],
+      "render_scale": 0.833,
+      "validation_errors": 0,
+      "console_errors": 0,
+      "hdr_check": {
+        "pixels": 639600,
+        "nan": 0,
+        "inf": 0,
+        "black": 0,
+        "mean_luminance": 2
+      },
+      "auto_exposure": 0.651,
+      "capture_s_not_performance": 55.3
+    }
+  ]
+}

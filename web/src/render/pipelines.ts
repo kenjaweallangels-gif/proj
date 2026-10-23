@@ -27,6 +27,7 @@ export interface Pipelines {
   fxaa: GPURenderPipeline;
   upscale: GPURenderPipeline;
   rockCull: GPUComputePipeline;
+  exposure: GPUComputePipeline;
 }
 
 export class ShaderCompileError extends Error {}
@@ -47,7 +48,7 @@ async function compile(device: GPUDevice, name: ShaderName): Promise<GPUShaderMo
 const NO_ALPHA_WRITE: GPUBlendComponent = { operation: 'add', srcFactor: 'zero', dstFactor: 'one' };
 
 export async function createPipelines(device: GPUDevice, layouts: Layouts, canvasFormat: GPUTextureFormat, onProgress: (done: number, total: number) => void): Promise<Pipelines> {
-  const names: ShaderName[] = ['terrain', 'sky', 'mesh', 'rocks', 'fx', 'shadowMesh', 'shadowRocks', 'post', 'rockCull'];
+  const names: ShaderName[] = ['terrain', 'sky', 'mesh', 'rocks', 'fx', 'shadowMesh', 'shadowRocks', 'post', 'rockCull', 'exposure'];
   const modules = Object.fromEntries(await Promise.all(names.map(async (n) => [n, await compile(device, n)] as const))) as Record<ShaderName, GPUShaderModule>;
 
   const pl = (...groups: GPUBindGroupLayout[]) => device.createPipelineLayout({ bindGroupLayouts: groups });
@@ -70,7 +71,7 @@ export async function createPipelines(device: GPUDevice, layouts: Layouts, canva
     primitive: { topology: 'triangle-list' },
   });
 
-  const renderDescs: Record<Exclude<keyof Pipelines, 'rockCull'>, GPURenderPipelineDescriptor> = {
+  const renderDescs: Record<Exclude<keyof Pipelines, 'rockCull' | 'exposure'>, GPURenderPipelineDescriptor> = {
     terrain: {
       label: 'terrain', layout: terrainLayout,
       vertex: { module: modules.terrain, entryPoint: 'vsMain' },
@@ -147,12 +148,15 @@ export async function createPipelines(device: GPUDevice, layouts: Layouts, canva
   };
 
   const entries = Object.entries(renderDescs) as [keyof typeof renderDescs, GPURenderPipelineDescriptor][];
-  const total = entries.length + 1;
+  const total = entries.length + 2;
   let done = 0;
   onProgress(done, total);
   const tick = <T>(p: Promise<T>): Promise<T> => p.then((v) => { done++; onProgress(done, total); return v; });
   const created = await Promise.all(entries.map(([, d]) => tick(device.createRenderPipelineAsync(d))));
-  const rockCull = await tick(device.createComputePipelineAsync({ label: 'rock-cull', layout: 'auto', compute: { module: modules.rockCull, entryPoint: 'main' } }));
-  const out = Object.fromEntries(entries.map(([k], i) => [k, created[i]])) as Omit<Pipelines, 'rockCull'>;
-  return { ...out, rockCull };
+  const [rockCull, exposure] = await Promise.all([
+    tick(device.createComputePipelineAsync({ label: 'rock-cull', layout: 'auto', compute: { module: modules.rockCull, entryPoint: 'main' } })),
+    tick(device.createComputePipelineAsync({ label: 'auto-exposure', layout: 'auto', compute: { module: modules.exposure, entryPoint: 'main' } })),
+  ]);
+  const out = Object.fromEntries(entries.map(([k], i) => [k, created[i]])) as Omit<Pipelines, 'rockCull' | 'exposure'>;
+  return { ...out, rockCull, exposure };
 }

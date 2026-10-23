@@ -9,6 +9,7 @@
 @group(0) @binding(4) var aoTex: texture_2d<f32>;
 @group(0) @binding(5) var bloomTex: texture_2d<f32>;
 @group(0) @binding(6) var<uniform> pp: vec4f;   // per-pass parameters (texel size of the source, etc.)
+@group(0) @binding(7) var<storage, read> expo: array<vec4f, 1>; // auto exposure state (shaders/exposure.wgsl)
 
 struct FsIn {
   @builtin(position) pos: vec4f,
@@ -25,6 +26,8 @@ fn vsFull(@builtin(vertex_index) vi: u32) -> FsIn {
 }
 
 // ---------------------------------------------------------------- AO (half resolution, Alchemy-style)
+const SKY_AO_DEPTH: f32 = 60000.0;
+
 fn viewZFromDepth(d: f32) -> f32 {
   // Reversed-Z infinite projection: d = near / -z_view.
   return frame.camFwd.w / max(d, 1e-7);
@@ -43,7 +46,8 @@ fn fsAo(in: FsIn) -> @location(0) vec4f {
   let fullSize = frame.viewport.xy;
   let px = vec2i(in.pos.xy) * 2;
   let d = textureLoad(depthTex, px, 0);
-  if (d <= 0.0) { return vec4f(1.0, 1e6, 0.0, 0.0); }
+  // Sky: "no occlusion" at a depth that is still finite in rg16float (max 65504); 1e6 would become Inf/NaN.
+  if (d <= 0.0) { return vec4f(1.0, SKY_AO_DEPTH, 0.0, 0.0); }
   let P = viewPosAt(px, fullSize);
   let maxPx = vec2i(fullSize) - 1;
   // Normal from the smaller of the forward/backward depth differences (stable at silhouettes).
@@ -162,6 +166,17 @@ fn agx(c: vec3f) -> vec3f {
   return clamp(v, vec3f(0.0), vec3f(1.0)); // display-encoded (~ sRGB)
 }
 
+// ACES filmic (Stephen Hill's RRT+ODT fit, sRGB output primaries); returns linear display values.
+fn acesFitted(c: vec3f) -> vec3f {
+  let inRows = mat3x3f(vec3f(0.59719, 0.35458, 0.04823), vec3f(0.07600, 0.90834, 0.01566), vec3f(0.02840, 0.13383, 0.83777));
+  let outRows = mat3x3f(vec3f(1.60475, -0.53108, -0.07367), vec3f(-0.10208, 1.10813, -0.00605), vec3f(-0.00327, -0.07276, 1.07602));
+  var v = c * inRows;   // row vector x matrix == HLSL mul(M, v) with M given by rows
+  let a = v * (v + 0.0245786) - 0.000090537;
+  let b = v * (0.983729 * v + 0.4329510) + 0.238081;
+  v = a / b;
+  return clamp(v * outRows, vec3f(0.0), vec3f(1.0));
+}
+
 // Depth-aware upsample of the half-resolution AO.
 fn aoUpsample(px: vec2i, viewZ: f32) -> f32 {
   let halfSize = vec2i(textureDimensions(aoTex));
@@ -172,12 +187,15 @@ fn aoUpsample(px: vec2i, viewZ: f32) -> f32 {
     for (var x = -1; x <= 1; x++) {
       let c = clamp(base + vec2i(x, y), vec2i(0), halfSize - 1);
       let s = textureLoad(aoTex, c, 0).rg;
+      // Sky texels and non-finite values never contribute.
+      if (!(s.g < SKY_AO_DEPTH * 0.99) || s.r != s.r) { continue; }
       let w = 1.0 / (abs(s.g - viewZ) / max(viewZ, 1.0) * 40.0 + 0.05) * select(1.0, 2.0, x == 0 && y == 0);
       sum += s.r * w;
       wsum += w;
     }
   }
-  return sum / max(wsum, 1e-5);
+  if (wsum <= 1e-5) { return 1.0; }
+  return clamp(sum / wsum, 0.0, 1.0);
 }
 
 @fragment
@@ -197,8 +215,13 @@ fn fsTonemap(in: FsIn) -> @location(0) vec4f {
     let b = textureSampleLevel(bloomTex, srcSampler, in.uv, 0.0).rgb;
     col = mix(col, b, frame.post.y);
   }
-  col *= frame.post.x;
-  var outc = agx(col);
+  col *= frame.post.x * expo[0].x;
+  var outc: vec3f;
+  if ((frame.counts.w & 2u) != 0u) {
+    outc = linearToSrgb(acesFitted(col * 1.6));
+  } else {
+    outc = agx(col);
+  }
   // Subtle vignette.
   let q = in.uv - 0.5;
   outc *= 1.0 - dot(q, q) * 0.28;

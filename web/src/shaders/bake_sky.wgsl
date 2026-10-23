@@ -46,6 +46,7 @@ fn integrateMain(@builtin(local_invocation_index) li: u32) {
   // Phase 1: sky irradiance on a horizontal plane (for the ground bounce) and mean horizon radiance.
   var eSky = vec3f(0.0);
   var horizon = vec3f(0.0);
+  var horizonCount = 0.0;
   for (var j = i32(li); j < w * h; j += 64) {
     let tx = j % w;
     let ty = j / w;
@@ -56,22 +57,24 @@ fn integrateMain(@builtin(local_invocation_index) li: u32) {
     let dOmega = 2.0 * (PI / f32(w)) * (2.0 * PI * abs(vv) / f32(h)) * cos(elev);
     let L = textureLoad(lutIn, vec2i(tx, ty), 0).rgb;
     eSky += L * sin(elev) * dOmega;
-    if (elev < 0.08) { horizon += L / f32(w); }
+    if (elev < 0.08) { horizon += L; horizonCount += 1.0; }
   }
   partial[li][0] = eSky;
   partial[li][1] = horizon;
+  partial[li][2] = vec3f(horizonCount, 0.0, 0.0);
   workgroupBarrier();
   if (li == 0u) {
     var e = vec3f(0.0);
     var hz = vec3f(0.0);
-    for (var k = 0; k < 64; k++) { e += partial[k][0]; hz += partial[k][1]; }
-    partial[0][2] = e;
-    partial[0][3] = hz;
+    var hc = 0.0;
+    for (var k = 0; k < 64; k++) { e += partial[k][0]; hz += partial[k][1]; hc += partial[k][2].x; }
+    partial[0][3] = e;
+    partial[0][4] = hz / max(hc, 1.0); // mean radiance of the band just above the horizon
   }
   workgroupBarrier();
-  let eGround = partial[0][2] + sunGround * max(sunDir.y, 0.0);
+  let eGround = partial[0][3] + sunGround * max(sunDir.y, 0.0);
   let groundL = S.ground.rgb * eGround / PI;
-  let horizonL = partial[0][3];
+  let horizonL = partial[0][4];
   workgroupBarrier();
 
   // Phase 2: project radiance (sky above, ground bounce below) onto L2 SH; each LUT texel covers two mirrored azimuths.

@@ -83,19 +83,20 @@ fn directBrdf(n: vec3f, v: vec3f, l: vec3f, albedo: vec3f, rough: f32, metal: f3
 // ---------------------------------------------------------------- cascaded shadow map
 fn shadowCascadeSample(ci: i32, worldPos: vec3f, n: vec3f, extraBias: f32) -> f32 {
   let m = frame.shadowViewProj[ci];
-  let texelWorld = 2.0 / (m[0][0] / frame.scene.w);
+  // World size of one shadow texel: the light-space x axis scale is 1 / radius (row 0 of the orthographic matrix).
+  let texelWorld = 2.0 * frame.scene.w / max(length(vec3f(m[0][0], m[1][0], m[2][0])), 1e-6);
   let p = worldPos + n * texelWorld * (1.2 + extraBias);
   let c = m * vec4f(p, 1.0);
   let uv = vec2f(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
   if (any(uv < vec2f(0.0)) || any(uv > vec2f(1.0)) || c.z > 1.0) { return 1.0; }
-  let ref = c.z - 0.0008;
+  let refDepth = c.z - 0.0008;
   let ts = frame.scene.w;
   var sum = 0.0;
   // 3x3 bilinear-compare taps (~ 4x4 texel footprint), weighted toward the centre.
   for (var y = -1; y <= 1; y++) {
     for (var x = -1; x <= 1; x++) {
       let w = select(1.0, 2.0, x == 0 && y == 0);
-      sum += w * textureSampleCompareLevel(shadowMap, shadowSampler, uv + vec2f(f32(x), f32(y)) * ts * 1.25, ci, ref);
+      sum += w * textureSampleCompareLevel(shadowMap, shadowSampler, uv + vec2f(f32(x), f32(y)) * ts * 1.25, ci, refDepth);
     }
   }
   return sum / 10.0;
@@ -175,7 +176,7 @@ fn shadeSurface(s: Surface) -> vec4f {
   let diffAmb = shIrradiance(n) * s.albedo * (1.0 - s.metallic);
   let r = reflect(-v, n);
   let envDir = normalize(mix(r, n, s.roughness * s.roughness));
-  let envSky = mix(skyRadiance(normalize(vec3f(envDir.x, max(envDir.y, 0.02), envDir.z))), shIrradiance(envDir), s.roughness);
+  let envSky = mix(skyRadianceRaw(normalize(vec3f(envDir.x, max(envDir.y, 0.02), envDir.z))), shIrradiance(envDir), s.roughness);
   // Reflections toward the ground see the (darker) ground.
   let groundFade = smoothstep(-0.25, 0.1, envDir.y);
   let env = mix(shIrradiance(vec3f(0.0, -1.0, 0.0)), envSky, groundFade);

@@ -79,13 +79,13 @@ function writeBakeParams(scene: SceneLayout, res: number, level: number, rowOffs
   f.set([axis[0], axis[2], t.valley_width_m, t.height_scale_m], 8);
   f.set([t.crater.center[0], t.crater.center[1], t.crater.radius_m, 0], 12);
   f.set([t.cave_mouth.position[0], t.cave_mouth.position[2], t.cave_mouth.width_m, t.cave_mouth.height_m], 16);
-  f.set([face[0], face[2], t.cave_mouth.position[1], t.cave_mouth.height_m * 2.4], 20);
+  f.set([face[0], face[2], t.cave_mouth.position[1], caveBenchHeight(scene)], 20);
   f.set([sun[0], sun[1], sun[2], Math.tan(deg(scene.sun.elevation_deg))], 24);
   u.set([scene.seed >>> 0, level, pathCount, rowOffset], 28);
   return buf;
 }
 
-/** Cave cliff (lava bench) height used by the bake, exported so the cave mesh matches it. */
+/** Height of the lava-bench cliff that holds the cave mouth (m above the tube floor). */
 export function caveBenchHeight(scene: SceneLayout): number {
   return scene.terrain.cave_mouth.height_m * 2.4;
 }

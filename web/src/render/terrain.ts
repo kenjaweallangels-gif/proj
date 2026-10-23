@@ -127,7 +127,7 @@ function distToAabb(p: Vec3, min: Vec3, max: Vec3): number {
   return Math.hypot(dx, dy, dz);
 }
 
-function gridIndices(quads: number): Uint16Array {
+function gridIndices(quads: number): Uint16Array<ArrayBuffer> {
   const row = quads + 1;
   const out = new Uint16Array(quads * quads * 6);
   let k = 0;
@@ -144,7 +144,7 @@ function gridIndices(quads: number): Uint16Array {
 
 const align4 = (n: number): number => (n + 3) & ~3;
 
-function padTo4(a: Uint16Array): Uint16Array {
+function padTo4(a: Uint16Array<ArrayBuffer>): Uint16Array<ArrayBuffer> {
   if (a.length % 2 === 0) return a;
   const out = new Uint16Array(a.length + 1);
   out.set(a);

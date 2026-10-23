@@ -3,8 +3,7 @@
 // geometry is pre-transformed into one batch (one draw); the rover, wheels and beacons are instanced dynamic meshes.
 import type { SceneLayout, Vec3 } from '../contracts.ts';
 import { FLAG, MAT, MeshBuilder, type GeometryPool, type Material } from './geometry.ts';
-import { clamp, deg, dirFromLayoutAngle, m4, rng, v3 } from './math.ts';
-import { caveBenchHeight } from './bake.ts';
+import { clamp, deg, dirFromLayoutAngle, m4, v3 } from './math.ts';
 
 // ---------------------------------------------------------------- palette (sRGB)
 const WHITE: Vec3 = [0.83, 0.82, 0.79];
@@ -43,7 +42,7 @@ export interface LampInfo {
   pos: Vec3;
   color: Vec3;
   range: number;
-  kind: 'mast' | 'door' | 'interior' | 'antenna' | 'garage';
+  kind: 'mast' | 'door' | 'interior' | 'antenna' | 'garage' | 'work' | 'string';
   dir?: Vec3;
   cone?: number;
   module?: number;
@@ -124,7 +123,7 @@ export function buildColony(scene: SceneLayout, ground: Ground, pool: GeometryPo
       default: break; // rover is dynamic
     }
   }
-  const cave = buildCave(b, scene, ground);
+  const cave = buildCave(b, scene, ground, lamps);
   const staticRange = pool.add('colony_static', b);
 
   // Dynamic meshes.
@@ -377,6 +376,8 @@ function buildCylinderModule(c: ModCtx, zone: string): void {
   c.lamps.push({ pos: c.toWorld([hl + 0.8, h + 0.6, 0]), color: [1, 0.8, 0.55], range: 7, kind: 'door', module: c.index });
   b.set(plate);
   b.box([hl + 0.75, 0.1, 0], [0.6, 0.2, 1.1]);
+  // Warning beacon on the hull (emergency / sealed-zone indication).
+  c.beacons.push({ pos: c.toWorld([hl * 0.55, h + R + 0.02, 0]), module: c.index });
   // Gold MLI blanket on the far end, radiator panel on top for larger modules.
   b.set(metal(GOLD, 0.45));
   b.box([-hl - 0.05, h + R * 0.55, 0], [0.5, 0.06, R * 0.9]);
@@ -423,7 +424,7 @@ function buildBoxModule(c: ModCtx, zone: string): void {
   // Small windows.
   for (const z of [-hz + 0.9, hz - 0.9]) {
     b.set(windowMat);
-    b.quadP([hx + 0.01, 1.4, z - 0.3], [hx + 0.01, 1.4, z + 0.3], [hx + 0.01, 1.75, z + 0.3], [hx + 0.01, 1.75, z - 0.3].map((v, i) => v) as Vec3);
+    b.quadP([hx + 0.01, 1.4, z - 0.3], [hx + 0.01, 1.4, z + 0.3], [hx + 0.01, 1.75, z + 0.3], [hx + 0.01, 1.75, z - 0.3]);
   }
   if (zone === 'power_hub') {
     // Radiator fins and battery cabinets.
@@ -437,6 +438,7 @@ function buildBoxModule(c: ModCtx, zone: string): void {
   } else {
     b.set(metal(GREY, 0.5));
     b.box([0, H + 0.35, 0], [1.2, 0.5, 1.2]);
+    c.beacons.push({ pos: c.toWorld([hx - 0.45, H + 0.12, -hz + 0.45]), module: c.index });
   }
 }
 
@@ -704,99 +706,144 @@ function buildLightMast(b: MeshBuilder, pos: Vec3, size: Vec3, lamps: LampInfo[]
 }
 
 // ---------------------------------------------------------------- cave mouth (lava tube) — the heightfield cannot express it
-function buildCave(b: MeshBuilder, scene: SceneLayout, ground: Ground): ColonyBuild['cave'] {
+// Local frame: origin at layout cave_mouth, +Z = facing (out of the cliff), X along the cliff face. The baked terrain
+// (bake_height.wgsl) has a lava-bench cliff whose foot is at z ≈ +1.5 and whose top edge is at z ≈ -6 near the cave,
+// and a notch cut down to the tube floor for |x| < width/2 + 1.5. The mesh supplies what the heightfield cannot: the
+// tube (walls and ceiling), the rock face above the opening that follows the cliff slope, and the roof over the notch.
+// Every mesh edge that meets the terrain dips slightly below it, so there are no visible seams or z-fighting.
+function buildCave(b: MeshBuilder, scene: SceneLayout, ground: Ground, lamps: LampInfo[]): ColonyBuild['cave'] {
   const cm = scene.terrain.cave_mouth;
   const facing = dirFromLayoutAngle(cm.facing_deg);
   const origin: Vec3 = [cm.position[0], cm.position[1], cm.position[2]];
-  const M = modelOf(origin, cm.facing_deg); // local +Z = facing (out of the cliff), local X = along the face
+  const M = modelOf(origin, cm.facing_deg);
   const w2 = cm.width_m / 2;
   const Hc = cm.height_m;
   const depth = 44;
   const notchHalf = w2 + 1.5;
-  const bench = caveBenchHeight(scene);
-  const r = rng(scene.seed ^ 0xca5e);
-  const noise = (x: number, y: number, z: number) => rockNoise(x, y, z);
+  const n3 = (x: number, y: number, z: number) => rockNoise(x, y, z);
   const toW = (p: Vec3): Vec3 => m4.transformPoint(M, p);
   const groundLocal = (x: number, z: number): number => {
     const w = toW([x, 0, z]);
     return ground(w[0], w[2]) - origin[1];
   };
-  // Roof height above the notch: interpolate the bench height sampled just outside both notch edges.
-  const roof = (x: number, z: number): number => {
-    const hl = groundLocal(-(notchHalf + 3), z), hr = groundLocal(notchHalf + 3, z);
-    const t = clamp((x + notchHalf + 3) / (2 * notchHalf + 6), 0, 1);
-    return Math.max(Hc + 3, hl + (hr - hl) * t + 0.4, bench * 0.6);
+  // Height of the bench top beside the notch at depth z (interpolated across it).
+  const roofAt = (x: number, z: number): number => {
+    const hl = groundLocal(-(notchHalf + 4), z), hr = groundLocal(notchHalf + 4, z);
+    const t = clamp((x + notchHalf + 4) / (2 * notchHalf + 8), 0, 1);
+    return Math.max(Hc + 4, hl + (hr - hl) * t);
   };
+  // Irregular arch: flattened lava-tube ceiling with breakdown notches; narrows and lowers with depth.
   const archY = (x: number, d: number): number => {
-    const k = 1 - 0.18 * (d / depth); // tube narrows and lowers with depth
+    const k = 1 - 0.2 * (d / depth);
     const xx = clamp(Math.abs(x) / (w2 * k), 0, 1);
-    return Hc * k * Math.pow(1 - xx * xx, 0.42);
+    const wobble = 1 + 0.07 * n3(x * 0.45, d * 0.2, 1.3) + 0.04 * n3(x * 1.3, d * 0.5, 7.1);
+    return Hc * k * Math.pow(1 - Math.pow(xx, 2.6), 0.36) * wobble;
   };
   const floorAt = (d: number): number => -0.07 * d;
-  void r;
+  // Cliff face plane near the cave (matches the terrain: foot z = +1.5 at y = 0, top edge z = -6 at the bench top).
+  const faceZ = (y: number, top: number): number => 1.5 - 7.5 * clamp(y / Math.max(top, 1), 0, 1);
+
   b.push(M);
   b.module = 255;
   b.set({ id: MAT.CAVE, color: [0.3, 0.2, 0.15], roughness: 0.9 });
-  // Tunnel interior: rings of the arch profile from the mouth (z = 0) to the back (z = -depth).
-  const nz = 22, na = 22;
-  const ring: number[][] = [];
-  for (let iz = 0; iz <= nz; iz++) {
-    const d = (iz / nz) * depth;
-    const k = 1 - 0.18 * (d / depth);
-    const row: number[] = [];
-    for (let ia = 0; ia <= na; ia++) {
-      const a = Math.PI * (ia / na); // 0..PI across the arch (x from +w to -w)
+
+  // ---- tube: rings of the arch profile from the mouth to the back wall (front faces point into the tube)
+  const nz = 24, na = 24;
+  const tube: Vec3[][] = [];
+  const tubeAo: number[][] = [];
+  for (let ia = 0; ia <= na; ia++) {
+    const a = Math.PI * (ia / na); // 0..PI across the arch (x from +w to -w)
+    const col: Vec3[] = [];
+    const aoCol: number[] = [];
+    for (let iz = 0; iz <= nz; iz++) {
+      const d = (iz / nz) * depth;
+      const k = 1 - 0.2 * (d / depth);
       const ex = Math.cos(a) * w2 * k;
-      let y = archY(ex, d);
-      // Steep side walls near the floor.
-      if (ia === 0 || ia === na) y = 0;
-      const base: Vec3 = [ex, y + floorAt(d), -d];
-      const nrm = v3.norm([-Math.cos(a) * 1.0, -Math.sin(a) * 1.3, 0]);
-      const disp = noise(base[0] * 0.35, base[1] * 0.35, base[2] * 0.35) * 0.9 * (ia === 0 || ia === na ? 0.3 : 1);
-      const p = v3.madd(base, nrm, -disp);
-      const ao = Math.min(1, 0.06 + 0.9 * Math.exp(-d / 8.5)) * (0.75 + 0.25 * Math.sin(a));
-      row.push(b.vertex(p, nrm, ao));
+      const wall = ia === 0 || ia === na;
+      const y = wall ? -0.6 : archY(ex, d);
+      const base: Vec3 = [ex, y + floorAt(d), -d + (iz === 0 ? 0.6 : 0)];
+      const inward = v3.norm([-Math.cos(a), -Math.sin(a) * 1.3, 0]);
+      const disp = (n3(base[0] * 0.35, base[1] * 0.35, base[2] * 0.35) * 0.9 + n3(base[0] * 1.1, base[1] * 1.1, base[2] * 1.1) * 0.3) * (wall ? 0.3 : 1);
+      col.push(v3.madd(base, inward, -disp));
+      aoCol.push(Math.min(1, 0.05 + 0.95 * Math.exp(-d / 7.5)) * (0.7 + 0.3 * Math.sin(a)));
     }
-    ring.push(row);
+    tube.push(col);
+    tubeAo.push(aoCol);
   }
-  for (let iz = 0; iz < nz; iz++) for (let ia = 0; ia < na; ia++) b.quad(ring[iz][ia], ring[iz][ia + 1], ring[iz + 1][ia + 1], ring[iz + 1][ia]);
-  // Back wall.
-  const back: number[] = [];
-  const dBack = depth;
-  const centre = b.vertex([0, Hc * 0.35 + floorAt(dBack), -dBack - 1.5], [0, 0, 1], 0.03);
-  for (let ia = 0; ia <= na; ia++) back.push(ring[nz][ia]);
-  for (let ia = 0; ia < na; ia++) b.tri(centre, back[ia + 1], back[ia]);
-  // Front face around the opening, up to the roof, and the roof slab over the notch.
-  const fx = 18;
-  const span = notchHalf + 2.5;
-  const face: number[][] = [];
-  const fy = 10;
+  b.grid(tube, (i, j) => tubeAo[i][j]);
+  const back = tube.map((col) => col[nz]);
+  const centre = b.vertex([0, Hc * 0.3 + floorAt(depth), -depth - 2], [0, 0, 1], 0.02);
+  const backIds = back.map((p) => b.vertex(p, [0, 0, 1], 0.02));
+  for (let ia = 0; ia < na; ia++) b.tri(centre, backIds[ia], backIds[ia + 1]);
+
+  // ---- rock face around and above the opening, following the cliff slope (front faces point out of the cliff)
+  const span = notchHalf + 5;
+  const fx = 30, fy = 18;
+  const face: Vec3[][] = [];
   for (let ix = 0; ix <= fx; ix++) {
     const x = -span + (2 * span * ix) / fx;
-    const y0 = Math.abs(x) < w2 ? archY(x, 0) : -0.8;
-    const y1 = roof(x, 0);
-    const col: number[] = [];
+    const top = roofAt(x, -6) + 0.4;
+    const inOpening = Math.abs(x) < w2 * 0.999;
+    const y0 = inOpening ? archY(x, 0) : -1.2;
+    // Beyond the notch the face sinks behind the terrain cliff so its edge never shows.
+    const edge = clamp((Math.abs(x) - notchHalf) / 5, 0, 1);
+    const col: Vec3[] = [];
     for (let iy = 0; iy <= fy; iy++) {
-      const y = y0 + ((y1 - y0) * iy) / fy;
-      const out = noise(x * 0.3, y * 0.3, 3.7) * 1.1 + (iy / fy) * 0.8;
-      col.push(b.vertex([x, y, out], [0, 0.15, 1], 1));
+      const y = y0 + ((top - y0) * iy) / fy;
+      const rough = n3(x * 0.32, y * 0.32, 3.7) * 0.9 + n3(x * 0.9, y * 0.9, 5.3) * 0.35 + n3(x * 2.1, y * 2.1, 8.1) * 0.12;
+      const z = faceZ(y, top) + 0.35 + rough - edge * 1.6 - (iy === fy ? 0.8 : 0);
+      col.push([x, y, z]);
     }
     face.push(col);
   }
-  for (let ix = 0; ix < fx; ix++) for (let iy = 0; iy < fy; iy++) b.quad(face[ix][iy], face[ix + 1][iy], face[ix + 1][iy + 1], face[ix][iy + 1]);
-  const rx = 10, rz = 14;
-  const top: number[][] = [];
+  b.grid(face, () => 1);
+
+  // ---- roof over the notch: bench top from the cliff edge to behind the tube end
+  const rx = 12, rz = 16;
+  const roofG: Vec3[][] = [];
   for (let ix = 0; ix <= rx; ix++) {
-    const x = -span + (2 * span * ix) / rx;
-    const row: number[] = [];
+    const x = -(notchHalf + 4) + (2 * (notchHalf + 4) * ix) / rx;
+    const edgeX = ix === 0 || ix === rx;
+    const col: Vec3[] = [];
     for (let iz = 0; iz <= rz; iz++) {
-      const z = 1.2 - ((depth + 4) * iz) / rz;
-      const y = roof(x, z) + noise(x * 0.25, z * 0.25, 9.1) * 0.5;
-      row.push(b.vertex([x, y, z], [0, 1, 0], 1));
+      const z = -5.6 - ((depth + 6) * iz) / rz;
+      col.push([x, roofAt(x, z) + 0.25 + n3(x * 0.25, z * 0.25, 9.1) * 0.35 - (edgeX || iz === rz ? 0.9 : 0), z]);
     }
-    top.push(row);
+    roofG.push(col);
   }
-  for (let ix = 0; ix < rx; ix++) for (let iz = 0; iz < rz; iz++) b.quad(top[ix][iz], top[ix][iz + 1], top[ix + 1][iz + 1], top[ix + 1][iz]);
+  b.grid(roofG, () => 1);
+
+  // ---- survey lighting of the lava tube: two tripod floodlights at the mouth aimed inside, a cable with small lamps
+  // hanging along the ceiling (the crew explores the tube; Документ §19 route: "спуск в пещеру").
+  for (const sx of [-1, 1]) {
+    const base: Vec3 = [sx * 6.5, groundLocal(sx * 6.5, 5.5), 5.5];
+    const head: Vec3 = [base[0] - sx * 0.25, base[1] + 2.1, base[2] - 0.3];
+    b.set(metal([0.35, 0.36, 0.38], 0.5));
+    for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * Math.PI * 2 + 0.4;
+      b.beam([base[0] + Math.cos(a) * 0.55, base[1], base[2] + Math.sin(a) * 0.55], head, 0.04);
+    }
+    b.set(paint([0.9, 0.55, 0.12], 0.5));
+    b.box([head[0], head[1] + 0.12, head[2]], [0.5, 0.36, 0.3]);
+    b.set(lampMat([1, 0.93, 0.8]));
+    b.box([head[0], head[1] + 0.12, head[2] - 0.16], [0.42, 0.28, 0.02]);
+    const aim = v3.norm([-sx * 0.22, 0.18, -1]);
+    const wp = toW([head[0], head[1] + 0.12, head[2] - 0.3]);
+    lamps.push({ pos: wp, color: [1, 0.9, 0.74], range: 42, kind: 'work', dir: m4.transformDir(M, aim), cone: 34 });
+  }
+  b.set(dark(0.6));
+  const cableY = (d: number) => archY(0.8, d) + floorAt(d) - 0.55;
+  const cable: Vec3[] = [];
+  for (let d = 1; d <= 38; d += 3) cable.push([0.8, cableY(d), -d]);
+  for (let i = 1; i < cable.length; i++) b.beam(cable[i - 1], cable[i], 0.025);
+  for (const d of [7, 16, 25, 34]) {
+    const p: Vec3 = [0.8, cableY(d) - 0.12, -d];
+    b.set(lampMat([1, 0.82, 0.55]));
+    b.push(m4.translation(p[0], p[1], p[2]));
+    b.sphere(0.09, 8, 4);
+    b.pop();
+    lamps.push({ pos: toW(p), color: [1, 0.78, 0.5], range: 12, kind: 'string' });
+  }
   b.pop();
   return { mouth: [origin[0], origin[1] + groundLocal(0, 2), origin[2]], facing, depth };
 }

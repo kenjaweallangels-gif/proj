@@ -56,12 +56,25 @@ export class RoutePath {
     return [0, 1, 2].map((c) => h00 * k0[field][c] + h10 * m0[c] + h01 * k1[field][c] + h11 * m1[c]) as Vec3;
   }
 
+  /**
+   * Camera pose at route time t: position on a Catmull-Rom spline through the keys; the view direction turns from one
+   * key's framing to the next with an eased slerp (interpolating far look *points* would swing the camera almost
+   * immediately toward whichever key looks at the more distant point).
+   */
   pose(tIn: number): { pos: Vec3; look: Vec3 } {
     const t = clamp(tIn, 0, this.keys[this.keys.length - 1].t);
     const i = this.segmentIndex(t);
     const k0 = this.keys[i], k1 = this.keys[i + 1];
     const s = k1.t > k0.t ? clamp((t - k0.t) / (k1.t - k0.t), 0, 1) : 0;
-    return { pos: this.hermite(i, s, 'pos'), look: this.hermite(i, s, 'look') };
+    const pos = this.hermite(i, s, 'pos');
+    // Ease-in-out with a late turn: the camera holds the previous framing a little longer, then settles on the next.
+    const u = Math.pow(s, 1.4);
+    const e = u * u * (3 - 2 * u);
+    const a = v3.sub(k0.look, k0.pos), b = v3.sub(k1.look, k1.pos);
+    const la = Math.max(v3.len(a), 1e-3), lb = Math.max(v3.len(b), 1e-3);
+    const dir = slerp(v3.scale(a, 1 / la), v3.scale(b, 1 / lb), e);
+    const dist = Math.exp(Math.log(la) + (Math.log(lb) - Math.log(la)) * e);
+    return { pos, look: v3.madd(pos, dir, dist) };
   }
 
   state(tIn: number): RouteState {
@@ -97,6 +110,19 @@ export class RoutePath {
     const i = this.segmentIndex(t);
     return [this.keys[i].t, this.keys[i + 1]?.t ?? this.duration];
   }
+}
+
+function slerp(a: Vec3, b: Vec3, t: number): Vec3 {
+  const d = clamp(v3.dot(a, b), -1, 1);
+  const ang = Math.acos(d);
+  if (ang < 1e-4) return v3.norm(v3.lerp(a, b, t));
+  if (Math.PI - ang < 1e-3) {
+    // Opposite directions: turn through the horizontal perpendicular.
+    const mid = v3.norm(v3.cross(a, [0, 1, 0]));
+    return t < 0.5 ? slerp(a, mid, t * 2) : slerp(mid, b, t * 2 - 1);
+  }
+  const sa = Math.sin((1 - t) * ang) / Math.sin(ang), sb = Math.sin(t * ang) / Math.sin(ang);
+  return v3.norm([a[0] * sa + b[0] * sb, a[1] * sa + b[1] * sb, a[2] * sa + b[2] * sb]);
 }
 
 export interface GroundQuery { (x: number, z: number): number }

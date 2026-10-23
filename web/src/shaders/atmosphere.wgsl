@@ -7,8 +7,8 @@ const ATMO_TOP: f32 = 3449500.0;           // 60 km
 const RAY_H: f32 = 11100.0;
 const DUST_H: f32 = 11000.0;
 const RAY_BETA: vec3f = vec3f(2.2e-7, 5.1e-7, 1.24e-6);   // CO2 Rayleigh, scaled from Earth by density and cross-section
-const DUST_TAU: f32 = 0.42;                // zenith optical depth of dust (clear-ish afternoon)
-const DUST_ALBEDO: vec3f = vec3f(0.975, 0.905, 0.66);      // single-scattering albedo (red, green, blue)
+const DUST_TAU: f32 = 0.32;                // zenith optical depth of dust (clear afternoon, northern summer)
+const DUST_ALBEDO: vec3f = vec3f(0.972, 0.8, 0.56);       // single-scattering albedo (red, green, blue): iron oxides absorb green/blue
 const DUST_G: vec3f = vec3f(0.62, 0.68, 0.79);             // forward asymmetry per channel
 const SKY_LUT_ALT: f32 = 60.0;             // camera altitude the sky-view LUT is computed for (m)
 

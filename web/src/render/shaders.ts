@@ -23,6 +23,7 @@ import rockCull from '../shaders/rock_cull.wgsl';
 import shadow from '../shaders/shadow.wgsl';
 import shadowRocks from '../shaders/shadow_rocks.wgsl';
 import fx from '../shaders/fx.wgsl';
+import exposure from '../shaders/exposure.wgsl';
 
 const join = (...parts: string[]): string => parts.join('\n');
 
@@ -44,6 +45,7 @@ export const SHADERS = {
   shadowMesh: join(common, instances, shadow),
   shadowRocks: join(common, instances, shadowRocks),
   post: join(common, post),
+  exposure: join(common, exposure),
 } as const;
 
 export type ShaderName = keyof typeof SHADERS;

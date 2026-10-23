@@ -20,7 +20,7 @@ export class RenderTargets {
     this.width = Math.max(1, width | 0);
     this.height = Math.max(1, height | 0);
     const rt = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING;
-    this.hdr = device.createTexture({ label: 'rt-hdr', size: [this.width, this.height], format: HDR_FORMAT, usage: rt });
+    this.hdr = device.createTexture({ label: 'rt-hdr', size: [this.width, this.height], format: HDR_FORMAT, usage: rt | GPUTextureUsage.COPY_SRC });
     this.depth = device.createTexture({ label: 'rt-depth', size: [this.width, this.height], format: DEPTH_FORMAT, usage: rt });
     const hw = Math.max(1, this.width >> 1), hh = Math.max(1, this.height >> 1);
     this.ao = device.createTexture({ label: 'rt-ao', size: [hw, hh], format: AO_FORMAT, usage: rt });
@@ -36,6 +36,18 @@ export class RenderTargets {
 }
 
 export interface PostConfig { ao: boolean; bloom: boolean }
+
+/** Auto-exposure controls (log2 units); see shaders/exposure.wgsl. */
+export interface ExposureControl {
+  dt: number;
+  compensationEv: number;
+  rate: number;
+  snap: boolean;
+  minLog2: number;
+  maxLog2: number;
+  keyLog2: number;
+  adaptation: number;
+}
 
 /** Owns the post pipelines' bind groups for a given set of targets. */
 export class PostChain {
@@ -53,6 +65,10 @@ export class PostChain {
   private bgTonemap: GPUBindGroup[] = [];
   private bgFxaa: GPUBindGroup | null = null;
   private bgUpscale: GPUBindGroup | null = null;
+  private bgExposure: GPUBindGroup | null = null;
+  private readonly exposureParams: GPUBuffer;
+  /** vec4: x = linear exposure, y = log2 average luminance, z = log2 exposure (GPU-only, never read back per frame). */
+  readonly exposureState: GPUBuffer;
 
   constructor(device: GPUDevice, pipelines: Pipelines, frameBuffer: GPUBuffer) {
     this.device = device;
@@ -62,9 +78,18 @@ export class PostChain {
     this.params = device.createBuffer({ label: 'post-params', size: 256 * 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.dummyAo = device.createTexture({ label: 'dummy-ao', size: [1, 1], format: AO_FORMAT, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
     this.dummyBloom = device.createTexture({ label: 'dummy-bloom', size: [1, 1], format: HDR_FORMAT, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
-    // rg16float (1.0, 1e4): "no occlusion" at any depth.
+    // rg16float (1.0, 1e4): "no occlusion" at any depth (only bound when AO is off, and then never sampled).
     device.queue.writeTexture({ texture: this.dummyAo }, new Uint16Array([0x3c00, 0x70e2]), { bytesPerRow: 4 }, [1, 1]);
     device.queue.writeTexture({ texture: this.dummyBloom }, new Uint16Array(4), { bytesPerRow: 8 }, [1, 1]);
+    this.exposureParams = device.createBuffer({ label: 'exposure-params', size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.exposureState = device.createBuffer({ label: 'exposure-state', size: 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
+    device.queue.writeBuffer(this.exposureState, 0, new Float32Array([0, 0, 0, 0]));
+  }
+
+  setExposure(e: ExposureControl): void {
+    this.device.queue.writeBuffer(this.exposureParams, 0, new Float32Array([
+      Math.min(Math.max(e.dt, 0), 1), e.compensationEv, e.rate, e.snap ? 1 : 0, e.minLog2, e.maxLog2, e.keyLog2, e.adaptation,
+    ]));
   }
 
   setTargets(t: RenderTargets): void {
@@ -104,7 +129,7 @@ export class PostChain {
           { binding: 2, resource: this.linear },
           { binding: 6, resource: { buffer: this.params, offset: (8 + i) * 256, size: 16 } },
         ],
-      }));
+      });
     }
     d.queue.writeBuffer(this.params, 0, blocks);
     // Tonemap variants: [ao off/bloom off, ao on/bloom off, ao off/bloom on, ao on/bloom on]
@@ -120,9 +145,18 @@ export class PostChain {
           { binding: 3, resource: depthView },
           { binding: 4, resource: useAo ? t.ao.createView() : this.dummyAo.createView() },
           { binding: 5, resource: useBloom ? t.bloom.createView({ baseMipLevel: 0, mipLevelCount: 1 }) : this.dummyBloom.createView() },
+          { binding: 7, resource: { buffer: this.exposureState } },
         ],
       }));
     }
+    this.bgExposure = d.createBindGroup({
+      label: 'bg-exposure', layout: this.p.exposure.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.exposureParams } },
+        { binding: 1, resource: t.hdr.createView() },
+        { binding: 2, resource: { buffer: this.exposureState } },
+      ],
+    });
     this.bgFxaa = d.createBindGroup({
       label: 'bg-fxaa', layout: this.p.fxaa.getBindGroupLayout(0),
       entries: [{ binding: 1, resource: t.ldr.createView() }, { binding: 2, resource: this.linear }],
@@ -148,8 +182,13 @@ export class PostChain {
 
   encode(enc: GPUCommandEncoder, timer: GpuTimer, out: GPUTextureView, cfg: PostConfig): void {
     const t = this.targets;
-    if (!t || !this.bgFxaa || !this.bgUpscale || !this.bgAo) return;
+    if (!t || !this.bgFxaa || !this.bgUpscale || !this.bgAo || !this.bgExposure) return;
     if (cfg.ao) this.fullscreen(enc, 'ao-half', t.ao.createView(), this.p.ao, this.bgAo, timer);
+    const ex = enc.beginComputePass({ label: 'auto-exposure', timestampWrites: timer.pass('ao_reflections_post_ui') });
+    ex.setPipeline(this.p.exposure);
+    ex.setBindGroup(0, this.bgExposure);
+    ex.dispatchWorkgroups(1);
+    ex.end();
     if (cfg.bloom) {
       for (let i = 0; i < t.bloomLevels; i++) {
         this.fullscreen(enc, `bloom-down-${i}`, t.bloom.createView({ baseMipLevel: i, mipLevelCount: 1 }), this.p.bloomDown, this.bgDown[i], timer);
@@ -166,6 +205,8 @@ export class PostChain {
   }
 
   destroy(): void {
+    this.exposureParams.destroy();
+    this.exposureState.destroy();
     this.params.destroy();
     this.dummyAo.destroy();
     this.dummyBloom.destroy();

@@ -210,6 +210,28 @@ export class MeshBuilder {
     this.lathe(profile, segments);
   }
 
+  /**
+   * Displaced grid surface P[i][j] with smooth normals from the grid itself; the front face is the side of
+   * cross(dP/di, dP/dj) (quads a=[i][j], b=[i+1][j], c=[i+1][j+1], d=[i][j+1] are counter-clockwise from there).
+   */
+  grid(P: Vec3[][], ao: (i: number, j: number) => number = () => this.ao): void {
+    const ni = P.length, nj = P[0].length;
+    const ids: number[][] = [];
+    for (let i = 0; i < ni; i++) {
+      const row: number[] = [];
+      for (let j = 0; j < nj; j++) {
+        const di = v3.sub(P[Math.min(ni - 1, i + 1)][j], P[Math.max(0, i - 1)][j]);
+        const dj = v3.sub(P[i][Math.min(nj - 1, j + 1)], P[i][Math.max(0, j - 1)]);
+        row.push(this.vertex(P[i][j], v3.norm(v3.cross(di, dj)), ao(i, j)));
+      }
+      ids.push(row);
+    }
+    const flip = this.flip;
+    this.flip = false; // winding is already defined by the grid orientation
+    for (let i = 0; i < ni - 1; i++) for (let j = 0; j < nj - 1; j++) this.quad(ids[i][j], ids[i + 1][j], ids[i + 1][j + 1], ids[i][j + 1]);
+    this.flip = flip;
+  }
+
   /** Thin beam between two points (square section) — struts, rails, cables. */
   beam(a: Vec3, b: Vec3, w: number): void {
     const d = v3.sub(b, a);

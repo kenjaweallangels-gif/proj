@@ -140,8 +140,8 @@ fn terrainField(p: vec2f, texel: f32) -> Field {
   let rp = dot(p, rippleDir) / 26.0 + fbmBL(p, 220.0, 3, seed + 10u, texel) * 4.0;
   let rippleMask = smoothstep(0.05, 0.35, fbmBL(p + vec2f(77.0, 13.0), 500.0, 3, seed + 11u, texel));
   let rippleWave = 1.0 - abs(sin(rp * PI));
-  floorH += rippleWave * rippleWave * 1.6 * rippleMask * bandWeight(26.0, texel);
-  floorH += fbmBL(p, 18.0, 4, seed + 12u, texel) * 0.55;
+  floorH += rippleWave * rippleWave * 0.8 * rippleMask * bandWeight(26.0, texel);
+  floorH += fbmBL(p, 18.0, 4, seed + 12u, texel) * 0.3;
   let brightN = fbmBL(p + vec2f(-300.0, 500.0), 650.0, 4, seed + 13u, texel);
   out.bright = smoothstep(0.12, 0.3, brightN) * floorW;
 
@@ -193,13 +193,19 @@ fn terrainField(p: vec2f, texel: f32) -> Field {
   let rc = p - P.cave.xy;
   let s = dot(rc, f);
   let t = dot(rc, vec2f(-f.y, f.x));
-  let wig = fbmBL(vec2f(t, 3.0), 170.0, 5, seed + 20u, texel) * 34.0 * smoothstep(26.0, 160.0, abs(t));
+  // Smooth, low-frequency wiggle of the cliff line (no comb of spikes from afar).
+  let wig = fbmBL(vec2f(t, 3.0), 230.0, 3, seed + 20u, texel) * 24.0 * smoothstep(26.0, 160.0, abs(t));
   let sb = s - wig;
-  let lateral = 1.0 - smoothstep(520.0, 980.0, abs(t) + fbmBL(vec2f(t, 9.0), 300.0, 3, seed + 21u, texel) * 260.0);
-  let benchTop = P.caveDir.w + fbmBL(p, 140.0, 5, seed + 22u, texel) * 4.0 + smoothstep(-30.0, -400.0, sb) * 10.0;
-  let face = smoothstep(1.5, -6.0, sb);
-  let talus = exp(-max(sb, 0.0) / 5.5) * 2.4 * (1.0 - face) * smoothstep(-2.0, 2.0, sb);
-  var bench = terrace(benchTop * face, 6.5, 0.55 * face) * lateral + talus * lateral;
+  let lateral = 1.0 - smoothstep(170.0, 400.0, abs(t) + fbmBL(vec2f(t, 9.0), 300.0, 3, seed + 21u, texel) * 90.0);
+  // The lava flow front is tallest at the cave and thins out along the face.
+  let benchScale = mix(1.0, 0.3, smoothstep(50.0, 420.0, abs(t)));
+  let benchTop = (P.caveDir.w + fbmBL(p, 140.0, 4, seed + 22u, texel) * 3.5 + smoothstep(-30.0, -400.0, sb) * 8.0) * benchScale;
+  // Vertical cliff at the cave, a steep but climbable escarpment further along the face.
+  let ramp = mix(6.0, 26.0, smoothstep(40.0, 260.0, abs(t)));
+  let face = smoothstep(1.5, -ramp, sb);
+  // Talus apron of fallen blocks at the foot of the cliff.
+  let talus = exp(-max(sb, 0.0) / 11.0) * 4.5 * (1.0 - face) * smoothstep(-2.0, 3.0, sb);
+  var bench = terrace(benchTop * face, 6.5, 0.35 * face) * lateral + talus * lateral;
   // Cave notch: the heightfield is cut down to the tube floor; the cave mesh supplies walls and roof.
   let notchHalf = P.cave.z * 0.5 + 1.5;
   let inCave = (1.0 - smoothstep(notchHalf - 0.5, notchHalf + 1.5, abs(t))) * (1.0 - smoothstep(44.0, 47.0, -sb)) * smoothstep(3.0, -1.0, sb);
