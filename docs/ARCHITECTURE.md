@@ -155,3 +155,15 @@ with other people transforms files on demand.
 `player.setActive(bool)` is called when switching between play and observer modes.
 `station.viewpoints = { name: { position: [x,y,z], target: [x,y,z] } }` adds observer views.
 `station.airlock.tetherAnchor` (Vector3) is where the EVA tether attaches.
+
+## Player state (as implemented; read by the HUD and audio)
+
+`player.state`: `mode` ('airlock'|'eva'), `prompt` (string hint for the HUD), `sequence {name, progress}`,
+`airlockPressure`, `suitPressure`, `o2`, `power`, `propellant`, `heartRate`, `suitTemp`,
+`nearHandrail`, `handrailDistance`, `holding`, `canEnterAirlock`,
+`tetherAttached`, `tetherStowed`, `tetherLength`, `tetherMax`, `tetherTaut`, `tetherDistance`, `reeling`,
+`rotationMode` ('aah'|'free'), `stabilization` (bool), `rotationModeLabel`,
+`thrusting`, `boost`, `killing`, `rotationThrust`, `lampOn`,
+`speedRelative`, `distanceToStation`, `distanceToAirlock`.
+`Player.CONTROLS` is an array of `{key, ru}` used by the menu/help.
+Audio: `audio.play(name, opts)`, `audio.setParam('volume'|'fan'|'radio'|'crawl', v)`, `audio.volume`, `audio.muted`.
