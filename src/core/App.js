@@ -7,6 +7,7 @@ import { Textures } from './Textures.js';
 import { ParticleSystem } from './Particles.js';
 import { Input } from './Input.js';
 import { batchStatic, atlasDecals } from './StaticBatcher.js';
+import { QualityGovernor } from './QualityGovernor.js';
 import { QUALITY_PRESETS, LAYERS, SUN_LIGHT_INTENSITY, SUN_COLOR, NEAR_TO_FAR } from './constants.js';
 
 /**
@@ -33,6 +34,8 @@ const LITE_SHIP_DISTANCE = 600;    // metres
 const DYN_STEPS = [0.28, 0.32, 0.36, 0.4, 0.44, 0.5, 0.6, 0.75, 1.0, 1.25, 1.5, 2.0];
 const _camPos = new THREE.Vector3();
 const _bsCenter = new THREE.Vector3();
+const _shC = new THREE.Vector3(), _shZ = new THREE.Vector3(), _shD = new THREE.Vector3();
+const _shQ = new THREE.Quaternion(), _shQi = new THREE.Quaternion();
 
 class Emitter {
   constructor() { this.map = new Map(); }
@@ -49,6 +52,8 @@ export class App {
     const presetName = QUALITY_PRESETS[p.get('quality')] ? p.get('quality') : App.autoQuality();
     this.quality = { preset: presetName, ...QUALITY_PRESETS[presetName] };
     // ?pr=<0.2..2> overrides the internal render scale (device pixels per CSS pixel)
+    // ?minh=<lines> overrides the resolution floor (0 disables it; for profiling)
+    if (p.has('minh')) this.quality.minRenderHeight = parseInt(p.get('minh'), 10) || 0;
     const prOverride = parseFloat(p.get('pr'));
     if (prOverride > 0.1 && prOverride <= 3) this.quality.pixelRatio = prOverride;
     this.isShot = p.get('shot') === '1';
@@ -90,7 +95,7 @@ export class App {
     const q = this.quality;
     this.renderer = new Renderer(this.container, q);
     const gl = this.renderer.renderer;
-    this.textures = new Textures(gl, q.anisotropy);
+    this.textures = new Textures(gl, q.anisotropy, q.textureScale || 1);
     this.materials = new Materials(this.textures);
 
     // Scenes & cameras
@@ -162,6 +167,12 @@ export class App {
     this.hud.showLoading?.('Загрузка…');
     await Promise.all(this.modules.map((m) => m.load ? m.load().catch((e) => console.error(`load failed in ${m.constructor.name}`, e)) : null));
     if (q.lite) this.applyLite();
+    // transparent double-sided materials: one pass. three otherwise draws back and front faces separately
+    // and flags the material for a program re-check on each pass, every frame (~1.4 ms of CPU per frame)
+    for (const scene of [this.farScene, this.nearScene]) scene.traverse((o) => {
+      for (const m of [].concat(o.material || [])) if (m.transparent && m.side === THREE.DoubleSide) m.forceSinglePass = true;
+    });
+    this.splitMaterialVariants();
     this.renderer.setup({ farScene: this.farScene, farCamera: this.farCamera, nearScene: this.nearScene, camera: this.camera });
 
     // Observer camera controls
@@ -185,6 +196,8 @@ export class App {
     else if (this.mode === 'observer') this.setView('overview');
     this.setMode(this.mode);
 
+    // GPU presets: hold the frame-rate target (60 fps) above the resolution floor (1080p); ?governor=0 disables
+    if (!q.lite && !this.isShot && this.params.get('governor') !== '0') this.governor = new QualityGovernor(this);
     this.hud.hideLoading?.();
     if (this.autostart) this.hud.hideMenu?.(); else this.hud.showMenu?.();
     this.ready = true;
@@ -244,6 +257,47 @@ export class App {
     this._detailBatches = [];
     this.station.traverse((o) => { if (o.userData.detail) this._detailBatches.push(o); });
     console.info(`[lite] station draw calls ${res.before} -> ${res.after} (${res.batches} batches, ${decals} decals in the atlas)`);
+  }
+
+  /**
+   * three keeps one program per material and re-derives it (getParameters + cache key) whenever the object
+   * drawing it differs in a program-relevant flag from the previous one. A material shared by instanced and
+   * plain meshes, or by meshes with different receiveShadow, therefore pays that cost on every draw switch,
+   * every frame. Unify receiveShadow per material (shadows on wins) and give instanced users their own clone.
+   */
+  splitMaterialVariants() {
+    const users = new Map();
+    let top = this.camera; while (top.parent) top = top.parent;
+    const roots = top === this.nearScene ? [this.nearScene] : [this.nearScene, top];   // first-person suit hangs off the camera
+    for (const root of roots) root.traverse((o) => {
+      if (!o.isMesh) return;
+      for (const m of [].concat(o.material || [])) { if (!users.has(m)) users.set(m, []); users.get(m).push(o); }
+    });
+    const variant = (o) => `${!!o.isInstancedMesh}${!!o.instanceColor}${!!o.isBatchedMesh}${!!o.isSkinnedMesh}`;
+    // multi-material meshes link materials together: repeat until no receiveShadow changes
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const objs of users.values()) {
+        if (objs.some((o) => o.receiveShadow) && objs.some((o) => !o.receiveShadow)) { for (const o of objs) o.receiveShadow = true; changed = true; }
+      }
+    }
+    let cloned = 0;
+    for (const [m, objs] of users) {
+      const groups = new Map();
+      for (const o of objs) { const k = variant(o); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(o); }
+      if (groups.size < 2) continue;
+      [...groups.values()].slice(1).forEach((list) => {
+        const c = m.clone(); cloned++;
+        for (const o of list) o.material = Array.isArray(o.material) ? o.material.map((x) => (x === m ? c : x)) : c;
+      });
+    }
+    // same for the shadow pass: its one shared depth material would flip between instanced and plain casters
+    const instancedDepth = [new THREE.MeshDepthMaterial(), new THREE.MeshDepthMaterial()];   // without / with instanceColor
+    for (const objs of users.values()) for (const o of objs) {
+      const m0 = [].concat(o.material)[0];
+      if (o.isInstancedMesh && o.castShadow && o.customDepthMaterial === undefined && !(m0.alphaTest > 0) && !m0.displacementMap) o.customDepthMaterial = instancedDepth[o.instanceColor ? 1 : 0];
+    }
+    if (cloned) console.info(`materials: ${cloned} clones for instanced variants`);
   }
 
   /** compileAsync() only covers visible objects: make everything visible for the compile (hidden ships,
@@ -310,6 +364,41 @@ export class App {
     this.onResize();
   }
 
+  /**
+   * Fit the sun's shadow frustum to what the camera can see: tight (+-40 m, ~2 cm texels on a 4096 map)
+   * near the hull, the whole station from far away. The centre is snapped to the shadow-map texel grid
+   * so shadows do not shimmer while the camera moves.
+   */
+  fitShadow(sunDir) {
+    const light = this.sunLight, cam = this.camera.getWorldPosition(_camPos);
+    // distance from the camera to the station's bounding box (~ +-100 m along the spine, +-50 m across)
+    const dx = Math.max(0, Math.abs(cam.x) - 100), dy = Math.max(0, Math.abs(cam.y) - 50), dz = Math.max(0, Math.abs(cam.z) - 50);
+    const dist = Math.hypot(dx, dy, dz);
+    const near = Math.hypot(Math.max(0, Math.abs(cam.x) - 20), Math.max(0, Math.abs(cam.y) - 20), Math.max(0, Math.abs(cam.z) - 20));
+    let extent = THREE.MathUtils.clamp(dist * 0.9 + (near < 60 ? 38 : 150), 38, 165);
+    if (!this._shadowExtent || Math.abs(extent - this._shadowExtent) / this._shadowExtent > 0.08) {
+      this._shadowExtent = extent;
+      const sc = light.shadow.camera;
+      sc.left = -extent; sc.right = extent; sc.top = extent; sc.bottom = -extent; sc.near = 1; sc.far = 900;
+      sc.updateProjectionMatrix();
+    }
+    extent = this._shadowExtent;
+    // centre: ahead of the camera, kept inside the station's box
+    const fwd = this.camera.getWorldDirection(_bsCenter);
+    _shC.copy(cam).addScaledVector(fwd, Math.min(extent * 0.6, 40));
+    if (extent > 120) _shC.set(0, 0, 0);
+    _shC.x = THREE.MathUtils.clamp(_shC.x, -110, 110); _shC.y = THREE.MathUtils.clamp(_shC.y, -60, 60); _shC.z = THREE.MathUtils.clamp(_shC.z, -60, 60);
+    // snap to texels in light space
+    _shQ.setFromUnitVectors(_shZ.set(0, 0, 1), _shD.copy(sunDir).normalize());
+    _shQi.copy(_shQ).invert();
+    const texel = (2 * extent) / light.shadow.mapSize.x;
+    _shC.applyQuaternion(_shQi);
+    _shC.x = Math.round(_shC.x / texel) * texel; _shC.y = Math.round(_shC.y / texel) * texel;
+    _shC.applyQuaternion(_shQ);
+    light.target.position.copy(_shC);
+    light.position.copy(_shC).addScaledVector(sunDir, 450);
+  }
+
   /** 'lite': hide small-part batches farther than LITE_DETAIL_DISTANCE from the camera. */
   cullDetails() {
     const cam = this.camera.getWorldPosition(_camPos);
@@ -340,6 +429,7 @@ export class App {
 
   setMode(mode) {
     if (this._dyn && mode !== this.mode) this._dyn.skip = true;   // ignore the switch hitch in the next fps window
+    if (mode !== this.mode) this.governor?.skipWindow();
     this.mode = mode;
     const observer = mode === 'observer';
     this.orbitControls.enabled = observer;
@@ -391,6 +481,7 @@ export class App {
     }
     this.viewName = name;
     if (this._dyn) this._dyn.skip = true;
+    this.governor?.skipWindow();
     this.events.emit('view', name);
   }
 
@@ -408,10 +499,10 @@ export class App {
     const prevTM = gl.toneMapping; gl.toneMapping = THREE.NoToneMapping;
     this.cubeCamera.update(gl, this.farScene);
     gl.toneMapping = prevTM;
-    const env = this.pmrem.fromCubemap(this.cubeRT.texture);
-    if (this._envRT) this._envRT.dispose();
-    this._envRT = env;
-    this.nearScene.environment = env.texture;
+    // refilter into the same target: a new texture each refresh would make three re-derive the program of
+    // every lit material (and reallocate the PMREM atlas) once per refresh
+    this._envRT = this.pmrem.fromCubemap(this.cubeRT.texture, this._envRT || null);
+    this.nearScene.environment = this._envRT.texture;
     this.nearScene.environmentIntensity = 1.0;
   }
 
@@ -421,6 +512,7 @@ export class App {
     this.timer.update();
     const realDt = this.timer.getDelta();
     if (this.quality.dynamicResolution && !this.isShot) this.updateDynamicResolution(realDt);
+    if (this.governor && !this.paused) this.governor.update(realDt);
     let dt = this.isShot ? 1 / 60 : Math.min(realDt, 1 / 20);
     if (this.paused) dt = 0;
     const t = this.time;
@@ -439,8 +531,8 @@ export class App {
     this.orbit.update(t.sim);
     const o = this.orbit;
     // Sun light follows the orbit; dims in the penumbra and reddens through the limb
-    this.sunLight.position.copy(o.sunDir).multiplyScalar(400);
-    this.sunLight.target.position.set(0, 0, 0);
+    if (this.quality.shadows !== false && !this.quality.lite) this.fitShadow(o.sunDir);
+    else { this.sunLight.position.copy(o.sunDir).multiplyScalar(400); this.sunLight.target.position.set(0, 0, 0); }
     this.sunLight.intensity = SUN_LIGHT_INTENSITY * o.sunVisible;
     this.sunLight.color.set(SUN_COLOR).multiply(o.sunColor);
     // (never toggle a light's `visible`: it changes every material's program key and recompiles them all
@@ -470,7 +562,9 @@ export class App {
     if (this._detailBatches) this.cullDetails();
     this.updateEnvironment();
     gl.info.reset();
+    this.governor?.beginGpu();
     this.renderer.render(dt, t.elapsed);
+    this.governor?.endGpu();
     this.input.endFrame();
     this.frameCount++;
     if (this._frameWaiters.length) {

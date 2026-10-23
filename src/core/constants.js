@@ -25,11 +25,13 @@ export const LAYERS = {
 };
 
 export const QUALITY_PRESETS = {
-  ultra:  { shadowMapSize: 4096, pixelRatio: 2.0, msaa: 4, bloom: true, anisotropy: 16, envMapSize: 256, envUpdateInterval: 1.0, particles: 6000, softShadows: true },
-  high:   { shadowMapSize: 2048, pixelRatio: 1.5, msaa: 4, bloom: true, anisotropy: 8,  envMapSize: 256, envUpdateInterval: 2.0, particles: 4000, softShadows: true },
-  medium: { shadowMapSize: 2048, pixelRatio: 1.0, msaa: 2, bloom: true, anisotropy: 4,  envMapSize: 128, envUpdateInterval: 4.0, particles: 2000, softShadows: false },
+  // GPU presets render at least 1080 lines (minRenderHeight) and hold targetFps through the QualityGovernor;
+  // detail scales round-geometry tessellation (src/core/three-lod.js), textureScale the procedural textures
+  ultra:  { shadowMapSize: 4096, pixelRatio: 2.0, msaa: 4, bloom: true, anisotropy: 16, envMapSize: 256, envUpdateInterval: 1.0, particles: 6000, softShadows: true, detail: 1.6, textureScale: 2, minRenderHeight: 1080, targetFps: 60 },
+  high:   { shadowMapSize: 4096, pixelRatio: 1.5, msaa: 4, bloom: true, anisotropy: 16, envMapSize: 256, envUpdateInterval: 2.0, particles: 4000, softShadows: true, detail: 1.3, textureScale: 2, minRenderHeight: 1080, targetFps: 60 },
+  medium: { shadowMapSize: 2048, pixelRatio: 1.0, msaa: 2, bloom: true, anisotropy: 8,  envMapSize: 128, envUpdateInterval: 4.0, particles: 2000, softShadows: false, minRenderHeight: 1080, targetFps: 60 },
   // software rendering (no GPU: SwiftShader / llvmpipe): sun + earthshine only, no shadows, no env map,
   // Lambert materials, minimal post (tone mapping only), reduced internal resolution
   lite:   { shadowMapSize: 512,  pixelRatio: 0.5,  msaa: 0, bloom: false, anisotropy: 1, envMapSize: 32,  envUpdateInterval: 1e9, particles: 600, softShadows: false, lite: true, shadows: false, detail: 0.2, farScale: 0.4, dynamicResolution: true, targetFps: 25, minPixelRatio: 0.28 },
-  low:    { shadowMapSize: 1024, pixelRatio: 1.0, msaa: 0, bloom: false, anisotropy: 2, envMapSize: 64,  envUpdateInterval: 8.0, particles: 800,  softShadows: false },
+  low:    { shadowMapSize: 1024, pixelRatio: 1.0, msaa: 0, bloom: false, anisotropy: 4, envMapSize: 64,  envUpdateInterval: 8.0, particles: 800,  softShadows: false, minRenderHeight: 1080, targetFps: 60 },
 };

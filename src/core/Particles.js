@@ -9,6 +9,8 @@ import { LAYERS } from './constants.js';
  *   particles.emit({ position, velocity, life, size0, size1, color, alpha })
  *   particles.emitCone({ position, direction, speed, spread, count, life, size0, size1, color, alpha, spin })
  */
+const _color = new THREE.Color();
+
 export class ParticleSystem {
   constructor(scene, { max = 4000, texture = null } = {}) {
     this.max = max;
@@ -78,7 +80,7 @@ export class ParticleSystem {
 
   emit({ position, velocity, life = 1, size0 = 0.2, size1 = 1.0, color = 0xffffff, alpha = 1 }) {
     const i = this.cursor; this.cursor = (this.cursor + 1) % this.max;
-    const c = color instanceof THREE.Color ? color : new THREE.Color(color);
+    const c = color instanceof THREE.Color ? color : _color.set(color);   // no per-particle allocation
     this.aPos[i * 3] = position.x; this.aPos[i * 3 + 1] = position.y; this.aPos[i * 3 + 2] = position.z;
     this.aVel[i * 3] = velocity.x; this.aVel[i * 3 + 1] = velocity.y; this.aVel[i * 3 + 2] = velocity.z;
     this.aParams[i * 4] = this.time; this.aParams[i * 4 + 1] = life; this.aParams[i * 4 + 2] = size0; this.aParams[i * 4 + 3] = size1;

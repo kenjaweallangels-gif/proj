@@ -5,7 +5,8 @@ import * as THREE from 'three';
  * All generators cache by key. Color textures are sRGB; data textures (normal/roughness) are linear.
  */
 export class Textures {
-  constructor(renderer, maxAnisotropy = 16) {
+  constructor(renderer, maxAnisotropy = 16, scale = 1) {
+    this.scale = scale;   // texture resolution multiplier (quality.textureScale)
     this.renderer = renderer;
     this.cache = new Map();
     // capped by the quality preset: anisotropic filtering is very expensive on CPU rasterisers
@@ -52,7 +53,7 @@ export class Textures {
    * Painted hull panels: base colour with subtle grime, panel seams, rivets and occasional
    * markings. Returns { map, roughnessMap, normalMap }.
    */
-  hullPanels({ size = 1024, cells = 6, base = '#e9ebee', seam = '#8e949b', grime = 0.18, rivets = true, seed = 1, aged = 0.0 } = {}) {
+  hullPanels({ size = 1024 * this.scale, cells = 6, base = '#e9ebee', seam = '#8e949b', grime = 0.18, rivets = true, seed = 1, aged = 0.0 } = {}) {
     return this._cached(`hull:${size}:${cells}:${base}:${seam}:${grime}:${rivets}:${seed}:${aged}`, () => {
       const [c, g] = this._canvas(size, size);
       g.fillStyle = base; g.fillRect(0, 0, size, size);
@@ -103,7 +104,7 @@ export class Textures {
       for (let i = 0; i < rd.length; i += 4) { const l = rd[i] / 255; const r = 255 * (0.75 - 0.3 * l + 0.2 * (1 - l)); rd[i] = rd[i + 1] = rd[i + 2] = Math.max(0, Math.min(255, r)); }
       rg.putImageData(rimg, 0, 0);
       const roughnessMap = this._tex(rc, { color: false });
-      const normalMap = this.seamNormal({ size: Math.min(256, size / 2), cells, depth: 1.0, seed });
+      const normalMap = this.seamNormal({ size: Math.min(256 * this.scale, size / 2), cells, depth: 1.0, seed });
       return { map, roughnessMap, normalMap };
     });
   }
@@ -147,7 +148,7 @@ export class Textures {
   }
 
   /** Solar cell grid colour texture (+ matching roughness). */
-  solarCells({ size = 512, cols = 8, rows = 16, cell = '#1a2a5e', edge = '#9aa7c7', busbar = '#c8ccd6' } = {}) {
+  solarCells({ size = 512 * this.scale, cols = 8, rows = 16, cell = '#1a2a5e', edge = '#9aa7c7', busbar = '#c8ccd6' } = {}) {
     return this._cached(`solar:${size}:${cols}:${rows}:${cell}`, () => {
       const [c, g] = this._canvas(size, size);
       g.fillStyle = edge; g.fillRect(0, 0, size, size);
@@ -173,7 +174,7 @@ export class Textures {
   }
 
   /** Radiator panel: white with thin tube lines. */
-  radiator({ size = 512, lines = 24 } = {}) {
+  radiator({ size = 512 * this.scale, lines = 24 } = {}) {
     return this._cached(`radiator:${size}:${lines}`, () => {
       const [c, g] = this._canvas(size, size);
       g.fillStyle = '#f2f3f4'; g.fillRect(0, 0, size, size);

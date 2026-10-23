@@ -151,7 +151,8 @@ export class Hud {
 
     // fps (real frame rate, averaged over 0.5 s)
     this._fpsFrames++; this._fpsTime += rdt;
-    if (this._fpsTime >= (ctx.quality?.lite ? 1.0 : 0.5)) { setText(this.fpsEl, `${Math.round(this._fpsFrames / this._fpsTime)} fps`); this._fpsFrames = 0; this._fpsTime = 0; }
+    if (this._fpsTime >= (ctx.quality?.lite ? 1.0 : 0.5)) { const gov = ctx.app?.governor ?? window.__app?.governor;
+      setText(this.fpsEl, `${Math.round(this._fpsFrames / this._fpsTime)} fps${gov ? ` · ${gov.describe()}` : ''}`); this._fpsFrames = 0; this._fpsTime = 0; }
 
     if (ctx.mode !== this._mode) this._applyMode(ctx.mode);
     const force = !!ctx.isShot || this._needsRefresh;

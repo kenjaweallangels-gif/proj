@@ -68,12 +68,14 @@ export class Earth {
       },
       vertexShader: SPHERE_VERTEX, fragmentShader: GROUND_FRAGMENT, toneMapped: false,
     });
-    this.earth = new THREE.Mesh(new THREE.SphereGeometry(EARTH_RADIUS_KM, 256, 128), this.groundMaterial);
+    // tessellation per preset: only the cap above the horizon is drawn (HorizonCull), so a finer globe is cheap
+    const seg = { ultra: [512, 256, 384, 192], high: [384, 192, 288, 144] }[ctx.quality.preset] || [256, 128, 192, 96];
+    this.earth = new THREE.Mesh(new THREE.SphereGeometry(EARTH_RADIUS_KM, seg[0], seg[1]), this.groundMaterial);
     this.earth.name = 'EarthGround';
     this.earth.position.copy(o.earthCenterFar);
     this.earth.visible = false;                 // until textures are loaded (the placeholder is shown meanwhile)
     this.group.add(this.earth);
-    this.earthCull = new HorizonCull(this.earth, 256, 128);   // draw only the cap above the horizon
+    this.earthCull = new HorizonCull(this.earth, seg[0], seg[1]);   // draw only the cap above the horizon
 
     // Placeholder while loading (plain dark-blue sphere, removed in load()).
     this.placeholder = new THREE.Mesh(new THREE.SphereGeometry(EARTH_RADIUS_KM, 64, 32), new THREE.MeshBasicMaterial({ color: 0x0a1a33 }));
@@ -92,13 +94,13 @@ export class Earth {
       vertexShader: SPHERE_VERTEX, fragmentShader: CLOUD_FRAGMENT,
       transparent: true, depthWrite: false, depthTest: true, toneMapped: false,
     });
-    this.clouds = new THREE.Mesh(new THREE.SphereGeometry(EARTH_RADIUS_KM + CLOUD_ALTITUDE_KM, 192, 96), this.cloudMaterial);
+    this.clouds = new THREE.Mesh(new THREE.SphereGeometry(EARTH_RADIUS_KM + CLOUD_ALTITUDE_KM, seg[2], seg[3]), this.cloudMaterial);
     this.clouds.name = 'EarthClouds';
     this.clouds.position.copy(o.earthCenterFar);
     this.clouds.renderOrder = 10;
     this.clouds.visible = false;
     this.group.add(this.clouds);
-    this.cloudCull = new HorizonCull(this.clouds, 192, 96);
+    this.cloudCull = new HorizonCull(this.clouds, seg[2], seg[3]);
 
     // --- Atmosphere shell (limb) ---
     this.shellMaterial = new THREE.ShaderMaterial({
@@ -168,16 +170,25 @@ export class Earth {
     const loader = new THREE.TextureLoader();
     const maxAniso = ctx.renderer.capabilities.getMaxAnisotropy();
     const aniso = Math.max(1, Math.min(ctx.quality.anisotropy || 4, maxAniso));
+    // texture set by preset: [path, sRGB, single-channel]; 8K day/cloud maps only where the GPU allows them
+    const maxTex = ctx.renderer.capabilities.maxTextureSize || 4096;
+    const preset = ctx.quality.preset;
+    const big = (preset === 'ultra' || preset === 'high') && maxTex >= 8192;
+    const ultra8k = preset === 'ultra' && maxTex >= 8192;
     const items = [
-      ['textures/earth/earth_day_5400.jpg', true], ['textures/earth/earth_night_4096.jpg', true],
-      ['textures/earth/earth_clouds_4096.jpg', false], ['textures/earth/earth_specular_2048.jpg', false],
-      ['textures/earth/earth_normal_2048.jpg', false], ['textures/sky/moon_1024.jpg', true],
+      [ultra8k ? 'textures/earth/earth_day_8192.jpg' : 'textures/earth/earth_day_5400.jpg', true, false],
+      [big ? 'textures/earth/earth_night_4096_hq.jpg' : 'textures/earth/earth_night_4096.jpg', true, false],
+      [ultra8k ? 'textures/earth/earth_clouds_8192.jpg' : 'textures/earth/earth_clouds_4096.jpg', false, true],
+      [big ? 'textures/earth/earth_ocean_4096.png' : 'textures/earth/earth_specular_2048.jpg', false, true],
+      [big ? 'textures/earth/earth_normal_4096.jpg' : 'textures/earth/earth_normal_2048.jpg', false, false],
+      ['textures/sky/moon_1024.jpg', true, false],
     ];
     let done = 0;
     ctx.hud?.setProgress?.(0);
-    const load = async ([path, srgb]) => {
+    const load = async ([path, srgb, single]) => {
       const t = await loader.loadAsync(ctx.assetUrl(path));
       t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+      if (single) t.format = THREE.RedFormat;     // grey maps: one byte per texel in video memory (shaders read .r)
       t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping;
       t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
       t.generateMipmaps = true; t.anisotropy = aniso; t.needsUpdate = true;

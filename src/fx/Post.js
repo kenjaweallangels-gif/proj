@@ -217,6 +217,12 @@ export class PostStack {
     this.setSize(size.x, size.y);
   }
 
+  /** Change the HDR targets' MSAA sample count (quality governor). */
+  setSamples(n) {
+    if (this.direct || !this.composer) return;
+    for (const rt of [this.composer.renderTarget1, this.composer.renderTarget2]) { if (rt.samples !== n) { rt.samples = n; rt.dispose(); } }
+  }
+
   _sizeFar(w, h) {
     const pr = this.renderer.getPixelRatio();
     this.farRT.setSize(Math.max(2, Math.round(w * pr * this.farScale)), Math.max(2, Math.round(h * pr * this.farScale)));

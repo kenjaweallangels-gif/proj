@@ -195,3 +195,30 @@ batches). `HorizonCull` draws only the visible Earth cap (all presets). `PostSta
 far scene at `farScale` into a half-float target and stretched, stars straight to the canvas with analytic Earth
 occlusion. Dynamic resolution (`App.updateDynamicResolution`) holds `targetFps` with discrete scale steps.
 `tools/fps.mjs` measures steady frame rates per view; `tools/demo.mjs` records a scripted session with an fps log.
+
+## GPU presets: 1080p floor and the 60 fps governor
+
+Presets `ultra`/`high`/`medium`/`low` carry `minRenderHeight: 1080` and `targetFps: 60`. `Renderer.floorPixelRatio()`
+returns the pixel ratio that gives at least `minRenderHeight` drawing-buffer lines for the current canvas height
+(capped by `maxPixelRatio`), and `basePixelRatio()` never goes below it, also after window resizes.
+
+`src/core/QualityGovernor.js` (created by `App` for every non-lite preset unless `?governor=0` or a screenshot run)
+measures fps in 0.5 s windows and walks a precomputed list of levels: supersampling down to the floor in ×0.85
+steps, then MSAA 2/0, shadow map halved down to 1024, environment refresh ≥ 6 s, bloom off. It steps down one
+level below `target − 3` fps (two below 75 % of the target), and up after 6 good windows when the GPU timer
+(`EXT_disjoint_timer_query_webgl2`, wrapped around `renderer.render` by `beginGpu/endGpu`) shows less than 70 % of
+the frame budget in use. Without a trustworthy timer it waits for 20 good windows. A step up that does not hold
+locks stepping up for 30 s. GPU samples longer than the wall-clock frame are dropped, and the timer is abandoned
+if it keeps producing them (software rasterisers report queue latency). The state is shown next to the HUD fps counter.
+
+Detail knobs per preset: `detail` (tessellation factor through three-lod, 1.6 ultra / 1.3 high), `textureScale`
+(procedural texture resolution in `Textures`), Earth texture set and sphere segments (`Earth.js`: 8K day and clouds
+on ultra, 4K night, ocean mask and relief normals on high/ultra, when `maxTextureSize ≥ 8192`).
+`App.fitShadow` fits the sun's shadow frustum to what the camera sees (38–165 m), snapped to shadow texels.
+
+CPU per frame, all presets: transparent double-sided materials render in one pass (`forceSinglePass`), and
+`App.splitMaterialVariants` gives materials shared between instanced and plain meshes separate instances,
+unifies `receiveShadow` per material and gives instanced shadow casters their own depth material. Otherwise
+three re-derives the program (`getParameters`, cache key) on every switch between such objects. The PMREM
+environment target is reused on each refresh. `tools/cpuframe.mjs` reports main-thread JS time per frame with a CDP
+profile (`--callers=<fn>` prints the stacks that lead to a hot function).
