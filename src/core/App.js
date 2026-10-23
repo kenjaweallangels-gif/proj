@@ -208,6 +208,7 @@ export class App {
       console.warn('unknown view', name);
     }
     this.viewName = name;
+    this.events.emit('view', name);
   }
 
   /** Resolves after `n` more frames have been rendered. */

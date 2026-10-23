@@ -167,3 +167,9 @@ with other people transforms files on demand.
 `speedRelative`, `distanceToStation`, `distanceToAirlock`.
 `Player.CONTROLS` is an array of `{key, ru}` used by the menu/help.
 Audio: `audio.play(name, opts)`, `audio.setParam('volume'|'fan'|'radio'|'crawl', v)`, `audio.volume`, `audio.muted`.
+
+## HUD API (as implemented)
+
+`hud.showLoading(text)`, `hud.hideLoading()`, `hud.setProgress(0..1)`, `hud.showMenu({ pause })`, `hud.hideMenu()`,
+`hud.notify(text, { kind: 'radio'|'info'|'warn'|'alert' })`, `hud.toggleHelp()`. URL param `?menu=1` shows the start
+menu even in shot mode. `events.emit('view', name)` fires on every `app.setView`.
