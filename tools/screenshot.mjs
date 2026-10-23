@@ -29,7 +29,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let server = null, baseUrl = args.url;
 if (!baseUrl) {
   const { createServer } = await import('vite');
-  server = await createServer({ root, configFile: path.join(root, 'vite.config.js'), server: { port: 0, host: '127.0.0.1', strictPort: false }, logLevel: 'error' });
+  server = await createServer({ root, configFile: path.join(root, 'vite.config.js'), server: { port: 0, host: '127.0.0.1', strictPort: false, hmr: false, watch: null }, logLevel: 'error' });
   await server.listen();
   baseUrl = server.resolvedUrls.local[0];
 }
@@ -42,6 +42,7 @@ page.on('console', (msg) => { const ty = msg.type(); if (ty === 'error' || ty ==
 page.on('pageerror', (err) => { console.log(`[pageerror] ${err.message}`); errors.push(err.message); });
 
 console.log('open', url);
+process.on('exit', () => { try { browser.close(); } catch (_) { /* ignore */ } });
 await page.goto(url, { waitUntil: 'load', timeout });
 await page.waitForFunction(() => window.__APP_READY__ === true, null, { timeout });
 console.log('app ready');
