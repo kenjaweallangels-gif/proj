@@ -95,6 +95,10 @@
 .nt-item.alert { border-left-color: var(--red); } .nt-item.alert .nt-tag { color: var(--red); }
 .nt-item.info { border-left-color: rgba(170, 215, 245, 0.5); } .nt-item.info .nt-tag { color: var(--dim); }
 
+/* observer mode: the helmet panels are hidden, so the stack moves to the bottom-left corner,
+   clear of the observer panel even in short windows */
+.hud[data-mode="observer"] .nt { bottom: 20px; left: 20px; width: 300px; }
+
 /* ---------------------------------------------------------------- observer panel */
 .obs { position: absolute; left: 20px; top: 20px; width: 300px; pointer-events: auto; padding: 9px 11px 10px; background: rgba(5, 11, 20, 0.66); border: 1px solid var(--line); border-radius: 3px; }
 .obs-title { font-size: 11px; letter-spacing: 0.14em; color: var(--cyan); }

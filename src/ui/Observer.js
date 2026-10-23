@@ -4,7 +4,7 @@ import { el, add, setText, setClass, show, num, hms } from './dom.js';
 const VIEWS = [
   ['overview', 'Обзор'], ['front', 'Спереди'], ['top', 'Сверху'], ['earth', 'Земля'],
   ['docking', 'Стыковка'], ['ring', 'Кольцо'], ['hub', 'Хаб'], ['solar', 'Батареи'],
-  ['airlockExt', 'Шлюз'], ['closeup', 'Крупно'], ['arm', 'Манипулятор'], ['cupola', 'Купол'],
+  ['airlockExt', 'Шлюз'], ['closeup', 'Крупно'], ['arm', 'Манипулятор'], ['cupola', 'Купол'], ['ships', 'Корабли'], ['sunrise', 'На Солнце'], ['limb', 'Горизонт'],
 ];
 
 export class ObserverPanel {
