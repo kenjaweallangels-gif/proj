@@ -223,6 +223,10 @@ export class HabitatRing {
       else { d.la = col.center.clone(); d.lb = null; }
     }
     this.colliders = this.dynamic.map((d) => d.col);
+    // surface motion for contacts: the ring spins about the spine (X) through its hub
+    this.omega = new THREE.Vector3(this.angularSpeed, 0, 0);
+    this.pivot = new THREE.Vector3(LAYOUT.ringX, 0, 0);
+    for (const col of this.colliders) { col.omega = this.omega; col.pivot = this.pivot; }
 
     // ----- static hub drum (de-spun) on the spine -----
     bStatic.add('truss', tubeAt(V(X0 - 3.6, 0, 0), X_AXIS, hubR, 3.2, 48));

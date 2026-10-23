@@ -82,6 +82,8 @@ Collider = { type:'sphere', center, radius }
          | { type:'capsule', a, b, radius }           // segment a-b with radius
          | { type:'box', center, halfSize, quaternion } // oriented box
          // optional: dynamic: true (ring parts; updated each frame in place), name
+         // optional surface motion for contacts: velocity (Vector3 m/s) and/or omega (rad/s) + pivot
+         // (the ring sets omega/pivot, ships share their velocity) — the player bounces relative to it
 DockingPort = { id, name, position: Vector3, quaternion: Quaternion, size:'small'|'large',
                 occupant: null | object, approachAxis: Vector3 /* unit, outward */ }
   // Port frame: local +Z points OUTWARD. A docked ship's nose sits at `position`, its
@@ -136,6 +138,7 @@ All are MeshStandard/MeshPhysical; `scene.environment` provides reflections auto
 ```
 npm run dev                             # http://127.0.0.1:5173/
 node tools/screenshot.mjs --view=overview --t=600 --out=/tmp/x.png   # headless screenshot
+npm run smoke                           # real game flow: menu, thrust, airlock, ring contact, observer
 ```
 URL params: `?autostart=1` skip menu · `?observer=1` free camera · `?view=overview|docking|ring|earth|airlock|eva|sunrise`
 · `?t=<sim seconds>` (600 day, 1165 sunset, 2000 night, 3200 sunrise) · `?quality=ultra|high|medium|low` · `?timescale=<n>` · `?shot=1` (fixed dt).

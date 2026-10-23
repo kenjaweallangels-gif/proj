@@ -131,6 +131,7 @@ export class Ships {
     const L = ship.localColliders, W = ship.colliders;
     for (let i = 0; i < L.length; i++) {
       const l = L[i], w = W[i];
+      w.velocity = ship.velocity;   // surface motion for player contacts (shared reference, no allocation)
       if (l.type === 'sphere') w.center.copy(l.center).applyQuaternion(q).add(p);
       else if (l.type === 'capsule') { w.a.copy(l.a).applyQuaternion(q).add(p); w.b.copy(l.b).applyQuaternion(q).add(p); }
       else { w.center.copy(l.center).applyQuaternion(q).add(p); w.quaternion.copy(q).multiply(l.quaternion); }

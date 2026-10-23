@@ -5,6 +5,9 @@ import * as THREE from 'three';
  * Colliders follow the contract in docs/ARCHITECTURE.md:
  *   { type:'sphere', center, radius } | { type:'capsule', a, b, radius } | { type:'box', center, halfSize, quaternion }
  * Dynamic colliders are updated in place by their owners, so we only keep references.
+ * Moving colliders may also carry their surface motion, so contacts bounce and rub relative to the
+ * surface (e.g. the spinning gravity ring drags the astronaut along, a moving ship carries them):
+ *   velocity: Vector3 (m/s, linear)   omega: Vector3 (rad/s) + pivot: Vector3 (rotation centre)
  * No per-frame allocations: all math goes through module scratch objects.
  */
 
@@ -15,6 +18,9 @@ const _cp = new THREE.Vector3();
 const _n = new THREE.Vector3();
 const _ab = new THREE.Vector3();
 const _t = new THREE.Vector3();
+const _vs = new THREE.Vector3();   // surface velocity at the contact
+const _vr = new THREE.Vector3();   // velocity relative to the surface
+const _r = new THREE.Vector3();
 
 /** Closest point on segment ab to p, written into out. Returns the segment parameter 0..1. */
 export function closestOnSegment(a, b, p, out) {
@@ -92,6 +98,15 @@ export class ContactInfo {
   reset() { this.count = 0; this.impact = 0; this.minDistance = Infinity; this.nearest = null; this.penetration = 0; }
 }
 
+/** Velocity of the collider surface at world point p (zero for static colliders). */
+export function surfaceVelocity(c, p, out) {
+  out.set(0, 0, 0);
+  if (c.velocity) out.copy(c.velocity);
+  if (c.omega) { _r.subVectors(p, c.pivot || _ZERO); out.x += c.omega.y * _r.z - c.omega.z * _r.y; out.y += c.omega.z * _r.x - c.omega.x * _r.z; out.z += c.omega.x * _r.y - c.omega.y * _r.x; }
+  return out;
+}
+const _ZERO = new THREE.Vector3();
+
 /**
  * Collider set with sphere resolution.
  *   world.setColliders([...arrays])  // de-duplicated by reference
@@ -136,14 +151,19 @@ export class CollisionWorld {
           out.penetration += pen;
           any = true;
           if (pass === 0) out.count++;
-          const vn = velocity.dot(_n);
+          // work in the frame of the touched surface (moving / rotating colliders)
+          const moving = !!(c.velocity || c.omega);
+          if (moving) { _cp.copy(position).addScaledVector(_n, -radius); surfaceVelocity(c, _cp, _vs); _vr.subVectors(velocity, _vs); }
+          else _vr.copy(velocity);
+          const vn = _vr.dot(_n);
           if (vn < 0) {
-            velocity.addScaledVector(_n, -(1 + restitution) * vn);
-            _t.copy(velocity).addScaledVector(_n, -velocity.dot(_n));
+            _vr.addScaledVector(_n, -(1 + restitution) * vn);
+            _t.copy(_vr).addScaledVector(_n, -_vr.dot(_n));
             if (-vn > out.impact) { out.impact = -vn; out.normal.copy(_n); out.tangent.copy(_t); }
-            velocity.addScaledVector(_t, -friction);
+            _vr.addScaledVector(_t, -friction);
+            if (moving) velocity.addVectors(_vr, _vs); else velocity.copy(_vr);
           } else if (pass === 0 && out.impact === 0 && out.count === 1) {
-            out.normal.copy(_n); out.tangent.copy(velocity).addScaledVector(_n, -vn);
+            out.normal.copy(_n); out.tangent.copy(_vr).addScaledVector(_n, -vn);
           }
         }
       }
