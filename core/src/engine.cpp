@@ -204,11 +204,13 @@ Value config_json(const Core& c) {
   v.set("privacy_profile", c.rt.config.privacy_profile);
   v.set("cpu_cores", c.rt.config.cpu_cores > 0 ? Value(c.rt.config.cpu_cores) : Value());
   v.set("cpu_threads", cpu_thread_pool(c));
+  v.set("deadline_scale", c.rt.config.deadline_scale);
   v.set("max_active_generations", c.data.profiles.admission.max_active_generations);
   Value notes = Value::array();
   if (c.rt.config.mode == "extended" && c.st.emergency) notes.push("«Расширенный разговор» запрещён во время аварии: действует режим «Живые диалоги».");
   if (c.rt.config.privacy_profile == "offline") notes.push("offline: удалённые исполнители запрещены, разговоры не покидают устройство.");
   if (c.rt.config.cpu_cores <= 0) notes.push("число ядер CPU неизвестно: CPU-пул по минимуму.");
+  if (c.rt.config.deadline_scale > 1.0) notes.push("сроки ответа модели увеличены хостом сверх целевых 2,5 с (Документ §11): режим демонстрации удалённого API.");
   v.set("notes_ru", notes);
   return v;
 }
@@ -449,12 +451,15 @@ Value cmd_set_ai_mode(Core& c, Args& a, CmdError& err) {
   const std::string privacy = a.one_of("privacy_profile", {"offline", "hybrid", "online"});
   const double cores = a.number("cpu_cores", false, static_cast<double>(c.rt.config.cpu_cores));
   if (!err.set && !(cores >= 0 && cores <= 1024 && std::trunc(cores) == cores)) err.fail("invalid_argument", "cpu_cores: целое ≥ 0");
+  const double scale = a.number("deadline_scale", false, c.rt.config.deadline_scale);
+  if (!err.set && !(scale >= 1.0 && scale <= 8.0)) err.fail("invalid_argument", "deadline_scale: число от 1 до 8");
   if (err.set) return Value();
   c.rt.config.mode = mode;
   c.rt.config.gpu_enabled = gpu;
   c.rt.config.calibrated = calibrated;
   c.rt.config.privacy_profile = privacy;
   c.rt.config.cpu_cores = static_cast<int>(cores);
+  c.rt.config.deadline_scale = scale;
   Value r = ok_response();
   r.set("config", config_json(c));
   return r;

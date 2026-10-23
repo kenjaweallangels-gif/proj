@@ -293,3 +293,21 @@ TEST(admission, decisions_carry_russian_reasons) {
   CHECK(has_cyrillic(d["decision"]["reason"].str()));
   for (const auto& r : d["decision"]["gate"]["reasons"].items()) CHECK(has_cyrillic(r.str()));
 }
+
+TEST(admission, host_deadline_scale_stretches_model_deadlines_only_within_bounds) {
+  World w;
+  const Value base = w.say("mira", "Мира, как дела?");
+  const double base_deadline = w.core().st.queue.back().deadline_ms - w.now_ms;
+  CHECK(!base["queued"].is_null());
+  CHECK_EQ(base_deadline, 2500.0);
+  const Value bad = w.call_text(R"({"cmd":"set_ai_mode","mode":"smooth","gpu_enabled":false,"calibrated":false,"privacy_profile":"hybrid","deadline_scale":0.5})");
+  CHECK_EQ(bad["error"]["code"].str(), std::string("invalid_argument"));
+  const Value ok = w.call_text(R"({"cmd":"set_ai_mode","mode":"smooth","gpu_enabled":false,"calibrated":false,"privacy_profile":"hybrid","deadline_scale":4})");
+  CHECK(ok["ok"].as_bool());
+  CHECK_EQ(ok["config"]["deadline_scale"].as_number(), 4.0);
+  w.say("leila", "Лейла, что нового?");
+  CHECK_EQ(w.core().st.queue.back().deadline_ms - w.now_ms, 10000.0);
+  // The setting survives save/load.
+  const Value saved = w.call_text(R"({"cmd":"save"})");
+  CHECK_EQ(saved["save"]["ai_config"]["deadline_scale"].as_number(), 4.0);
+}

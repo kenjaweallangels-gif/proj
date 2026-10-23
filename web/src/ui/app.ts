@@ -76,6 +76,7 @@ export class App implements AppApi {
     const provider = prefs.provider as ProviderId | undefined;
     if (provider && provider in host.providers && (provider !== 'mock' || this.dev)) {
       if (provider === 'claude' || provider === 'gateway') host.setPrivacy('hybrid');
+      if (provider === 'claude') host.setDeadlineScale(4);
       host.setProvider(provider);
     }
   }
@@ -160,6 +161,10 @@ export class App implements AppApi {
       this.refresh();
     });
 
+    const deadlineSel = byId<HTMLSelectElement>('sel-deadline');
+    deadlineSel.value = String(this.host.deadlineScale);
+    deadlineSel.addEventListener('change', () => this.host.setDeadlineScale(Number(deadlineSel.value)));
+
     const speed = (s: SimSpeed) => {
       this.host.setSpeed(s);
       byId('btn-speed-1').setAttribute('aria-pressed', String(s === 1));
@@ -183,6 +188,11 @@ export class App implements AppApi {
       host.setPrivacy('hybrid');
       byId<HTMLSelectElement>('sel-privacy').value = 'hybrid';
       this.notice('Профиль приватности переключён на hybrid: реплики Алекса и контекст NPC будут уходить в Claude через страницу-хост. Вернуть offline — в селекторе «Приватность».', 'warn');
+    }
+    if (id === 'claude' && host.deadlineScale === 1) {
+      host.setDeadlineScale(4);
+      byId<HTMLSelectElement>('sel-deadline').value = '4';
+      this.notice('Срок ответа ИИ увеличен до 10 с: удалённой модели (и первому запросу разрешения у зрителя) 2,5 с обычно мало. Это режим демонстрации API; цель документа — 2,5 с, вернуть её можно в «Срок ответа ИИ».', 'info');
     }
     host.setProvider(id);
     savePrefs({ provider: id });

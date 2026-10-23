@@ -228,6 +228,7 @@ struct AiConfig {
   bool calibrated = false;
   std::string privacy_profile = "offline";  // offline | hybrid | online
   int cpu_cores = 0;                        // 0 = unknown (host did not report)
+  double deadline_scale = 1.0;              // host multiplier for model deadlines; 1 = Документ §11 targets
 };
 
 struct FrameSampleRec {

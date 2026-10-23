@@ -904,6 +904,7 @@ Value make_save(const Core& c) {
   cfg.set("calibrated", c.rt.config.calibrated);
   cfg.set("privacy_profile", c.rt.config.privacy_profile);
   cfg.set("cpu_cores", c.rt.config.cpu_cores);
+  cfg.set("deadline_scale", c.rt.config.deadline_scale);
   s.set("ai_config", cfg);
   s.set("hash", state_hash(c));
   s.set("state", state_to_json(c.st));
@@ -952,6 +953,7 @@ bool load_save(Core& c, const Value& save, std::string& error_code, std::string&
     c.rt.config.calibrated = cfg["calibrated"].as_bool();
     c.rt.config.privacy_profile = cfg["privacy_profile"].str("offline");
     c.rt.config.cpu_cores = static_cast<int>(cfg["cpu_cores"].as_int());
+    c.rt.config.deadline_scale = std::clamp(cfg["deadline_scale"].as_number(1.0), 1.0, 8.0);
   }
   return true;
 }

@@ -164,7 +164,7 @@ EnqueueResult enqueue_request(Core& c, const std::string& actor_id, const std::s
   EnqueueResult res;
   const AdmissionConfig& cfg = c.data.profiles.admission;
   const int priority = cfg.priority.at(kind == "order_response" ? "direct_reply" : kind);
-  const double deadline = now_ms + cfg.deadline_ms.at(deadline_kind(kind));
+  const double deadline = now_ms + cfg.deadline_ms.at(deadline_kind(kind)) * c.rt.config.deadline_scale;
   if (immediate_reaction) say_immediate(c, actor_id, sit, res.immediate);
 
   if (kind == "emergency") {

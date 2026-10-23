@@ -79,6 +79,36 @@ export class ColonyMap {
     this.raf = 0;
   }
 
+  /** Screen rectangles already taken in the current frame (dots and labels), for label placement. */
+  private placed: Rect[] = [];
+
+  /**
+   * Places a label at the first candidate position that does not overlap anything placed this frame
+   * (or the least overlapping one), keeping it inside the canvas.
+   */
+  private placeLabel(text: string, candidates: Array<(tw: number, th: number) => [number, number]>, color: string, dpr: number): void {
+    const ctx = this.ctx;
+    const tw = ctx.measureText(text).width;
+    const th = 12 * dpr;
+    const W = this.canvas.width, H = this.canvas.height;
+    let best: [number, number] = candidates[0](tw, th);
+    let bestCost = Infinity;
+    for (const cand of candidates) {
+      const [lx, ly] = cand(tw, th);
+      const r = { x: lx - 2 * dpr, y: ly - dpr, w: tw + 4 * dpr, h: th + 2 * dpr };
+      let cost = 0;
+      for (const q of this.placed) cost += overlapArea(r, q);
+      if (r.x < 0 || r.y < 0 || r.x + r.w > W || r.y + r.h > H) cost += r.w * r.h;
+      if (cost < bestCost) { best = [lx, ly]; bestCost = cost; if (cost === 0) break; }
+    }
+    this.placed.push({ x: best[0] - 2 * dpr, y: best[1] - dpr, w: tw + 4 * dpr, h: th + 2 * dpr });
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    this.label(text, best[0], best[1], color, dpr);
+    ctx.restore();
+  }
+
   /** Text with a halo in the background colour so labels stay legible over lines and modules. */
   private label(text: string, x: number, y: number, color: string, dpr: number): void {
     const ctx = this.ctx;
@@ -122,6 +152,7 @@ export class ColonyMap {
 
     const snap = this.snap;
     const view = this.view;
+    this.placed = [];
     const sealed = new Set(view?.sealedZones ?? []);
 
     // doors (passages between zone stand points)
@@ -166,12 +197,6 @@ export class ColonyMap {
       }
       ctx.restore();
     }
-    // zone labels after all modules, so no module covers a label
-    for (const m of scene.modules) {
-      this.label(zoneNames.get(m.zone) ?? m.zone, X(m.position[0]), Z(m.position[2]) + Math.max(m.size[0], m.size[2]) * scale / 2 + 3 * dpr, P.label, dpr);
-    }
-    const surf = standPoint('surface');
-    this.label(zoneNames.get('surface') ?? 'поверхность', X(surf[0]), Z(surf[2]) + 6 * dpr, P.label, dpr);
 
     // markers
     for (const mk of view?.markers ?? []) {
@@ -208,10 +233,9 @@ export class ColonyMap {
     ctx.beginPath();
     ctx.arc(X(pp[0] - 1.6), Z(pp[2] - 1.2), 6 * dpr, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = 'left';
-    this.label(player.name_ru, X(pp[0] - 1.6) + 9 * dpr, Z(pp[2] - 1.2), P.label, dpr);
     ctx.restore();
+    const playerXY: [number, number] = [X(pp[0] - 1.6), Z(pp[2] - 1.2)];
+    this.placed.push({ x: playerXY[0] - 7 * dpr, y: playerXY[1] - 7 * dpr, w: 14 * dpr, h: 14 * dpr });
 
     // crew
     ctx.font = `600 ${11.5 * dpr}px ui-sans-serif, system-ui, sans-serif`;
@@ -233,11 +257,36 @@ export class ColonyMap {
       ctx.arc(x, z, 6.5 * dpr, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      this.label(a.name, x + 9 * dpr, z - 1 * dpr, P.fg, dpr);
       ctx.restore();
+      this.placed.push({ x: x - 7 * dpr, y: z - 7 * dpr, w: 14 * dpr, h: 14 * dpr });
     }
+
+    // labels last, crew first: each takes the first free spot around its anchor
+    const around = (x: number, z: number, r: number) => [
+      (_tw: number, th: number): [number, number] => [x + r, z - th / 2],
+      (tw: number, th: number): [number, number] => [x - r - tw, z - th / 2],
+      (_tw: number, th: number): [number, number] => [x + r, z - th - r / 2],
+      (_tw: number, _th: number): [number, number] => [x + r, z + r / 2],
+      (tw: number, th: number): [number, number] => [x - tw / 2, z - r - th],
+      (tw: number, _th: number): [number, number] => [x - tw / 2, z + r],
+      (tw: number, th: number): [number, number] => [x - r - tw, z - th - r / 2],
+      (tw: number, _th: number): [number, number] => [x - r - tw, z + r / 2],
+    ];
+    ctx.font = `600 ${11.5 * dpr}px ui-sans-serif, system-ui, sans-serif`;
+    for (const a of view?.actors ?? []) this.placeLabel(a.name, around(X(a.position[0]), Z(a.position[2]), 9 * dpr), P.fg, dpr);
+    ctx.font = `${11 * dpr}px ui-sans-serif, system-ui, sans-serif`;
+    this.placeLabel(player.name_ru, around(playerXY[0], playerXY[1], 9 * dpr), P.label, dpr);
+    for (const m of scene.modules) {
+      const cx = X(m.position[0]), cz = Z(m.position[2]);
+      const r = (Math.max(m.size[0], m.size[2]) * scale) / 2 + 3 * dpr;
+      this.placeLabel(zoneNames.get(m.zone) ?? m.zone, [
+        (tw: number, _th: number): [number, number] => [cx - tw / 2, cz + r],
+        (tw: number, th: number): [number, number] => [cx - tw / 2, cz - r - th],
+        ...around(cx, cz, r),
+      ], P.label, dpr);
+    }
+    const surf = standPoint('surface');
+    this.placeLabel(zoneNames.get('surface') ?? 'поверхность', around(X(surf[0]), Z(surf[2]), 8 * dpr), P.label, dpr);
 
     if (view?.emergencyLights) {
       ctx.save();
@@ -248,4 +297,12 @@ export class ColonyMap {
       ctx.restore();
     }
   }
+}
+
+interface Rect { x: number; y: number; w: number; h: number }
+
+function overlapArea(a: Rect, b: Rect): number {
+  const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  return w > 0 && h > 0 ? w * h : 0;
 }

@@ -125,6 +125,8 @@ export class AgentHost {
   providerId: ProviderId = 'rules';
   privacy: PrivacyProfile = 'offline';
   aiMode: AiMode = 'smooth';
+  /** Host multiplier for model deadlines (1 = 2.5 s direct reply, Документ §11); larger values only for remote APIs. */
+  deadlineScale = 1;
   speed: SimSpeed = 1;
   /** Physical-truth debug layer in the world tab (never shown to NPCs). */
   debugTruth = false;
@@ -289,6 +291,12 @@ export class AgentHost {
     this.notify();
   }
 
+  setDeadlineScale(s: number): void {
+    this.deadlineScale = Math.min(8, Math.max(1, s));
+    this.applyAiMode();
+    this.notify();
+  }
+
   applyAiMode(): void {
     try {
       const cores = typeof navigator !== 'undefined' && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : undefined;
@@ -297,6 +305,7 @@ export class AgentHost {
         gpu_enabled: this.providerId === 'webllm' && this.webllm.ready,
         calibrated: false, // no joint render+model calibration exists in this prototype (Документ §11)
         privacy_profile: this.privacy,
+        deadline_scale: this.deadlineScale,
         ...(cores ? { cpu_cores: cores } : {}),
       });
       if (this.snapshot) this.refresh();
