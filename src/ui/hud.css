@@ -96,11 +96,11 @@
 .nt-item.info { border-left-color: rgba(170, 215, 245, 0.5); } .nt-item.info .nt-tag { color: var(--dim); }
 
 /* ---------------------------------------------------------------- observer panel */
-.obs { position: absolute; left: 20px; top: 20px; width: 268px; pointer-events: auto; padding: 9px 11px 10px; background: rgba(5, 11, 20, 0.66); border: 1px solid var(--line); border-radius: 3px; }
+.obs { position: absolute; left: 20px; top: 20px; width: 300px; pointer-events: auto; padding: 9px 11px 10px; background: rgba(5, 11, 20, 0.66); border: 1px solid var(--line); border-radius: 3px; }
 .obs-title { font-size: 11px; letter-spacing: 0.14em; color: var(--cyan); }
 .obs-hint { font-size: 11px; color: var(--dim); margin: 2px 0 6px; }
 .obs-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 6px; }
-.obs-grid button, .obs .btn-s { padding: 5px 3px; font-size: 11px; letter-spacing: 0.02em; background: rgba(12, 24, 40, 0.75); border: 1px solid var(--line); border-radius: 2px; color: #d2e7f5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.obs-grid button, .obs .btn-s { padding: 5px 2px; font-size: 11px; letter-spacing: 0.02em; background: rgba(12, 24, 40, 0.75); border: 1px solid var(--line); border-radius: 2px; color: #d2e7f5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .obs-grid button:hover, .obs .btn-s:hover { border-color: var(--cyan2); color: #fff; }
 .obs-grid button.on { border-color: var(--cyan2); background: rgba(79, 184, 234, 0.2); color: #fff; }
 .obs-foot { display: flex; gap: 4px; margin-top: 7px; }
@@ -157,7 +157,7 @@ table.ctl td.key { font-family: var(--mono); font-size: 11px; color: var(--cyan)
   .hp .sec { display: none; }
   .ecg { width: 110px; height: 36px; } .ecg-bpm { font-size: 18px; }
   .nt { width: 220px; bottom: calc(var(--inset-y) + 150px); }
-  .obs { width: 230px; left: 12px; top: 12px; }
+  .obs { width: 250px; left: 12px; top: 12px; }
   .prompt { font-size: 12px; }
 }
 @media (max-width: 760px) {

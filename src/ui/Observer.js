@@ -12,11 +12,11 @@ export class ObserverPanel {
     this.ctx = ctx;
     this.hud = hud;
     this.el = el('div', 'obs hidden');
-    add(this.el, el('div', 'obs-title', 'КАМЕРА ОБЗОРА'), el('div', 'obs-hint', 'F — вернуться в скафандр · ЛКМ/колесо — орбита камеры'));
+    add(this.el, el('div', 'obs-title', 'КАМЕРА ОБЗОРА'), el('div', 'obs-hint', 'F — вернуться в скафандр · мышь / колесо — облёт камеры'));
     const r1 = el('div', 'hp-row'); r1.append(el('span', 'k', 'Ход времени (T)')); this.scaleEl = el('span', 'v', '×1'); r1.append(this.scaleEl);
     const r2 = el('div', 'hp-row'); r2.append(el('span', 'k', 'Полётное время')); this.clockEl = el('span', 'v', 'T+00:00:00'); r2.append(this.clockEl);
-    const r3 = el('div', 'hp-row'); r3.append(el('span', 'k', 'Бортовое время UTC')); this.utcEl = el('span', 'v', '—'); r3.append(this.utcEl);
-    const r4 = el('div', 'hp-row'); r4.append(el('span', 'k', 'Подспутниковая точка')); this.posEl = el('span', 'v', '—'); r4.append(this.posEl);
+    const r3 = el('div', 'hp-row'); r3.append(el('span', 'k', 'UTC')); this.utcEl = el('span', 'v', '—'); r3.append(this.utcEl);
+    const r4 = el('div', 'hp-row'); r4.append(el('span', 'k', 'Под станцией')); this.posEl = el('span', 'v', '—'); r4.append(this.posEl);
     add(this.el, r1, r2, r3, r4);
     this.grid = el('div', 'obs-grid');
     this.buttons = {};
@@ -29,7 +29,7 @@ export class ObserverPanel {
     }
     this.el.append(this.grid);
     const foot = el('div', 'obs-foot');
-    const back = el('button', 'btn-s', 'В скафандр (F)'); back.type = 'button';
+    const back = el('button', 'btn-s', 'Скафандр (F)'); back.type = 'button';
     back.addEventListener('click', () => { ctx.app?.setMode?.('play'); if (!ctx.isShot) ctx.input?.requestPointerLock?.(); });
     const pause = el('button', 'btn-s', 'Пауза (P)'); pause.type = 'button';
     pause.addEventListener('click', () => { if (ctx.app) ctx.app.paused = !ctx.app.paused; });

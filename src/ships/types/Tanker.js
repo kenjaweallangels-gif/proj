@@ -1,39 +1,28 @@
 import * as THREE from 'three';
-import { ShipBuilder, V, X_AXIS, Y_AXIS, Z_AXIS, tubeZ, latheZ, box, sphere, torus, cyl, rcsQuad, LocalColliders as C, quatZ } from '../ShipBuilder.js';
+import { ShipBuilder, V, X_AXIS, Y_AXIS, Z_AXIS, tubeZ, latheZ, box, sphere, torus, cyl, rcsQuad, LocalColliders as C } from '../ShipBuilder.js';
 import { Gimbal } from '../Gimbal.js';
-import { shipMaterials, mainEngine, dockingNose, navLights } from './Common.js';
+import { shipStart, mainEngine, dockingNose, navLights, windowPane } from './Common.js';
 
 /**
  * Tanker / tug «Буксир» (~14 m): small control module behind the docking ring, two spherical
  * propellant tanks in an open longeron truss, a large main engine bell and an articulated grapple
- * arm that idles slowly. Large port.
+ * arm that idles slowly while docked. Large port.
  */
 export function buildTanker(ctx, { name = 'Буксир', number = 1 } = {}) {
-  const m = ctx.materials;
-  const mats = shipMaterials(m);
-  const group = new THREE.Group();
-  group.name = `tanker:${name}-${number}`;
-  const b = new ShipBuilder(m);
-  const nozzles = [];
-  const colliders = [];
+  const { m, b, lights, group, nozzles, colliders } = shipStart(ctx, 'tanker', name, number);
   const R = 1.2;
 
-  const petals = dockingNose(b, m, R, group, mats.dockLight);
+  const petals = dockingNose(b, R, group);
 
   // control / avionics module
-  b.add('metalDark', tubeZ(-0.7, -1.0, 1.5, 1.72, 48));
-  b.add('hullWhiteAged', tubeZ(-1.0, -3.2, 1.75, 1.75, 48));
+  b.add('hullDark', tubeZ(-0.7, -1.0, 1.5, 1.72, 48));
+  b.add('hullAged', tubeZ(-1.0, -3.2, 1.75, 1.75, 48));
   b.add('hazard', tubeZ(-1.15, -1.3, 1.765, 1.765, 48, { uv: false }), false);
   b.add('metalDark', torus(V(0, 0, -3.2), Z_AXIS, 1.75, 0.04, 5, 48), false);
-  b.add('mliBlack', latheZ([[1.25, -3.65], [1.75, -3.2]], 48));
-  // two cabin windows looking along the docking axis side
-  for (const sx of [-1, 1]) {
-    const n = V(sx, 0, 0), p = V(sx * 1.75, 0.6, -1.9), q = quatZ(n);
-    b.add('metalDark', box(p.clone().addScaledVector(n, -0.04), 0.42, 0.34, 0.1, q, false), false);
-    b.add('glass', box(p.clone().addScaledVector(n, 0.03), 0.32, 0.26, 0.03, q, false), false);
-    b.add('windowGlow', box(p.clone().addScaledVector(n, -0.05), 0.3, 0.24, 0.02, q, false), false);
-  }
-  for (const s of [-1, 1]) b.label(`${name.toUpperCase()}-${number}`, 1.5, 0.4, V(0, s * 1.76, -2.4), V(0, s, 0), { right: V(-s, 0, 0), width: 512, height: 128, color: '#3a2a10' });
+  b.add('mliDark', latheZ([[1.25, -3.65], [1.75, -3.2]], 48));
+  // two cabin windows on the flanks
+  for (const sx of [-1, 1]) windowPane(b, V(sx * 1.75, 0.6, -1.9), V(sx, 0, 0), 0.32, 0.26);
+  for (const s of [-1, 1]) b.label(`${name.toUpperCase()}-${number}`, 1.5, 0.4, V(0, s * 1.76, -2.4), V(0, s, 0), { right: V(-s, 0, 0), color: '#3a2a10' });
   for (let k = 0; k < 4; k++) {
     const a = Math.PI / 4 + (k * Math.PI) / 2;
     const n = V(Math.cos(a), Math.sin(a), 0), tgt = V(-Math.sin(a), Math.cos(a), 0).multiplyScalar(k % 2 ? -1 : 1);
@@ -44,7 +33,7 @@ export function buildTanker(ctx, { name = 'Буксир', number = 1 } = {}) {
   const z0 = -3.5, z1 = -11.7, rL = 1.95;
   for (let k = 0; k < 4; k++) {
     const a = Math.PI / 4 + (k * Math.PI) / 2, a2 = a + Math.PI / 2;
-    b.add('truss', box(V(Math.cos(a) * rL, Math.sin(a) * rL, (z0 + z1) / 2), 0.15, 0.15, z0 - z1, new THREE.Quaternion().setFromAxisAngle(Z_AXIS, a), false));
+    b.add('truss', box(V(Math.cos(a) * rL, Math.sin(a) * rL, (z0 + z1) / 2), 0.15, 0.15, z0 - z1, new THREE.Quaternion().setFromAxisAngle(Z_AXIS, a), false), false);
     for (const z of [z0 - 0.1, -7.4, z1 + 0.1]) {
       const p0 = V(Math.cos(a) * rL, Math.sin(a) * rL, z), p1 = V(Math.cos(a2) * rL, Math.sin(a2) * rL, z);
       b.add('truss', box(p0.clone().lerp(p1, 0.5), 0.1, 0.1, p0.distanceTo(p1), new THREE.Quaternion().setFromUnitVectors(Z_AXIS, p1.clone().sub(p0).normalize()), false), false);
@@ -61,62 +50,55 @@ export function buildTanker(ctx, { name = 'Буксир', number = 1 } = {}) {
   b.add('mliSilver', sphere(V(0, 0, -5.4), 1.62, 32, 24));
   b.add('mliGold', sphere(V(0, 0, -9.5), 1.62, 32, 24));
   for (const z of [-5.4, -9.5]) { b.add('metalDark', torus(V(0, 0, z), Z_AXIS, 1.63, 0.05, 6, 48), false); b.add('metalDark', torus(V(0, 0, z), X_AXIS, 1.63, 0.04, 6, 48), false); }
-  b.add('metalBare', cyl(V(0, 0, -7.45), Z_AXIS, 0.22, 2.6, 16, { uv: false }));
+  b.add('metalBare', cyl(V(0, 0, -7.45), Z_AXIS, 0.22, 2.6, 16, { uv: false }), false);
   for (let k = 0; k < 4; k++) {
     const a = (k * Math.PI) / 2;
-    b.add('metalBare', sphere(V(Math.cos(a) * 1.35, Math.sin(a) * 1.35, -7.45), 0.38, 14, 10), false);
+    b.add('tank', sphere(V(Math.cos(a) * 1.35, Math.sin(a) * 1.35, -7.45), 0.38, 14, 10), false);
     b.add('copper', cyl(V(Math.cos(a) * 0.9, Math.sin(a) * 0.9, -7.45), V(Math.cos(a), Math.sin(a), 0), 0.04, 1.3, 6, { uv: false }), false);
   }
   // thrust structure and the big engine
-  b.add('metalDark', latheZ([[0.6, -12.3], [1.3, -12.0], [1.45, -11.75]], 32));
+  b.add('hullDark', latheZ([[0.6, -12.3], [1.3, -12.0], [1.45, -11.75]], 32));
   b.add('mliBlack', new THREE.CircleGeometry(1.45, 32).translate(0, 0, -11.75), false);
-  const mainNozzles = [mainEngine(b, mats.hot, V(0, 0, -12.3), 0.36, 1.05, 1.7)];
+  const mainNozzles = [mainEngine(b, V(0, 0, -12.3), 0.36, 1.05, 1.7)];
   for (let k = 0; k < 4; k++) {
     const a = Math.PI / 4 + (k * Math.PI) / 2;
     b.add('nozzle', cyl(V(Math.cos(a) * 1.2, Math.sin(a) * 1.2, -12.35), V(0, 0, -1), 0.08, 0.35, 10, { rTop: 0.18, open: true, uv: false }), false);
   }
-  navLights(b, mats.strobe, V(-1.78, 0, -1.6), V(1.78, 0, -1.6), [V(0, 2.05, -11.7), V(0, -2.05, -11.7)]);
-  b.build(group, group.name);
-
+  navLights(b, V(-1.78, 0, -1.6), V(1.78, 0, -1.6), [V(0, 2.05, -11.7), V(0, -2.05, -11.7)]);
   // small dish (-Y side)
-  const dish = new Gimbal(m, { radius: 0.45, mastLength: 0.5, position: V(0, -1.75, -2.4), up: V(0, -1, 0) });
+  const dish = new Gimbal(b, { radius: 0.45, mastLength: 0.5, position: V(0, -1.75, -2.4), up: V(0, -1, 0) });
   group.add(dish.base);
 
-  // grapple arm: base on the +Y side of the control module, two segments + wrist + claw
-  const armBase = new THREE.Group();
-  armBase.position.set(0, 1.75, -2.2);
-  armBase.quaternion.setFromUnitVectors(Y_AXIS, Y_AXIS);
-  const seg1 = new THREE.Group(), seg2 = new THREE.Group(), wrist = new THREE.Group();
+  // grapple arm: pedestal on the +Y side of the control module (static), upper arm + forearm with claw (two moving meshes)
+  b.add('metalDark', cyl(V(0, 1.9, -2.2), Y_AXIS, 0.3, 0.3, 16, { uv: false }), false);
+  b.add('paintGray', sphere(V(0, 2.15, -2.2), 0.26, 14, 10), false);
+  b.build(group, group.name, { lights });
+
+  const seg1 = new THREE.Group(), seg2 = new THREE.Group();
+  seg1.position.set(0, 2.15, -2.2);
   {
-    const ab = new ShipBuilder(m);
-    ab.add('metalDark', cyl(V(0, 0.15, 0), Y_AXIS, 0.3, 0.3, 16, { uv: false }), false);
-    ab.add('paintGray', sphere(V(0, 0.4, 0), 0.26, 14, 10), false);
-    ab.build(armBase, 'armBase');
-    seg1.position.set(0, 0.4, 0);
     const s1 = new ShipBuilder(m);
-    s1.add('antennaWhite', cyl(V(0, 1.2, 0), Y_AXIS, 0.13, 2.4, 12, { uv: false }));
+    s1.add('antennaWhite', cyl(V(0, 1.2, 0), Y_AXIS, 0.13, 2.4, 12, { uv: false }), false);
     s1.add('antennaWhite', box(V(0, 1.2, 0), 0.08, 2.4, 0.3, null, false), false);
     s1.add('paintGray', sphere(V(0, 2.45, 0), 0.22, 14, 10), false);
-    s1.build(seg1, 'armSeg1');
+    s1.build(seg1, 'armSeg1', { shadows: false, receive: false });
     seg2.position.set(0, 2.45, 0);
     const s2 = new ShipBuilder(m);
-    s2.add('antennaWhite', cyl(V(0, 1.0, 0), Y_AXIS, 0.11, 2.0, 12, { uv: false }));
+    s2.add('antennaWhite', cyl(V(0, 1.0, 0), Y_AXIS, 0.11, 2.0, 12, { uv: false }), false);
     s2.add('paintGray', sphere(V(0, 2.05, 0), 0.18, 14, 10), false);
-    s2.build(seg2, 'armSeg2');
-    wrist.position.set(0, 2.05, 0);
-    const w = new ShipBuilder(m);
-    w.add('metalDark', cyl(V(0, 0.2, 0), Y_AXIS, 0.14, 0.4, 12, { uv: false }), false);
+    // wrist + three-finger claw
+    s2.add('metalDark', cyl(V(0, 2.25, 0), Y_AXIS, 0.14, 0.4, 12, { uv: false }), false);
     for (let k = 0; k < 3; k++) {
       const a = (k / 3) * Math.PI * 2;
-      const p0 = V(Math.cos(a) * 0.12, 0.4, Math.sin(a) * 0.12), p1 = V(Math.cos(a) * 0.3, 0.85, Math.sin(a) * 0.3);
-      w.add('metalDark', cyl(p0.clone().lerp(p1, 0.5), p1.clone().sub(p0).normalize(), 0.03, p0.distanceTo(p1), 6, { uv: false }), false);
+      const p0 = V(Math.cos(a) * 0.12, 2.45, Math.sin(a) * 0.12), p1 = V(Math.cos(a) * 0.3, 2.9, Math.sin(a) * 0.3);
+      s2.add('metalDark', cyl(p0.clone().lerp(p1, 0.5), p1.clone().sub(p0).normalize(), 0.03, p0.distanceTo(p1), 6, { uv: false }), false);
     }
-    w.add('metalDark', sphere(V(0.18, 0.3, 0), 0.07, 10, 8), false);
-    w.build(wrist, 'armWrist');
-    seg2.add(wrist); seg1.add(seg2); armBase.add(seg1); group.add(armBase);
+    s2.add('camera', sphere(V(0.18, 2.35, 0), 0.07, 10, 8), false);
+    s2.build(seg2, 'armSeg2', { shadows: false, receive: false });
+    seg1.add(seg2); group.add(seg1);
   }
   // stowed pose: folded back along the truss
-  seg1.rotation.x = -1.35; seg2.rotation.x = 2.5; wrist.rotation.x = -0.9;
+  seg1.rotation.x = -1.35; seg2.rotation.x = 2.5;
   colliders.push(C.capsule(V(0, 2.15, -2.2), V(0, 2.6, -4.5), 0.35, 'arm'));
 
   colliders.push(C.sphere(V(0, 0, -0.35), 1.55, 'dockRing'));
@@ -128,9 +110,9 @@ export function buildTanker(ctx, { name = 'Буксир', number = 1 } = {}) {
 
   const armState = { t: Math.random() * 10 };
   return {
-    group, colliders, nozzles, mainNozzles, mainAxis: Z_AXIS.clone(), noseOffset: 0.08, size: 'large', length: 14.0, boundRadius: 7.5,
+    group, colliders, nozzles, mainNozzles, mainAxis: Z_AXIS.clone(), upAxis: Y_AXIS.clone(), noseOffset: 0, size: 'large', length: 14.0, boundRadius: 7.5,
     label: 'Танкер-буксир', shipName: `${name}-${number}`,
-    parts: { petals, dish, hot: mats.hot, strobe: mats.strobe, dockLight: mats.dockLight, arm: { seg1, seg2, wrist } },
+    parts: { lights, petals, dish, arm: { seg1, seg2 } },
     /** Slow idle motion of the grapple arm while docked (crews re-stow it before departure). */
     animate(dt, ship) {
       armState.t += dt;
@@ -138,7 +120,6 @@ export function buildTanker(ctx, { name = 'Буксир', number = 1 } = {}) {
       const target1 = -1.35 + k * 0.35 * Math.sin(armState.t * 0.11), target2 = 2.5 - k * 0.5 * (0.5 + 0.5 * Math.sin(armState.t * 0.07 + 1));
       seg1.rotation.x += (target1 - seg1.rotation.x) * Math.min(1, dt * 0.3);
       seg2.rotation.x += (target2 - seg2.rotation.x) * Math.min(1, dt * 0.3);
-      wrist.rotation.y = 0.4 * Math.sin(armState.t * 0.05) * k;
     },
   };
 }
