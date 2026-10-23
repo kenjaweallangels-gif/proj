@@ -291,8 +291,15 @@ export class PostStack {
     const r = this.renderer, sc = this.scenes;
     r.autoClear = false;
     if (this.farRT) {
+      // stars are points: in the low-resolution target they would blow up into blocks after the stretch,
+      // so they are drawn straight onto the canvas (Earth occlusion is analytic in their shader)
+      const stars = window.__app?.ctx?.sky?.stars;
+      const starsOn = !!stars && stars.visible;
+      if (starsOn) stars.visible = false;
       r.setRenderTarget(this.farRT); r.clear(); r.render(sc.farScene, sc.farCamera);
+      if (starsOn) stars.visible = true;
       r.setRenderTarget(null); r.clear(); r.render(this.blitScene, this.blitCamera);
+      if (starsOn) r.render(stars, sc.farCamera);
     } else {
       r.setRenderTarget(null); r.clear(); r.render(sc.farScene, sc.farCamera);
     }

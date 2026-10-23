@@ -25,12 +25,13 @@ await page.goto(url, { waitUntil: 'load', timeout: 600000 });
 await page.waitForFunction(() => window.__APP_READY__ === true, null, { timeout: 600000 });
 for (const v of views) {
   await page.evaluate((n) => window.__app.setView(n), v);
+  if (process.env.HIDEUI) await page.evaluate(() => { document.getElementById('ui').style.display = 'none'; });
   await page.waitForTimeout(+(args.warmup || 4000));
   const r = await page.evaluate(async (s) => {
     const a = window.__app; const f0 = a.frameCount, t0 = performance.now();
     await new Promise((res) => setTimeout(res, s * 1000));
     const gl = a.renderer.renderer;
-    return { fps: (a.frameCount - f0) / ((performance.now() - t0) / 1000), calls: gl.info.render.calls, tris: gl.info.render.triangles, pr: gl.getPixelRatio() };
+    return { fps: (a.frameCount - f0) / ((performance.now() - t0) / 1000), calls: gl.info.render.calls, tris: gl.info.render.triangles, pr: +gl.getPixelRatio().toFixed(3) };
   }, secs);
   console.log(`${v}: ${r.fps.toFixed(1)} fps  (${w}x${h} @${r.pr}, ${r.calls} calls, ${r.tris} tris)`);
 }

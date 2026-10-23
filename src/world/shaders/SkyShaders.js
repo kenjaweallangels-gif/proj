@@ -9,11 +9,21 @@ export const STAR_VERTEX = /* glsl */`
 attribute float aMag;
 attribute vec3 aColor;
 uniform float uPixelRatio, uExposure, uSizeScale;
+#ifdef EARTH_OCCLUSION
+uniform vec3 uEarthCenter;   // relative to the camera (km)
+uniform float uEarthRadius;  // ground + atmosphere (km)
+#endif
 varying vec3 vColor;
 varying float vSize;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mv;
+#ifdef EARTH_OCCLUSION
+  // drawn without a depth buffer ('lite' renders stars straight to the canvas): hide stars behind the Earth
+  vec3 dir = normalize((modelMatrix * vec4(position, 1.0)).xyz - cameraPosition);
+  float b = dot(dir, uEarthCenter);
+  if (b > 0.0 && dot(uEarthCenter, uEarthCenter) - b * b < uEarthRadius * uEarthRadius) { gl_PointSize = 0.0; gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vColor = vec3(0.0); vSize = 0.0; return; }
+#endif
   float flux = pow(10.0, -0.4 * aMag);                       // mag 0 -> 1
   float sizeCss = (1.6 + 0.9 * log2(1.0 + flux * 8.0)) * uSizeScale;
   float size = sizeCss * uPixelRatio;

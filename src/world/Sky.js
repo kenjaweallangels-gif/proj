@@ -24,7 +24,10 @@ export class Sky {
 
     this.starMaterial = new THREE.ShaderMaterial({
       name: 'Stars',
-      uniforms: { uPixelRatio: this.uPixelRatio, uExposure: this.uExposure, uSizeScale: this.uSizeScale },
+      uniforms: { uPixelRatio: this.uPixelRatio, uExposure: this.uExposure, uSizeScale: this.uSizeScale,
+        uEarthCenter: { value: new THREE.Vector3() }, uEarthRadius: { value: 6371 + 60 } },
+      // 'lite' draws the stars straight onto the canvas after the low-resolution far scene (see fx/Post.js)
+      defines: ctx.quality?.lite ? { EARTH_OCCLUSION: 1 } : {},
       vertexShader: STAR_VERTEX, fragmentShader: STAR_FRAGMENT,
       transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: true, toneMapped: false,
     });
@@ -122,6 +125,7 @@ export class Sky {
     this._cull();
     const r = ctx.renderer;
     this.uPixelRatio.value = r.getPixelRatio();
+    if (ctx.quality?.lite) this.starMaterial.uniforms.uEarthCenter.value.copy(o.earthCenterFar).sub(ctx.farCamera.position);
     r.getSize(this._size);
     // keep the apparent star size similar across window sizes (reference: 900 px tall viewport)
     this.uSizeScale.value = Math.min(1.5, Math.max(0.75, this._size.y / 900));

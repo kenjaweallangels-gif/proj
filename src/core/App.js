@@ -29,6 +29,7 @@ async function loadModuleClass(name) {
 }
 
 const LITE_DETAIL_DISTANCE = 18;   // metres
+const LITE_SHIP_DISTANCE = 600;    // metres
 const _camPos = new THREE.Vector3();
 const _bsCenter = new THREE.Vector3();
 
@@ -254,6 +255,30 @@ export class App {
     finally { for (const o of hidden) o.visible = false; }
   }
 
+  /**
+   * Dynamic resolution: keep the frame rate at or above `targetFps` by scaling the internal render
+   * resolution between `minPixelRatio` and the preset's pixel ratio (checked once a second, with
+   * hysteresis so it does not oscillate).
+   */
+  updateDynamicResolution(dt) {
+    const q = this.quality;
+    const d = this._dyn || (this._dyn = { frames: 0, time: 0, pr: this.renderer.renderer.getPixelRatio(), max: this.renderer.renderer.getPixelRatio() });
+    d.frames++; d.time += dt;
+    if (d.time < 1.0) return;
+    const fps = d.frames / d.time;
+    d.frames = 0; d.time = 0;
+    const target = q.targetFps || 25;
+    let pr = d.pr;
+    if (fps < target + 0.5) pr = Math.max(q.minPixelRatio || 0.28, pr * Math.max(0.8, Math.sqrt(fps / (target + 2))));
+    else if (fps > target * 1.25) pr = Math.min(d.max, pr * 1.04);
+    if (Math.abs(pr - d.pr) > 0.004) {
+      d.pr = pr;
+      this.renderer.renderer.setPixelRatio(pr);
+      this.onResize();
+    }
+    this.fps = fps;
+  }
+
   /** 'lite': hide small-part batches farther than LITE_DETAIL_DISTANCE from the camera. */
   cullDetails() {
     const cam = this.camera.getWorldPosition(_camPos);
@@ -261,6 +286,17 @@ export class App {
       const bs = m.geometry.boundingSphere;
       _bsCenter.copy(bs.center).applyMatrix4(m.matrixWorld);
       m.visible = _bsCenter.distanceTo(cam) - bs.radius < LITE_DETAIL_DISTANCE;
+    }
+    // ships far out on approach / departure are sub-pixel: skip them. Visibility belongs to the ship
+    // code (plumes, panels…), so the render layers are masked instead and restored when they return.
+    for (const s of this.ships.ships || []) {
+      const near = s.group.position.distanceTo(cam) < LITE_SHIP_DISTANCE;
+      if (s._liteNear === near) continue;
+      s._liteNear = near;
+      s.group.traverse((o) => {
+        if (!near) { o.userData._liteLayers = o.layers.mask; o.layers.mask = 0; }
+        else if (o.userData._liteLayers !== undefined) { o.layers.mask = o.userData._liteLayers; delete o.userData._liteLayers; }
+      });
     }
   }
 
@@ -342,6 +378,7 @@ export class App {
     const gl = this.renderer.renderer;
     this.timer.update();
     const realDt = this.timer.getDelta();
+    if (this.quality.dynamicResolution && !this.isShot) this.updateDynamicResolution(realDt);
     let dt = this.isShot ? 1 / 60 : Math.min(realDt, 1 / 20);
     if (this.paused) dt = 0;
     const t = this.time;
@@ -370,6 +407,12 @@ export class App {
     // Earthshine: blue-white light from below, proportional to the sunlit fraction of the Earth under us
     this.hemiLight.intensity = 0.55 * o.earthLit;
     this.hemiLight.groundColor.setRGB(0.42, 0.56, 0.78).multiplyScalar(0.7 + 0.3 * o.earthLit);
+    // 'lite' has no floodlights or helmet lamp: stand in for them with ambient light in the eclipse
+    if (this.quality.lite) {
+      const night = 1 - o.sunVisible;
+      this.ambientLight.color.setRGB(0.10 + 0.45 * night, 0.13 + 0.47 * night, 0.19 + 0.47 * night);
+      this.ambientLight.intensity = 0.22 + 0.6 * night;
+    }
 
     for (const m of this.modules) { try { m.update?.(t.dt, this.ctx); } catch (e) { if (!m._errored) { console.error(`update failed in ${m.constructor.name}`, e); m._errored = true; } } }
     if (this.mode === 'observer') this.orbitControls.update();
