@@ -220,15 +220,15 @@ export class Rcs {
     } else if (this.accR > 0) this.accR = Math.max(0, this.accR - h * 4);
     // --- main engine plume ---
     if (throttle > 0.02 && ship.mainNozzles.length) {
-      this.accM += h * 45 * ik * throttle;
-      const n = Math.min(60, Math.floor(this.accM));
+      this.accM += h * 120 * ik * throttle;
+      const n = Math.min(90, Math.floor(this.accM));
       if (n > 0) {
         this.accM -= n;
         const per = Math.max(1, Math.floor(n / ship.mainNozzles.length));
         for (const nz of ship.mainNozzles) {
           _c.copy(nz.position).applyQuaternion(g.quaternion).add(g.position);
           _d.copy(nz.direction).applyQuaternion(g.quaternion);
-          P.emitCone({ position: _c, direction: _d, speed: 85 * look.scale * ik, spread: 0.11, count: per, life: 0.9 * k, size0: 0.3 * look.scale, size1: 2.6 * look.scale, color: PLUME_COLOR, alpha: 0.85, baseVelocity: _e, speedJitter: 0.35, lifeJitter: 0.3 });
+          P.emitCone({ position: _c, direction: _d, speed: 85 * look.scale * ik, spread: 0.1, count: per, life: 0.9 * k, size0: 0.35 * look.scale, size1: 3.4 * look.scale, color: PLUME_COLOR, alpha: 0.8, baseVelocity: _e, speedJitter: 0.35, lifeJitter: 0.3 });
           P.emitCone({ position: _c, direction: _d, speed: 30 * look.scale * ik, spread: 0.08, count: Math.max(1, per >> 1), life: 0.28 * k, size0: 0.9 * look.scale, size1: 1.6 * look.scale, color: PLUME_CORE, alpha: 1.0, baseVelocity: _e, speedJitter: 0.3, lifeJitter: 0.3 });
         }
       }

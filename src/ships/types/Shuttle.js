@@ -45,7 +45,7 @@ export function buildShuttle(ctx, { name = 'Стриж', number = 1 } = {}) {
   const sill = AX + 2.2 * FLAT * Math.cos(bayA);   // bay sill height
   addF('hull', cyl(V(0, (sill - 1.0 + -0.7) / 2, 0), Y_AXIS, 1.35, -0.7 - (sill - 1.0), 40));
   addF('metalDark', torus(V(0, sill - 0.3, 0), Y_AXIS, 1.38, 0.05, 6, 40), false);
-  addF('mliSilver', box(V(0, sill - 1.3, 0), 3.2, 0.6, 3.2));
+  addF('hullGray', box(V(0, sill - 1.3, 0), 3.2, 0.6, 3.2));
   for (let k = 0; k < 4; k++) {
     const a = Math.PI / 4 + (k * Math.PI) / 2;
     const p0 = V(Math.cos(a) * 1.5, sill - 1.0, Math.sin(a) * 1.5), p1 = V(Math.cos(a) * 1.3, -0.75, Math.sin(a) * 1.3);

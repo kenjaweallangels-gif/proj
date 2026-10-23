@@ -58,7 +58,7 @@ export class Traffic {
     this.corridors = new Map();
     this.flying = [];          // ships in motion (incl. drones)
     this.t = 0;                // controller time (s since start)
-    this.nextUndock = 35 + rng() * 25;
+    this.nextUndock = 65 + rng() * 25;   // first departure shortly after the 60 s minimum stay
     this.nextArrival = 1e9;
     this.targetDocked = Math.max(1, Math.round(this.ports.length * 0.6));
     this.rcs = new Rcs(ctx.particles);
