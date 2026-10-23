@@ -194,16 +194,21 @@ export class SuitModel {
     const S = this.mats;
     // visor frame: a ring just outside the view cone, visible in the corners; neck ring lower down
     // ring angle ~54 deg from the view axis: only the extreme corners of a 16:9 frame catch it
-    const frame = new THREE.Mesh(torus(0.19, 0.014, 8, 48).translate(0, 0, -0.138), S.metal);
-    const seal = new THREE.Mesh(torus(0.178, 0.007, 6, 48).translate(0, 0, -0.133), S.rubber);
+    // The helmet interior is centimetres from the camera: any scene light (helmet lamp, hatch
+    // floodlights) would hit it point-blank and blow it out with bloom, so it uses unlit dark
+    // materials — from inside, the visor frame is a silhouette anyway.
+    const frameMat = new THREE.MeshBasicMaterial({ color: 0x1a1c20 });
+    const sealMat = new THREE.MeshBasicMaterial({ color: 0x0c0d0f });
+    const shellMat = new THREE.MeshBasicMaterial({ color: 0x2b2d31 });
+    const frame = new THREE.Mesh(torus(0.19, 0.014, 8, 48).translate(0, 0, -0.138), frameMat);
+    const seal = new THREE.Mesh(torus(0.178, 0.007, 6, 48).translate(0, 0, -0.133), sealMat);
     const neck = new THREE.Mesh(mergeGeometries([
       torus(0.2, 0.03, 8, 40).rotateX(Math.PI / 2).translate(0, -0.3, 0.02),
       new THREE.CylinderGeometry(0.2, 0.21, 0.04, 40, 1, true).translate(0, -0.33, 0.02),
-    ], false), S.metal);
-    const neckSeal = new THREE.Mesh(torus(0.2, 0.012, 6, 40).rotateX(Math.PI / 2).translate(0, -0.27, 0.02), S.rubber);
-    // helmet shell bits at the corners (white hard upper visor housing)
-    const shell = new THREE.Mesh(new THREE.SphereGeometry(0.2, 32, 16, 0, Math.PI * 2, 0, 0.9).translate(0, 0.02, 0.0), S.white);
-    shell.material = S.white;
+    ], false), frameMat);
+    const neckSeal = new THREE.Mesh(torus(0.2, 0.012, 6, 40).rotateX(Math.PI / 2).translate(0, -0.27, 0.02), sealMat);
+    // helmet shell bits at the corners (hard upper visor housing)
+    const shell = new THREE.Mesh(new THREE.SphereGeometry(0.2, 32, 16, 0, Math.PI * 2, 0, 0.9).translate(0, 0.02, 0.0), shellMat);
     this.helmet = new THREE.Group(); this.helmet.add(frame, seal, neck, neckSeal, shell);
     this.helmet.name = 'helmet';
     this.group.add(this.helmet);

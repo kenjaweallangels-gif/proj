@@ -62,7 +62,7 @@ export class Earth {
         uSunDir: this.uSunDir, uSunDirObj: this.uSunDirObj, uSunColor: this.uSunColor, uEarthCenter: this.uEarthCenter,
         uSunIntensity: this.uSunIntensity, uCloudAngle: this.uCloudAngle, uMultiScatter: this.uMultiScatter,
         uMoonDir: this.uMoonDir, uMoonLight: this.uMoonLight,
-        uNightIntensity: { value: 2.6 }, uGlint: { value: 3.0 }, uNormalStrength: { value: 0.5 },
+        uNightIntensity: { value: 2.0 }, uGlint: { value: 3.0 }, uNormalStrength: { value: 0.5 },
       },
       vertexShader: SPHERE_VERTEX, fragmentShader: GROUND_FRAGMENT, toneMapped: false,
     });
