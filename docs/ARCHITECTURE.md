@@ -173,3 +173,9 @@ Audio: `audio.play(name, opts)`, `audio.setParam('volume'|'fan'|'radio'|'crawl',
 `hud.showLoading(text)`, `hud.hideLoading()`, `hud.setProgress(0..1)`, `hud.showMenu({ pause })`, `hud.hideMenu()`,
 `hud.notify(text, { kind: 'radio'|'info'|'warn'|'alert' })`, `hud.toggleHelp()`. URL param `?menu=1` shows the start
 menu even in shot mode. `events.emit('view', name)` fires on every `app.setView`.
+
+## Ships (as implemented)
+
+States: 'docked' | 'undock' | 'depart' | 'arrive' (inbound) | 'approach' | 'dock' | 'loiter' (drone) | 'idle' (recycled, hidden).
+noseOffset = 0: a docked ship's position equals `port.position`. `ships.getLog()` returns the last 20 Russian event lines;
+`events.emit('ship', {type, ship, port})` fires on undock/dock/depart/arrive. Observer view `ships` frames the docked traffic.

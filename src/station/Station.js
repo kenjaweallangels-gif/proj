@@ -62,6 +62,7 @@ export class Station extends THREE.Group {
 
     const CY = LAYOUT.clusterY, AX = LAYOUT.airlock.x, HZ = this.airlockPart.hatchZ, HX = LAYOUT.hubX, RX = LAYOUT.ringX;
     this.viewpoints = {
+      ships: { position: [50, 2, 24], target: [40, -12, 9] },
       docking: { position: [HX + 26, CY - 9, 24], target: [HX + 2, CY, 0] },
       ring: { position: [RX + 46, 32, 78], target: [RX, 0, 0] },
       airlockExt: { position: [AX + 3.2, CY + 1.8, HZ + 6.5], target: [AX, CY, HZ] },

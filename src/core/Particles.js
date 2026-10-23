@@ -61,6 +61,8 @@ export class ParticleSystem {
     scene.add(this.points);
     this._tmp = new THREE.Vector3();
     this._tmp2 = new THREE.Vector3();
+    this._tmp3 = new THREE.Vector3();
+    this._tmp4 = new THREE.Vector3();
   }
 
   static defaultTexture() {
@@ -90,8 +92,8 @@ export class ParticleSystem {
     // orthonormal basis
     const t1 = this._tmp2.set(0, 1, 0); if (Math.abs(d.y) > 0.9) t1.set(1, 0, 0);
     t1.cross(d).normalize();
-    const t2 = new THREE.Vector3().crossVectors(d, t1);
-    const v = new THREE.Vector3();
+    const t2 = this._tmp3.crossVectors(d, t1);
+    const v = this._tmp4;
     for (let k = 0; k < count; k++) {
       const a = Math.random() * Math.PI * 2, r = Math.tan(spread) * Math.sqrt(Math.random());
       v.copy(d).addScaledVector(t1, Math.cos(a) * r).addScaledVector(t2, Math.sin(a) * r).normalize();
