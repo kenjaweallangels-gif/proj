@@ -55,16 +55,21 @@ export class Textures {
     return this._cached(`hull:${size}:${cells}:${base}:${seam}:${grime}:${rivets}:${seed}:${aged}`, () => {
       const [c, g] = this._canvas(size, size);
       g.fillStyle = base; g.fillRect(0, 0, size, size);
-      // grime / weathering noise
-      const img = g.getImageData(0, 0, size, size), d = img.data;
-      for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-        const n = Textures.fbm(x / size * 8, y / size * 8, 5, seed);
-        const n2 = Textures.fbm(x / size * 40, y / size * 40, 3, seed + 7);
+      // grime / weathering noise: computed at low resolution and upscaled (bilinear) — the
+      // per-pixel fbm at full resolution dominated startup time (~0.6 s per 1024² texture).
+      const ns = 256;
+      const [nc, ng] = this._canvas(ns, ns);
+      const img = ng.createImageData(ns, ns), d = img.data;
+      for (let y = 0; y < ns; y++) for (let x = 0; x < ns; x++) {
+        const n = Textures.fbm(x / ns * 8, y / ns * 8, 4, seed);
+        const n2 = Textures.fbm(x / ns * 40, y / ns * 40, 2, seed + 7);
         const k = 1 - grime * (n * 0.7 + n2 * 0.3) - aged * 0.25 * Math.pow(n2, 2);
-        const i = (y * size + x) * 4;
-        d[i] *= k; d[i + 1] *= k; d[i + 2] *= k * (1 - aged * 0.05);
+        const i = (y * ns + x) * 4;
+        d[i] = 255 * k; d[i + 1] = 255 * k; d[i + 2] = 255 * k * (1 - aged * 0.05); d[i + 3] = 255;
       }
-      g.putImageData(img, 0, 0);
+      ng.putImageData(img, 0, 0);
+      g.save(); g.globalCompositeOperation = 'multiply'; g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+      g.drawImage(nc, 0, 0, size, size); g.restore();
       // panel seams
       const cs = size / cells;
       g.strokeStyle = seam; g.lineWidth = Math.max(1, size / 512);
@@ -97,7 +102,7 @@ export class Textures {
       for (let i = 0; i < rd.length; i += 4) { const l = rd[i] / 255; const r = 255 * (0.75 - 0.3 * l + 0.2 * (1 - l)); rd[i] = rd[i + 1] = rd[i + 2] = Math.max(0, Math.min(255, r)); }
       rg.putImageData(rimg, 0, 0);
       const roughnessMap = this._tex(rc, { color: false });
-      const normalMap = this.seamNormal({ size: size / 2, cells, depth: 1.0, seed });
+      const normalMap = this.seamNormal({ size: Math.min(256, size / 2), cells, depth: 1.0, seed });
       return { map, roughnessMap, normalMap };
     });
   }
