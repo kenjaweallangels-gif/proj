@@ -165,8 +165,9 @@ const PLUME_CORE = new THREE.Color(0xfff2dc);
  * acceleration, so every puff corresponds to a real velocity / rate change.
  *
  * `k` is the time-scale look factor (1 at real time): particle speeds are divided and lifetimes multiplied by
- * it (same trajectories, traversed k times slower in sim time) and the emission rate divided, so puffs remain
- * visible for several frames at ×60 without flooding the particle pool.
+ * it (same trajectories, traversed k times slower in sim time) and the emission rate divided by sqrt(k), so short
+ * bursts (push-off, attitude puffs) keep their density and stay visible for several frames at ×60 while a
+ * sustained plume still fits the particle pool.
  */
 export class Rcs {
   constructor(particles) {
@@ -187,12 +188,12 @@ export class Rcs {
     _q.copy(g.quaternion).invert();
     const aMag = accW.length(), alMag = alphaW.length();
     const nozzles = ship.nozzles;
-    const ik = 1 / k;
+    const ik = 1 / k, ir = 1 / Math.sqrt(k);          // speeds / k, lifetimes x k, emission rate / sqrt(k)
     _e.copy(ship.velocity).multiplyScalar(ik);        // base velocity in "slow particle" time
     // --- translation ---
     if (aMag > dyn.rcs * 0.08 && !(throttle > 0)) {
       _a.copy(accW).applyQuaternion(_q).normalize();          // demanded thrust, local
-      acc.t += h * 28 * ik * Math.min(1, aMag / dyn.rcs) * look.scale;
+      acc.t += h * 28 * ir * Math.min(1, aMag / dyn.rcs) * look.scale;
       const n = Math.min(10, Math.floor(acc.t));
       if (n > 0) {
         acc.t -= n;
@@ -201,11 +202,11 @@ export class Rcs {
           if (-nz.direction.dot(_a) > 0.72) this._puff(nz, g, n, look, k);
         }
       }
-    } else if (acc.t > 0) acc.t = Math.max(0, acc.t - h * 4 * ik);
+    } else if (acc.t > 0) acc.t = Math.max(0, acc.t - h * 4 * ir);
     // --- rotation ---
     if (alMag > dyn.alpha * 0.12) {
       _b.copy(alphaW).applyQuaternion(_q).normalize();         // demanded torque, local
-      acc.r += h * 18 * ik * Math.min(1, alMag / dyn.alpha) * look.scale;
+      acc.r += h * 18 * ir * Math.min(1, alMag / dyn.alpha) * look.scale;
       const n = Math.min(8, Math.floor(acc.r));
       if (n > 0) {
         acc.r -= n;
@@ -217,10 +218,10 @@ export class Rcs {
           if (_d.normalize().dot(_b) > 0.6) this._puff(nz, g, n, look, k);
         }
       }
-    } else if (acc.r > 0) acc.r = Math.max(0, acc.r - h * 4 * ik);
+    } else if (acc.r > 0) acc.r = Math.max(0, acc.r - h * 4 * ir);
     // --- main engine plume ---
     if (throttle > 0.02 && ship.mainNozzles.length) {
-      acc.m += h * 120 * ik * throttle;
+      acc.m += h * 120 * ir * throttle;
       const n = Math.min(90, Math.floor(acc.m));
       if (n > 0) {
         acc.m -= n;
@@ -238,6 +239,6 @@ export class Rcs {
   _puff(nz, g, count, look, k) {
     _c.copy(nz.position).applyQuaternion(g.quaternion).add(g.position);
     _d.copy(nz.direction).applyQuaternion(g.quaternion);
-    this.particles.emitCone({ position: _c, direction: _d, speed: look.speed / k, spread: 0.24, count, life: 0.75 * k, size0: 0.05 * look.scale, size1: look.size, color: RCS_COLOR, alpha: 0.55, baseVelocity: _e, speedJitter: 0.4, lifeJitter: 0.4 });
+    this.particles.emitCone({ position: _c, direction: _d, speed: look.speed / k, spread: 0.24, count, life: 0.75 * k, size0: 0.08 * look.scale, size1: look.size * 1.3, color: RCS_COLOR, alpha: 0.7, baseVelocity: _e, speedJitter: 0.4, lifeJitter: 0.4 });
   }
 }
