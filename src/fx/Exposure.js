@@ -61,7 +61,7 @@ export class AutoExposure {
     /** Scene radiance guesses (HDR units before exposure; a white Lambert surface in full sun is ~1.0-1.45). */
     this.earthRadiance = 0.85;      // average sunlit Earth (ocean + land + clouds)
     this.earthNightRadiance = 0.02; // night side (city lights, airglow)
-    this.stationRadiance = 0.35;    // average sunlit station (white hull, MLI, shadowed parts)
+    this.stationRadiance = 0.30;    // average sunlit station (white hull, MLI, shadowed parts)
     this.stationNightRadiance = 0.03;
     this.sunWeight = 1.5;           // extra brightness when the Sun disc is in the frame
     this.airlockBrightness = 0.5;   // interior lighting (keeps the exposure <= ~0.8 inside)
@@ -158,7 +158,7 @@ export class AutoExposure {
       centre = 1 - smoothstep(0.12, 0.55, this.sunNdc.length());
     }
     this.sunInView = inView * sv;
-    const sunLum = this.sunInView * this.sunWeight * (0.4 + 0.6 * sunUnoccluded);
+    const sunLum = this.sunInView * this.sunWeight * (0.15 + 0.85 * sunUnoccluded);
     this.glare = this.sunInView * centre * sunUnoccluded;
 
     // ---- combine ----
@@ -185,7 +185,7 @@ export class AutoExposure {
 
     // Sky (stars / Milky Way) exposure: nearly invisible when the camera is stopped down for daylight, full at night.
     const nightness = Math.min(1, Math.max(0, (this.value - this.min) / (this.max - this.min)));
-    this.skyExposure = 0.08 + 0.92 * Math.pow(nightness, 1.6);
+    this.skyExposure = 0.05 + 0.95 * Math.pow(nightness, 1.6);
     return this.value;
   }
 }

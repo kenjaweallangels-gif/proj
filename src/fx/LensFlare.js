@@ -138,11 +138,11 @@ varying vec2 vUv;
 void main() {
   float x = abs(vUv.x);
   float y = vUv.y;
-  float wide = exp(-x * 5.0) * exp(-y * y * 6.0);
-  float core = exp(-x * 9.0) * exp(-y * y * 70.0);
+  float wide = exp(-x * 4.0) * exp(-y * y * 4.0);
+  float core = exp(-x * 16.0) * exp(-y * y * 90.0);
   float ripple = 0.88 + 0.12 * cos(x * 55.0 + 0.7);
   vec3 blue = vec3(0.45, 0.68, 1.0);
-  vec3 col = blue * wide * 0.5 * ripple + mix(vec3(1.0), blue, smoothstep(0.0, 0.5, x)) * core * 0.9;
+  vec3 col = blue * wide * 0.45 * ripple + mix(vec3(1.0), blue, smoothstep(0.0, 0.3, x)) * core * 0.6;
   gl_FragColor = vec4(col * uColor * uIntensity, 1.0);
 }`;
 
@@ -174,14 +174,14 @@ void main() {
 
 /** Ghost chain: `pos` = multiple of the Sun's NDC position (negative = across the centre), `size` in half-height units. */
 const GHOSTS = [
-  { pos: 0.62, size: 0.045, ring: 0, sides: 6, color: [1.0, 0.85, 0.65], intensity: 0.22, chroma: 0.02 },
-  { pos: 0.38, size: 0.11, ring: 1, sides: 0, color: [0.55, 0.9, 0.75], intensity: 0.09, chroma: 0.05 },
-  { pos: 0.12, size: 0.07, ring: 0, sides: 6, color: [1.0, 0.7, 0.55], intensity: 0.12, chroma: 0.03 },
-  { pos: -0.22, size: 0.16, ring: 1, sides: 0, color: [0.45, 0.65, 1.0], intensity: 0.07, chroma: 0.06 },
-  { pos: -0.48, size: 0.055, ring: 0, sides: 6, color: [0.9, 0.95, 1.0], intensity: 0.16, chroma: 0.02 },
-  { pos: -0.78, size: 0.26, ring: 1, sides: 0, color: [0.55, 0.85, 1.0], intensity: 0.045, chroma: 0.07 },
-  { pos: -1.15, size: 0.09, ring: 0, sides: 8, color: [1.0, 0.6, 0.75], intensity: 0.1, chroma: 0.03 },
-  { pos: -1.6, size: 0.14, ring: 0, sides: 6, color: [0.6, 1.0, 0.7], intensity: 0.05, chroma: 0.04 },
+  { pos: 0.62, size: 0.03, ring: 0, sides: 6, color: [1.0, 0.85, 0.65], intensity: 0.14, chroma: 0.02 },
+  { pos: 0.38, size: 0.07, ring: 1, sides: 0, color: [0.55, 0.9, 0.75], intensity: 0.05, chroma: 0.05 },
+  { pos: 0.12, size: 0.045, ring: 0, sides: 6, color: [1.0, 0.7, 0.55], intensity: 0.07, chroma: 0.03 },
+  { pos: -0.22, size: 0.1, ring: 1, sides: 0, color: [0.45, 0.65, 1.0], intensity: 0.035, chroma: 0.06 },
+  { pos: -0.48, size: 0.035, ring: 0, sides: 6, color: [0.9, 0.95, 1.0], intensity: 0.09, chroma: 0.02 },
+  { pos: -0.78, size: 0.15, ring: 1, sides: 0, color: [0.55, 0.85, 1.0], intensity: 0.022, chroma: 0.07 },
+  { pos: -1.15, size: 0.055, ring: 0, sides: 8, color: [1.0, 0.6, 0.75], intensity: 0.05, chroma: 0.03 },
+  { pos: -1.6, size: 0.08, ring: 0, sides: 6, color: [0.6, 1.0, 0.7], intensity: 0.025, chroma: 0.04 },
 ];
 
 const BASE_MATERIAL = { vertexShader: ELEMENT_VERT, transparent: true, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, toneMapped: false };
@@ -311,12 +311,12 @@ export class LensFlarePass extends Pass {
 
     this.glow.position.set(sx, sy, 0);
     this.glow.scale.set(this.glowRadius / a, this.glowRadius, 1);
-    this.glow.material.uniforms.uIntensity.value = 0.35 * vis;
+    this.glow.material.uniforms.uIntensity.value = 0.45 * vis;
     this.glow.material.uniforms.uColor.value.copy(c);
 
     this.halo.position.set(sx, sy, 0);
     this.halo.scale.set(this.haloRadius / a, this.haloRadius, 1);
-    this.halo.material.uniforms.uIntensity.value = 0.11 * vis;
+    this.halo.material.uniforms.uIntensity.value = 0.07 * vis;
     this.halo.material.uniforms.uColor.value.copy(c);
 
     for (const g of this.ghosts) {

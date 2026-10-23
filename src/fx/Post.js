@@ -60,8 +60,8 @@ export const FinalGradeShader = {
       }
       vec2 cell = floor(q * 50.0);
       vec2 f = fract(q * 50.0) - hash2(cell);
-      float sparse = step(0.93, hash(cell + 3.1));
-      s += sparse * exp(-dot(f, f) * 60.0) * 0.8;
+      float sparse = step(0.985, hash(cell + 3.1));
+      s += sparse * exp(-dot(f, f) * 60.0) * 0.5;
       return s;
     }
     void main() {
