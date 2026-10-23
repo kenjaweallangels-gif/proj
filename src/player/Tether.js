@@ -24,7 +24,7 @@ const Y = new THREE.Vector3(0, 1, 0);
 export class Tether {
   constructor(ctx, parent) {
     const geo = new THREE.CylinderGeometry(1, 1, 1, 7, 1, false);
-    const mat = new THREE.MeshStandardMaterial({ color: 0xe6e3da, roughness: 0.75, metalness: 0.05 });
+    const mat = new THREE.MeshStandardMaterial({ color: 0xc9c6bb, roughness: 0.8, metalness: 0.05 });
     mat.name = 'tetherRope';
     this.mesh = new THREE.InstancedMesh(geo, mat, SEGMENTS);
     this.mesh.frustumCulled = false;
@@ -49,23 +49,28 @@ export class Tether {
   /**
    * anchor, hip: world points; length: reel length; dt for the wobble.
    */
-  update(anchor, hip, length, dt) {
+  update(anchor, hip, length, dt, away = null) {
     this.time += dt;
     _a.copy(anchor); _b.copy(hip);
     _dir.subVectors(_b, _a);
     const d = _dir.length();
     if (d < 1e-4) { _dir.set(0, 0, 1); } else _dir.multiplyScalar(1 / d);
     // slack bows the rope sideways; direction wobbles slowly so it looks like it floats
+    // The reel is spring-loaded (a retractable EVA tether): the rope never floats in wide loops,
+    // only a modest bow remains that grows with slack and never comes close to the helmet.
     const slack = Math.max(0, length - d);
-    const bow = Math.min(slack * 0.42, 7, d * 0.45);
+    const bow = Math.min(0.35 * Math.min(slack, 4), 0.12 * d);
     const t = this.time;
     _side.set(Math.sin(t * 0.21) * 0.6 + 0.4, Math.cos(t * 0.17) * 0.5 + 0.9, Math.sin(t * 0.13 + 1.7) * 0.6);
+    // keep the bow out of the astronaut's face: bias it away from the view direction (the rope
+    // leaves the hip backwards/downwards instead of rising in front of the visor and the lamp)
+    if (away) _side.addScaledVector(away, -2.2);
     _side.addScaledVector(_dir, -_side.dot(_dir));
     if (_side.lengthSq() < 1e-6) _side.set(0, 1, 0).addScaledVector(_dir, -_dir.y);
     _side.normalize();
     _c.copy(_a).addScaledVector(_dir, d * 0.5).addScaledVector(_side, bow);
     // small secondary ripple travelling along the rope
-    const ripple = Math.min(slack, 3) * 0.06;
+    const ripple = Math.min(slack, 3) * 0.03;
     for (let i = 0; i < SEGMENTS; i++) {
       const u0 = i / SEGMENTS, u1 = (i + 1) / SEGMENTS;
       quadratic(_a, _c, _b, u0, _p0);

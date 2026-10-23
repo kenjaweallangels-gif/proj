@@ -26,6 +26,7 @@ const REPRESS_TIME = 6;
 const O2_DURATION = 6 * 3600;
 const POWER_DURATION = 8 * 3600;
 const HIP_OFFSET = new THREE.Vector3(0.16, -0.72, 0.12);
+const _fwd = new THREE.Vector3();
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -446,7 +447,8 @@ export class Player {
     this.tether.setVisible(show);
     if (!show) return;
     this.hip.copy(HIP_OFFSET).applyQuaternion(this.quaternion).add(this.position);
-    this.tether.update(this.tetherAnchor, this.hip, st.tetherLength, h);
+    _fwd.set(0, 0, -1).applyQuaternion(this.quaternion);
+    this.tether.update(this.tetherAnchor, this.hip, st.tetherLength, h, _fwd);
   }
 
   // ---------------------------------------------------------------- airlock sequence
