@@ -304,7 +304,7 @@ export class Traffic {
     const h = dt / n;
     for (let i = this.flying.length - 1; i >= 0; i--) {
       const ship = this.flying[i];
-      for (let s = 0; s < n; s++) this._step(ship, h, k);
+      for (let s = 0; s < n && ship.flight; s++) this._step(ship, h, k);   // flight may end (docked / recycled) mid-frame
       this.mod.updateColliders(ship);
       if ((ship.state === 'docked' && !ship.flight) || ship.state === 'idle') this.flying.splice(i, 1);
     }
