@@ -10,7 +10,7 @@ export class Renderer {
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = 1.0;
-    r.shadowMap.enabled = true;
+    r.shadowMap.enabled = quality.shadows !== false;
     r.shadowMap.type = quality.softShadows ? THREE.VSMShadowMap : THREE.PCFShadowMap;
     r.info.autoReset = false;
     r.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.pixelRatio));

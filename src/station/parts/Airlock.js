@@ -107,6 +107,7 @@ export class AirlockModule {
 
     // ---------- outer hatch (hinged at the top, swings outward) ----------
     this.pivot = new THREE.Group();
+    this.pivot.userData.animated = true;   // moves only on open()/close(): keep out of static batching
     this.pivot.position.set(AX, CY + 0.8, zEnd + 0.08);
     station.add(this.pivot);
     const bh = new Builder(m);

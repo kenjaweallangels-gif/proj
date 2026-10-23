@@ -111,7 +111,7 @@ export class PostStack {
     this.renderer = renderer;
     this.quality = quality;
     this.camera = camera;
-    const low = quality.preset === 'low';
+    const low = quality.preset === 'low' || !!quality.lite;
 
     /** Runtime settings. */
     this.grade = {
@@ -137,6 +137,41 @@ export class PostStack {
 
     const size = renderer.getSize(new THREE.Vector2());
     const pr = renderer.getPixelRatio();
+    this.scenes = { farScene, farCamera, nearScene, camera };
+    // CPU rasteriser ('lite'): an HDR target plus a full-screen pass more than halves the frame rate,
+    // so draw both scenes straight into the canvas; tone mapping and sRGB run inside the materials.
+    this.direct = !!quality.lite;
+    if (this.direct) {
+      for (const scene of [farScene, nearScene]) scene.traverse((o) => { for (const m of [].concat(o.material || [])) patchDirectOutput(m); });
+      // the far scene (Earth, sky) is smooth and fill-rate bound: render it at a lower resolution into an
+      // HDR target, then stretch it to the canvas with tone mapping; the station is drawn sharp on top
+      this.farScale = quality.farScale ?? 1;
+      if (this.farScale < 1) {
+        this.farRT = new THREE.WebGLRenderTarget(2, 2, { type: THREE.HalfFloatType, depthBuffer: true, stencilBuffer: false });
+        this.farRT.texture.minFilter = this.farRT.texture.magFilter = THREE.LinearFilter;
+        this.farRT.texture.generateMipmaps = false;
+        const blitMat = new THREE.ShaderMaterial({
+          uniforms: { tFar: { value: this.farRT.texture } },
+          vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+          fragmentShader: 'uniform sampler2D tFar; varying vec2 vUv; void main() { gl_FragColor = vec4(texture2D(tFar, vUv).rgb, 1.0); }',
+          depthTest: false, depthWrite: false,
+        });
+        patchDirectOutput(blitMat);
+        this.blit = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blitMat);
+        this.blit.frustumCulled = false;
+        this.blitScene = new THREE.Scene(); this.blitScene.add(this.blit);
+        this.blitCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        this._sizeFar(size.x, size.y);
+      }
+      this.flarePass = new LensFlarePass();
+      this.flarePass.setSize(size.x, size.y);   // the exposure estimate uses its Sun-occlusion test
+      this.flare = this.flarePass;
+      this.exposure = new AutoExposure({ min: this.grade.exposureMin, max: this.grade.exposureMax });
+      this.finalPass = { uniforms: Object.fromEntries(Object.keys(FinalGradeShader.uniforms).map((k) => [k, { value: FinalGradeShader.uniforms[k].value?.clone ? FinalGradeShader.uniforms[k].value.clone() : FinalGradeShader.uniforms[k].value }])) };
+      this.bloomPass = { enabled: false };
+      this._time = 0;
+      return;
+    }
     const rt = new THREE.WebGLRenderTarget(Math.max(1, Math.round(size.x * pr)), Math.max(1, Math.round(size.y * pr)), {
       type: THREE.HalfFloatType, samples: quality.msaa || 0, depthBuffer: true, stencilBuffer: false,
     });
@@ -167,17 +202,28 @@ export class PostStack {
 
     this.composer.addPass(this.farPass);
     this.composer.addPass(this.nearPass);
-    this.composer.addPass(this.bloomPass);
-    this.composer.addPass(this.flarePass);
-    this.composer.addPass(this.finalPass);
-    this.composer.addPass(this.outputPass);
-    this.composer.addPass(this.smaaPass);
+    if (quality.lite) {
+      // CPU rasteriser: only tone mapping + sRGB (exposure, sky exposure and occlusion still run in update())
+      this.composer.addPass(this.outputPass);
+    } else {
+      this.composer.addPass(this.bloomPass);
+      this.composer.addPass(this.flarePass);
+      this.composer.addPass(this.finalPass);
+      this.composer.addPass(this.outputPass);
+      this.composer.addPass(this.smaaPass);
+    }
 
     this._time = 0;
     this.setSize(size.x, size.y);
   }
 
+  _sizeFar(w, h) {
+    const pr = this.renderer.getPixelRatio();
+    this.farRT.setSize(Math.max(2, Math.round(w * pr * this.farScale)), Math.max(2, Math.round(h * pr * this.farScale)));
+  }
+
   setSize(w, h) {
+    if (this.direct) { if (this.farRT) this._sizeFar(w, h); this.flarePass.setSize(w, h); return; }
     const pr = this.renderer.getPixelRatio();
     this.composer.setSize(w, h);            // sizes the HDR targets and every pass at w*pr x h*pr
     this.flarePass.setSize(w, h);
@@ -219,7 +265,7 @@ export class PostStack {
     const ex = this.exposure;
     ex.update(dt, ctx, unoccluded);
     let E = g.autoExposure ? ex.value * g.exposureBias : g.exposure;
-    E = Math.max(0.05, E);
+    E = Number.isFinite(E) ? Math.max(0.05, E) : 1.0;
     renderer.toneMappingExposure = E;
 
     // 2. stars / Milky Way: nearly invisible in daylight exposures, full at night
@@ -240,10 +286,40 @@ export class PostStack {
     u.uSunColor.value.copy(ctx.orbit.sunColor || u.uSunColor.value);
   }
 
-  render() { this.composer.render(); }
+  render() {
+    if (!this.direct) { this.composer.render(); return; }
+    const r = this.renderer, sc = this.scenes;
+    r.autoClear = false;
+    if (this.farRT) {
+      r.setRenderTarget(this.farRT); r.clear(); r.render(sc.farScene, sc.farCamera);
+      r.setRenderTarget(null); r.clear(); r.render(this.blitScene, this.blitCamera);
+    } else {
+      r.setRenderTarget(null); r.clear(); r.render(sc.farScene, sc.farCamera);
+    }
+    r.clearDepth();
+    r.render(sc.nearScene, sc.camera);
+    r.autoClear = true;
+  }
 
   dispose() {
+    if (this.direct) return;
     this.composer.dispose?.();
     this.flarePass.dispose();
   }
+}
+
+/**
+ * Make a custom ShaderMaterial write display-ready colour when it renders straight to the canvas:
+ * append three's tone-mapping and colour-space chunks to the end of main(). (Rendering into a render
+ * target, three disables both, so this is harmless elsewhere.) Built-in materials already do this.
+ */
+export function patchDirectOutput(m) {
+  if (!m || !m.isShaderMaterial || m.userData.directOutput) return;
+  const src = m.fragmentShader;
+  if (/tonemapping_fragment|colorspace_fragment/.test(src)) return;
+  const end = src.lastIndexOf('}');
+  if (end < 0) return;
+  m.fragmentShader = src.slice(0, end) + '\n  #include <tonemapping_fragment>\n  #include <colorspace_fragment>\n' + src.slice(end);
+  m.userData.directOutput = true;
+  m.needsUpdate = true;
 }

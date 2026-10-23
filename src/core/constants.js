@@ -28,5 +28,8 @@ export const QUALITY_PRESETS = {
   ultra:  { shadowMapSize: 4096, pixelRatio: 2.0, msaa: 4, bloom: true, anisotropy: 16, envMapSize: 256, envUpdateInterval: 1.0, particles: 6000, softShadows: true },
   high:   { shadowMapSize: 2048, pixelRatio: 1.5, msaa: 4, bloom: true, anisotropy: 8,  envMapSize: 256, envUpdateInterval: 2.0, particles: 4000, softShadows: true },
   medium: { shadowMapSize: 2048, pixelRatio: 1.0, msaa: 2, bloom: true, anisotropy: 4,  envMapSize: 128, envUpdateInterval: 4.0, particles: 2000, softShadows: false },
+  // software rendering (no GPU: SwiftShader / llvmpipe): sun + earthshine only, no shadows, no env map,
+  // Lambert materials, minimal post (tone mapping only), reduced internal resolution
+  lite:   { shadowMapSize: 512,  pixelRatio: 0.5,  msaa: 0, bloom: false, anisotropy: 1, envMapSize: 32,  envUpdateInterval: 1e9, particles: 600, softShadows: false, lite: true, shadows: false, detail: 0.2, farScale: 0.5 },
   low:    { shadowMapSize: 1024, pixelRatio: 1.0, msaa: 0, bloom: false, anisotropy: 2, envMapSize: 64,  envUpdateInterval: 8.0, particles: 800,  softShadows: false },
 };

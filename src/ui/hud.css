@@ -49,7 +49,9 @@
 
 /* ---------------------------------------------------------------- helmet */
 .helmet { position: absolute; inset: 0; }
-.visor { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 0.95; }
+.visor { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 0.95; will-change: transform; contain: strict; }
+/* text panels change several times a second: contain their layout/paint (no extra compositing layers) */
+.hp, .nt, .obs, .fps { contain: layout paint; }
 .hp-suit { left: var(--inset-x); top: var(--inset-y); width: 238px; }
 .hp-vitals { left: var(--inset-x); bottom: var(--inset-y); width: 238px; }
 .hp-orbit { right: var(--inset-x); top: var(--inset-y); width: 256px; }

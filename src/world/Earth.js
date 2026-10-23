@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { HorizonCull } from './HorizonCull.js';
 import { EARTH_RADIUS_KM } from '../core/constants.js';
 import { SPHERE_VERTEX, GROUND_FRAGMENT, CLOUD_FRAGMENT, SHELL_FRAGMENT } from './shaders/EarthShaders.js';
 import { QUAD_VERTEX, SUN_DISC_FRAGMENT, SUN_CORONA_FRAGMENT, MOON_VERTEX, MOON_FRAGMENT } from './shaders/SunMoonShaders.js';
@@ -20,11 +21,12 @@ const CLOUD_DRIFT_RATE = 3.0e-5;
 const MOON_LIGHT_MAX = 0.035;
 
 /** Ray-march sample counts per quality preset: [atmosphere shell, ground aerial perspective, clouds]. */
-const SAMPLES = { ultra: [24, 8, 6], high: [16, 6, 5], medium: [12, 5, 4], low: [8, 4, 3] };
+const SAMPLES = { ultra: [24, 8, 6], high: [16, 6, 5], medium: [12, 5, 4], low: [8, 4, 3], lite: [5, 2, 2] };
 
 const _q = new THREE.Quaternion();
 const _qInv = new THREE.Quaternion();
 const _v = new THREE.Vector3();
+const _camKm = new THREE.Vector3();
 const _x = new THREE.Vector3();
 const _y = new THREE.Vector3();
 const _z = new THREE.Vector3();
@@ -56,7 +58,7 @@ export class Earth {
     // --- Ground ---
     this.groundMaterial = new THREE.ShaderMaterial({
       name: 'EarthGround',
-      defines: { SAMPLES: nGround, MODE: 0 },
+      defines: ctx.quality.lite ? { SAMPLES: nGround, MODE: 0, INLINE_CLOUDS: 1 } : { SAMPLES: nGround, MODE: 0 },
       uniforms: {
         tDay: { value: null }, tNight: { value: null }, tClouds: { value: null }, tOcean: { value: null }, tNormal: { value: null },
         uSunDir: this.uSunDir, uSunDirObj: this.uSunDirObj, uSunColor: this.uSunColor, uEarthCenter: this.uEarthCenter,
@@ -71,6 +73,7 @@ export class Earth {
     this.earth.position.copy(o.earthCenterFar);
     this.earth.visible = false;                 // until textures are loaded (the placeholder is shown meanwhile)
     this.group.add(this.earth);
+    this.earthCull = new HorizonCull(this.earth, 256, 128);   // draw only the cap above the horizon
 
     // Placeholder while loading (plain dark-blue sphere, removed in load()).
     this.placeholder = new THREE.Mesh(new THREE.SphereGeometry(EARTH_RADIUS_KM, 64, 32), new THREE.MeshBasicMaterial({ color: 0x0a1a33 }));
@@ -95,11 +98,12 @@ export class Earth {
     this.clouds.renderOrder = 10;
     this.clouds.visible = false;
     this.group.add(this.clouds);
+    this.cloudCull = new HorizonCull(this.clouds, 192, 96);
 
     // --- Atmosphere shell (limb) ---
     this.shellMaterial = new THREE.ShaderMaterial({
       name: 'EarthAtmosphere',
-      defines: { SAMPLES: nShell, MODE: 1 },
+      defines: ctx.quality.lite ? { SAMPLES: nShell, MODE: 1, SKIP_GROUND: 1 } : { SAMPLES: nShell, MODE: 1 },
       uniforms: {
         uSunDir: this.uSunDir, uSunColor: this.uSunColor, uEarthCenter: this.uEarthCenter,
         uSunIntensity: this.uSunIntensity, uMultiScatter: this.uMultiScatter, uAirglow: { value: 0.022 }, uLimbBoost: this.uLimbBoost,
@@ -110,7 +114,8 @@ export class Earth {
       blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
       blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
     });
-    this.atmosphere = new THREE.Mesh(new THREE.SphereGeometry(EARTH_RADIUS_KM + ATMO_ALTITUDE_KM, 128, 64), this.shellMaterial);
+    const shellSeg = ctx.quality.lite ? [64, 32] : [128, 64];
+    this.atmosphere = new THREE.Mesh(new THREE.SphereGeometry(EARTH_RADIUS_KM + ATMO_ALTITUDE_KM, shellSeg[0], shellSeg[1]), this.shellMaterial);
     this.atmosphere.name = 'EarthAtmosphere';
     this.atmosphere.position.copy(o.earthCenterFar);
     this.atmosphere.renderOrder = 20;
@@ -185,7 +190,7 @@ export class Earth {
     this.cloudMaterial.uniforms.tClouds.value = clouds;
     this.moonMaterial.uniforms.tMoon.value = moon;
     this.textures = { day, night, clouds, ocean, normal, moon };
-    this.earth.visible = true; this.clouds.visible = true; this.moon.visible = true;
+    this.earth.visible = true; this.clouds.visible = !this.ctx.quality.lite; this.moon.visible = true;   // lite: clouds are inlined in the ground shader
     this.group.remove(this.placeholder);
     this.placeholder.geometry.dispose(); this.placeholder.material.dispose();
     this.placeholder = null;
@@ -212,6 +217,10 @@ export class Earth {
     this.uCloudAngle.value = this.cloudAngle;
     _q.setFromAxisAngle(Y_AXIS, this.cloudAngle);
     this.clouds.quaternion.copy(o.earthQuat).multiply(_q);
+    // horizon culling from the viewpoint (km; the near camera sits within metres of the station)
+    ctx.camera.getWorldPosition(_camKm).multiplyScalar(0.001);
+    this.earthCull.update(_camKm);
+    this.cloudCull.update(_camKm);
     // Sun quads face the camera (the camera sits within metres of the origin, so facing it is exact for all views)
     this.sun.position.copy(o.sunDir).multiplyScalar(SUN_DISTANCE_KM);
     this.corona.position.copy(this.sun.position);

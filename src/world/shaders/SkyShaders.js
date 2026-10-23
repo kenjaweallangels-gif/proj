@@ -63,9 +63,14 @@ void main() {
   float dec = asin(clamp(d.z, -1.0, 1.0));
   vec2 uv = vec2(ra / (2.0 * PI), (0.5 * PI - dec) / PI);
   float m = texture2D(uMap, uv).r;
+  if (m <= 0.0005) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }   // outside the band: skip the noise
+#ifdef LITE
+  m *= 0.55 + 0.6 * vnoise(d * 60.0);                // one octave on CPU rasterisers
+#else
   float n = fbm(d * 60.0);
   float n2 = fbm(d * 220.0 + 11.0);
   m *= 0.55 + 0.6 * n + 0.25 * n2;                   // granulation / dust lanes
+#endif
   m = pow(max(m, 0.0), 1.25);
   vec3 tint = mix(vec3(0.72, 0.82, 1.0), vec3(1.0, 0.9, 0.78), smoothstep(0.25, 0.9, m));
   vec3 col = tint * m * uIntensity * uExposure;

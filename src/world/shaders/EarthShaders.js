@@ -113,6 +113,16 @@ void main() {
   vec3 cityTint = mix(vec3(1.0, 0.72, 0.40), vec3(1.0, 0.93, 0.80), smoothstep(0.03, 0.5, lightLum));  // sodium outskirts, whiter cores
   vec3 city = lights * cityTint * uNightIntensity * nightMask * (1.0 - 0.75 * smoothstep(0.1, 0.8, csUp));
   vec3 surface = direct + ambient + glint + skyRefl + moonlit + city + albedo * vec3(0.0016, 0.0019, 0.0024);
+#ifdef INLINE_CLOUDS
+  // 'lite' (CPU rasterisers): the cloud layer is composited here instead of drawing a second sphere;
+  // same alpha curve and lighting as CLOUD_FRAGMENT, without the bump normal (6 km parallax is invisible).
+  float cA = clamp(pow(csUp, 0.85) * 1.15, 0.0, 1.0);
+  float cLam = max(max(ndl, 0.0), 0.05 * smoothstep(-0.06, 0.02, ndl));
+  float cThick = mix(1.0, 0.8, csUp);
+  vec3 cLit = S * Tsun * cLam * cThick * 0.97 + S * amb * 0.09
+            + vec3(0.72, 0.82, 1.0) * uMoonLight * max(dot(N, uMoonDir), 0.0) * cThick + vec3(0.0015);
+  surface = mix(surface, cLit, cA);
+#endif
 
   // Aerial perspective: in-scatter and transmittance along the view ray inside the atmosphere.
   vec3 ro = cameraPosition - uEarthCenter;
@@ -198,6 +208,9 @@ void main() {
   float t0 = max(ta.x, 0.0), t1 = ta.y;
   vec2 tg = raySphere(ro, rd, R_GROUND);
   bool hitGround = tg.x > 0.0 && tg.x < t1;
+#ifdef SKIP_GROUND
+  if (hitGround) discard;      // 'lite': the ground shader already applies aerial perspective; keep only the limb
+#endif
   if (hitGround) t1 = tg.x;
   vec3 T;
   vec3 ins = inscatter(ro, rd, t0, t1, uSunDir, T);

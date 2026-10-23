@@ -6,6 +6,7 @@ import { Materials } from './Materials.js';
 import { Textures } from './Textures.js';
 import { ParticleSystem } from './Particles.js';
 import { Input } from './Input.js';
+import { batchStatic, atlasDecals } from './StaticBatcher.js';
 import { QUALITY_PRESETS, LAYERS, SUN_LIGHT_INTENSITY, SUN_COLOR, NEAR_TO_FAR } from './constants.js';
 
 /**
@@ -27,6 +28,10 @@ async function loadModuleClass(name) {
   catch (e) { console.error(`[App] module ${name} failed to load, using stub:`, e); window.__MODULE_ERRORS__ = (window.__MODULE_ERRORS__ || []).concat([`${name}: ${e.message}`]); return (await stub())[name]; }
 }
 
+const LITE_DETAIL_DISTANCE = 18;   // metres
+const _camPos = new THREE.Vector3();
+const _bsCenter = new THREE.Vector3();
+
 class Emitter {
   constructor() { this.map = new Map(); }
   on(name, fn) { if (!this.map.has(name)) this.map.set(name, new Set()); this.map.get(name).add(fn); return () => this.map.get(name).delete(fn); }
@@ -41,6 +46,9 @@ export class App {
     this.params = p;
     const presetName = QUALITY_PRESETS[p.get('quality')] ? p.get('quality') : App.autoQuality();
     this.quality = { preset: presetName, ...QUALITY_PRESETS[presetName] };
+    // ?pr=<0.2..2> overrides the internal render scale (device pixels per CSS pixel)
+    const prOverride = parseFloat(p.get('pr'));
+    if (prOverride > 0.1 && prOverride <= 3) this.quality.pixelRatio = prOverride;
     this.isShot = p.get('shot') === '1';
     this.autostart = p.get('autostart') === '1' || this.isShot;
     this.mode = p.get('observer') === '1' ? 'observer' : 'play';
@@ -52,7 +60,20 @@ export class App {
     this.paused = false;
   }
 
+  /** True when WebGL runs on a CPU rasteriser (no GPU): SwiftShader, llvmpipe, Microsoft Basic Render… */
+  static isSoftwareRenderer() {
+    try {
+      const gl = document.createElement('canvas').getContext('webgl2');
+      if (!gl) return true;
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      const name = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
+      return /swiftshader|llvmpipe|softpipe|software|basic render/i.test(name);
+    } catch (_) { return false; }
+  }
+
   static autoQuality() {
+    if (App.isSoftwareRenderer()) return 'lite';
     const dpr = window.devicePixelRatio || 1;
     const cores = navigator.hardwareConcurrency || 4;
     const mobile = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
@@ -67,7 +88,7 @@ export class App {
     const q = this.quality;
     this.renderer = new Renderer(this.container, q);
     const gl = this.renderer.renderer;
-    this.textures = new Textures(gl);
+    this.textures = new Textures(gl, q.anisotropy);
     this.materials = new Materials(this.textures);
 
     // Scenes & cameras
@@ -103,7 +124,8 @@ export class App {
     this.orbit = new Orbit();
     this.orbit.update(this.time.sim);
     this.particles = new ParticleSystem(this.nearScene, { max: q.particles });
-    this.input = new Input(gl.domElement, { pointerLock: !this.isShot });
+    // ?nolock=1: mouse look without pointer lock (kiosk / remote / headless sessions, where the lock is unavailable or slow)
+    this.input = new Input(gl.domElement, { pointerLock: !this.isShot && this.params.get('nolock') !== '1' });
     this.events = new Emitter();
 
     // Environment map (reflections of Earth/Sun/stars on the station) from the far scene
@@ -123,6 +145,9 @@ export class App {
     const [Earth, Sky, Station, Ships, Player, Hud, Audio] = await Promise.all(['Earth', 'Sky', 'Station', 'Ships', 'Player', 'Hud', 'Audio'].map(loadModuleClass));
     this.earth = ctx.earth = new Earth(ctx);
     this.sky = ctx.sky = new Sky(ctx);
+    // geometry detail factor for everything built from here on (see src/core/three-lod.js);
+    // the Earth and sky above keep full tessellation (smooth limb)
+    globalThis.__THREE_DETAIL = q.detail ?? 1;
     this.station = ctx.station = new Station(ctx);
     this.nearScene.add(this.station);
     this.ships = ctx.ships = new Ships(ctx);
@@ -130,9 +155,11 @@ export class App {
     this.hud = ctx.hud = new Hud(ctx);
     this.audio = ctx.audio = new Audio(ctx);
     this.modules = [this.earth, this.sky, this.station, this.ships, this.player, this.hud, this.audio];
+    globalThis.__THREE_DETAIL = 1;
 
     this.hud.showLoading?.('Загрузка…');
     await Promise.all(this.modules.map((m) => m.load ? m.load().catch((e) => console.error(`load failed in ${m.constructor.name}`, e)) : null));
+    if (q.lite) this.applyLite();
     this.renderer.setup({ farScene: this.farScene, farCamera: this.farCamera, nearScene: this.nearScene, camera: this.camera });
 
     // Observer camera controls
@@ -144,6 +171,13 @@ export class App {
     window.addEventListener('resize', () => this.onResize());
     this.onResize();
     this.updateEnvironment(true);
+    // compile every material up front (also those outside the first view), so no shader compile
+    // stalls happen later when ships, the ring or the airlock first come into view
+    this.hud.showLoading?.('Подготовка шейдеров…');
+    try {
+      await this.compileAll(this.farScene, this.farCamera);
+      await this.compileAll(this.nearScene, this.camera);
+    } catch (e) { console.warn('shader precompile failed', e); }
 
     if (this.viewName) this.setView(this.viewName);
     else if (this.mode === 'observer') this.setView('overview');
@@ -157,6 +191,77 @@ export class App {
     this.timer = new THREE.Timer();
     this._loop = this._loop.bind(this);
     requestAnimationFrame(this._loop);
+  }
+
+  /**
+   * 'lite' preset for CPU rasterisers: keep only the Sun and earthshine (spotlights, helmet lamp off),
+   * no shadows or environment map, and swap PBR materials for per-pixel Lambert with the same maps.
+   * Runs once, before the first frame compiles any shader.
+   */
+  applyLite() {
+    const keep = new Set([this.sunLight, this.hemiLight, this.ambientLight]);
+    this.nearScene.traverse((o) => { if (o.isLight && !keep.has(o)) o.visible = false; });
+    this.sunLight.castShadow = false;
+    this.ambientLight.intensity = 0.22;   // spotlights are gone: lift the night side a little
+    this.nearScene.environment = null;
+    const swapped = new Map();
+    const toLambert = (m) => {
+      if (!m || !m.isMeshStandardMaterial || m.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile) return m;
+      if (swapped.has(m)) return swapped.get(m);
+      const L = new THREE.MeshLambertMaterial({
+        name: m.name, color: m.color, map: m.map, emissive: m.emissive, emissiveMap: m.emissiveMap, emissiveIntensity: m.emissiveIntensity,
+        transparent: m.transparent, opacity: m.opacity, side: m.side, alphaTest: m.alphaTest, depthWrite: m.depthWrite, depthTest: m.depthTest,
+        vertexColors: m.vertexColors, polygonOffset: m.polygonOffset, polygonOffsetFactor: m.polygonOffsetFactor, polygonOffsetUnits: m.polygonOffsetUnits,
+        blending: m.blending, toneMapped: m.toneMapped, colorWrite: m.colorWrite, fog: false,
+      });
+      // transparent double-sided: one pass (three otherwise draws back and front faces separately)
+      if (L.transparent && L.side === THREE.DoubleSide) L.forceSinglePass = true;
+      // metals have no diffuse term in PBR: darken them a bit so gold/steel do not read as matte paint
+      if (m.metalness > 0.5) L.color.multiplyScalar(0.75);
+      swapped.set(m, L);
+      return L;
+    };
+    this.nearScene.traverse((o) => {
+      if (!o.isMesh && !o.isInstancedMesh) return;
+      o.material = Array.isArray(o.material) ? o.material.map(toLambert) : toLambert(o.material);
+      o.castShadow = false;
+    });
+    this._liteSwap = toLambert;
+    // fine greebles cost more triangles than they add at lite resolution
+    for (const name of ['handrailPosts', 'studs', 'cableClamps', 'ringLattice']) this.station.getObjectByName(name)?.removeFromParent();
+    // text decals -> one atlas; then merge the station's static geometry (instanced parts are slow on
+    // CPU rasterisers) across plain materials (colour baked into vertex colours), in 60 m cells so
+    // frustum culling still drops what is off-screen
+    const decals = atlasDecals(this.station);
+    const t0 = this.time.sim;
+    const res = batchStatic(this.station, () => {
+      for (let i = 0; i < 160; i++) { this.orbit.update(t0 + i * 0.5); this.station.update(0.05, this.ctx); }
+      this.orbit.update(t0);
+    }, { cell: 60, mergeMaterials: true, detailRadius: 2.0, detailCell: 12, splitIslands: true });
+    // small parts are drawn only near the camera (they are sub-pixel further away at lite resolution)
+    this._detailBatches = [];
+    this.station.traverse((o) => { if (o.userData.detail) this._detailBatches.push(o); });
+    console.info(`[lite] station draw calls ${res.before} -> ${res.after} (${res.batches} batches, ${decals} decals in the atlas)`);
+  }
+
+  /** compileAsync() only covers visible objects: make everything visible for the compile (hidden ships,
+   *  the suit in observer mode…), so nothing compiles mid-game. Lights keep their visibility (it is part
+   *  of every program's key). */
+  async compileAll(scene, camera) {
+    const hidden = [];
+    scene.traverse((o) => { if (!o.visible && !o.isLight) { hidden.push(o); o.visible = true; } });
+    try { await this.renderer.renderer.compileAsync(scene, camera); }
+    finally { for (const o of hidden) o.visible = false; }
+  }
+
+  /** 'lite': hide small-part batches farther than LITE_DETAIL_DISTANCE from the camera. */
+  cullDetails() {
+    const cam = this.camera.getWorldPosition(_camPos);
+    for (const m of this._detailBatches) {
+      const bs = m.geometry.boundingSphere;
+      _bsCenter.copy(bs.center).applyMatrix4(m.matrixWorld);
+      m.visible = _bsCenter.distanceTo(cam) - bs.radius < LITE_DETAIL_DISTANCE;
+    }
   }
 
   onResize() {
@@ -216,6 +321,7 @@ export class App {
 
   updateEnvironment(force = false) {
     const q = this.quality;
+    if (q.lite) return;
     if (!force && this._envTimer < q.envUpdateInterval) return;
     this._envTimer = 0;
     const gl = this.renderer.renderer;
@@ -275,6 +381,7 @@ export class App {
     this.farCamera.quaternion.copy(this.camera.getWorldQuaternion(new THREE.Quaternion()));
     if (this.farCamera.fov !== this.camera.fov) { this.farCamera.fov = this.camera.fov; this.farCamera.updateProjectionMatrix(); }
 
+    if (this._detailBatches) this.cullDetails();
     this.updateEnvironment();
     gl.info.reset();
     this.renderer.render(dt, t.elapsed);

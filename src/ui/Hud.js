@@ -151,7 +151,7 @@ export class Hud {
 
     // fps (real frame rate, averaged over 0.5 s)
     this._fpsFrames++; this._fpsTime += rdt;
-    if (this._fpsTime >= 0.5) { setText(this.fpsEl, `${Math.round(this._fpsFrames / this._fpsTime)} fps`); this._fpsFrames = 0; this._fpsTime = 0; }
+    if (this._fpsTime >= (ctx.quality?.lite ? 1.0 : 0.5)) { setText(this.fpsEl, `${Math.round(this._fpsFrames / this._fpsTime)} fps`); this._fpsFrames = 0; this._fpsTime = 0; }
 
     if (ctx.mode !== this._mode) this._applyMode(ctx.mode);
     const force = !!ctx.isShot || this._needsRefresh;
@@ -159,7 +159,10 @@ export class Hud {
     const menu = this.menu.visible;
     this._textAcc += rdt; this._fastAcc += rdt;
 
-    if (force || this._textAcc >= 0.1) {
+    // CPU rasterisers ('lite'): every DOM / canvas change makes the browser re-composite the page in
+    // software, so refresh the readouts less often there
+    const lite = !!ctx.quality?.lite;
+    if (force || this._textAcc >= (lite ? 0.33 : 0.1)) {
       const step = this._textAcc; this._textAcc = 0;
       this.notifications.update(step);
       if (!menu) {
@@ -169,7 +172,7 @@ export class Hud {
       const inp = ctx.input;
       show(this.lockHint, !menu && this._mode === 'play' && this.started && !ctx.isShot && !!inp && inp.wantPointerLock && !inp.pointerLocked && !this.loading.visible);
     }
-    if (force || this._fastAcc >= 1 / 30) {
+    if (force || this._fastAcc >= (lite ? 1 / 10 : 1 / 30)) {
       const step = this._fastAcc; this._fastAcc = 0;
       if (!menu && this._mode === 'play') this.helmet.updateFast(step, ctx);
     }

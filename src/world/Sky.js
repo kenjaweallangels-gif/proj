@@ -33,7 +33,7 @@ export class Sky {
     this.milkyWayMaterial = new THREE.ShaderMaterial({
       name: 'MilkyWay',
       uniforms: { uMap: { value: null }, uIntensity: { value: 0.09 }, uExposure: this.uExposure },
-      vertexShader: MILKYWAY_VERTEX, fragmentShader: MILKYWAY_FRAGMENT,
+      vertexShader: MILKYWAY_VERTEX, fragmentShader: MILKYWAY_FRAGMENT, defines: ctx.quality?.lite ? { LITE: 1 } : {},
       side: THREE.BackSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: true, toneMapped: false,
     });
     this.milkyWay = new THREE.Mesh(new THREE.SphereGeometry(MILKYWAY_RADIUS_KM, 48, 24), this.milkyWayMaterial);
@@ -68,7 +68,10 @@ export class Sky {
   /** stars.bin: little-endian uint32 N, then N x float32 [ra_deg, dec_deg, mag, bv]. */
   _buildStars(buf) {
     const view = new DataView(buf);
-    const n = view.getUint32(0, true);
+    const total = view.getUint32(0, true);
+    // the catalogue is sorted by magnitude: on CPU rasterisers keep the naked-eye stars only (mag <= 6.3)
+    let n = total;
+    if (this.ctx?.quality?.lite) { const all = new Float32Array(buf, 4, total * 4); n = 0; while (n < total && all[n * 4 + 2] <= 6.3) n++; }
     const data = new Float32Array(buf, 4, n * 4);
     const pos = new Float32Array(n * 3), mag = new Float32Array(n), col = new Float32Array(n * 3);
     const D = Math.PI / 180;
@@ -97,7 +100,15 @@ export class Sky {
   }
 
   /** Global brightness multiplier for stars and Milky Way (default 1); multiplied by the automatic day/night adaptation. */
-  setExposure(x) { this.exposure = Math.max(0, x); this.uExposure.value = this.exposure * this.adapt; }
+  setExposure(x) { this.exposure = Math.max(0, x); this.uExposure.value = this.exposure * this.adapt; this._cull(); }
+
+  /** Skip the full-screen Milky Way pass (and the star points) when the exposure makes them invisible. */
+  _cull() {
+    const e = this.uExposure.value;
+    // thresholds: below these the band / the brightest stars stay under ~1/255 on screen
+    if (this.milkyWay && this.milkyWayTexture) this.milkyWay.visible = e > 0.12;
+    if (this.stars) this.stars.visible = e > 0.01;
+  }
 
   update(dt, ctx) {
     const o = ctx.orbit;
@@ -108,6 +119,7 @@ export class Sky {
     if (this._first === undefined) { this._first = false; this.adapt = target; }
     else this.adapt += (target - this.adapt) * (1 - Math.exp(-Math.max(dt, 0) / 3.0));
     this.uExposure.value = this.exposure * this.adapt;
+    this._cull();
     const r = ctx.renderer;
     this.uPixelRatio.value = r.getPixelRatio();
     r.getSize(this._size);

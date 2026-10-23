@@ -5,10 +5,11 @@ import * as THREE from 'three';
  * All generators cache by key. Color textures are sRGB; data textures (normal/roughness) are linear.
  */
 export class Textures {
-  constructor(renderer) {
+  constructor(renderer, maxAnisotropy = 16) {
     this.renderer = renderer;
     this.cache = new Map();
-    this.anisotropy = renderer ? Math.min(16, renderer.capabilities.getMaxAnisotropy()) : 1;
+    // capped by the quality preset: anisotropic filtering is very expensive on CPU rasterisers
+    this.anisotropy = renderer ? Math.max(1, Math.min(maxAnisotropy, renderer.capabilities.getMaxAnisotropy())) : 1;
   }
 
   _canvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; }
