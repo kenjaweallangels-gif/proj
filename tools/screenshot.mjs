@@ -6,6 +6,7 @@
  *   node tools/screenshot.mjs --views=overview,docking,eva --t=600 --out=/tmp/shots/base
  *   node tools/screenshot.mjs --view=overview --out=/tmp/x.png
  * Options: --w=1280 --h=720 --quality=high --frames=12 --timescale=1 --url=http://127.0.0.1:5173
+ *          --t: 600 day, 1165 sunset through the limb, 2000 night/eclipse, 3200 sunrise, 4500 day
  *          --params="foo=1&bar=2" (extra URL params)  --timeout=240000  --keep (leave server running)
  * Output: one PNG per view: <out>_<view>.png (or exactly <out> when a single --view and out ends with .png).
  * Prints browser console errors/warnings. Exit code 1 on page errors.
@@ -46,10 +47,10 @@ await page.waitForFunction(() => window.__APP_READY__ === true, null, { timeout 
 console.log('app ready');
 for (const v of views) {
   await page.evaluate((name) => window.__app.setView(name), v);
-  await page.evaluate((n) => window.__app.renderFrames(n), frames);
+  await page.evaluate((n) => window.__app.renderFrames(n), frames).catch((e) => console.log('[renderFrames]', e.message));
   const file = views.length === 1 && out.endsWith('.png') ? out : `${out}_${v}.png`;
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  await page.screenshot({ path: file });
+  await page.screenshot({ path: file, timeout: Math.min(timeout, 600000) });
   const info = await page.evaluate(() => { const a = window.__app; const r = a.renderer.renderer.info; return { calls: r.render.calls, tris: r.render.triangles, geoms: r.memory.geometries, tex: r.memory.textures, sim: a.time.sim, mode: a.mode }; });
   console.log(`shot ${v} -> ${file}  draw calls ${info.calls}, triangles ${info.tris}, geometries ${info.geoms}, textures ${info.tex}, sim t=${info.sim.toFixed(0)}s, mode ${info.mode}`);
 }

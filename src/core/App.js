@@ -180,12 +180,17 @@ export class App {
   /** Named camera views (observer) or player poses (play). Used by tools/screenshot.mjs and the menu. */
   setView(name) {
     const vp = this.station.viewpoints?.[name];
+    // Sun-facing views: look along orbit.sunDir so the Sun/limb is in frame (sunrise ~t=3200, sunset ~t=1165)
+    const s = this.orbit.sunDir;
+    const sunView = (pos) => ({ position: pos, target: [pos[0] + s.x * 500, pos[1] + s.y * 500, pos[2] + s.z * 500] });
     const observerViews = {
       overview: { position: [210, 95, 250], target: [0, 0, 0] },
       front: { position: [320, 40, 30], target: [0, 0, 0] },
       top: { position: [10, 330, 10], target: [0, 0, 0] },
       earth: { position: [40, 110, 70], target: [0, -60, 0] },
-      sunrise: { position: [210, 95, 250], target: [0, 0, 0] },
+      sunrise: sunView([-60, 40, 120]),
+      sunset: sunView([60, 40, -120]),
+      limb: { position: [0, 30, 160], target: [0, -140, -400] },
     };
     const playerViews = ['airlock', 'eva', 'eva-far'];
     if (vp || observerViews[name]) {

@@ -138,7 +138,7 @@ npm run dev                             # http://127.0.0.1:5173/
 node tools/screenshot.mjs --view=overview --t=600 --out=/tmp/x.png   # headless screenshot
 ```
 URL params: `?autostart=1` skip menu · `?observer=1` free camera · `?view=overview|docking|ring|earth|airlock|eva|sunrise`
-· `?t=<sim seconds>` · `?quality=ultra|high|medium|low` · `?timescale=<n>` · `?shot=1` (fixed dt).
+· `?t=<sim seconds>` (600 day, 1165 sunset, 2000 night, 3200 sunrise) · `?quality=ultra|high|medium|low` · `?timescale=<n>` · `?shot=1` (fixed dt).
 `window.__app` exposes the App for console debugging.
 
 ## Stubs and module loading
