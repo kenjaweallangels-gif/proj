@@ -57,7 +57,7 @@ export class Tether {
     if (d < 1e-4) { _dir.set(0, 0, 1); } else _dir.multiplyScalar(1 / d);
     // slack bows the rope sideways; direction wobbles slowly so it looks like it floats
     const slack = Math.max(0, length - d);
-    const bow = Math.min(slack * 0.42, 7);
+    const bow = Math.min(slack * 0.42, 7, d * 0.45);
     const t = this.time;
     _side.set(Math.sin(t * 0.21) * 0.6 + 0.4, Math.cos(t * 0.17) * 0.5 + 0.9, Math.sin(t * 0.13 + 1.7) * 0.6);
     _side.addScaledVector(_dir, -_side.dot(_dir));

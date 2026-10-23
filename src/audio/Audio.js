@@ -21,7 +21,8 @@ export class Audio {
     this.ac = null;
     this.ready = false;
     this._muted = false;
-    this.params = { crawl: 0 };
+    this._volume = 1;
+    this.params = { crawl: 0, radio: 1 };
     this.time = 0;
     this.breathPhase = 0;
     this.heartPhase = 0;
@@ -36,9 +37,12 @@ export class Audio {
   }
 
   get muted() { return this._muted; }
-  set muted(v) {
-    this._muted = !!v;
-    if (this.nodes.master) this.nodes.master.gain.setTargetAtTime(this._muted ? 0 : 1, this.ac.currentTime, 0.05);
+  set muted(v) { this._muted = !!v; this._applyMaster(); }
+  /** Master volume 0..1 (also `setParam('volume', v)`). */
+  get volume() { return this._volume; }
+  set volume(v) { this._volume = Math.min(1, Math.max(0, +v || 0)); this._applyMaster(); }
+  _applyMaster() {
+    if (this.nodes.master && this.ac) this.nodes.master.gain.setTargetAtTime(this._muted ? 0 : this._volume, this.ac.currentTime, 0.05);
   }
 
   // ---------------------------------------------------------------- setup
@@ -49,7 +53,7 @@ export class Audio {
       if (!AC) return;
       const ac = this.ac = new AC({ latencyHint: 'interactive' });
       const N = this.nodes;
-      N.master = ac.createGain(); N.master.gain.value = this._muted ? 0 : 1; N.master.connect(ac.destination);
+      N.master = ac.createGain(); N.master.gain.value = this._muted ? 0 : this._volume; N.master.connect(ac.destination);
       // gentle compressor keeps thruster bursts from clipping the quiet suit ambience
       N.comp = ac.createDynamicsCompressor(); N.comp.threshold.value = -18; N.comp.ratio.value = 4; N.comp.connect(N.master);
       this.noiseBuf = this._noiseBuffer(2.0);
@@ -122,8 +126,6 @@ export class Audio {
     N.radioGain = this._gain(0.0);
     N.radioFilter = this._filter('bandpass', 1300, 2.2, N.radioGain);
     const src = this._noiseSource(); src.connect(N.radioFilter); src.start();
-    N.radioAm = this._gain(1, N.radioFilter); // amplitude modulation target for chatter
-    N.radioAm.disconnect(); N.radioAm.connect(N.radioFilter);
   }
 
   _buildCrawl() {
@@ -136,7 +138,7 @@ export class Audio {
   // ---------------------------------------------------------------- one-shots
   /** play(name, opts). Unknown names are ignored. Safe without an AudioContext. */
   play(name, opts = {}) {
-    if (!this.ac) { if (['depress', 'repress', 'hatchMotor'].includes(name)) { this._pending.length = 0; } return; }
+    if (!this.ac) return;   // no context yet (before the first user gesture) or audio unavailable: silently ignore
     if (this.ac.state === 'suspended') this.ac.resume().catch(() => {});
     const ac = this.ac, t = ac.currentTime, N = this.nodes;
     switch (name) {
@@ -184,12 +186,14 @@ export class Audio {
     }
   }
 
-  /** setParam(name, value): 'crawl' (0/1), 'fan' (0..1), 'radio' (0..1 chatter level). */
+  /** setParam(name, value): 'volume' (0..1 master), 'crawl' (0/1), 'fan' (0..1), 'radio' (0..1 chatter level). */
   setParam(name, value) {
-    this.params[name] = value;
-    if (!this.ac) return;
+    if (name === 'volume') { this.volume = value; return; }
+    if (name === 'muted') { this.muted = !!value; return; }
+    this.params[name] = +value || 0;
+    if (!this.ac || !this.ready) return;
     const N = this.nodes, t = this.ac.currentTime;
-    if (name === 'fan' && N.fanGain) N.fanGain.gain.setTargetAtTime(0.11 * value, t, 0.3);
+    if (name === 'fan' && N.fanGain) N.fanGain.gain.setTargetAtTime(0.11 * this.params.fan, t, 0.3);
   }
 
   _beep(freq, dur, gain, t) {
@@ -212,13 +216,13 @@ export class Audio {
     // quindar tone, chatter (random AM envelope), closing tone
     this._quindar(t);
     const len = 1.8 + Math.random() * 2.5;
-    const g = N.radioGain.gain;
+    const g = N.radioGain.gain, lvl = Math.min(1, Math.max(0, this.params.radio ?? 1));
     g.cancelScheduledValues(t); g.setValueAtTime(0, t + 0.3);
     let tt = t + 0.35;
     while (tt < t + 0.35 + len) {
       const seg = 0.06 + Math.random() * 0.16;
-      g.linearRampToValueAtTime(Math.random() < 0.25 ? 0.01 : 0.05 + Math.random() * 0.08, tt + seg * 0.5);
-      g.linearRampToValueAtTime(0.02, tt + seg);
+      g.linearRampToValueAtTime((Math.random() < 0.25 ? 0.01 : 0.05 + Math.random() * 0.08) * lvl, tt + seg * 0.5);
+      g.linearRampToValueAtTime(0.02 * lvl, tt + seg);
       tt += seg;
     }
     g.linearRampToValueAtTime(0, tt + 0.1);
@@ -295,8 +299,8 @@ export class Audio {
     N.rotGain.gain.setTargetAtTime(rot, t, 0.05);
     N.crawlGain.gain.setTargetAtTime(active && this.params.crawl > 0 ? 0.12 : 0, t, 0.08);
 
-    // fan slows down (power saving) with low power
-    N.fanGain.gain.setTargetAtTime(0.11 * (0.6 + 0.4 * Math.min(1, p.power * 4)), t, 0.5);
+    // fan slows down (power saving) with low power; 'fan' param scales it
+    N.fanGain.gain.setTargetAtTime(0.11 * (this.params.fan ?? 1) * (0.6 + 0.4 * Math.min(1, (p.power ?? 1) * 4)), t, 0.5);
 
     // warnings
     this.warnTimer -= dtr;

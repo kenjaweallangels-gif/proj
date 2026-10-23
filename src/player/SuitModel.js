@@ -15,6 +15,7 @@ import { LAYERS } from '../core/constants.js';
 const L1 = 0.31;        // upper arm
 const L2 = 0.29;        // forearm
 const HAND_LEN = 0.17;  // wrist to fingertips
+const LAMP_INTENSITY = 9; // cd (physical light units; the Sun is 3.2 lux-equivalent in this scene)
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -211,9 +212,10 @@ export class SuitModel {
   _buildLamp() {
     // helmet-mounted lamps (two, on the sides of the visor housing); intensity toggled, never `visible` (avoids shader recompiles)
     // the light source sits just outside the visor frame so the helmet geometry itself is never lit point-blank
-    this.lamp = new THREE.SpotLight(0xfff1dc, 0, 40, 0.55, 0.7, 2);
-    this.lamp.position.set(0.14, 0.14, -0.22);
-    this.lamp.target.position.set(0, -0.6, -10);
+    // ~9 cd: lights the hull out to ~6 m without blowing out gloves, rope or a wall at arm's length
+    this.lamp = new THREE.SpotLight(0xfff1dc, 0, 40, 0.62, 0.65, 2);
+    this.lamp.position.set(0.14, 0.16, -0.2);
+    this.lamp.target.position.set(0, -0.8, -10);
     this.lamp.castShadow = false;
     this.group.add(this.lamp, this.lamp.target);
     this.lampHousing = new THREE.Mesh(mergeGeometries([box(0.05, 0.04, 0.06).translate(0.14, 0.14, -0.04), box(0.05, 0.04, 0.06).translate(-0.14, 0.14, -0.04)], false), this.mats.dark);
@@ -246,8 +248,8 @@ export class SuitModel {
 
   setLamp(on) {
     this.lampOn = on;
-    this.lamp.intensity = on ? 55 : 0;
-    this.lampLens.material.emissiveIntensity = on ? 6 : 0;
+    this.lamp.intensity = on ? LAMP_INTENSITY : 0;
+    this.lampLens.material.emissiveIntensity = on ? 3 : 0;
   }
 
   /**

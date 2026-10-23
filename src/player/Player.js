@@ -78,7 +78,7 @@ export class Player {
       propellant: 1, o2: 1, power: 1, suitPressure: 1, airlockPressure: 1, heartRate: 64, suitTemp: 21.5,
       holding: null, nearHandrail: null, handrailDistance: Infinity,
       speedRelative: 0, angularSpeed: 0, distanceToStation: 0, distanceToAirlock: 0,
-      rotationMode: 'aah', thrusting: false, boost: false, killing: false, lampOn: false,
+      rotationMode: 'aah', stabilization: true, rotationModeLabel: 'стабилизация', thrusting: false, boost: false, killing: false, lampOn: false, tetherStowed: true,
       sequence: null, prompt: '', canEnterAirlock: false, impact: 0, contact: false,
     };
 
@@ -134,25 +134,25 @@ export class Player {
     if (name === 'airlock') {
       _v.copy(stand);
       this.lookAlong(_v, al?.lookDirection || new THREE.Vector3(0, 0, 1));
-      al?.hatch?.close?.();
+      this._setHatch(false);
       st.mode = 'airlock'; st.airlockPressure = 1;
-      st.tetherAttached = true; st.tetherLength = TETHER_MAX; st.reeling = false;
+      this._stowTether();
     } else if (name === 'eva-far') {
       // ~60 m above/beside the station core, looking down at the hub and the ring
       _v.set(-16, 54, 36);
       this.lookAt(_v, _v2.set(-4, -2, 2));
       st.mode = 'eva'; st.airlockPressure = 0;
       // 60 m out is beyond the 25 m tether: this pose is an untethered free flight
-      st.tetherAttached = false; st.reeling = false; this._reattachBlock = 2;
-      this._openHatchNow();
+      st.tetherAttached = false; st.tetherStowed = false; st.reeling = false; this._reattachBlock = 2;
+      this._setHatch(true);
     } else {
       // 'eva' (default): 12 m outside the hatch, looking back at the open hatch
       const exit = al?.exitDirection || new THREE.Vector3(0, 0, 1);
       _v.copy(this.hatchCenter).addScaledVector(exit, 12).add(_v2.set(1.8, 1.1, 0));
       this.lookAt(_v, _v2.copy(this.hatchCenter).add(_v3.set(0.3, 0.2, 0)));
       st.mode = 'eva'; st.airlockPressure = 0;
-      st.tetherAttached = true; st.tetherLength = TETHER_MAX; st.reeling = false;
-      this._openHatchNow();
+      this._attachTether(false);
+      this._setHatch(true);
     }
     this.body.reset(_v, _q);
     this.camQuat.copy(this.quaternion);
@@ -162,12 +162,24 @@ export class Player {
     this._updateTether(0);
   }
 
-  _openHatchNow() {
+  /** Command the hatch; screenshots cannot wait 4 s for the motor, so the animation is fast-forwarded in shot mode. */
+  _setHatch(open) {
     const al = this.airlock;
     if (!al?.hatch) return;
-    al.hatch.open();
-    // screenshots cannot wait 4 s for the motor: fast-forward the hatch animation when driven by the tool
+    open ? al.hatch.open() : al.hatch.close();
     if (this.ctx.isShot) { try { this.ctx.station.airlockPart?.update?.(10); } catch (_) { /* optional */ } }
+  }
+
+  /** Inside the airlock the tether is unhooked and stowed on the reel (it is clipped to the anchor outside the hatch when leaving). */
+  _stowTether() {
+    const st = this.state;
+    st.tetherAttached = false; st.tetherStowed = true; st.tetherTaut = false; st.reeling = false; st.tetherLength = TETHER_MAX;
+  }
+
+  _attachTether(sound = true) {
+    const st = this.state;
+    st.tetherAttached = true; st.tetherStowed = false; st.tetherLength = TETHER_MAX; st.reeling = false; this._reattachBlock = 0;
+    if (sound) this.ctx.audio?.play?.('grab');
   }
 
   /** Orientation (into _q) looking along dir from pos; roll-free w.r.t. world up. */
@@ -196,8 +208,13 @@ export class Player {
     if (this._colliderTimer > 0.5) { this._colliderTimer = 0; this._refreshColliders(false); }
 
     // ----- hotkeys -----
-    if (inp.wasPressed('KeyX')) { body.rotationMode = body.rotationMode === 'aah' ? 'free' : 'aah'; st.rotationMode = body.rotationMode; ctx.audio?.play?.('click'); }
-    if (inp.wasPressed('KeyL')) { this.lampAuto = false; this.suit.setLamp(!this.suit.lampOn); ctx.audio?.play?.('click'); }
+    if (inp.wasPressed('KeyX')) {
+      body.rotationMode = body.rotationMode === 'aah' ? 'free' : 'aah';
+      st.rotationMode = body.rotationMode; st.stabilization = body.rotationMode === 'aah';
+      st.rotationModeLabel = st.stabilization ? 'стабилизация' : 'свободный';
+      ctx.audio?.play?.('click');
+    }
+    if (inp.wasPressed('KeyL')) { this.lampAuto = false; this.suit.setLamp(!this.suit.lampOn); st.lampOn = this.suit.lampOn; ctx.audio?.play?.('click'); }
     if (inp.wasPressed('KeyE')) this._onInteract();
     if (inp.wasPressed('KeyR')) {
       if (inp.isDown('ShiftLeft') || inp.isDown('ShiftRight')) {
@@ -234,6 +251,7 @@ export class Player {
       if (inp.wasPressed('KeyG') && st.nearHandrail) this._grab(st.nearHandrail);
       // tether
       this._tetherPhysics(h);
+      if (st.sequence) this._holdInChamber(h);
       body.integrate(h);
     }
 
@@ -273,6 +291,7 @@ export class Player {
     this._updateSuitConsumables(dt, true);
     this._updatePrompt();
     this._autoLamp();
+    st.lampOn = this.suit.lampOn;
 
     // ----- visuals -----
     this.applyCamera(h);
@@ -383,7 +402,7 @@ export class Player {
     this.position.copy(this.handrailPoint).add(this.holdOffset);
     this.velocity.set(0, 0, 0);
     // look around freely (attitude hold while gripping; the hand keeps the body in place)
-    this.body.rotationMode === 'aah' ? this.body.rotate(mdx, mdy, rollAxis, h, allowMouse) : this.body.rotate(mdx, mdy, rollAxis, h, allowMouse);
+    this.body.rotate(mdx, mdy, rollAxis, h, allowMouse);
     this.body.omega.multiplyScalar(Math.exp(-h / 0.12));
     this.body.integrate(h);
     // keep the arm reachable: the body may rotate but stays at the hold offset (rotation about the body centre)
@@ -405,7 +424,7 @@ export class Player {
     if (!st.tetherAttached) {
       st.tetherTaut = false;
       if (this._reattachBlock > 0) this._reattachBlock -= h;
-      else if (d < 3) { st.tetherAttached = true; st.tetherLength = TETHER_MAX; this.ctx.audio?.play?.('grab'); }
+      else if (d < 3 && st.mode === 'eva' && !st.tetherStowed) this._attachTether(true);
       return;
     }
     if (st.reeling) {
@@ -444,12 +463,31 @@ export class Player {
     st.sequence = { name, progress: 0 };
     const audio = this.ctx.audio;
     if (name === 'depress') { audio?.play?.('depress', { duration: DEPRESS_TIME }); }
-    else if (name === 'hatchOpen') { audio?.play?.('hatchMotor', { duration: 4 }); this._seqPromise = al.hatch.open().then(() => { if (st.sequence?.name === 'hatchOpen') { audio?.play?.('clunk'); st.mode = 'eva'; this._endSequence(); } }); }
-    else if (name === 'close') { audio?.play?.('hatchMotor', { duration: 4 }); this._release(); this._seqPromise = al.hatch.close().then(() => { if (st.sequence?.name === 'close') { audio?.play?.('clunk'); this._startSequence('repress'); } }); }
+    else if (name === 'hatchOpen') { audio?.play?.('hatchMotor', { duration: 4 }); this._seqPromise = al.hatch.open().then(() => { if (st.sequence?.name === 'hatchOpen') this._finishExit(); }); }
+    else if (name === 'close') { audio?.play?.('hatchMotor', { duration: 4 }); this._release(); this._stowTether(); this._seqPromise = al.hatch.close().then(() => { if (st.sequence?.name === 'close') { audio?.play?.('clunk'); this._startSequence('repress'); } }); }
     else if (name === 'repress') { audio?.play?.('repress', { duration: REPRESS_TIME }); }
   }
 
   _endSequence() { this.state.sequence = null; this._seqPromise = null; }
+
+  /** Hatch fully open: clip the tether to the anchor and go EVA. */
+  _finishExit() {
+    const st = this.state;
+    this.ctx.audio?.play?.('clunk');
+    st.mode = 'eva';
+    this._attachTether(true);
+    this._endSequence();
+  }
+
+  /** While the hatch cycles the astronaut keeps a hand on the chamber handhold: drift is damped and the body is drawn back to the stand point. */
+  _holdInChamber(h) {
+    const stand = this.airlock?.standPosition;
+    if (!stand || h <= 0) return;
+    _v.subVectors(stand, this.position);
+    if (_v.lengthSq() > 25) return;            // not in the chamber any more (free flight)
+    this.velocity.addScaledVector(_v, 1.5 * h).multiplyScalar(Math.exp(-2.5 * h));
+    this.body.omega.multiplyScalar(Math.exp(-1.5 * h));
+  }
 
   _updateSequence(h) {
     const st = this.state, seq = st.sequence, al = this.airlock;
@@ -463,14 +501,14 @@ export class Player {
       const p = al?.hatch?.progress ?? 0;
       seq.progress = seq.name === 'hatchOpen' ? p : 1 - p;
       // failsafe if the promise never resolves
-      if (this._seqTimer > 12) { if (seq.name === 'hatchOpen') { st.mode = 'eva'; this._endSequence(); } else this._startSequence('repress'); }
+      if (this._seqTimer > 12) { if (seq.name === 'hatchOpen') this._finishExit(); else this._startSequence('repress'); }
     } else if (seq.name === 'repress') {
       seq.progress = Math.min(1, this._seqTimer / REPRESS_TIME);
       st.airlockPressure = seq.progress;
       if (seq.progress >= 1) {
         st.airlockPressure = 1; st.mode = 'airlock';
         st.propellant = this.body.propellant = 1; st.o2 = 1; st.power = Math.max(st.power, 0.95);
-        st.tetherLength = TETHER_MAX; st.reeling = false; st.tetherAttached = true;
+        this._stowTether();
         this._endSequence();
         this.ctx.audio?.play?.('click');
       }
@@ -505,7 +543,6 @@ export class Player {
     const sun = this.ctx.orbit?.sunVisible ?? 1;
     const want = this.state.mode === 'eva' && sun < 0.25;
     if (want !== this.suit.lampOn) this.suit.setLamp(want);
-    this.state.lampOn = this.suit.lampOn;
   }
 
   _updatePrompt() {
@@ -518,7 +555,7 @@ export class Player {
     else if (st.holding) p = 'A/D — вдоль поручня · Space — оттолкнуться · G — отпустить';
     else if (st.canEnterAirlock) p = 'E — войти в шлюз и закрыть люк';
     else if (st.nearHandrail) p = 'G — схватить поручень';
-    else if (!st.tetherAttached) p = 'ТРОС ОТЦЕПЛЕН — вернитесь к шлюзу (3 м) для зацепа';
+    else if (!st.tetherAttached && !st.tetherStowed) p = 'ТРОС ОТЦЕПЛЕН — вернитесь к шлюзу (3 м) для зацепа';
     else if (st.tetherTaut) p = 'Трос натянут — R: подтянуться';
     st.prompt = p;
   }
