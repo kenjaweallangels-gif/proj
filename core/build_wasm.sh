@@ -14,5 +14,7 @@ cmake --build "$here/build-wasm"
 # ctest runs the WASM binaries through node (CMAKE_CROSSCOMPILING_EMULATOR from the Emscripten toolchain).
 ctest --test-dir "$here/build-wasm" --output-on-failure
 node "$here/test_wasm_protocol.mjs"
+# The plain-JS build (-sWASM=0, fallback when a page forbids WebAssembly) must behave identically.
+node "$here/test_wasm_protocol.mjs" --module "$here/build-wasm/echo_core_js.mjs"
 ls -l "$here/build-wasm/echo_core.mjs"
 echo "wasm build OK: $here/build-wasm/echo_core.mjs"

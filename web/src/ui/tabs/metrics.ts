@@ -107,7 +107,7 @@ export class MetricsTab implements Tab {
         h('dt', { text: 'Токены' }), h('dd', { text: `вход ${ai.tokens.input} · выход ${ai.tokens.output} · кэш ${ai.tokens.cached_input} · рассуждения ${ai.tokens.reasoning} (измерено у ${ai.tokens.measured_results}, оценка у ${ai.tokens.estimated_results})` }),
         h('dt', { text: 'Стоимость' }), h('dd', { text: ai.cost.total_usd === null ? 'нет данных (тарифы условные, считаются только в шлюзе)' : `$${num(ai.cost.total_usd, 4)}${ai.cost.fictional ? ' — тарифы условные' : ''}` }),
         h('dt', { text: 'Модели' }), h('dd', { text: ai.models_seen.join(', ') || '—' }),
-        h('dt', { text: 'Ядро (WASM)' }), h('dd', { text: `${core.calls} вызовов, ${num(core.callMs, 0)} мс CPU страницы суммарно` })),
+        h('dt', { text: core.engine === 'js' ? 'Ядро (JS: WebAssembly запрещён страницей)' : 'Ядро (WASM)' }), h('dd', { text: `${core.calls} вызовов, ${num(core.callMs, 0)} мс CPU страницы суммарно` })),
       h('p', { class: 'note', text: 'Тарифы условные: стоимость считается по конфигурации шлюза с флагом fictional; в странице её нет. Токены Claude в странице — оценка, не измерение.' }),
     ]);
 

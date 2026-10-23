@@ -23,7 +23,8 @@ function check(name, ok, detail = '') {
   console.log(`  ${ok ? 'ok  ' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`);
 }
 
-const modulePath = path.join(here, 'build-wasm', 'echo_core.mjs');
+// --module <file>: another build of the same core (e.g. build-wasm/echo_core_js.mjs, compiled with -sWASM=0).
+const modulePath = args.includes('--module') ? path.resolve(args[args.indexOf('--module') + 1]) : path.join(here, 'build-wasm', 'echo_core.mjs');
 if (!fs.existsSync(modulePath)) {
   console.error(`нет ${modulePath}: сначала core/build_wasm.sh`);
   process.exit(1);
@@ -211,5 +212,6 @@ const report = {
   kind: 'zero-echo.core-wasm-protocol.v1', status: failed.length ? 'fail' : 'pass', seconds,
   wasm_hash: state.hash, native_hash: nativeHash, checks: results, module_bytes: fs.statSync(modulePath).size,
 };
-fs.writeFileSync(path.join(here, 'build-wasm', 'wasm_protocol_report.json'), JSON.stringify(report, null, 2));
+const reportName = path.basename(modulePath) === 'echo_core.mjs' ? 'wasm_protocol_report.json' : `${path.basename(modulePath, '.mjs')}_protocol_report.json`;
+fs.writeFileSync(path.join(here, 'build-wasm', reportName), JSON.stringify(report, null, 2));
 process.exit(failed.length ? 1 : 0);

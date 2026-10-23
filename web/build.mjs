@@ -15,14 +15,18 @@ const dev = process.argv.includes('--dev');
 fs.mkdirSync(dist, { recursive: true });
 
 const wasmCore = path.join(repo, 'core/build-wasm/echo_core.mjs');
+const jsCore = path.join(repo, 'core/build-wasm/echo_core_js.mjs');
 const coreMissing = path.join(here, 'src/core/core_missing.js');
 
 // `import createEchoCore from 'echo-core-wasm'` resolves to the Emscripten ES module when it has been built
-// (core/build-wasm/echo_core.mjs, SINGLE_FILE), otherwise to a stub that rejects with a clear message.
+// (core/build-wasm/echo_core.mjs, SINGLE_FILE), otherwise to a stub that rejects with a clear message;
+// 'echo-core-js' likewise resolves to core/build-wasm/echo_core_js.mjs.
 const echoCorePlugin = {
   name: 'echo-core-wasm',
   setup(build) {
     build.onResolve({ filter: /^echo-core-wasm$/ }, () => ({ path: fs.existsSync(wasmCore) ? wasmCore : coreMissing }));
+    // The same core compiled to plain JS (-sWASM=0): used only when the page forbids WebAssembly compilation.
+    build.onResolve({ filter: /^echo-core-js$/ }, () => ({ path: fs.existsSync(jsCore) ? jsCore : coreMissing }));
   },
 };
 

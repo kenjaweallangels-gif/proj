@@ -12,3 +12,10 @@ declare module 'echo-core-wasm' {
   const createEchoCore: (opts?: Record<string, unknown>) => Promise<EchoCoreModule>;
   export default createEchoCore;
 }
+
+// The same core compiled with -sWASM=0 (plain JavaScript); identical API.
+declare module 'echo-core-js' {
+  import type { EchoCoreModule } from 'echo-core-wasm';
+  const createEchoCore: (opts?: Record<string, unknown>) => Promise<EchoCoreModule>;
+  export default createEchoCore;
+}

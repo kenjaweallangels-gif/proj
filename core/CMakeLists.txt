@@ -95,11 +95,7 @@ if(EMSCRIPTEN)
   set_target_properties(echo_cli PROPERTIES SUFFIX ".cjs")
 
   # The browser/worker/node ES module: echo_core.mjs (single file, no filesystem, no exceptions).
-  add_executable(echo_core_module src/c_api.cpp)
-  target_link_libraries(echo_core_module PRIVATE echo_core)
-  target_compile_options(echo_core_module PRIVATE ${ECHO_WARNINGS})
-  set_target_properties(echo_core_module PROPERTIES OUTPUT_NAME echo_core SUFFIX ".mjs")
-  target_link_options(echo_core_module PRIVATE
+  set(ECHO_MODULE_LINK
     --no-entry
     -sMODULARIZE=1 -sEXPORT_ES6=1 -sSINGLE_FILE=1 -sSINGLE_FILE_BINARY_ENCODE=0
     -sENVIRONMENT=web,worker,node
@@ -110,9 +106,23 @@ if(EMSCRIPTEN)
     "-sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToNewUTF8")
   # Node comes with emsdk (it is also the test emulator of the Emscripten toolchain).
   find_program(ECHO_NODE NAMES node HINTS ENV EMSDK_NODE REQUIRED)
+  add_executable(echo_core_module src/c_api.cpp)
+  target_link_libraries(echo_core_module PRIVATE echo_core)
+  target_compile_options(echo_core_module PRIVATE ${ECHO_WARNINGS})
+  set_target_properties(echo_core_module PROPERTIES OUTPUT_NAME echo_core SUFFIX ".mjs")
+  target_link_options(echo_core_module PRIVATE ${ECHO_MODULE_LINK})
   add_custom_command(TARGET echo_core_module POST_BUILD
     COMMAND ${ECHO_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/strip_node_prefix.mjs $<TARGET_FILE:echo_core_module>
     COMMENT "echo_core.mjs: node:* specifiers -> bundler-friendly names")
+  # Same core compiled to plain JavaScript (-sWASM=0): fallback for pages whose CSP forbids WebAssembly compilation.
+  add_executable(echo_core_js_module src/c_api.cpp)
+  target_link_libraries(echo_core_js_module PRIVATE echo_core)
+  target_compile_options(echo_core_js_module PRIVATE ${ECHO_WARNINGS})
+  set_target_properties(echo_core_js_module PROPERTIES OUTPUT_NAME echo_core_js SUFFIX ".mjs")
+  target_link_options(echo_core_js_module PRIVATE ${ECHO_MODULE_LINK} -sWASM=0)
+  add_custom_command(TARGET echo_core_js_module POST_BUILD
+    COMMAND ${ECHO_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/strip_node_prefix.mjs $<TARGET_FILE:echo_core_js_module>
+    COMMENT "echo_core_js.mjs: node:* specifiers -> bundler-friendly names")
 endif()
 
 add_test(NAME echo_tests COMMAND echo_tests --data-dir ${ECHO_DATA_DIR} --schema-dir ${ECHO_SCHEMA_DIR})

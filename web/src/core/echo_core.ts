@@ -2,6 +2,7 @@
 // Every response that carries `events` is forwarded to the event sink exactly once (the core hands each event out
 // once, through whichever command response comes first), so the host keeps one ordered journal.
 import createEchoCore, { type EchoCoreModule } from 'echo-core-wasm';
+import createEchoCoreJs from 'echo-core-js';
 import type { CoreEvent, InitResponse } from './protocol.ts';
 import { buildInitData } from './data.ts';
 
@@ -30,15 +31,26 @@ export class EchoCore implements CoreCaller {
   callMs = 0;
   calls = 0;
 
-  private constructor(module: EchoCoreModule) {
+  /** Which build of the core runs: WebAssembly, or the same C++ compiled to JavaScript. */
+  readonly engine: 'wasm' | 'js';
+
+  private constructor(module: EchoCoreModule, engine: 'wasm' | 'js') {
     this.module = module;
+    this.engine = engine;
     this.handle = module._echo_create();
   }
 
-  /** Instantiates the WASM module (inlined, no network) and an empty core. */
+  /**
+   * Instantiates the WASM module (inlined, no network) and an empty core. A page whose Content-Security-Policy
+   * forbids WebAssembly compilation still runs the same core, compiled to JavaScript from the same sources.
+   */
   static async create(): Promise<EchoCore> {
-    const module = await createEchoCore();
-    return new EchoCore(module);
+    try {
+      return new EchoCore(await createEchoCore(), 'wasm');
+    } catch (e) {
+      console.warn('[core] WebAssembly unavailable — using the JavaScript build of the same core', e);
+      return new EchoCore(await createEchoCoreJs(), 'js');
+    }
   }
 
   /** Loads the D0 data and returns the init summary. */
