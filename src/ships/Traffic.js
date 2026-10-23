@@ -58,7 +58,7 @@ export class Traffic {
     this.corridors = new Map();
     this.flying = [];          // ships in motion (incl. drones)
     this.t = 0;                // controller time (s since start)
-    this.nextUndock = 65 + rng() * 25;   // first departure shortly after the 60 s minimum stay
+    this.nextUndock = 12 + rng() * 8;    // first departure soon after the scene starts; then every 90-180 s
     this.nextArrival = 1e9;
     this.targetDocked = Math.max(1, Math.round(this.ports.length * 0.6));
     this.rcs = new Rcs(ctx.particles);
@@ -149,7 +149,8 @@ export class Traffic {
     this.dockQuat(port, roll, g.quaternion);
     ship.roll = roll; ship.port = port; port.occupant = ship; port.reserved = false;
     ship.state = 'docked'; ship.velocity.set(0, 0, 0);
-    ship.petalOpen = 0; ship.petalExtend = 0; ship.panelDeploy = 1; ship.doorOpen = 1; ship.dockLightsOn = false; ship.dockedSince = this.t;
+    ship.petalOpen = 0; ship.petalExtend = 0; ship.panelDeploy = 1; ship.doorOpen = 1; ship.dockLightsOn = false;
+    ship.dockedSince = this.t === 0 ? -120 : this.t;   // ships present at scene start have been docked for a while
     ship.flight = null; g.visible = true;
     this.mod.updateColliders(ship);
     this.mod.setDishTarget(ship, 'earth');
