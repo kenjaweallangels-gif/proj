@@ -184,7 +184,7 @@ export class App {
     const s = this.orbit.sunDir;
     const sunView = (pos) => ({ position: pos, target: [pos[0] + s.x * 500, pos[1] + s.y * 500, pos[2] + s.z * 500] });
     const observerViews = {
-      overview: { position: [210, 95, 250], target: [0, 0, 0] },
+      overview: { position: [150, 70, 185], target: [-10, 0, 0] },
       front: { position: [320, 40, 30], target: [0, 0, 0] },
       top: { position: [10, 330, 10], target: [0, 0, 0] },
       earth: { position: [40, 110, 70], target: [0, -60, 0] },
