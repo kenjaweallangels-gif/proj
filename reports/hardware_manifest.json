@@ -1,6 +1,6 @@
 {
   "kind": "zero-echo.hardware-manifest.v1",
-  "generated_at": "2026-10-22T20:01:12+00:00",
+  "generated_at": "2026-10-23T00:34:00+00:00",
   "tool": {
     "name": "tools/hw_manifest.py",
     "version": "1.0",
@@ -8,7 +8,7 @@
   },
   "note_ru": "Факты об этой машине, собранные её же инструментами. Неизвестное — null с причиной; ничего не угадывается. Это манифест условий теста, а не замер производительности.",
   "git": {
-    "revision": "966b6695e8c3429643be501464780b10c3185945",
+    "revision": "55ee16763da8927d58378f5d56ac17e5ae7d1e9c",
     "dirty": true,
     "reason": null
   },
@@ -24,7 +24,7 @@
     "container_reason": null
   },
   "cpu": {
-    "model": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "model": "Intel(R) Xeon(R) Processor @ 2.10GHz",
     "vendor": "GenuineIntel",
     "sockets": 1,
     "physical_cores": 4,
@@ -36,7 +36,10 @@
       "avx2",
       "fma",
       "f16c",
-      "avx512f"
+      "avx512f",
+      "avx512_bf16",
+      "avx_vnni",
+      "amx_tile"
     ],
     "source": "lscpu",
     "note_ru": "Виртуальные CPU (флаг hypervisor): ядра/потоки — выделенные гостю, модель и частота физического CPU хоста не определяются.",
@@ -44,7 +47,7 @@
   },
   "memory": {
     "total_gib": 15.71,
-    "available_gib": 14.6,
+    "available_gib": 15.19,
     "swap_total_gib": 0.0
   },
   "gpu": {
@@ -176,10 +179,9 @@
     "gcc": "g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
     "clang": "Ubuntu clang version 18.1.3 (1ubuntu1)",
     "cmake": "cmake version 3.28.3",
-    "emcc": null,
+    "emcc": "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 6.0.13 (e13ee988ce3d87a738dd8f3661d02223308c412a)",
     "nvcc": null,
     "reasons": {
-      "emcc": "команда emcc не найдена",
       "nvcc": "команда nvcc не найдена"
     }
   },
@@ -193,7 +195,7 @@
     "summary_ru": [
       "GPU: нет. Это не целевой стенд; 60 FPS, GPU-LLM и время кадра здесь не проверяются.",
       "RAM: 15.71 GiB < целевых 32 GB.",
-      "CPU: Intel(R) Xeon(R) Processor @ 2.80GHz, ядер 4, потоков 4 (виртуальные)."
+      "CPU: Intel(R) Xeon(R) Processor @ 2.10GHz, ядер 4, потоков 4 (виртуальные)."
     ]
   },
   "unknowns": [

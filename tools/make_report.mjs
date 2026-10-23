@@ -64,6 +64,7 @@ const directions = [
   { id: 'gateway', title_ru: 'Agent Gateway: адаптеры, статусы, сеть, ключи, квоты (фейковые серверы)', doc: '§15–§18', ...fromStep('gateway_tests') },
   { id: 'web_build', title_ru: 'Сборка браузерного клиента (WebGPU + WASM-ядро, один файл)', doc: '§7', ...fromStep('web_build') },
   { id: 'web_e2e', title_ru: 'E2E в headless Chromium (SwiftShader): сцена Миры, отказы authority, экран совместимости', doc: '§7, §9, §12', ...fromStep('web_e2e') },
+  { id: 'web_csp', title_ru: 'Страница с CSP без WebAssembly: то же ядро в JS-сборке, сценарий D0 идёт', doc: '§7', ...fromStep('web_csp') },
   evalEntry('eval_rules', 'reports/eval/rules.json', 'Eval-сцены: обычный игровой ИИ (rules)'),
   evalEntry('eval_adversarial', 'reports/eval/mock_adversarial_unknown_field.json', 'Eval-сцены: враждебные ответы модели (mock)'),
   { id: 'hw_manifest', title_ru: 'E0: hardware manifest этой машины', doc: '§19, §22', ...fromStep('hw_manifest') },

@@ -36,8 +36,10 @@ step gateway_tests   node --test gateway/test/
 step web_build       node web/build.mjs
 if [ "$SKIP_BROWSER" = 0 ]; then
   step web_e2e       node web/test/e2e.mjs
+  step web_csp       node web/test/csp_fallback.mjs
 else
   printf '{"id":"web_e2e","rc":-2,"seconds":0,"log":"","not_run":"--skip-browser"}\n' >> "$STEPS"
+  printf '{"id":"web_csp","rc":-2,"seconds":0,"log":"","not_run":"--skip-browser"}\n' >> "$STEPS"
 fi
 step eval_rules      node eval/run.ts --provider rules --out reports/eval/rules.json
 step eval_adversarial node eval/run.ts --provider mock:adversarial_unknown_field --out reports/eval/mock_adversarial_unknown_field.json

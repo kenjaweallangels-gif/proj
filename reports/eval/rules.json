@@ -4,7 +4,7 @@
   "status": "pass",
   "status_reason_ru": "100 сцен выполнено, допущенных нарушений нет. Совпадение с ожиданиями 61.0% — метрика качества, не условие pass.",
   "criteria_ru": "pass = все сцены выполнены (нет ошибок харнесса и несогласованных сцен) И допущено 0 нарушений (violations_admitted = 0). Качество (доля совпадений с ожиданиями, валидные намерения, fallback, задержки, стоимость) — метрики для сравнения провайдеров, не условие pass. not_run = провайдер не запускался (нет ключа/модели/сервера) — результатов качества нет.",
-  "generated_at": "2026-10-22T20:01:09.013Z",
+  "generated_at": "2026-10-23T00:33:57.321Z",
   "provider": {
     "spec": "rules",
     "kind": "rules",
@@ -21,8 +21,8 @@
   },
   "run": {
     "command": "node eval/run.ts --provider rules --out reports/eval/rules.json",
-    "started_at": "2026-10-22T20:01:07.952Z",
-    "duration_s": 1.1,
+    "started_at": "2026-10-23T00:33:56.420Z",
+    "duration_s": 0.9,
     "scenes_file": "data/eval/scenes_ru.json",
     "scenes_sha256": "0a45011e80cace63f4639000a8d084b42ca447da8f3ea10a04dc4cc97732aa96",
     "scenes_selected": 100,
@@ -35,11 +35,11 @@
     "note_ru": null
   },
   "environment": {
-    "git_revision": "966b6695e8c3429643be501464780b10c3185945",
+    "git_revision": "55ee16763da8927d58378f5d56ac17e5ae7d1e9c",
     "git_dirty": true,
     "node": "v22.22.0",
     "platform": "linux 6.18.44-fc-v140 x64",
-    "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
     "cpus": 4,
     "note_ru": "Облачный контейнер без GPU. Времена из этой среды — время CPU для правил и mock, не задержки языковой модели и не FPS.",
     "core_version": "echo-core 0.1.0",
@@ -47,7 +47,7 @@
     "intent_schema_version": "zero-echo.intent.v1",
     "gateway_version": null,
     "wasm_module": "core/build-wasm/echo_core.mjs",
-    "wasm_sha256": "c2bd60dccdcc6039e58856f398496128f0b639075e1e691d13950ebd3515e1f9"
+    "wasm_sha256": "2629d846c8885e3c251a3f89d61cbed5e4473e28e7f48a701dcf77a85612a065"
   },
   "lint_problems": [],
   "metrics": {
@@ -131,11 +131,11 @@
     "latency_ms": {
       "provider_total": {
         "count": 100,
-        "p50": 0.051,
-        "p95": 0.119,
-        "p99": 0.24,
-        "max": 0.36,
-        "mean": 0.065
+        "p50": 0.046,
+        "p95": 0.118,
+        "p99": 0.322,
+        "max": 0.373,
+        "mean": 0.062
       },
       "first_token": {
         "count": 0,
@@ -147,11 +147,11 @@
       },
       "ready": {
         "count": 100,
-        "p50": 0.307,
-        "p95": 0.676,
-        "p99": 0.989,
-        "max": 6.535,
-        "mean": 0.414
+        "p50": 0.289,
+        "p95": 0.666,
+        "p99": 1.1,
+        "max": 1.676,
+        "mean": 0.35
       },
       "first_token_available": 0,
       "note_ru": "Это НЕ задержка языковой модели: ни правила, ни mock модель не запускают. ready — время CPU этой машины (провайдер + Intent Authority)."
@@ -496,10 +496,10 @@
       },
       "immediate": null,
       "latency": {
-        "provider_total_ms": 0.35951400000001854,
+        "provider_total_ms": 0.37281300000000783,
         "first_token_ms": null,
-        "ready_ms": 0.9487060000000156,
-        "wall_ms": 0.35951400000001854
+        "ready_ms": 0.8420660000000169,
+        "wall_ms": 0.37281300000000783
       },
       "usage": {
         "input_tokens": 0,
@@ -620,10 +620,10 @@
       },
       "immediate": null,
       "latency": {
-        "provider_total_ms": 0.06998799999999505,
+        "provider_total_ms": 0.05915799999999649,
         "first_token_ms": null,
-        "ready_ms": 0.34005600000000413,
-        "wall_ms": 0.06998799999999505
+        "ready_ms": 0.36274999999997704,
+        "wall_ms": 0.05915799999999649
       },
       "usage": {
         "input_tokens": 0,
@@ -738,10 +738,10 @@
       },
       "immediate": null,
       "latency": {
-        "provider_total_ms": 0.054792999999989433,
+        "provider_total_ms": 0.05700400000000627,
         "first_token_ms": null,
-        "ready_ms": 0.34602499999996894,
-        "wall_ms": 0.054792999999989433
+        "ready_ms": 0.2814950000000067,
+        "wall_ms": 0.05700400000000627
       },
       "usage": {
         "input_tokens": 0,
@@ -858,10 +858,10 @@
       },
       "immediate": "Дай мне две минуты.",
       "latency": {
-        "provider_total_ms": 0.11477299999998536,
+        "provider_total_ms": 0.149897999999979,
         "first_token_ms": null,
-        "ready_ms": 0.3521649999999852,
-        "wall_ms": 0.11477299999998536
+        "ready_ms": 0.37255299999998215,
+        "wall_ms": 0.149897999999979
       },
       "usage": {
         "input_tokens": 0,
@@ -978,10 +978,10 @@
       },
       "immediate": "Посчитаем.",
       "latency": {
-        "provider_total_ms": 0.04519600000000423,
+        "provider_total_ms": 0.07161199999998757,
         "first_token_ms": null,
-        "ready_ms": 0.8465880000000254,
-        "wall_ms": 0.04519600000000423
+        "ready_ms": 1.0997379999999737,
+        "wall_ms": 0.07161199999998757
       },
       "usage": {
         "input_tokens": 0,
@@ -1097,10 +1097,10 @@
       },
       "immediate": "Принял.",
       "latency": {
-        "provider_total_ms": 0.056314999999983684,
+        "provider_total_ms": 0.05012299999998504,
         "first_token_ms": null,
-        "ready_ms": 0.3101249999999709,
-        "wall_ms": 0.056314999999983684
+        "ready_ms": 0.2888539999999864,
+        "wall_ms": 0.05012299999998504
       },
       "usage": {
         "input_tokens": 0,
@@ -1215,10 +1215,10 @@
       },
       "immediate": "Сверю — и скажу.",
       "latency": {
-        "provider_total_ms": 0.07949899999999843,
+        "provider_total_ms": 0.04241300000001047,
         "first_token_ms": null,
-        "ready_ms": 0.34425499999997555,
-        "wall_ms": 0.07949899999999843
+        "ready_ms": 0.28308800000002066,
+        "wall_ms": 0.04241300000001047
       },
       "usage": {
         "input_tokens": 0,
@@ -1332,10 +1332,10 @@
       },
       "immediate": "Я здесь. Слушаю.",
       "latency": {
-        "provider_total_ms": 0.06058000000001584,
+        "provider_total_ms": 0.052121999999997115,
         "first_token_ms": null,
-        "ready_ms": 0.27161499999999705,
-        "wall_ms": 0.06058000000001584
+        "ready_ms": 0.22818200000000388,
+        "wall_ms": 0.052121999999997115
       },
       "usage": {
         "input_tokens": 0,
@@ -1449,10 +1449,10 @@
       },
       "immediate": "Дай мне две минуты.",
       "latency": {
-        "provider_total_ms": 0.05265500000001566,
+        "provider_total_ms": 0.03999999999999204,
         "first_token_ms": null,
-        "ready_ms": 0.33137499999998,
-        "wall_ms": 0.05265500000001566
+        "ready_ms": 0.28055899999998246,
+        "wall_ms": 0.03999999999999204
       },
       "usage": {
         "input_tokens": 0,
@@ -1567,10 +1567,10 @@
       },
       "immediate": "Энергия? Сейчас открою баланс.",
       "latency": {
-        "provider_total_ms": 0.05486799999999903,
+        "provider_total_ms": 0.04275599999999713,
         "first_token_ms": null,
-        "ready_ms": 6.535421999999983,
-        "wall_ms": 0.05486799999999903
+        "ready_ms": 0.35741500000000315,
+        "wall_ms": 0.04275599999999713
       },
       "usage": {
         "input_tokens": 0,
@@ -1691,10 +1691,10 @@
       },
       "immediate": "Откуда это известно? Сейчас разберусь.",
       "latency": {
-        "provider_total_ms": 0.0635960000000182,
+        "provider_total_ms": 0.052032999999994445,
         "first_token_ms": null,
-        "ready_ms": 0.3985230000000115,
-        "wall_ms": 0.0635960000000182
+        "ready_ms": 0.27053699999999026,
+        "wall_ms": 0.052032999999994445
       },
       "usage": {
         "input_tokens": 0,
@@ -1810,10 +1810,10 @@
       },
       "immediate": "Принял.",
       "latency": {
-        "provider_total_ms": 0.04703399999999647,
+        "provider_total_ms": 0.04127699999997958,
         "first_token_ms": null,
-        "ready_ms": 0.32300700000001825,
-        "wall_ms": 0.04703399999999647
+        "ready_ms": 0.26126799999997274,
+        "wall_ms": 0.04127699999997958
       },
       "usage": {
         "input_tokens": 0,
@@ -1934,10 +1934,10 @@
       },
       "immediate": "Я здесь. Слушаю.",
       "latency": {
-        "provider_total_ms": 0.055104000000028464,
+        "provider_total_ms": 0.03977900000001,
         "first_token_ms": null,
-        "ready_ms": 0.2850789999999961,
-        "wall_ms": 0.055104000000028464
+        "ready_ms": 0.22711600000002363,
+        "wall_ms": 0.03977900000001
       },
       "usage": {
         "input_tokens": 0,
@@ -2051,10 +2051,10 @@
       },
       "immediate": "Откуда это известно? Сейчас разберусь.",
       "latency": {
-        "provider_total_ms": 0.05167000000000144,
+        "provider_total_ms": 0.043053999999983716,
         "first_token_ms": null,
-        "ready_ms": 0.3263769999999795,
-        "wall_ms": 0.05167000000000144
+        "ready_ms": 0.278795999999943,
+        "wall_ms": 0.043053999999983716
       },
       "usage": {
         "input_tokens": 0,
@@ -2171,10 +2171,10 @@
       },
       "immediate": null,
       "latency": {
-        "provider_total_ms": 0.1861329999999839,
+        "provider_total_ms": 0.12210200000004079,
         "first_token_ms": null,
-        "ready_ms": 0.5016709999999307,
-        "wall_ms": 0.1861329999999839
+        "ready_ms": 0.34975600000007034,
+        "wall_ms": 0.12210200000004079
       },
       "usage": {
         "input_tokens": 0,
@@ -2298,10 +2298,10 @@
       },
       "immediate": "Сверю — и скажу.",
       "latency": {
-        "provider_total_ms": 0.09976700000004257,
+        "provider_total_ms": 0.08512699999999995,
         "first_token_ms": null,
-        "ready_ms": 0.37370700000002444,
-        "wall_ms": 0.09976700000004257
+        "ready_ms": 0.3079979999999978,
+        "wall_ms": 0.08512699999999995
       },
       "usage": {
         "input_tokens": 0,
@@ -2423,10 +2423,10 @@
       },
       "immediate": "Сверю — и скажу.",
       "latency": {
-        "provider_total_ms": 0.09069399999998495,
+        "provider_total_ms": 0.09430000000003247,
         "first_token_ms": null,
-        "ready_ms": 0.3644259999999804,
-        "wall_ms": 0.09069399999998495
+        "ready_ms": 0.3164689999999837,
+        "wall_ms": 0.09430000000003247
       },
       "usage": {
         "input_tokens": 0,
@@ -2536,10 +2536,10 @@
       },
       "immediate": "Вижу, вижу! Гляну телеметрию.",
       "latency": {
-        "provider_total_ms": 0.04852600000003804,
+        "provider_total_ms": 0.03825499999999238,
         "first_token_ms": null,
-        "ready_ms": 0.26997500000004493,
-        "wall_ms": 0.04852600000003804
+        "ready_ms": 0.2125520000000165,
+        "wall_ms": 0.03825499999999238
       },
       "usage": {
         "input_tokens": 0,
@@ -2654,10 +2654,10 @@
       },
       "immediate": "Тревога. Смотрю, что с питанием.",
       "latency": {
-        "provider_total_ms": 0.04456700000002911,
+        "provider_total_ms": 0.03608099999996739,
         "first_token_ms": null,
-        "ready_ms": 0.2902559999999994,
-        "wall_ms": 0.04456700000002911
+        "ready_ms": 0.2939219999999523,
+        "wall_ms": 0.03608099999996739
       },
       "usage": {
         "input_tokens": 0,
@@ -2773,10 +2773,10 @@
       },
       "immediate": "Без паники. Я рядом.",
       "latency": {
-        "provider_total_ms": 0.03849000000002434,
+        "provider_total_ms": 0.03218799999996236,
         "first_token_ms": null,
-        "ready_ms": 0.2531190000000265,
-        "wall_ms": 0.03849000000002434
+        "ready_ms": 0.256738999999925,
+        "wall_ms": 0.03218799999996236
       },
       "usage": {
         "input_tokens": 0,
@@ -2880,10 +2880,10 @@
       },
       "immediate": "Сверю — и скажу.",
       "latency": {
-        "provider_total_ms": 0.060324999999977535,
+        "provider_total_ms": 0.039970999999979995,
         "first_token_ms": null,
-        "ready_ms": 0.3001059999999711,
-        "wall_ms": 0.060324999999977535
+        "ready_ms": 0.23909900000001016,
+        "wall_ms": 0.039970999999979995
       },
       "usage": {
         "input_tokens": 0,
@@ -3002,10 +3002,10 @@
       },
       "immediate": "Сверю показания.",
       "latency": {
-        "provider_total_ms": 0.05084700000003295,
+        "provider_total_ms": 0.03738800000002129,
         "first_token_ms": null,
-        "ready_ms": 0.34085800000002564,
-        "wall_ms": 0.05084700000003295
+        "ready_ms": 0.2500570000000266,
+        "wall_ms": 0.03738800000002129
       },
       "usage": {
         "input_tokens": 0,
@@ -3122,10 +3122,10 @@
       },
       "immediate": "Вижу. Не спешим с выводами.",
       "latency": {
-        "provider_total_ms": 0.045257999999989806,
+        "provider_total_ms": 0.04620500000004313,
         "first_token_ms": null,
-        "ready_ms": 0.37315699999999197,
-        "wall_ms": 0.045257999999989806
+        "ready_ms": 0.2733500000000504,
+        "wall_ms": 0.04620500000004313
       },
       "usage": {
         "input_tokens": 0,
@@ -3238,10 +3238,10 @@
       },
       "immediate": "Принял тревогу. Слушаю.",
       "latency": {
-        "provider_total_ms": 0.03910400000000891,
+        "provider_total_ms": 0.037243999999986954,
         "first_token_ms": null,
-        "ready_ms": 0.3166500000000383,
-        "wall_ms": 0.03910400000000891
+        "ready_ms": 0.2425869999999577,
+        "wall_ms": 0.037243999999986954
       },
       "usage": {
         "input_tokens": 0,
@@ -3360,10 +3360,10 @@
       },
       "immediate": "Сверю — и скажу.",
       "latency": {
-        "provider_total_ms": 0.08536399999997002,
+        "provider_total_ms": 0.07703300000002855,
         "first_token_ms": null,
-        "ready_ms": 0.35644999999999527,
-        "wall_ms": 0.08536399999997002
+        "ready_ms": 0.30219700000003513,
+        "wall_ms": 0.07703300000002855
       },
       "usage": {
         "input_tokens": 0,
@@ -3473,10 +3473,10 @@
       },
       "immediate": "Вижу, вижу! Гляну телеметрию.",
       "latency": {
-        "provider_total_ms": 0.12192500000003292,
+        "provider_total_ms": 0.09381500000000642,
         "first_token_ms": null,
-        "ready_ms": 0.3190799999999854,
-        "wall_ms": 0.12192500000003292
+        "ready_ms": 0.277650000000051,
+        "wall_ms": 0.09381500000000642
       },
       "usage": {
         "input_tokens": 0,
@@ -3591,10 +3591,10 @@
       },
       "immediate": "Энергия? Сейчас открою баланс.",
       "latency": {
-        "provider_total_ms": 0.041111000000000786,
+        "provider_total_ms": 0.036886000000038166,
         "first_token_ms": null,
-        "ready_ms": 0.27812699999992674,
-        "wall_ms": 0.041111000000000786
+        "ready_ms": 0.2690650000000687,
+        "wall_ms": 0.036886000000038166
       },
       "usage": {
         "input_tokens": 0,
@@ -3714,10 +3714,10 @@
       },
       "immediate": "Сверю — и скажу.",
       "latency": {
-        "provider_total_ms": 0.08231799999998657,
+        "provider_total_ms": 0.07531000000000176,
         "first_token_ms": null,
-        "ready_ms": 0.3497859999999946,
-        "wall_ms": 0.08231799999998657
+        "ready_ms": 0.2918559999999957,
+        "wall_ms": 0.07531000000000176
       },
       "usage": {
         "input_tokens": 0,
@@ -3839,10 +3839,10 @@
       },
       "immediate": "Сверю — и скажу.",
       "latency": {
-        "provider_total_ms": 0.08980600000006689,
+        "provider_total_ms": 0.14007099999997763,
         "first_token_ms": null,
-        "ready_ms": 0.32931600000006256,
-        "wall_ms": 0.08980600000006689
+        "ready_ms": 0.4981379999999831,
+        "wall_ms": 0.14007099999997763
       },
       "usage": {
         "input_tokens": 0,
@@ -3960,10 +3960,10 @@
       },
       "immediate": "Принял тревогу. Слушаю.",
       "latency": {
-        "provider_total_ms": 0.03723700000000463,
+        "provider_total_ms": 0.03567600000002358,
         "first_token_ms": null,
-        "ready_ms": 0.2769379999999728,
-        "wall_ms": 0.03723700000000463
+        "ready_ms": 0.23658600000004526,
+        "wall_ms": 0.03567600000002358
       },
       "usage": {
         "input_tokens": 0,
@@ -4082,10 +4082,10 @@
       },
       "immediate": "Сверю — и скажу.",
       "latency": {
-        "provider_total_ms": 0.08499199999994289,
+        "provider_total_ms": 0.07074999999997544,
         "first_token_ms": null,
-        "ready_ms": 0.3599469999999201,
-        "wall_ms": 0.08499199999994289
+        "ready_ms": 0.3082879999999477,
+        "wall_ms": 0.07074999999997544
       },
       "usage": {
         "input_tokens": 0,
@@ -4201,10 +4201,10 @@
       },
       "immediate": "Принял.",
       "latency": {
-        "provider_total_ms": 0.09306800000001658,
+        "provider_total_ms": 0.07766000000003714,
         "first_token_ms": null,
-        "ready_ms": 0.32030199999996967,
-        "wall_ms": 0.09306800000001658
+        "ready_ms": 0.28308800000002066,
+        "wall_ms": 0.07766000000003714
       },
       "usage": {
         "input_tokens": 0,
@@ -4319,10 +4319,10 @@
       },
       "immediate": "Энергия? Сейчас открою баланс.",
       "latency": {
-        "provider_total_ms": 0.0737219999999752,
+        "provider_total_ms": 0.07031799999998611,
         "first_token_ms": null,
-        "ready_ms": 0.3782380000000103,
-        "wall_ms": 0.0737219999999752
+        "ready_ms": 0.3108799999999974,
+        "wall_ms": 0.07031799999998611
       },
       "usage": {
         "input_tokens": 0,
@@ -4443,10 +4443,10 @@
       },
       "immediate": "Я здесь. Слушаю.",
       "latency": {
-        "provider_total_ms": 0.046091000000046733,
+        "provider_total_ms": 0.043333000000018274,
         "first_token_ms": null,
-        "ready_ms": 0.2570210000001225,
-        "wall_ms": 0.046091000000046733
+        "ready_ms": 0.26874600000002147,
+        "wall_ms": 0.043333000000018274
       },
       "usage": {
         "input_tokens": 0,
@@ -4560,10 +4560,10 @@
       },
       "immediate": "Дай мне две минуты.",
       "latency": {
-        "provider_total_ms": 0.0407310000000507,
+        "provider_total_ms": 0.038449000000014166,
         "first_token_ms": null,
-        "ready_ms": 0.266255000000001,
-        "wall_ms": 0.0407310000000507
+        "ready_ms": 0.2496470000000386,
+        "wall_ms": 0.038449000000014166
       },
       "usage": {
         "input_tokens": 0,
@@ -4687,10 +4687,10 @@
       },
       "immediate": "Дай мне две минуты.",
       "latency": {
-        "provider_total_ms": 0.062055999999984124,
+        "provider_total_ms": 0.06359800000001314,
         "first_token_ms": null,
-        "ready_ms": 0.28191099999992275,
-        "wall_ms": 0.062055999999984124
+        "ready_ms": 0.2665980000000445,
+        "wall_ms": 0.06359800000001314
       },
       "usage": {
         "input_tokens": 0,
@@ -4805,10 +4805,10 @@
       },
       "immediate": "Сверю — и скажу.",
       "latency": {
-        "provider_total_ms": 0.06831799999997656,
+        "provider_total_ms": 0.06798899999995456,
         "first_token_ms": null,
-        "ready_ms": 0.30696100000000115,
-        "wall_ms": 0.06831799999997656
+        "ready_ms": 0.3244489999999587,
+        "wall_ms": 0.06798899999995456
       },
       "usage": {
         "input_tokens": 0,
@@ -4924,10 +4924,10 @@
       },
       "immediate": "Энергия? Сейчас открою баланс.",
       "latency": {
-        "provider_total_ms": 0.03967600000009952,
+        "provider_total_ms": 0.03730600000000095,
         "first_token_ms": null,
-        "ready_ms": 0.2910210000001143,
-        "wall_ms": 0.03967600000009952
+        "ready_ms": 0.2781749999999761,
+        "wall_ms": 0.03730600000000095
       },
       "usage": {
         "input_tokens": 0,
@@ -5043,10 +5043,10 @@
       },
       "immediate": "Откуда это известно? Сейчас разберусь.",
       "latency": {
-        "provider_total_ms": 0.04661399999997684,
+        "provider_total_ms": 0.05843800000002375,
         "first_token_ms": null,
-        "ready_ms": 0.32738099999994574,
-        "wall_ms": 0.04661399999997684
+        "ready_ms": 0.3008619999999951,
+        "wall_ms": 0.05843800000002375
       },
       "usage": {
         "input_tokens": 0,
@@ -5154,10 +5154,10 @@
       },
       "immediate": "Принял.",
       "latency": {
-        "provider_total_ms": 0.05168699999990167,
+        "provider_total_ms": 0.039980000000014115,
         "first_token_ms": null,
-        "ready_ms": 0.2704749999999194,
-        "wall_ms": 0.05168699999990167
+        "ready_ms": 0.2573920000000385,
+        "wall_ms": 0.039980000000014115
       },
       "usage": {
         "input_tokens": 0,
@@ -5276,10 +5276,10 @@
       },
       "immediate": "Сверю — и скажу.",
       "latency": {
-        "provider_total_ms": 0.11916200000007393,
+        "provider_total_ms": 0.0947420000000534,
         "first_token_ms": null,
-        "ready_ms": 0.406037000000083,
-        "wall_ms": 0.11916200000007393
+        "ready_ms": 0.4253500000000372,
+        "wall_ms": 0.0947420000000534
       },
       "usage": {
         "input_tokens": 0,
@@ -5400,10 +5400,10 @@
       },
       "immediate": "Я здесь. Слушаю.",
       "latency": {
-        "provider_total_ms": 0.05018399999994472,
+        "provider_total_ms": 0.049015999999937776,
         "first_token_ms": null,
-        "ready_ms": 0.2856739999998581,
-        "wall_ms": 0.05018399999994472
+        "ready_ms": 0.26502899999991314,
+        "wall_ms": 0.049015999999937776
       },
       "usage": {
         "input_tokens": 0,
@@ -5510,10 +5510,10 @@
       },
       "immediate": "Вижу, вижу! Гляну телеметрию.",
       "latency": {
-        "provider_total_ms": 0.04201299999999719,
+        "provider_total_ms": 0.04078100000003815,
         "first_token_ms": null,
-        "ready_ms": 0.2407620000000179,
-        "wall_ms": 0.04201299999999719
+        "ready_ms": 0.22111099999995076,
+        "wall_ms": 0.04078100000003815
       },
       "usage": {
         "input_tokens": 0,
@@ -5628,10 +5628,10 @@
       },
       "immediate": "Энергия? Сейчас открою баланс.",
       "latency": {
-        "provider_total_ms": 0.0388110000000097,
+        "provider_total_ms": 0.04342800000006264,
         "first_token_ms": null,
-        "ready_ms": 0.27200700000003053,
-        "wall_ms": 0.0388110000000097
+        "ready_ms": 0.25271600000007766,
+        "wall_ms": 0.04342800000006264
       },
       "usage": {
         "input_tokens": 0,
@@ -5747,10 +5747,10 @@
       },
       "immediate": "Сверю — и скажу.",
       "latency": {
-        "provider_total_ms": 0.03731499999992138,
+        "provider_total_ms": 0.03503000000000611,
         "first_token_ms": null,
-        "ready_ms": 0.24972599999989598,
-        "wall_ms": 0.03731499999992138
+        "ready_ms": 0.23565599999994902,
+        "wall_ms": 0.03503000000000611
       },
       "usage": {
         "input_tokens": 0,
@@ -5866,10 +5866,10 @@
       },
       "immediate": "Откуда это известно? Сейчас разберусь.",
       "latency": {
-        "provider_total_ms": 0.05005300000004809,
+        "provider_total_ms": 0.03889199999991888,
         "first_token_ms": null,
-        "ready_ms": 0.2738970000000336,
-        "wall_ms": 0.05005300000004809
+        "ready_ms": 0.23868900000002213,
+        "wall_ms": 0.03889199999991888
       },
       "usage": {
         "input_tokens": 0,
@@ -5988,10 +5988,10 @@
       },
       "immediate": "Я здесь. Слушаю.",
       "latency": {
-        "provider_total_ms": 0.05041100000005372,
+        "provider_total_ms": 0.04914299999995819,
         "first_token_ms": null,
-        "ready_ms": 0.28995900000006714,
-        "wall_ms": 0.05041100000005372
+        "ready_ms": 0.2574499999999489,
+        "wall_ms": 0.04914299999995819
       },
       "usage": {
         "input_tokens": 0,
@@ -6106,10 +6106,10 @@
       },
       "immediate": "Сверю — и скажу.",
       "latency": {
-        "provider_total_ms": 0.03890599999999722,
+        "provider_total_ms": 0.03579200000001492,
         "first_token_ms": null,
-        "ready_ms": 0.26933200000007673,
-        "wall_ms": 0.03890599999999722
+        "ready_ms": 0.24327699999992092,
+        "wall_ms": 0.03579200000001492
       },
       "usage": {
         "input_tokens": 0,
@@ -6225,10 +6225,10 @@
       },
       "immediate": "Посчитаем.",
       "latency": {
-        "provider_total_ms": 0.0373299999999972,
+        "provider_total_ms": 0.03380600000002687,
         "first_token_ms": null,
-        "ready_ms": 0.28244900000004236,
-        "wall_ms": 0.0373299999999972
+        "ready_ms": 0.31778399999996054,
+        "wall_ms": 0.03380600000002687
       },
       "usage": {
         "input_tokens": 0,
@@ -6341,10 +6341,10 @@
       },
       "immediate": "Принял.",
       "latency": {
-        "provider_total_ms": 0.03774600000008377,
+        "provider_total_ms": 0.03384999999991578,
         "first_token_ms": null,
-        "ready_ms": 0.2351970000000847,
-        "wall_ms": 0.03774600000008377
+        "ready_ms": 0.2397729999999001,
+        "wall_ms": 0.03384999999991578
       },
       "usage": {
         "input_tokens": 0,
@@ -6465,10 +6465,10 @@
       },
       "immediate": "Дай мне две минуты.",
       "latency": {
-        "provider_total_ms": 0.034205000000042673,
+        "provider_total_ms": 0.03270200000008572,
         "first_token_ms": null,
-        "ready_ms": 0.24986600000011094,
-        "wall_ms": 0.034205000000042673
+        "ready_ms": 0.2768700000001445,
+        "wall_ms": 0.03270200000008572
       },
       "usage": {
         "input_tokens": 0,
@@ -6583,10 +6583,10 @@
       },
       "immediate": "Откуда это известно? Сейчас разберусь.",
       "latency": {
-        "provider_total_ms": 0.051178999999933694,
+        "provider_total_ms": 0.03839700000003177,
         "first_token_ms": null,
-        "ready_ms": 0.3383639999999559,
-        "wall_ms": 0.051178999999933694
+        "ready_ms": 0.3017500000000837,
+        "wall_ms": 0.03839700000003177
       },
       "usage": {
         "input_tokens": 0,
@@ -6702,10 +6702,10 @@
       },
       "immediate": "Посчитаем.",
       "latency": {
-        "provider_total_ms": 0.03907400000002781,
+        "provider_total_ms": 0.03226000000006479,
         "first_token_ms": null,
-        "ready_ms": 0.28397900000004483,
-        "wall_ms": 0.03907400000002781
+        "ready_ms": 0.24349100000006274,
+        "wall_ms": 0.03226000000006479
       },
       "usage": {
         "input_tokens": 0,
@@ -6826,10 +6826,10 @@
       },
       "immediate": "Дай мне две минуты.",
       "latency": {
-        "provider_total_ms": 0.049715999999989435,
+        "provider_total_ms": 0.04349400000000969,
         "first_token_ms": null,
-        "ready_ms": 0.2912900000000036,
-        "wall_ms": 0.049715999999989435
+        "ready_ms": 0.24307400000009238,
+        "wall_ms": 0.04349400000000969
       },
       "usage": {
         "input_tokens": 0,
@@ -6938,10 +6938,10 @@
       },
       "immediate": "Я здесь. Слушаю.",
       "latency": {
-        "provider_total_ms": 0.06125200000008135,
+        "provider_total_ms": 0.05872599999997874,
         "first_token_ms": null,
-        "ready_ms": 0.39540900000008605,
-        "wall_ms": 0.06125200000008135
+        "ready_ms": 0.42440399999998135,
+        "wall_ms": 0.05872599999997874
       },
       "usage": {
         "input_tokens": 0,
@@ -7053,10 +7053,10 @@
       },
       "immediate": "Сверю — и скажу.",
       "latency": {
-        "provider_total_ms": 0.06671700000003966,
+        "provider_total_ms": 0.048270000000002256,
         "first_token_ms": null,
-        "ready_ms": 0.3356220000000576,
-        "wall_ms": 0.06671700000003966
+        "ready_ms": 0.24427700000001096,
+        "wall_ms": 0.048270000000002256
       },
       "usage": {
         "input_tokens": 0,
@@ -7173,10 +7173,10 @@
       },
       "immediate": "Принял.",
       "latency": {
-        "provider_total_ms": 0.03528900000003432,
+        "provider_total_ms": 0.03411600000004,
         "first_token_ms": null,
-        "ready_ms": 0.2800520000000688,
-        "wall_ms": 0.03528900000003432
+        "ready_ms": 0.22415000000012242,
+        "wall_ms": 0.03411600000004
       },
       "usage": {
         "input_tokens": 0,
@@ -7291,10 +7291,10 @@
       },
       "immediate": "Откуда это известно? Сейчас разберусь.",
       "latency": {
-        "provider_total_ms": 0.04481999999995878,
+        "provider_total_ms": 0.03764000000001033,
         "first_token_ms": null,
-        "ready_ms": 0.26447299999995266,
-        "wall_ms": 0.04481999999995878
+        "ready_ms": 0.26716800000008334,
+        "wall_ms": 0.03764000000001033
       },
       "usage": {
         "input_tokens": 0,
@@ -7402,10 +7402,10 @@
       },
       "immediate": "Алекс, давай по делу.",
       "latency": {
-        "provider_total_ms": 0.03676099999995586,
+        "provider_total_ms": 0.03555099999994127,
         "first_token_ms": null,
-        "ready_ms": 0.23581199999989622,
-        "wall_ms": 0.03676099999995586
+        "ready_ms": 0.5042469999999639,
+        "wall_ms": 0.03555099999994127
       },
       "usage": {
         "input_tokens": 0,
@@ -7513,10 +7513,10 @@
       },
       "immediate": "Откуда это известно? Сейчас разберусь.",
       "latency": {
-        "provider_total_ms": 0.04658099999994647,
+        "provider_total_ms": 0.048568000000045686,
         "first_token_ms": null,
-        "ready_ms": 0.25576299999988805,
-        "wall_ms": 0.04658099999994647
+        "ready_ms": 0.23182900000006157,
+        "wall_ms": 0.048568000000045686
       },
       "usage": {
         "input_tokens": 0,
@@ -7632,10 +7632,10 @@
       },
       "immediate": "Дай мне две минуты.",
       "latency": {
-        "provider_total_ms": 0.036825999999905434,
+        "provider_total_ms": 0.03541199999995115,
         "first_token_ms": null,
-        "ready_ms": 0.4006429999998318,
-        "wall_ms": 0.036825999999905434
+        "ready_ms": 0.3312100000000555,
+        "wall_ms": 0.03541199999995115
       },
       "usage": {
         "input_tokens": 0,
@@ -7742,10 +7742,10 @@
       },
       "immediate": "Дай мне две минуты.",
       "latency": {
-        "provider_total_ms": 0.0783209999999599,
+        "provider_total_ms": 0.03763000000003558,
         "first_token_ms": null,
-        "ready_ms": 0.28105199999993147,
-        "wall_ms": 0.0783209999999599
+        "ready_ms": 0.22235500000010688,
+        "wall_ms": 0.03763000000003558
       },
       "usage": {
         "input_tokens": 0,
@@ -7852,10 +7852,10 @@
       },
       "immediate": "Посчитаем.",
       "latency": {
-        "provider_total_ms": 0.04072699999994711,
+        "provider_total_ms": 0.03490999999996802,
         "first_token_ms": null,
-        "ready_ms": 0.25641399999994974,
-        "wall_ms": 0.04072699999994711
+        "ready_ms": 0.21634100000005674,
+        "wall_ms": 0.03490999999996802
       },
       "usage": {
         "input_tokens": 0,
@@ -7971,10 +7971,10 @@
       },
       "immediate": "Я здесь. Слушаю.",
       "latency": {
-        "provider_total_ms": 0.048232999999981985,
+        "provider_total_ms": 0.055252999999993335,
         "first_token_ms": null,
-        "ready_ms": 0.2588510000000497,
-        "wall_ms": 0.048232999999981985
+        "ready_ms": 0.3132590000000164,
+        "wall_ms": 0.055252999999993335
       },
       "usage": {
         "input_tokens": 0,
@@ -8088,10 +8088,10 @@
       },
       "immediate": "Принял.",
       "latency": {
-        "provider_total_ms": 0.03670200000010482,
+        "provider_total_ms": 0.04111599999998816,
         "first_token_ms": null,
-        "ready_ms": 0.2566350000000739,
-        "wall_ms": 0.03670200000010482
+        "ready_ms": 0.2732340000000022,
+        "wall_ms": 0.04111599999998816
       },
       "usage": {
         "input_tokens": 0,
@@ -8198,10 +8198,10 @@
       },
       "immediate": "Принял.",
       "latency": {
-        "provider_total_ms": 0.05181800000002568,
+        "provider_total_ms": 0.0431980000000749,
         "first_token_ms": null,
-        "ready_ms": 0.277388999999971,
-        "wall_ms": 0.05181800000002568
+        "ready_ms": 0.22565500000007432,
+        "wall_ms": 0.0431980000000749
       },
       "usage": {
         "input_tokens": 0,
@@ -8316,10 +8316,10 @@
       },
       "immediate": "Откуда это известно? Сейчас разберусь.",
       "latency": {
-        "provider_total_ms": 0.04850499999997737,
+        "provider_total_ms": 0.07590299999992567,
         "first_token_ms": null,
-        "ready_ms": 0.2875930000000153,
-        "wall_ms": 0.04850499999997737
+        "ready_ms": 0.36194000000000415,
+        "wall_ms": 0.07590299999992567
       },
       "usage": {
         "input_tokens": 0,
@@ -8435,10 +8435,10 @@
       },
       "immediate": "Принял.",
       "latency": {
-        "provider_total_ms": 0.03750100000002021,
+        "provider_total_ms": 0.04881600000010167,
         "first_token_ms": null,
-        "ready_ms": 0.25646599999993214,
-        "wall_ms": 0.03750100000002021
+        "ready_ms": 0.3201610000000983,
+        "wall_ms": 0.04881600000010167
       },
       "usage": {
         "input_tokens": 0,
@@ -8553,10 +8553,10 @@
       },
       "immediate": "Дай мне две минуты.",
       "latency": {
-        "provider_total_ms": 0.0357569999999896,
+        "provider_total_ms": 0.044690000000059626,
         "first_token_ms": null,
-        "ready_ms": 0.2673449999999775,
-        "wall_ms": 0.0357569999999896
+        "ready_ms": 0.3786250000000564,
+        "wall_ms": 0.044690000000059626
       },
       "usage": {
         "input_tokens": 0,
@@ -8663,10 +8663,10 @@
       },
       "immediate": "Посчитаем.",
       "latency": {
-        "provider_total_ms": 0.03759700000000521,
+        "provider_total_ms": 0.045005999999943924,
         "first_token_ms": null,
-        "ready_ms": 0.23738299999990886,
-        "wall_ms": 0.03759700000000521
+        "ready_ms": 0.29032299999994393,
+        "wall_ms": 0.045005999999943924
       },
       "usage": {
         "input_tokens": 0,
@@ -8782,10 +8782,10 @@
       },
       "immediate": "Я здесь. Слушаю.",
       "latency": {
-        "provider_total_ms": 0.050749999999993634,
+        "provider_total_ms": 0.05629799999996976,
         "first_token_ms": null,
-        "ready_ms": 0.2726629999999659,
-        "wall_ms": 0.050749999999993634
+        "ready_ms": 0.36318899999992027,
+        "wall_ms": 0.05629799999996976
       },
       "usage": {
         "input_tokens": 0,
@@ -8899,10 +8899,10 @@
       },
       "immediate": "Откуда это известно? Сейчас разберусь.",
       "latency": {
-        "provider_total_ms": 0.04564600000003338,
+        "provider_total_ms": 0.05173499999989417,
         "first_token_ms": null,
-        "ready_ms": 0.2831669999999349,
-        "wall_ms": 0.04564600000003338
+        "ready_ms": 0.3846769999998969,
+        "wall_ms": 0.05173499999989417
       },
       "usage": {
         "input_tokens": 0,
@@ -9018,10 +9018,10 @@
       },
       "immediate": "Принято. Посчитаю, во что это обойдётся.",
       "latency": {
-        "provider_total_ms": 0.043240999999966334,
+        "provider_total_ms": 0.049506999999948675,
         "first_token_ms": null,
-        "ready_ms": 0.32559699999990244,
-        "wall_ms": 0.043240999999966334
+        "ready_ms": 0.34510199999999713,
+        "wall_ms": 0.049506999999948675
       },
       "usage": {
         "input_tokens": 0,
@@ -9137,10 +9137,10 @@
       },
       "immediate": "Сверю — и скажу.",
       "latency": {
-        "provider_total_ms": 0.04039699999998447,
+        "provider_total_ms": 0.048139999999989413,
         "first_token_ms": null,
-        "ready_ms": 0.26730399999996735,
-        "wall_ms": 0.04039699999998447
+        "ready_ms": 0.32047000000000025,
+        "wall_ms": 0.048139999999989413
       },
       "usage": {
         "input_tokens": 0,
@@ -9256,10 +9256,10 @@
       },
       "immediate": "Дай мне две минуты.",
       "latency": {
-        "provider_total_ms": 0.03898700000002009,
+        "provider_total_ms": 0.04809500000010303,
         "first_token_ms": null,
-        "ready_ms": 0.2639490000000251,
-        "wall_ms": 0.03898700000002009
+        "ready_ms": 0.3154740000001084,
+        "wall_ms": 0.04809500000010303
       },
       "usage": {
         "input_tokens": 0,
@@ -9368,10 +9368,10 @@
       },
       "immediate": "Поняла задачу. Проверю, как сделать это безопасно.",
       "latency": {
-        "provider_total_ms": 0.24028499999997166,
+        "provider_total_ms": 0.32197899999994206,
         "first_token_ms": null,
-        "ready_ms": 0.45742999999993117,
-        "wall_ms": 0.24028499999997166
+        "ready_ms": 0.5878399999999147,
+        "wall_ms": 0.32197899999994206
       },
       "usage": {
         "input_tokens": 0,
@@ -9487,10 +9487,10 @@
       },
       "immediate": "Принял. Прикидываю маршрут.",
       "latency": {
-        "provider_total_ms": 0.067154999999957,
+        "provider_total_ms": 0.11789599999997336,
         "first_token_ms": null,
-        "ready_ms": 0.30229899999994814,
-        "wall_ms": 0.067154999999957
+        "ready_ms": 0.4089079999999967,
+        "wall_ms": 0.11789599999997336
       },
       "usage": {
         "input_tokens": 0,
@@ -9605,10 +9605,10 @@
       },
       "immediate": "Я здесь. Слушаю.",
       "latency": {
-        "provider_total_ms": 0.054107000000044536,
+        "provider_total_ms": 0.07845500000007632,
         "first_token_ms": null,
-        "ready_ms": 0.25352200000008906,
-        "wall_ms": 0.054107000000044536
+        "ready_ms": 0.31974700000012035,
+        "wall_ms": 0.07845500000007632
       },
       "usage": {
         "input_tokens": 0,
@@ -9726,10 +9726,10 @@
       },
       "immediate": "Сверю — и скажу.",
       "latency": {
-        "provider_total_ms": 0.0810350000000426,
+        "provider_total_ms": 0.10359600000003866,
         "first_token_ms": null,
-        "ready_ms": 0.34529299999996965,
-        "wall_ms": 0.0810350000000426
+        "ready_ms": 0.4011200000001054,
+        "wall_ms": 0.10359600000003866
       },
       "usage": {
         "input_tokens": 0,
@@ -9839,10 +9839,10 @@
       },
       "immediate": "Поняла задачу. Проверю, как сделать это безопасно.",
       "latency": {
-        "provider_total_ms": 0.055586000000062086,
+        "provider_total_ms": 0.06269299999996747,
         "first_token_ms": null,
-        "ready_ms": 0.2666700000000901,
-        "wall_ms": 0.055586000000062086
+        "ready_ms": 0.31323199999997087,
+        "wall_ms": 0.06269299999996747
       },
       "usage": {
         "input_tokens": 0,
@@ -9956,10 +9956,10 @@
       },
       "immediate": "Откуда это известно? Сейчас разберусь.",
       "latency": {
-        "provider_total_ms": 0.04814899999996669,
+        "provider_total_ms": 0.057653999999956795,
         "first_token_ms": null,
-        "ready_ms": 0.3069639999999936,
-        "wall_ms": 0.04814899999996669
+        "ready_ms": 0.2884599999998727,
+        "wall_ms": 0.057653999999956795
       },
       "usage": {
         "input_tokens": 0,
@@ -10067,10 +10067,10 @@
       },
       "immediate": "Поняла! Прикину, как быстрее.",
       "latency": {
-        "provider_total_ms": 0.07067800000004354,
+        "provider_total_ms": 0.08292500000004566,
         "first_token_ms": null,
-        "ready_ms": 0.3125870000000077,
-        "wall_ms": 0.07067800000004354
+        "ready_ms": 0.35198800000000574,
+        "wall_ms": 0.08292500000004566
       },
       "usage": {
         "input_tokens": 0,
@@ -10185,10 +10185,10 @@
       },
       "immediate": "Посчитаем.",
       "latency": {
-        "provider_total_ms": 0.06171699999993052,
+        "provider_total_ms": 0.03180900000006659,
         "first_token_ms": null,
-        "ready_ms": 0.3002559999999903,
-        "wall_ms": 0.06171699999993052
+        "ready_ms": 0.24446599999998853,
+        "wall_ms": 0.03180900000006659
       },
       "usage": {
         "input_tokens": 0,
@@ -10295,10 +10295,10 @@
       },
       "immediate": "Поняла! Прикину, как быстрее.",
       "latency": {
-        "provider_total_ms": 0.07977499999992688,
+        "provider_total_ms": 0.06349899999997888,
         "first_token_ms": null,
-        "ready_ms": 0.3333869999999024,
-        "wall_ms": 0.07977499999992688
+        "ready_ms": 0.25004199999989396,
+        "wall_ms": 0.06349899999997888
       },
       "usage": {
         "input_tokens": 0,
@@ -10405,10 +10405,10 @@
       },
       "immediate": "Услышал. Проверю, никто ли не на пределе.",
       "latency": {
-        "provider_total_ms": 0.10492900000008376,
+        "provider_total_ms": 0.10339799999997012,
         "first_token_ms": null,
-        "ready_ms": 0.33877000000006774,
-        "wall_ms": 0.10492900000008376
+        "ready_ms": 1.675705999999991,
+        "wall_ms": 0.10339799999997012
       },
       "usage": {
         "input_tokens": 0,
@@ -10522,10 +10522,10 @@
       },
       "immediate": "Откуда это известно? Сейчас разберусь.",
       "latency": {
-        "provider_total_ms": 0.043544999999994616,
+        "provider_total_ms": 0.038758000000029824,
         "first_token_ms": null,
-        "ready_ms": 0.2810690000001159,
-        "wall_ms": 0.043544999999994616
+        "ready_ms": 0.27046100000006845,
+        "wall_ms": 0.038758000000029824
       },
       "usage": {
         "input_tokens": 0,
@@ -10647,10 +10647,10 @@
       },
       "immediate": "Сверю — и скажу.",
       "latency": {
-        "provider_total_ms": 0.14503400000012334,
+        "provider_total_ms": 0.10204800000008163,
         "first_token_ms": null,
-        "ready_ms": 0.988599000000022,
-        "wall_ms": 0.14503400000012334
+        "ready_ms": 0.8879900000000589,
+        "wall_ms": 0.10204800000008163
       },
       "usage": {
         "input_tokens": 0,
@@ -10782,10 +10782,10 @@
       },
       "immediate": null,
       "latency": {
-        "provider_total_ms": 0.04565099999990707,
+        "provider_total_ms": 0.043878999999947155,
         "first_token_ms": null,
-        "ready_ms": 0.5456819999999425,
-        "wall_ms": 0.04565099999990707
+        "ready_ms": 0.45842400000003636,
+        "wall_ms": 0.043878999999947155
       },
       "usage": {
         "input_tokens": 0,
@@ -10914,10 +10914,10 @@
       },
       "immediate": "Дай мне две минуты.",
       "latency": {
-        "provider_total_ms": 0.08025099999986196,
+        "provider_total_ms": 0.053017999999951826,
         "first_token_ms": null,
-        "ready_ms": 0.586270999999897,
-        "wall_ms": 0.08025099999986196
+        "ready_ms": 0.5394679999999425,
+        "wall_ms": 0.053017999999951826
       },
       "usage": {
         "input_tokens": 0,
@@ -11037,10 +11037,10 @@
       },
       "immediate": "Принял.",
       "latency": {
-        "provider_total_ms": 0.07893899999999121,
+        "provider_total_ms": 0.04508099999998194,
         "first_token_ms": null,
-        "ready_ms": 0.38351299999999355,
-        "wall_ms": 0.07893899999999121
+        "ready_ms": 0.2723270000000184,
+        "wall_ms": 0.04508099999998194
       },
       "usage": {
         "input_tokens": 0,
@@ -11166,10 +11166,10 @@
       },
       "immediate": "Энергия? Сейчас открою баланс.",
       "latency": {
-        "provider_total_ms": 0.04143300000009731,
+        "provider_total_ms": 0.03413199999999961,
         "first_token_ms": null,
-        "ready_ms": 0.3235460000000785,
-        "wall_ms": 0.04143300000009731
+        "ready_ms": 0.2886429999999791,
+        "wall_ms": 0.03413199999999961
       },
       "usage": {
         "input_tokens": 0,
@@ -11299,10 +11299,10 @@
       },
       "immediate": null,
       "latency": {
-        "provider_total_ms": 0.042200999999977284,
+        "provider_total_ms": 0.04104600000005121,
         "first_token_ms": null,
-        "ready_ms": 0.5937250000001768,
-        "wall_ms": 0.042200999999977284
+        "ready_ms": 0.46038900000007743,
+        "wall_ms": 0.04104600000005121
       },
       "usage": {
         "input_tokens": 0,
@@ -11433,10 +11433,10 @@
       },
       "immediate": "Сверю — и скажу.",
       "latency": {
-        "provider_total_ms": 0.1181899999999132,
+        "provider_total_ms": 0.11502099999995608,
         "first_token_ms": null,
-        "ready_ms": 0.6289459999998144,
-        "wall_ms": 0.1181899999999132
+        "ready_ms": 0.6246149999999489,
+        "wall_ms": 0.11502099999995608
       },
       "usage": {
         "input_tokens": 0,
@@ -11567,10 +11567,10 @@
       },
       "immediate": "Принял.",
       "latency": {
-        "provider_total_ms": 0.07139299999994364,
+        "provider_total_ms": 0.034049999999979264,
         "first_token_ms": null,
-        "ready_ms": 0.4792529999999715,
-        "wall_ms": 0.07139299999994364
+        "ready_ms": 0.3065199999999777,
+        "wall_ms": 0.034049999999979264
       },
       "usage": {
         "input_tokens": 0,
@@ -11703,10 +11703,10 @@
       },
       "immediate": "Сверю — и скажу.",
       "latency": {
-        "provider_total_ms": 0.11780599999997321,
+        "provider_total_ms": 0.10946799999999257,
         "first_token_ms": null,
-        "ready_ms": 0.7795720000001438,
-        "wall_ms": 0.11780599999997321
+        "ready_ms": 0.6661510000000135,
+        "wall_ms": 0.10946799999999257
       },
       "usage": {
         "input_tokens": 0,
@@ -11834,10 +11834,10 @@
       },
       "immediate": "Я здесь. Слушаю.",
       "latency": {
-        "provider_total_ms": 0.05364499999996042,
+        "provider_total_ms": 0.045852999999965505,
         "first_token_ms": null,
-        "ready_ms": 0.24370999999996457,
-        "wall_ms": 0.05364499999996042
+        "ready_ms": 0.20942999999999756,
+        "wall_ms": 0.045852999999965505
       },
       "usage": {
         "input_tokens": 0,
@@ -11957,10 +11957,10 @@
       },
       "immediate": "Поняла! Прикину, как быстрее.",
       "latency": {
-        "provider_total_ms": 0.07592199999999139,
+        "provider_total_ms": 0.06845700000008037,
         "first_token_ms": null,
-        "ready_ms": 0.6764840000000731,
-        "wall_ms": 0.07592199999999139
+        "ready_ms": 0.6791490000000522,
+        "wall_ms": 0.06845700000008037
       },
       "usage": {
         "input_tokens": 0,
@@ -12086,10 +12086,10 @@
       },
       "immediate": "Энергия? Сейчас открою баланс.",
       "latency": {
-        "provider_total_ms": 0.03978299999994306,
+        "provider_total_ms": 0.035199000000034175,
         "first_token_ms": null,
-        "ready_ms": 0.273185999999896,
-        "wall_ms": 0.03978299999994306
+        "ready_ms": 0.28476800000009916,
+        "wall_ms": 0.035199000000034175
       },
       "usage": {
         "input_tokens": 0,
@@ -12218,10 +12218,10 @@
       },
       "immediate": "Откуда это известно? Сейчас разберусь.",
       "latency": {
-        "provider_total_ms": 0.04433100000005652,
+        "provider_total_ms": 0.037786000000096465,
         "first_token_ms": null,
-        "ready_ms": 0.4946749999999156,
-        "wall_ms": 0.04433100000005652
+        "ready_ms": 0.46027700000001914,
+        "wall_ms": 0.037786000000096465
       },
       "usage": {
         "input_tokens": 0,
@@ -12349,10 +12349,10 @@
       },
       "immediate": "Сверю — и скажу.",
       "latency": {
-        "provider_total_ms": 0.07109300000001895,
+        "provider_total_ms": 0.0601329999999507,
         "first_token_ms": null,
-        "ready_ms": 0.6225760000002083,
-        "wall_ms": 0.07109300000001895
+        "ready_ms": 0.5497719999999617,
+        "wall_ms": 0.0601329999999507
       },
       "usage": {
         "input_tokens": 0,
