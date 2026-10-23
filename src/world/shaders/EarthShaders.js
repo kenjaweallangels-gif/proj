@@ -34,12 +34,25 @@ vec3 skyAmbient(float ndl) {
  */
 export const GROUND_FRAGMENT = /* glsl */`
 uniform sampler2D tDay, tNight, tClouds, tOcean, tNormal;
-uniform vec3 uSunDir, uSunDirObj, uSunColor, uEarthCenter;
-uniform float uSunIntensity, uCloudAngle, uNightIntensity, uGlint, uMultiScatter, uNormalStrength;
+uniform vec3 uSunDir, uSunDirObj, uSunColor, uEarthCenter, uMoonDir;
+uniform float uSunIntensity, uCloudAngle, uNightIntensity, uGlint, uMultiScatter, uNormalStrength, uMoonLight;
 varying vec3 vWorldPos, vObjPos, vNormalW, vTangentW;
 varying vec2 vUv;
 ${ATMOSPHERE_GLSL}
 ${SURFACE_COMMON}
+
+// GGX specular lobe of a water surface (wave-slope roughness, Schlick Fresnel, height-correlated Smith).
+float oceanSpecular(vec3 N, vec3 V, vec3 L) {
+  vec3 Hv = normalize(L + V);
+  float ndh = max(dot(N, Hv), 0.0), ndv = max(dot(N, V), 1.0e-3), ldh = max(dot(L, Hv), 0.0);
+  float nl = max(dot(N, L), 0.0);
+  float a2 = 0.045;
+  float dd = ndh * ndh * (a2 - 1.0) + 1.0;
+  float D = a2 / (PI * dd * dd);
+  float F = 0.02 + 0.98 * pow(1.0 - ldh, 5.0);
+  float Vis = 0.5 / max(nl * sqrt(ndv * ndv * (1.0 - a2) + a2) + ndv * sqrt(nl * nl * (1.0 - a2) + a2), 1.0e-4);
+  return PI * D * F * Vis * nl;
+}
 
 void main() {
   vec3 N = normalize(vNormalW);
@@ -80,24 +93,26 @@ void main() {
   vec3 amb = skyAmbient(ndl);
   vec3 ambient = albedo * S * amb * 0.075;
 
-  // Ocean sun glint: GGX with a wave-slope roughness, Schlick Fresnel, height-correlated Smith visibility.
-  vec3 Hv = normalize(L + V);
-  float ndh = max(dot(N, Hv), 0.0), ndv = max(dot(N, V), 1.0e-3), ldh = max(dot(L, Hv), 0.0);
-  float a2 = 0.045;
-  float dd = ndh * ndh * (a2 - 1.0) + 1.0;
-  float D = a2 / (PI * dd * dd);
-  float F = 0.02 + 0.98 * pow(1.0 - ldh, 5.0);
-  float nl = max(ndl, 0.0);
-  float Vis = 0.5 / max(nl * sqrt(ndv * ndv * (1.0 - a2) + a2) + ndv * sqrt(nl * nl * (1.0 - a2) + a2), 1.0e-4);
-  vec3 glint = S * PI * Tsun * D * F * Vis * nl * ocean * shadow * uGlint;
+  // Ocean sun glint (masked by the ocean texture and the cloud shadow)
+  float ndv = max(dot(N, V), 1.0e-3);
+  vec3 glint = S * Tsun * oceanSpecular(N, V, L) * ocean * shadow * uGlint;
   // Sky reflected in the water at grazing angles
   float Fv = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
   vec3 skyRefl = S * amb * 0.25 * Fv * ocean;
 
-  // Night side: warm city lights, dimmed under cloud cover; faint earth-glow so the dark side is not pure black.
+  // Moonlight (night-adapted exposure): cool Lambert + a faint moon glint on the water, scaled by the lunar phase.
+  vec3 M = uMoonDir;
+  vec3 moonCol = vec3(0.72, 0.82, 1.0) * uMoonLight;
+  vec3 moonlit = moonCol * (albedo * max(dot(Np, M), 0.0) * (1.0 - 0.5 * (1.0 - shadow)) + oceanSpecular(N, V, M) * ocean * 0.5);
+
+  // Night side: warm city lights (texture baseline of the land/ocean glow removed), dimmed under cloud cover;
+  // faint earth-glow so the dark side is not pure black.
   float nightMask = smoothstep(0.1, -0.1, ndl);
-  vec3 city = night * vec3(1.0, 0.8, 0.55) * uNightIntensity * nightMask * (1.0 - 0.75 * smoothstep(0.1, 0.8, csUp));
-  vec3 surface = direct + ambient + glint + skyRefl + city + albedo * vec3(0.0016, 0.0019, 0.0024);
+  vec3 lights = max(night - vec3(0.004, 0.004, 0.012), 0.0);
+  float lightLum = dot(lights, vec3(0.299, 0.587, 0.114));
+  vec3 cityTint = mix(vec3(1.0, 0.72, 0.40), vec3(1.0, 0.93, 0.80), smoothstep(0.03, 0.5, lightLum));  // sodium outskirts, whiter cores
+  vec3 city = lights * cityTint * uNightIntensity * nightMask * (1.0 - 0.75 * smoothstep(0.1, 0.8, csUp));
+  vec3 surface = direct + ambient + glint + skyRefl + moonlit + city + albedo * vec3(0.0016, 0.0019, 0.0024);
 
   // Aerial perspective: in-scatter and transmittance along the view ray inside the atmosphere.
   vec3 ro = cameraPosition - uEarthCenter;
@@ -118,8 +133,8 @@ void main() {
  */
 export const CLOUD_FRAGMENT = /* glsl */`
 uniform sampler2D tClouds;
-uniform vec3 uSunDir, uSunColor, uEarthCenter;
-uniform float uSunIntensity, uMultiScatter, uCloudGain;
+uniform vec3 uSunDir, uSunColor, uEarthCenter, uMoonDir;
+uniform float uSunIntensity, uMultiScatter, uCloudGain, uMoonLight;
 varying vec3 vWorldPos, vObjPos, vNormalW, vTangentW;
 varying vec2 vUv;
 ${ATMOSPHERE_GLSL}
@@ -149,6 +164,7 @@ void main() {
   float thick = mix(1.0, 0.8, c);                           // dense cores are slightly darker (self-shadowing)
   vec3 lit = S * Tsun * lam * thick * 0.97;
   lit += S * skyAmbient(ndl) * 0.09;
+  lit += vec3(0.72, 0.82, 1.0) * uMoonLight * max(dot(Np, uMoonDir), 0.0) * thick;   // moonlit clouds
   lit += vec3(0.0015);                                      // starlight / earth-glow at night
 
   vec3 ro = cameraPosition - uEarthCenter;

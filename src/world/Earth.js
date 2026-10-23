@@ -16,6 +16,8 @@ const CLOUD_ALTITUDE_KM = 6;
 const ATMO_ALTITUDE_KM = 100;
 /** Cloud drift relative to the surface (rad/s). Real winds are ~5e-6 rad/s; kept a bit faster so the drift is perceptible. */
 const CLOUD_DRIFT_RATE = 3.0e-5;
+/** Full-Moon radiance on a white Lambert surface, in the scene's HDR units (a night-adapted camera, not the physical 1/400000 of sunlight). */
+const MOON_LIGHT_MAX = 0.035;
 
 /** Ray-march sample counts per quality preset: [atmosphere shell, ground aerial perspective, clouds]. */
 const SAMPLES = { ultra: [24, 8, 6], high: [16, 6, 5], medium: [12, 5, 4], low: [8, 4, 3] };
@@ -48,6 +50,8 @@ export class Earth {
     this.uSunIntensity = { value: 1.45 };     // white Lambert surface in full sun -> ~1.45 (HDR, before bloom/ACES)
     this.uMultiScatter = { value: 0.6 };     // crude compensation for missing multiple scattering
     this.uLimbBoost = { value: 1.4 };        // limb exposure; rises in eclipse (camera-like adaptation, see update())
+    this.uMoonDir = { value: new THREE.Vector3().copy(o.moonDir) };
+    this.uMoonLight = { value: 0 };          // moonlight radiance on a white surface (night-adapted HDR scale), from the lunar phase
 
     // --- Ground ---
     this.groundMaterial = new THREE.ShaderMaterial({
@@ -57,6 +61,7 @@ export class Earth {
         tDay: { value: null }, tNight: { value: null }, tClouds: { value: null }, tOcean: { value: null }, tNormal: { value: null },
         uSunDir: this.uSunDir, uSunDirObj: this.uSunDirObj, uSunColor: this.uSunColor, uEarthCenter: this.uEarthCenter,
         uSunIntensity: this.uSunIntensity, uCloudAngle: this.uCloudAngle, uMultiScatter: this.uMultiScatter,
+        uMoonDir: this.uMoonDir, uMoonLight: this.uMoonLight,
         uNightIntensity: { value: 2.6 }, uGlint: { value: 3.0 }, uNormalStrength: { value: 0.5 },
       },
       vertexShader: SPHERE_VERTEX, fragmentShader: GROUND_FRAGMENT, toneMapped: false,
@@ -79,6 +84,7 @@ export class Earth {
       uniforms: {
         tClouds: { value: null }, uSunDir: this.uSunDir, uSunColor: this.uSunColor, uEarthCenter: this.uEarthCenter,
         uSunIntensity: this.uSunIntensity, uMultiScatter: this.uMultiScatter, uCloudGain: { value: 1.15 },
+        uMoonDir: this.uMoonDir, uMoonLight: this.uMoonLight,
       },
       vertexShader: SPHERE_VERTEX, fragmentShader: CLOUD_FRAGMENT,
       transparent: true, depthWrite: false, depthTest: true, toneMapped: false,
@@ -197,6 +203,10 @@ export class Earth {
     this.uLimbBoost.value = 1.4 + 1.2 * (1 - o.sunVisible);
     _qInv.copy(o.earthQuat).invert();
     this.uSunDirObj.value.copy(o.sunDir).applyQuaternion(_qInv);
+    // Moonlight: illuminated fraction of the disc from the phase angle (full Moon when moonDir = -sunDir)
+    this.uMoonDir.value.copy(o.moonDir);
+    const litFraction = 0.5 * (1 - o.sunDir.dot(o.moonDir));
+    this.uMoonLight.value = MOON_LIGHT_MAX * Math.pow(litFraction, 1.6);
     // Clouds drift slowly eastward relative to the surface (robust for t up to days)
     this.cloudAngle = (CLOUD_DRIFT_RATE * ctx.time.sim) % (2 * Math.PI);
     this.uCloudAngle.value = this.cloudAngle;

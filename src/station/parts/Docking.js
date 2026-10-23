@@ -57,7 +57,7 @@ export function buildDocking(ctx, station, b, rails, mods) {
     // two docking lights with hoods
     for (const sx of [-1, 1]) {
       b.add('metalDark', P(new THREE.BoxGeometry(0.22, 0.22, 0.26).translate(sx * (R + 0.52), 0, -0.3), F), false);
-      b.add('floodLight', P(new THREE.BoxGeometry(0.14, 0.14, 0.03).translate(sx * (R + 0.52), 0, -0.16), F), false);
+      b.add('dockLight', P(new THREE.BoxGeometry(0.14, 0.14, 0.03).translate(sx * (R + 0.52), 0, -0.16), F), false);
     }
     // hand rails around the base for EVA access
     for (let k = 0; k < 4; k++) {
@@ -66,6 +66,11 @@ export function buildDocking(ctx, station, b, rails, mods) {
       const p0 = base.clone().addScaledVector(axis, Math.max(0.15, depth - 0.9)).addScaledVector(n, R + 0.42);
       const p1 = base.clone().addScaledVector(axis, Math.max(0.15, depth - 0.9) + 0.6).addScaledVector(n, R + 0.42);
       if (depth > 0.8) rails.addRail(p0, p1, n);
+    }
+    // port id plate on the tunnel side (two sides) so pilots and EVA crew can read it
+    if (depth >= 0.9) for (const sgn of [1, -1]) {
+      const n = V(0, sgn, 0).applyQuaternion(q);
+      b.labelAt(id, 0.7, 0.35, base.clone().addScaledVector(axis, depth * 0.45).addScaledVector(n, R + 0.4), n, { width: 256, height: 128, color: '#2a3340', right: V(sgn, 0, 0).applyQuaternion(q) });
     }
     colliders.push(Colliders.capsule(base.clone().addScaledVector(axis, -0.2), position.clone().addScaledVector(axis, 0.45), R + 0.45, `port:${id}`));
     const port = { id, name, position, quaternion: q, size, occupant: null, approachAxis: axis.clone().normalize() };

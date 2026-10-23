@@ -27,6 +27,7 @@ export class Audio {
     this.heartPhase = 0;
     this.radioTimer = 12 + Math.random() * 20;
     this.warnTimer = 0;
+    this.rcsTimer = 0;
     this.nodes = {};
     this._pending = [];
     this._gesture = () => this._init();
@@ -233,6 +234,18 @@ export class Audio {
     osc.start(t); osc.stop(t + 0.3);
   }
 
+  /** One short thruster pulse: a 60 ms filtered noise burst with a sharp attack and a solenoid click. */
+  _rcsBurst(t, strength = 1) {
+    const ac = this.ac, N = this.nodes;
+    const src = this._noiseSource(false); src.playbackRate.value = 1 + Math.random() * 0.3;
+    const hp = this._filter('highpass', 1200 + Math.random() * 600, 0.8); const g = this._gain(0.0); hp.connect(g); src.connect(hp);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.22 * strength, t + 0.006); g.gain.exponentialRampToValueAtTime(0.002, t + 0.07);
+    src.start(t); src.stop(t + 0.09);
+    const click = this._noiseSource(false); const cf = this._filter('bandpass', 1800, 6); const cg = this._gain(0.0); cf.connect(cg); click.connect(cf);
+    cg.gain.setValueAtTime(0.12 * strength, t); cg.gain.exponentialRampToValueAtTime(0.001, t + 0.02); click.start(t); click.stop(t + 0.03);
+    void N;
+  }
+
   _thump(t, gain) {
     const ac = this.ac, N = this.nodes;
     const osc = ac.createOscillator(); osc.type = 'sine'; osc.frequency.setValueAtTime(58, t); osc.frequency.exponentialRampToValueAtTime(34, t + 0.14);
@@ -272,9 +285,12 @@ export class Audio {
       }
     } else this.heartPhase = 0;
 
-    // thrusters
-    const rcs = active && p.thrusting ? (p.boost ? 0.3 : 0.18) : 0;
+    // thrusters: a low sustained hiss plus short solenoid-pulsed noise bursts (SAFER pulses at ~10 Hz)
+    const rcs = active && p.thrusting ? (p.boost ? 0.16 : 0.09) : 0;
     N.rcsGain.gain.setTargetAtTime(rcs, t, 0.03);
+    this.rcsTimer -= dtr;
+    if (active && p.thrusting && this.rcsTimer <= 0) { this._rcsBurst(t, p.boost ? 1.5 : 1); this.rcsTimer = p.boost ? 0.07 : 0.1; }
+    if (!p.thrusting) this.rcsTimer = 0;
     const rot = active && (p.rotationThrust || 0) > 0.05 ? 0.07 * Math.min(1, p.rotationThrust) : (active && p.killing ? 0.06 : 0);
     N.rotGain.gain.setTargetAtTime(rot, t, 0.05);
     N.crawlGain.gain.setTargetAtTime(active && this.params.crawl > 0 ? 0.12 : 0, t, 0.08);

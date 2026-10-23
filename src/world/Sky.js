@@ -16,6 +16,8 @@ export class Sky {
     this.ctx = ctx;
     this.group = new THREE.Group();
     this.group.name = 'Sky';
+    this.exposure = 1.0;                      // user / fx exposure (setExposure)
+    this.adapt = 1.0;                         // automatic adaptation: the sky fades when the Sun is up (sunlit-Earth exposure)
     this.uExposure = { value: 1.0 };
     this.uPixelRatio = { value: ctx.renderer.getPixelRatio() };
     this.uSizeScale = { value: 1.0 };
@@ -94,11 +96,18 @@ export class Sky {
     this.group.add(this.stars);
   }
 
-  /** Global brightness multiplier for stars and Milky Way (default 1). */
-  setExposure(x) { this.uExposure.value = Math.max(0, x); }
+  /** Global brightness multiplier for stars and Milky Way (default 1); multiplied by the automatic day/night adaptation. */
+  setExposure(x) { this.exposure = Math.max(0, x); this.uExposure.value = this.exposure * this.adapt; }
 
   update(dt, ctx) {
-    this.group.quaternion.copy(ctx.orbit.skyQuat);
+    const o = ctx.orbit;
+    this.group.quaternion.copy(o.skyQuat);
+    // Day/night adaptation: with the Sun up the camera exposes for the sunlit Earth and only bright stars remain;
+    // in eclipse the full sky (faint stars, Milky Way) comes out. Eased over a few seconds, instant on the first frame.
+    const target = 1.0 - 0.7 * o.sunVisible * (0.5 + 0.5 * o.earthLit);
+    if (this._first === undefined) { this._first = false; this.adapt = target; }
+    else this.adapt += (target - this.adapt) * (1 - Math.exp(-Math.max(dt, 0) / 3.0));
+    this.uExposure.value = this.exposure * this.adapt;
     const r = ctx.renderer;
     this.uPixelRatio.value = r.getPixelRatio();
     r.getSize(this._size);

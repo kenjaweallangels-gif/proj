@@ -118,10 +118,14 @@ export function planeAt(w, h, matrix) {
   return g;
 }
 
+/** Every text decal built by any Builder (static station frame only): { text, position }. Station copies it into `station.labels`. */
+export const LABELS = [];
+
 export class Builder {
   constructor(materials) {
     this.materials = materials;
     this.buckets = new Map();   // key -> { material, geos, shadow }
+    this.labelsDynamic = false; // set true on builders whose parent moves (ring): their labels are not registered
   }
 
   /** Add a geometry (already positioned) to the bucket of material `name`. `shadow` false = tiny emissive/detail part. */
@@ -138,6 +142,7 @@ export class Builder {
     const texOpts = { width: opts.width ?? 1024, height: opts.height ?? 128, color: opts.color ?? '#1b1f24', font: opts.font ?? 'bold 90px "Segoe UI", Arial, sans-serif', bg: opts.bg ?? null };
     const g = planeAt(w, h, matrix);
     if (opts.swap) swapUV(g, !!opts.flipU, !!opts.flipV);
+    if (!this.labelsDynamic) LABELS.push({ text, position: new THREE.Vector3().setFromMatrixPosition(matrix), width: w });
     return this.add('label', g, false, this.materials.label(text, texOpts));
   }
 

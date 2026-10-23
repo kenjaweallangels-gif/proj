@@ -130,6 +130,7 @@ export class Player {
     this.body.velocity.set(0, 0, 0); this.body.omega.set(0, 0, 0);
     this._release();
     this._endSequence();
+    this._killRequested = false;
     if (name === 'airlock') {
       _v.copy(stand);
       this.lookAlong(_v, al?.lookDirection || new THREE.Vector3(0, 0, 1));
@@ -137,8 +138,9 @@ export class Player {
       st.mode = 'airlock'; st.airlockPressure = 1;
       st.tetherAttached = true; st.tetherLength = TETHER_MAX; st.reeling = false;
     } else if (name === 'eva-far') {
-      _v.set(-12, 48, 34);
-      this.lookAt(_v, _v2.set(-6, -4, 0));
+      // ~60 m above/beside the station core, looking down at the hub and the ring
+      _v.set(-16, 54, 36);
+      this.lookAt(_v, _v2.set(-4, -2, 2));
       st.mode = 'eva'; st.airlockPressure = 0;
       // 60 m out is beyond the 25 m tether: this pose is an untethered free flight
       st.tetherAttached = false; st.reeling = false; this._reattachBlock = 2;
@@ -149,6 +151,7 @@ export class Player {
       _v.copy(this.hatchCenter).addScaledVector(exit, 12).add(_v2.set(1.8, 1.1, 0));
       this.lookAt(_v, _v2.copy(this.hatchCenter).add(_v3.set(0.3, 0.2, 0)));
       st.mode = 'eva'; st.airlockPressure = 0;
+      st.tetherAttached = true; st.tetherLength = TETHER_MAX; st.reeling = false;
       this._openHatchNow();
     }
     this.body.reset(_v, _q);
@@ -251,10 +254,17 @@ export class Player {
       if (st.holding && c.impact > 1.0) this._release();
     }
     if (st.contact && body.omega.lengthSq() > 1e-4) body.omega.multiplyScalar(Math.exp(-h * 2.5)); // scraping along the hull bleeds spin
+    // while gripping a rail the hull may push the body: let the grip offset follow instead of fighting it
+    if (st.holding && c.count > 0) {
+      this.holdOffset.subVectors(this.position, this.handrailPoint);
+      const d = this.holdOffset.length();
+      if (d > 0.95) this.holdOffset.multiplyScalar(0.95 / d);
+    }
 
     // ----- telemetry -----
     st.propellant = body.propellant;
     st.thrusting = body.thrusting; st.boost = body.boost && body.thrusting; st.killing = body.killing;
+    st.rotationThrust = body.rotThrust;
     st.speedRelative = this.velocity.length();
     st.angularSpeed = body.omega.length();
     st.distanceToAirlock = this.position.distanceTo(this.airlock?.standPosition || this.hatchCenter);
@@ -290,17 +300,24 @@ export class Player {
   }
 
   // ---------------------------------------------------------------- colliders
+  /** Collect station + airlock + ship collider arrays; rebuilt (at ~1 Hz) only when a source array changes. */
   _refreshColliders(force) {
     const st = this.ctx.station, ships = this.ctx.ships?.ships;
-    let sig = (st?.colliders?.length || 0) * 7 + (st?.airlock?.interiorColliders?.length || 0) * 3;
-    if (ships) for (let i = 0; i < ships.length; i++) sig += 1000 + (ships[i].colliders?.length || 0) * 13;
-    if (!force && sig === this._colliderSig) return;
-    this._colliderSig = sig;
-    this._shipColliderArrays = this._shipColliderArrays || [];
-    const arrs = this._shipColliderArrays; arrs.length = 0;
-    arrs.push(st?.colliders, st?.airlock?.interiorColliders);
-    if (ships) for (const s of ships) arrs.push(s.colliders);
-    this.collision.setColliders(...arrs);
+    this._colliderSources = this._colliderSources || [];
+    const prev = this._colliderSources;
+    let changed = force || prev.length !== 2 + (ships ? ships.length : 0);
+    if (!changed) {
+      changed = prev[0] !== st?.colliders || prev[1] !== st?.airlock?.interiorColliders || prev[0]?.length !== this._colliderCount0;
+      if (!changed && ships) for (let i = 0; i < ships.length; i++) { const c = ships[i].colliders; if (prev[2 + i] !== c || (c ? c.length : 0) !== (this._shipCounts?.[i] ?? -1)) { changed = true; break; } }
+    }
+    if (!changed) return;
+    prev.length = 0;
+    prev.push(st?.colliders, st?.airlock?.interiorColliders);
+    this._colliderCount0 = st?.colliders?.length;
+    this._shipCounts = this._shipCounts || [];
+    this._shipCounts.length = 0;
+    if (ships) for (const s of ships) { prev.push(s.colliders); this._shipCounts.push(s.colliders ? s.colliders.length : 0); }
+    this.collision.setColliders(...prev);
   }
 
   // ---------------------------------------------------------------- handrails
@@ -313,9 +330,11 @@ export class Player {
     let best = HANDRAIL_RANGE + this.radius, bestRail = null;
     for (let i = 0, n = rails.length; i < n; i++) {
       const r = rails[i];
-      // cheap reject on the segment midpoint
+      // cheap reject on the segment midpoint (bounding sphere of the rail + grab range)
       const mx = (r.a.x + r.b.x) * 0.5 - this.position.x, my = (r.a.y + r.b.y) * 0.5 - this.position.y, mz = (r.a.z + r.b.z) * 0.5 - this.position.z;
-      if (mx * mx + my * my + mz * mz > 9) continue;
+      const hx = (r.b.x - r.a.x) * 0.5, hy = (r.b.y - r.a.y) * 0.5, hz = (r.b.z - r.a.z) * 0.5;
+      const reach = Math.sqrt(hx * hx + hy * hy + hz * hz) + best + 0.2;
+      if (mx * mx + my * my + mz * mz > reach * reach) continue;
       closestOnSegment(r.a, r.b, this.position, _v);
       const d = _v.distanceTo(this.position) - r.radius;
       if (d < best) { best = d; bestRail = r; _v2.copy(_v); }

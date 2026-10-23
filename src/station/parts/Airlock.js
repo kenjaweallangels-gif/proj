@@ -38,7 +38,7 @@ export class AirlockModule {
     for (const sx of [-1, 1]) {
       b.add('metalDark', boxAt(V(AX + sx * 0.32, CY + 0.86, zEnd + 0.06), 0.12, 0.2, 0.16, null, false), false);
       b.add('metalDark', boxAt(V(AX + sx * 1.25, CY + 1.0, zEnd + 0.12), 0.26, 0.26, 0.26, null, false), false);
-      b.add('floodLight', boxAt(V(AX + sx * 1.25, CY + 1.0, zEnd + 0.26), 0.2, 0.2, 0.03, null, false), false);
+      b.add('dockLight', boxAt(V(AX + sx * 1.25, CY + 1.0, zEnd + 0.26), 0.2, 0.2, 0.03, null, false), false);
     }
     this.tetherAnchor = V(AX, CY + 1.5, zEnd + 0.16);
     b.add('metalBare', boxAt(V(AX, CY + 1.5, zEnd + 0.04), 0.3, 0.3, 0.08, null, false), false);

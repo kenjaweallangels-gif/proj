@@ -210,9 +210,10 @@ export class SuitModel {
 
   _buildLamp() {
     // helmet-mounted lamps (two, on the sides of the visor housing); intensity toggled, never `visible` (avoids shader recompiles)
-    this.lamp = new THREE.SpotLight(0xfff1dc, 0, 32, 0.6, 0.65, 1.6);
-    this.lamp.position.set(0.14, 0.14, -0.05);
-    this.lamp.target.position.set(0, -0.3, -10);
+    // the light source sits just outside the visor frame so the helmet geometry itself is never lit point-blank
+    this.lamp = new THREE.SpotLight(0xfff1dc, 0, 40, 0.55, 0.7, 2);
+    this.lamp.position.set(0.14, 0.14, -0.22);
+    this.lamp.target.position.set(0, -0.6, -10);
     this.lamp.castShadow = false;
     this.group.add(this.lamp, this.lamp.target);
     this.lampHousing = new THREE.Mesh(mergeGeometries([box(0.05, 0.04, 0.06).translate(0.14, 0.14, -0.04), box(0.05, 0.04, 0.06).translate(-0.14, 0.14, -0.04)], false), this.mats.dark);
@@ -245,7 +246,7 @@ export class SuitModel {
 
   setLamp(on) {
     this.lampOn = on;
-    this.lamp.intensity = on ? 90 : 0;
+    this.lamp.intensity = on ? 55 : 0;
     this.lampLens.material.emissiveIntensity = on ? 6 : 0;
   }
 

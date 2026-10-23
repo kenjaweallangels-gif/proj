@@ -82,6 +82,7 @@ export class StationLights {
       { pos: V(al.x - 4.5, CY + 2.9, 3.0), target: V(al.x, CY - 0.5, al.hatchZ + 0.5) },
     ];
     this.floodMat = m.get('floodLight').clone(); this.floodMat.name = 'floodHead';
+    this.dockMat = m.factories.dockLight ? m.get('dockLight') : null;   // port / EVA work lights (registered by Station)
     this.spots = [];
     const bf = new Builder(m);
     const floodPositions = [];
@@ -139,6 +140,7 @@ export class StationLights {
     this.floodLevel += (want - this.floodLevel) * Math.min(1, dt * 1.5);
     for (const s of this.spots) s.intensity = 900 * this.floodLevel;
     this.floodMat.emissiveIntensity = 1.5 + 12 * this.floodLevel;
+    if (this.dockMat) this.dockMat.emissiveIntensity = 0.6 + 9 * this.floodLevel;
     const fh = this.floodLevel * this.floodLevel * 1.3;
     for (let i = 0; i < this.spots.length; i++) this.floodHalos.set(i, fh, fh * 0.95, fh * 0.85);
     this.floodHalos.commit();
