@@ -79,8 +79,8 @@ export const FinalGradeShader = {
       // sun-relative falloff for the veil and the dirt
       vec2 ds = vec2((uv.x - uSunUv.x) * uAspect, uv.y - uSunUv.y);
       float radial = exp(-dot(ds, ds) * 3.0);
-      if (uDirt > 0.0) col += uSunColor * uDirt * dirtPattern(vec2(uv.x * uAspect, uv.y)) * (0.3 + 0.7 * radial);
-      if (uFlash > 0.0) col += uFlash * vec3(1.0, 0.96, 0.9) * (0.08 + 0.92 * radial);
+      if (uDirt > 0.0) col += uSunColor * uDirt * dirtPattern(vec2(uv.x * uAspect, uv.y)) * (0.15 + 0.85 * radial);
+      if (uFlash > 0.0) col += uFlash * vec3(1.0, 0.96, 0.9) * (0.02 + 0.98 * radial);
       // vignette: subtle optical falloff
       float vig = 1.0 - uVignette * smoothstep(0.25, 1.05, r2);
       col *= vig;

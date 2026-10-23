@@ -4,12 +4,12 @@ import { Path, Mover, Attitude, Rcs, targetQuat } from './Flight.js';
 /**
  * Docking traffic controller.
  *
- * Every port gets an approach corridor: dock plane -> `back` (50 m out along the approach axis, or 5 m for
- * ports whose axis runs along the truss, where the solar arrays block the way) -> `hold` (150 m out,
- * along the axis or nadir for axial ports).  Arrivals fly a Bezier from 4.5 km, brake tail-first with
- * the main engine, coast, turn nose-to-port, stop at `hold`, then creep along the corridor
- * (0.8 -> 0.3 -> 0.05 m/s) to soft capture.  Departures reverse the corridor, turn at `hold`, burn and
- * leave on a curve to ~5 km where the ship is recycled.
+ * Every port gets a straight approach corridor along its outward axis: dock plane -> `back` (50 m out) ->
+ * `hold` (150 m out).  Arrivals fly a Bezier from ~4.5 km, brake tail-first with the main engine, coast,
+ * turn nose-to-port, stop at `hold`, then creep along the corridor (0.8 -> 0.3 -> 0.05 m/s) with the nose
+ * aligned to soft capture; the soft-capture petals close and retract over 3 s and the ship is docked.
+ * Departures open the latches / extend the petals, push off at 0.1 m/s, back out along the corridor, turn at
+ * `hold`, burn and leave on a curve to ~5 km where the ship is recycled.
  *
  * Kinematics are integrated in sub-steps (<= 0.25 s) so x60..x300 time scales stay stable; RCS puffs are
  * derived from the actual velocity / attitude changes of each step.
@@ -22,6 +22,7 @@ const UP = new THREE.Vector3(0, 1, 0);
 const X = new THREE.Vector3(1, 0, 0);
 const Z = new THREE.Vector3(0, 0, 1);
 const STATION_CENTER = new THREE.Vector3(0, -8, 0);
+const D_BACK = 50, D_HOLD = 150;
 
 /** Deterministic PRNG (mulberry32) so screenshots are reproducible. */
 export function makeRng(seed) {
@@ -69,13 +70,11 @@ export class Traffic {
     let c = this.corridors.get(port);
     if (c) return c;
     const axis = port.approachAxis;
-    const dock = port.position.clone().addScaledVector(axis, 0.08);
-    const axial = Math.abs(axis.x) > 0.7;
-    const dBack = axial ? 5 : 50;
-    const back = dock.clone().addScaledVector(axis, dBack);
-    const holdDir = axial ? new THREE.Vector3(0, -1, 0) : axis.clone();
-    const hold = back.clone().addScaledVector(holdDir, axial ? 150 : 100);
-    c = { dock, back, hold, holdDir, dBack, axial, length: dBack + (axial ? 150 : 100) };
+    const dock = port.position.clone();
+    const back = dock.clone().addScaledVector(axis, D_BACK);
+    const holdDir = axis.clone();
+    const hold = dock.clone().addScaledVector(axis, D_HOLD);
+    c = { dock, back, hold, holdDir, dBack: D_BACK, length: D_HOLD };
     this.corridors.set(port, c);
     return c;
   }
@@ -143,14 +142,14 @@ export class Traffic {
   }
 
   // ------------------------------------------------------------------ placement
-  /** Place a ship docked at a port immediately (initial state). */
+  /** Place a ship docked at a port immediately (initial state): nose on the port plane, petals retracted. */
   placeDocked(ship, port, roll) {
     const g = ship.group;
     g.position.copy(port.position).addScaledVector(port.approachAxis, ship.noseOffset);
     this.dockQuat(port, roll, g.quaternion);
     ship.roll = roll; ship.port = port; port.occupant = ship; port.reserved = false;
     ship.state = 'docked'; ship.velocity.set(0, 0, 0);
-    ship.petalOpen = 0; ship.panelDeploy = 1; ship.doorOpen = 1; ship.dockLightsOn = false; ship.dockedSince = this.t;
+    ship.petalOpen = 0; ship.petalExtend = 0; ship.panelDeploy = 1; ship.doorOpen = 1; ship.dockLightsOn = false; ship.dockedSince = this.t;
     ship.flight = null; g.visible = true;
     this.mod.updateColliders(ship);
     this.mod.setDishTarget(ship, 'earth');
@@ -165,7 +164,8 @@ export class Traffic {
   // ------------------------------------------------------------------ undocking
   startUndock(ship) {
     const port = ship.port, corr = this.corridor(port);
-    const path = Path.waypoints([corr.dock.clone(), corr.back.clone(), corr.hold.clone()], 6);
+    const start = ship.group.position.clone();
+    const path = Path.waypoints([start, corr.back.clone(), corr.hold.clone()], 6);
     const dBack = corr.dBack, L = path.length;
     const profile = (s) => Math.min(s < 10 ? 0.1 : s < dBack ? 0.4 : 0.8, Math.sqrt(2 * 0.012 * Math.max(0, L - s)));
     ship.flight = { phase: 'unlatch', t: 0, path, mover: new Mover().start(path, profile, ship.dyn.rcs * 0.6), corr, port, far: this.farDirection(corr) };
@@ -196,7 +196,7 @@ export class Traffic {
     ship.flight = { phase: 'arrive', t: 0, path, mover: new Mover().start(path, profile, Math.max(aB, 0.3), s0, v0), corr, port, roll, sFlip, sbEnd, far };
     ship.state = 'arrive';
     ship.port = null; port.reserved = true;
-    ship.petalOpen = 1; ship.panelDeploy = 0; ship.doorOpen = 0; ship.dockLightsOn = false;
+    ship.petalOpen = 1; ship.petalExtend = 1; ship.panelDeploy = 0; ship.doorOpen = 0; ship.dockLightsOn = false;
     ship.group.visible = true;
     // initial pose on the path
     path.sample(s0, ship.group.position, _t);
@@ -218,7 +218,7 @@ export class Traffic {
     ship.port = null; port.reserved = true; ship.roll = roll;
     ship.flight = { phase: 'hold', t: 1e9, corr, port, roll, far: null };
     ship.state = 'approach';
-    ship.petalOpen = 1; ship.panelDeploy = 0; ship.doorOpen = 1; ship.dockLightsOn = true;
+    ship.petalOpen = 1; ship.petalExtend = 1; ship.panelDeploy = 0; ship.doorOpen = 1; ship.dockLightsOn = true;
     ship.group.visible = true;
     const att = this._attitude(ship);
     this.dockQuat(port, roll, att.target); att.snap(ship.group.quaternion);
@@ -229,7 +229,8 @@ export class Traffic {
 
   _beginApproach(ship, s0 = 0) {
     const f = ship.flight, corr = f.corr;
-    const path = Path.waypoints([corr.hold.clone(), corr.back.clone(), corr.dock.clone()], 6);
+    const dock = corr.dock.clone().addScaledVector(f.port.approachAxis, ship.noseOffset);
+    const path = Path.waypoints([corr.hold.clone(), corr.back.clone(), dock], 6);
     const L = path.length, dBack = corr.dBack;
     const profile = (s) => {
       const toBack = L - dBack - s;
@@ -237,7 +238,7 @@ export class Traffic {
       const dist = L - s;
       return dist > 10 ? 0.3 : Math.max(0.05, 0.05 + 0.25 * dist / 10);
     };
-    f.phase = 'approach'; f.t = 0; f.path = path;
+    f.phase = 'approach'; f.t = 0; f.path = path; f.dock = dock;
     f.mover = new Mover().start(path, profile, ship.dyn.rcs * 0.6, s0, s0 > 0 ? profile(s0) : 0);
     path.sample(s0, ship.group.position, _t);
     ship.velocity.copy(_t).multiplyScalar(f.mover.speed);
@@ -251,6 +252,7 @@ export class Traffic {
     ship.state = 'loiter';
     ship.flight = { phase: 'loiter', t: this.rng() * 1000, kind };
     ship.group.visible = true;
+    ship.dockLightsOn = true;     // inspection floods
     this._attitude(ship);
     this._loiterPos(ship.flight, ship.flight.t, ship.group.position);
     ship.att.target.copy(ship.group.quaternion);
@@ -296,26 +298,29 @@ export class Traffic {
       }
     } else this.nextArrival = 1e9;
 
-    // integrate flying ships in sub-steps
+    // integrate flying ships in sub-steps; particle look factor follows the time scale
+    const k = Math.pow(THREE.MathUtils.clamp(this.ctx.time.scale || 1, 1, 300), 0.85);
     const n = Math.min(48, Math.max(1, Math.ceil(dt / 0.25)));
     const h = dt / n;
     for (let i = this.flying.length - 1; i >= 0; i--) {
       const ship = this.flying[i];
-      for (let k = 0; k < n; k++) this._step(ship, h);
+      for (let s = 0; s < n; s++) this._step(ship, h, k);
       this.mod.updateColliders(ship);
       if ((ship.state === 'docked' && !ship.flight) || ship.state === 'idle') this.flying.splice(i, 1);
     }
   }
 
   // ------------------------------------------------------------------ per-ship integration
-  _step(ship, h) {
+  _step(ship, h, k) {
     const f = ship.flight, g = ship.group, att = ship.att;
     f.t += h;
     _v.copy(ship.velocity);
     let throttle = 0;
     switch (f.phase) {
       case 'unlatch': {
-        ship.petalOpen = Math.min(1, f.t / 3);
+        // hooks release and the soft-capture ring extends (0..1.5 s), then the petals splay (1.5..3 s)
+        ship.petalExtend = Math.min(1, f.t / 1.5);
+        ship.petalOpen = THREE.MathUtils.clamp((f.t - 1.5) / 1.5, 0, 1);
         if (ship.def.parts.panels) ship.panelDeploy = Math.max(0, 1 - f.t / 25);
         if (f.t >= 3) { f.phase = 'pushoff'; }
         break;
@@ -373,17 +378,20 @@ export class Traffic {
         this.dockQuat(f.port, f.roll, att.target);
         if (f.mover.done) {
           f.phase = 'dock'; f.t = 0; ship.state = 'dock'; ship.velocity.set(0, 0, 0);
-          g.position.copy(f.corr.dock); att.snap(g.quaternion);
+          g.position.copy(f.dock); att.snap(g.quaternion);
           this.mod.log('capture', ship, f.port);
         }
         break;
       }
       case 'dock': {
-        ship.petalOpen = Math.max(0, 1 - f.t / 3);
+        // soft capture: petals align (0..1.5 s), the ring retracts and the hooks close (1.5..3 s)
+        ship.petalOpen = THREE.MathUtils.clamp(1 - f.t / 1.5, 0, 1);
+        ship.petalExtend = THREE.MathUtils.clamp(1 - (f.t - 1.5) / 1.5, 0, 1);
         if (f.t >= 3) {
           const port = f.port;
+          ship.petalOpen = 0; ship.petalExtend = 0;
           ship.state = 'docked'; ship.port = port; port.occupant = ship; port.reserved = false; ship.roll = f.roll; ship.dockedSince = this.t;
-          ship.dockLightsOn = false; ship.flight = null;
+          ship.dockLightsOn = false;
           this.mod.setDishTarget(ship, 'earth');
           this.mod.log('dock', ship, port);
           ship.flight = { phase: 'settle', t: 0 };   // continue deploying panels while the ship is in `flying`
@@ -410,7 +418,7 @@ export class Traffic {
     att.step(g.quaternion, h);
     _acc.subVectors(ship.velocity, _v).multiplyScalar(1 / h);
     ship.burning = throttle > 0.02;
-    this.rcs.emit(ship, _acc, att.alpha, throttle, h);
+    this.rcs.emit(ship, _acc, att.alpha, throttle, h, k);
   }
 
   _planDeparture(ship) {
@@ -440,6 +448,7 @@ export class Traffic {
     ship.state = 'idle'; ship.flight = null; ship.port = null;
     ship.group.visible = false; ship.group.position.set(0, -20000, 0);
     ship.velocity.set(0, 0, 0); ship.burning = false; ship.engineGlow = 0;
+    ship.petalOpen = 1; ship.petalExtend = 1;
     this.mod.updateColliders(ship);
   }
 }

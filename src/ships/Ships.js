@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { SHIP_TYPES, animateCommon } from './ShipTypes.js';
 import { Traffic, makeRng } from './Traffic.js';
-import { registerShipMaterials } from './ShipBuilder.js';
 
 /**
  * Ships module (contract: docs/ARCHITECTURE.md) — docked ships and live docking traffic.
@@ -12,7 +11,9 @@ import { registerShipMaterials } from './ShipBuilder.js';
  *   ctx.events 'ship'  { type: 'undock'|'depart'|'gone'|'arrive'|'final'|'capture'|'dock', ship, port, message }
  *
  * Ship = { id, type, name, typeLabel, group, state: 'docked'|'approach'|'dock'|'undock'|'depart'|'arrive'|'loiter'|'idle',
- *          port, colliders[], velocity, size, noseOffset, parts, ... }
+ *          port, colliders[], velocity, size, noseOffset (0: docking face on the port plane), parts, ... }
+ *
+ * Draw calls: every ship is a handful of merged meshes (see ShipBuilder.js); the whole fleet stays < 120 calls.
  */
 
 const _d = new THREE.Vector3();
@@ -32,7 +33,6 @@ export class Ships {
     this._log = [];
     this._nextId = 1;
     const t0 = performance.now();
-    registerShipMaterials(ctx.materials);
     this.rng = makeRng(20261022);
     this.traffic = new Traffic(ctx, this, this.rng);
 
@@ -60,7 +60,7 @@ export class Ships {
       colliders: def.colliders.map((c) => this._cloneCollider(c)), localColliders: def.colliders,
       nozzles: def.nozzles, mainNozzles: def.mainNozzles, mainAxis: def.mainAxis, noseOffset: def.noseOffset, size: def.size,
       velocity: new THREE.Vector3(), parts: def.parts,
-      engineGlow: 0, burning: false, dockLightsOn: false, petalOpen: 0, panelDeploy: 1, doorOpen: 1, strobePhase: this.rng(),
+      engineGlow: 0, burning: false, dockLightsOn: false, dockLightLevel: 0, petalOpen: 1, petalExtend: 1, panelDeploy: 1, doorOpen: 1, strobePhase: this.rng(),
       dishMode: 'earth', dockedSince: -1e9, flight: null, att: null, where,
     };
     this.ships.push(ship);
@@ -167,7 +167,7 @@ export class Ships {
   shipAt(port) { return port && port.occupant && port.occupant.group ? port.occupant : null; }
 
   dispose() {
-    for (const s of this.ships) { s.group.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); this.ctx.nearScene.remove(s.group); }
+    for (const s of this.ships) { s.group.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); s.parts.lights?.dispose(); this.ctx.nearScene.remove(s.group); }
     this.ships.length = 0;
   }
 }

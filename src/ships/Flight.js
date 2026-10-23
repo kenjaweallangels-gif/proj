@@ -9,7 +9,7 @@ import * as THREE from 'three';
  *  - targetQuat: orientation that maps a ship axis to a world direction with a roll reference
  */
 
-const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _d = new THREE.Vector3();
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _d = new THREE.Vector3(), _e = new THREE.Vector3();
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
 const _m = new THREE.Matrix4(), _m2 = new THREE.Matrix4();
 const _axisL = new THREE.Vector3(), _upL = new THREE.Vector3(), _w = new THREE.Vector3(), _u = new THREE.Vector3();
@@ -160,8 +160,13 @@ const PLUME_COLOR = new THREE.Color(0xffb46a);
 const PLUME_CORE = new THREE.Color(0xfff2dc);
 
 /**
- * RCS puff emitter. Selects the nozzles whose thrust (opposite to the exhaust direction) best matches the
- * demanded acceleration, and those whose torque (r x thrust) matches the demanded angular acceleration.
+ * RCS / main-engine particle emitter. Selects the nozzles whose thrust (opposite to the exhaust direction) best
+ * matches the demanded acceleration, and those whose torque (r x thrust) matches the demanded angular
+ * acceleration, so every puff corresponds to a real velocity / rate change.
+ *
+ * `k` is the time-scale look factor (1 at real time): particle speeds are divided and lifetimes multiplied by
+ * it (same trajectories, traversed k times slower in sim time) and the emission rate divided, so puffs remain
+ * visible for several frames at ×60 without flooding the particle pool.
  */
 export class Rcs {
   constructor(particles) {
@@ -174,29 +179,33 @@ export class Rcs {
    * @param accW  demanded linear acceleration (world, m/s^2)
    * @param alphaW demanded angular acceleration (world, rad/s^2)
    * @param throttle 0..1 main engine throttle (plume)
+   * @param h  sub-step length (s)
+   * @param k  time-scale look factor (>= 1)
    */
-  emit(ship, accW, alphaW, throttle, h) {
+  emit(ship, accW, alphaW, throttle, h, k = 1) {
     const P = this.particles, g = ship.group, dyn = ship.dyn, look = dyn.puff;
     _q.copy(g.quaternion).invert();
     const aMag = accW.length(), alMag = alphaW.length();
     const nozzles = ship.nozzles;
+    const ik = 1 / k;
+    _e.copy(ship.velocity).multiplyScalar(ik);        // base velocity in "slow particle" time
     // --- translation ---
     if (aMag > dyn.rcs * 0.08 && !(throttle > 0)) {
       _a.copy(accW).applyQuaternion(_q).normalize();          // demanded thrust, local
-      this.accT += h * 28 * Math.min(1, aMag / dyn.rcs) * look.scale;
+      this.accT += h * 28 * ik * Math.min(1, aMag / dyn.rcs) * look.scale;
       const n = Math.min(10, Math.floor(this.accT));
       if (n > 0) {
         this.accT -= n;
         for (let i = 0; i < nozzles.length; i++) {
           const nz = nozzles[i];
-          if (-nz.direction.dot(_a) > 0.72) this._puff(nz, g, ship.velocity, n, look);
+          if (-nz.direction.dot(_a) > 0.72) this._puff(nz, g, n, look, k);
         }
       }
     } else if (this.accT > 0) this.accT = Math.max(0, this.accT - h * 4);
     // --- rotation ---
     if (alMag > dyn.alpha * 0.12) {
       _b.copy(alphaW).applyQuaternion(_q).normalize();         // demanded torque, local
-      this.accR += h * 18 * Math.min(1, alMag / dyn.alpha) * look.scale;
+      this.accR += h * 18 * ik * Math.min(1, alMag / dyn.alpha) * look.scale;
       const n = Math.min(8, Math.floor(this.accR));
       if (n > 0) {
         this.accR -= n;
@@ -205,13 +214,13 @@ export class Rcs {
           _c.copy(nz.direction).negate();                     // thrust
           _d.crossVectors(nz.position, _c);                    // torque
           if (_d.lengthSq() < 1e-4) continue;
-          if (_d.normalize().dot(_b) > 0.6) this._puff(nz, g, ship.velocity, n, look);
+          if (_d.normalize().dot(_b) > 0.6) this._puff(nz, g, n, look, k);
         }
       }
     } else if (this.accR > 0) this.accR = Math.max(0, this.accR - h * 4);
     // --- main engine plume ---
     if (throttle > 0.02 && ship.mainNozzles.length) {
-      this.accM += h * 45 * throttle;
+      this.accM += h * 45 * ik * throttle;
       const n = Math.min(60, Math.floor(this.accM));
       if (n > 0) {
         this.accM -= n;
@@ -219,16 +228,16 @@ export class Rcs {
         for (const nz of ship.mainNozzles) {
           _c.copy(nz.position).applyQuaternion(g.quaternion).add(g.position);
           _d.copy(nz.direction).applyQuaternion(g.quaternion);
-          P.emitCone({ position: _c, direction: _d, speed: 85 * look.scale, spread: 0.11, count: per, life: 0.9, size0: 0.3 * look.scale, size1: 2.6 * look.scale, color: PLUME_COLOR, alpha: 0.85, baseVelocity: ship.velocity, speedJitter: 0.35, lifeJitter: 0.3 });
-          P.emitCone({ position: _c, direction: _d, speed: 30 * look.scale, spread: 0.08, count: Math.max(1, per >> 1), life: 0.28, size0: 0.9 * look.scale, size1: 1.6 * look.scale, color: PLUME_CORE, alpha: 1.0, baseVelocity: ship.velocity, speedJitter: 0.3, lifeJitter: 0.3 });
+          P.emitCone({ position: _c, direction: _d, speed: 85 * look.scale * ik, spread: 0.11, count: per, life: 0.9 * k, size0: 0.3 * look.scale, size1: 2.6 * look.scale, color: PLUME_COLOR, alpha: 0.85, baseVelocity: _e, speedJitter: 0.35, lifeJitter: 0.3 });
+          P.emitCone({ position: _c, direction: _d, speed: 30 * look.scale * ik, spread: 0.08, count: Math.max(1, per >> 1), life: 0.28 * k, size0: 0.9 * look.scale, size1: 1.6 * look.scale, color: PLUME_CORE, alpha: 1.0, baseVelocity: _e, speedJitter: 0.3, lifeJitter: 0.3 });
         }
       }
     } else if (this.accM > 0) this.accM = 0;
   }
 
-  _puff(nz, g, baseVel, count, look) {
+  _puff(nz, g, count, look, k) {
     _c.copy(nz.position).applyQuaternion(g.quaternion).add(g.position);
     _d.copy(nz.direction).applyQuaternion(g.quaternion);
-    this.particles.emitCone({ position: _c, direction: _d, speed: look.speed, spread: 0.24, count, life: 0.75, size0: 0.05 * look.scale, size1: look.size, color: RCS_COLOR, alpha: 0.55, baseVelocity: baseVel, speedJitter: 0.4, lifeJitter: 0.4 });
+    this.particles.emitCone({ position: _c, direction: _d, speed: look.speed / k, spread: 0.24, count, life: 0.75 * k, size0: 0.05 * look.scale, size1: look.size, color: RCS_COLOR, alpha: 0.55, baseVelocity: _e, speedJitter: 0.4, lifeJitter: 0.4 });
   }
 }
