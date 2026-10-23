@@ -30,6 +30,9 @@ export function setClass(node, cls, on) {
 /** Shows/hides via the `.hidden` class (display: none). */
 export function show(node, on) { setClass(node, 'hidden', !on); }
 
+/** Like show(), but keeps the element laid out and painted (opacity 0): switching back costs no re-raster. */
+export function fade(node, on) { setClass(node, 'off', !on); }
+
 /** SVG element with attributes. */
 export function svg(tag, attrs = {}) {
   const e = document.createElementNS('http://www.w3.org/2000/svg', tag);

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { el, add, svg, setText, setClass, show, num, hms, mmss, promptHtml } from './dom.js';
+import { el, add, svg, setText, setClass, show, num, hms, mmss, promptHtml, fade } from './dom.js';
 import { Ecg } from './Ecg.js';
 
 /**
@@ -59,7 +59,7 @@ export class Helmet {
     this._termTimer = 1e9;
   }
 
-  setVisible(on) { show(this.el, on); }
+  setVisible(on) { show(this.el, true); fade(this.el, on); }
 
   // ------------------------------------------------------------------ visor overlay
   _visor() {

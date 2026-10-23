@@ -30,6 +30,7 @@ async function loadModuleClass(name) {
 
 const LITE_DETAIL_DISTANCE = 18;   // metres
 const LITE_SHIP_DISTANCE = 600;    // metres
+const DYN_STEPS = [0.28, 0.32, 0.36, 0.4, 0.44, 0.5, 0.6, 0.75, 1.0, 1.25, 1.5, 2.0];
 const _camPos = new THREE.Vector3();
 const _bsCenter = new THREE.Vector3();
 
@@ -249,10 +250,24 @@ export class App {
    *  the suit in observer mode…), so nothing compiles mid-game. Lights keep their visibility (it is part
    *  of every program's key). */
   async compileAll(scene, camera) {
-    const hidden = [];
-    scene.traverse((o) => { if (!o.visible && !o.isLight) { hidden.push(o); o.visible = true; } });
-    try { await this.renderer.renderer.compileAsync(scene, camera); }
-    finally { for (const o of hidden) o.visible = false; }
+    const gl = this.renderer.renderer;
+    const hidden = [], culled = [];
+    scene.traverse((o) => {
+      if (!o.visible && !o.isLight) { hidden.push(o); o.visible = true; }
+      if (o.frustumCulled) { culled.push(o); o.frustumCulled = false; }
+    });
+    try {
+      await gl.compileAsync(scene, camera);
+      // one throw-away frame into a tiny target uploads every geometry buffer and texture now, instead
+      // of the first time each object comes into view (a visible hitch on CPU rasterisers)
+      const rt = new THREE.WebGLRenderTarget(4, 4);
+      const prevRT = gl.getRenderTarget(), prevAuto = gl.autoClear;
+      gl.setRenderTarget(rt); gl.autoClear = true; gl.render(scene, camera);
+      gl.setRenderTarget(prevRT); gl.autoClear = prevAuto; rt.dispose();
+    } finally {
+      for (const o of hidden) o.visible = false;
+      for (const o of culled) o.frustumCulled = true;
+    }
   }
 
   /**
@@ -262,21 +277,37 @@ export class App {
    */
   updateDynamicResolution(dt) {
     const q = this.quality;
-    const d = this._dyn || (this._dyn = { frames: 0, time: 0, pr: this.renderer.renderer.getPixelRatio(), max: this.renderer.renderer.getPixelRatio() });
+    const d = this._dyn || (this._dyn = { frames: 0, time: 0, good: 0, pr: this.renderer.renderer.getPixelRatio(), max: this.renderer.renderer.getPixelRatio() });
     d.frames++; d.time += dt;
-    if (d.time < 1.0) return;
+    if (d.time < 0.5) return;
     const fps = d.frames / d.time;
     d.frames = 0; d.time = 0;
+    if (d.skip) { d.skip = false; return; }
     const target = q.targetFps || 25;
-    let pr = d.pr;
-    if (fps < target + 0.5) pr = Math.max(q.minPixelRatio || 0.28, pr * Math.max(0.8, Math.sqrt(fps / (target + 2))));
-    else if (fps > target * 1.25) pr = Math.min(d.max, pr * 1.04);
-    if (Math.abs(pr - d.pr) > 0.004) {
-      d.pr = pr;
-      this.renderer.renderer.setPixelRatio(pr);
-      this.onResize();
-    }
+    // discrete scale steps: every change re-allocates the canvas, so change rarely and decisively.
+    // Cost ~ pixels ~ scale^2: jump straight down to the step that should reach the target; go one step
+    // up only after two consecutive windows with plenty of headroom.
+    if (fps < target + 1) {
+      d.good = 0;
+      this.setRenderScale(d.pr * Math.sqrt(fps / (target + 3)), 'down');
+    } else if (fps > target * 1.4) {
+      if (++d.good >= 3) { d.good = 0; this.setRenderScale(d.pr, 'up'); }
+    } else d.good = 0;
     this.fps = fps;
+  }
+
+  /** Apply an internal render scale, snapped to the dynamic-resolution steps ('down' / 'up' / nearest). */
+  setRenderScale(pr, dir = 'down') {
+    const d = this._dyn; if (!d) return;
+    const steps = DYN_STEPS.filter((x) => x >= (this.quality.minPixelRatio || 0.28) - 1e-6 && x <= d.max + 1e-6);
+    if (!steps.length) return;
+    let next;
+    if (dir === 'up') next = steps.find((x) => x > d.pr + 1e-6) ?? steps[steps.length - 1];
+    else next = [...steps].reverse().find((x) => x <= pr + 1e-6) ?? steps[0];
+    if (Math.abs(next - d.pr) < 1e-6) return;
+    d.pr = next;
+    this.renderer.renderer.setPixelRatio(next);
+    this.onResize();
   }
 
   /** 'lite': hide small-part batches farther than LITE_DETAIL_DISTANCE from the camera. */
@@ -308,6 +339,7 @@ export class App {
   }
 
   setMode(mode) {
+    if (this._dyn && mode !== this.mode) this._dyn.skip = true;   // ignore the switch hitch in the next fps window
     this.mode = mode;
     const observer = mode === 'observer';
     this.orbitControls.enabled = observer;
@@ -316,7 +348,16 @@ export class App {
     this.events.emit('mode', mode);
   }
 
-  toggleMode() { this.setMode(this.mode === 'observer' ? 'play' : 'observer'); }
+  toggleMode() {
+    const toObserver = this.mode !== 'observer';
+    if (toObserver) {
+      // free camera starts exactly where the astronaut looks: orbit pivot 15 m ahead (no swing toward the origin)
+      this.camera.updateMatrixWorld();
+      this.orbitControls.target.copy(this.camera.position).add(this.camera.getWorldDirection(_camPos).multiplyScalar(15));
+    }
+    this.setMode(toObserver ? 'observer' : 'play');
+    if (toObserver) this.orbitControls.update();
+  }
 
   /** Named camera views (observer) or player poses (play). Used by tools/screenshot.mjs and the menu. */
   setView(name) {
@@ -349,6 +390,7 @@ export class App {
       console.warn('unknown view', name);
     }
     this.viewName = name;
+    if (this._dyn) this._dyn.skip = true;
     this.events.emit('view', name);
   }
 
@@ -401,7 +443,8 @@ export class App {
     this.sunLight.target.position.set(0, 0, 0);
     this.sunLight.intensity = SUN_LIGHT_INTENSITY * o.sunVisible;
     this.sunLight.color.set(SUN_COLOR).multiply(o.sunColor);
-    this.sunLight.visible = o.sunVisible > 0.002;
+    // (never toggle a light's `visible`: it changes every material's program key and recompiles them all
+    //  at sunset/sunrise; zero intensity in the umbra costs nothing)
     this.farSunLight.position.copy(o.sunDir).multiplyScalar(1e5);
     this.farSunLight.target.position.set(0, 0, 0);
     // Earthshine: blue-white light from below, proportional to the sunlit fraction of the Earth under us

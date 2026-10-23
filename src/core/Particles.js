@@ -27,10 +27,10 @@ export class ParticleSystem {
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6);
     this.geometry = geo;
     this.material = new THREE.ShaderMaterial({
-      uniforms: { uTime: { value: 0 }, uScale: { value: 1000 }, uMap: { value: texture || ParticleSystem.defaultTexture() } },
+      uniforms: { uTime: { value: 0 }, uScale: { value: 1000 }, uMaxSize: { value: 512 }, uMap: { value: texture || ParticleSystem.defaultTexture() } },
       vertexShader: /* glsl */`
         attribute vec3 aVel; attribute vec4 aParams; attribute vec4 aColor;
-        uniform float uTime; uniform float uScale;
+        uniform float uTime; uniform float uScale; uniform float uMaxSize;
         varying vec4 vColor; varying float vAge;
         void main() {
           float age = (uTime - aParams.x) / max(aParams.y, 1e-4);
@@ -39,7 +39,7 @@ export class ParticleSystem {
           vec3 p = position + aVel * (uTime - aParams.x);
           vec4 mv = modelViewMatrix * vec4(p, 1.0);
           float size = mix(aParams.z, aParams.w, age);
-          gl_PointSize = alive * clamp(size * uScale / max(-mv.z, 0.05), 0.0, 512.0);
+          gl_PointSize = alive * clamp(size * uScale / max(-mv.z, 0.05), 0.0, uMaxSize);
           gl_Position = alive > 0.5 ? projectionMatrix * mv : vec4(2.0, 2.0, 2.0, 1.0);
           float fade = pow(1.0 - clamp(age, 0.0, 1.0), 1.6);
           vColor = vec4(aColor.rgb, aColor.a * fade);
@@ -108,8 +108,10 @@ export class ParticleSystem {
     this.material.uniforms.uTime.value = this.time;
     if (renderer && camera) {
       // perspective point-size scale: pixels per meter at distance 1
-      const h = renderer.getSize(new THREE.Vector2()).y * renderer.getPixelRatio();
+      const h = renderer.getSize(this._size || (this._size = new THREE.Vector2())).y * renderer.getPixelRatio();
       this.material.uniforms.uScale.value = h / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+      // a puff right in front of the visor must not cover the whole screen (fill rate)
+      this.material.uniforms.uMaxSize.value = Math.max(16, Math.min(512, h * 0.35));
     }
     if (this._dirty) {
       for (const name of ['position', 'aVel', 'aParams', 'aColor']) this.geometry.attributes[name].needsUpdate = true;

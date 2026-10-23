@@ -9,7 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "shot": "node tools/screenshot.mjs",
-    "smoke": "node tools/smoke.mjs"
+    "smoke": "node tools/smoke.mjs",
+    "demo": "node tools/demo.mjs"
   },
   "repository": {
     "type": "git",

@@ -182,3 +182,16 @@ menu even in shot mode. `events.emit('view', name)` fires on every `app.setView`
 States: 'docked' | 'undock' | 'depart' | 'arrive' (inbound) | 'approach' | 'dock' | 'loiter' (drone) | 'idle' (recycled, hidden).
 noseOffset = 0: a docked ship's position equals `port.position`. `ships.getLog()` returns the last 20 Russian event lines;
 `events.emit('ship', {type, ship, port})` fires on undock/dock/depart/arrive. Observer view `ships` frames the docked traffic.
+
+## 'lite' preset (CPU rasterisers)
+
+Picked automatically when the WebGL renderer string names a software rasteriser (`App.isSoftwareRenderer`).
+On SwiftShader the cost is triangles (~3-4 M/s) and pixels, not draw calls or material switches, so the preset:
+`src/core/three-lod.js` (Vite alias for `three`) scales round-geometry tessellation by `globalThis.__THREE_DETAIL`
+while the station, ships and suit are built; `App.applyLite` swaps PBR for Lambert, drops spotlights and shadows,
+atlases text decals and runs `StaticBatcher.batchStatic` (static merge per moving anchor, instances baked, plain
+materials merged through vertex colours, pre-merged meshes split into islands, spatial cells, distance-culled detail
+batches). `HorizonCull` draws only the visible Earth cap (all presets). `PostStack` renders directly to the canvas:
+far scene at `farScale` into a half-float target and stretched, stars straight to the canvas with analytic Earth
+occlusion. Dynamic resolution (`App.updateDynamicResolution`) holds `targetFps` with discrete scale steps.
+`tools/fps.mjs` measures steady frame rates per view; `tools/demo.mjs` records a scripted session with an fps log.

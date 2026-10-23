@@ -10,6 +10,9 @@
 }
 .hud * { box-sizing: border-box; }
 .hud .hidden { display: none !important; }
+/* mode layers (helmet / observer panel): stay rendered, just transparent and inert */
+.hud .off { opacity: 0 !important; pointer-events: none !important; }
+.hud .off * { pointer-events: none !important; }
 .hud button { font: inherit; color: inherit; cursor: pointer; }
 .hud b { color: var(--cyan); font-weight: 600; }
 

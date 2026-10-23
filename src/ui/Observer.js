@@ -1,4 +1,4 @@
-import { el, add, setText, setClass, show, num, hms } from './dom.js';
+import { el, add, setText, setClass, show, num, hms, fade } from './dom.js';
 
 /** Observer-mode panel: hint, time scale, simulation clock, named camera views. */
 const VIEWS = [
@@ -41,7 +41,7 @@ export class ObserverPanel {
     root.append(this.el);
   }
 
-  setVisible(on) { show(this.el, on); if (on) this._markActive(); }
+  setVisible(on) { show(this.el, true); fade(this.el, on); if (on) this._markActive(); }
 
   _markActive() {
     const cur = this.ctx.app?.viewName;
