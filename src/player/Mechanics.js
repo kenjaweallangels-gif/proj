@@ -368,17 +368,20 @@ export class BodyMechanics {
     // compliant body: swings away from what it touches, pushes the head only partly
     _neck.copy(pos).addScaledVector(_up, -dims.neck).addScaledVector(_back, dims.axisBack);
     const L = dims.eyeHeight - dims.neck;
-    for (let it = 0; it < 2; it++) {
+    for (let it = 0; it < 3; it++) {
       _a.copy(_neck).addScaledVector(this.axis, dims.radius * 0.7);
       _b.copy(_neck).addScaledVector(this.axis, L - dims.radius);
       if (!W.resolveCapsule(_a, _b, dims.radius, null, opts)) break;
       const P = W.lastPush;
-      // feet end moves the most: rotate the axis, translate a share
-      _v.copy(_neck).addScaledVector(this.axis, L).addScaledVector(P, 1.4);
+      // the body swings away from what it touches (the feet end moves the most) ...
+      _v.copy(_neck).addScaledVector(this.axis, L).addScaledVector(P, 1.6);
       this.axis.subVectors(_v, _neck).normalize();
-      _v.copy(P).multiplyScalar(0.3);
-      pos.add(_v); _neck.add(_v);
-      this._respond(W, vel, e, f, s.surfaceMotion, 0.3);
+      // ... and only when it cannot swing free it shifts the head a little
+      if (it === 2 && P.lengthSq() > 4e-4) {
+        _v.copy(P).multiplyScalar(0.4);
+        pos.add(_v);
+        this._respond(W, vel, e, f, s.surfaceMotion, 0.3);
+      }
     }
     this.body.bodyAxis.copy(this._dirToWorld(this.axis, _v));
   }

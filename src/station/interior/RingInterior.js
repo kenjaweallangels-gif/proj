@@ -19,7 +19,7 @@ import {
  */
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
-const R = 40, TUBE = 3.3, FLOOR = 42.0, CEIL = 38.6, X0 = -42;
+const R = 40, TUBE = 3.3, FLOOR = 42.0, CEIL = FLOOR - 2.45, X0 = -42;   // corridor ceiling 2.45 m above the deck
 const POD_R = 4.45, POD_HX = 3.9;
 const PHI_A = 4.05 / FLOOR;            // corridor starts at the pod doorway
 const SECT = Math.PI / 3;
@@ -451,22 +451,20 @@ function buildCorridor(I, v) {
     if (sg.kind === 'vest') {
       // airtight door frame at the pod end + side lockers, extinguisher, signs
       const pEnd = sg.a === p0 ? p0 : p1, dirS = sg.a === p0 ? 1 : -1;
-      const F = ff(P(0, FLOOR - 1.3, pEnd), tangent(pEnd).multiplyScalar(dirS), V(-dirS, 0, 0));
-      const fo = [[-xc, -1.3], [xc, -1.3], [xc, CEIL - FLOOR + 1.3], [-xc, CEIL - FLOOR + 1.3]];
-      void fo;
-      // door jamb: a thick frame 2.1 x 2.6 around the opening
-      const jw = 2.1, jh = 2.6;
+      // door jamb: a thick frame 2.1 x 2.2 around the opening (sill on the deck, lintel below the 2.45 m ceiling)
+      const jw = 2.1, jh = 2.2;
+      const F = ff(P(0, FLOOR - jh / 2, pEnd), tangent(pEnd).multiplyScalar(dirS), V(-dirS, 0, 0));
       const outer = [], inner = [];
       const n = 32;
       for (let k = 0; k < n; k++) { const a = (k / n) * Math.PI * 2; outer.push([Math.cos(a) * 3.6, Math.sin(a) * 2.2 + 0.25].map((q, i2) => i2 === 0 ? q : q)); const rr = roundRectRadius(jw / 2, jh / 2, 0.15, a); inner.push([Math.cos(a) * rr, Math.sin(a) * rr]); }
-      for (let k = 0; k < n; k++) { const a = (k / n) * Math.PI * 2; const ro = roundRectRadius(xc + 0.1, 1.75, 0.01, a); outer[k] = [Math.cos(a) * ro, Math.sin(a) * ro]; }
+      for (let k = 0; k < n; k++) { const a = (k / n) * Math.PI * 2; const ro = roundRectRadius(xc + 0.02, 1.32, 0.01, a); outer[k] = [Math.cos(a) * ro, Math.sin(a) * ro]; }
       W.frame2D('paint', offset(F, 0, 0, 0.05), outer, inner, 0.1, 0xb9c0c8, null, { back: true, outerWall: false, innerWall: true });
       W.frame2D('metal', offset(F, 0, 0, 0.12), roundRect2(jw + 0.16, jh + 0.16, 0.2), roundRect2(jw, jh, 0.15), 0.06, 0x8f969d);
       // sliding door (open, parked in the wall pocket) + hazard strip on the threshold
       W.box('equip', offset(F, jw * 0.5 + 0.55, 0, 0.0), 1.05, jh, 0.06, 0xffffff, T.rect('doorRing'), T.rect('grey'));
       W.box('equip', offset(F, 0, -jh / 2 + 0.02, 0.06), jw, 0.06, 0.12, 0xffffff, T.rect('stripes'));
       if (!I.lite) {
-        sign(K, offset(F, 0, jh / 2 + 0.2, 0.11), dirS > 0 ? '← СЕКТОР · SECTOR HALL' : 'СЕКТОР · SECTOR HALL →', 1.0, 0.1, { ph: 40, bg: '#1f8a3a', fg: '#fff', glow: true });
+        sign(K, offset(F, 0, jh / 2 + 0.12, 0.11), dirS > 0 ? '← СЕКТОР · SECTOR HALL' : 'СЕКТОР · SECTOR HALL →', 1.0, 0.1, { ph: 40, bg: '#1f8a3a', fg: '#fff', glow: true });
         const Fl = ff(P(-aisle + 0.02, FLOOR - 1.2, (sg.a + sg.b) / 2), V(1, 0, 0), tangent(0).clone());
         rack(K, Fl, 'locker2', 1.2, 1.9);
         const Fr = ff(P(aisle - 0.02, FLOOR - 1.2, (sg.a + sg.b) / 2), V(-1, 0, 0), tangent(0).clone().negate());
@@ -510,8 +508,8 @@ function buildCorridor(I, v) {
   Z.portal('podPrev', P(0, FLOOR - 1.2, p0), 1.2);
   Z.portal('podNext', P(0, FLOOR - 1.2, p1), 1.2);
   const pm = (p0 + p1) / 2;
-  Z.light(0, ...[P(0, FLOOR - 2.6, pm - 0.15).y, P(0, FLOOR - 2.6, pm - 0.15).z]);
-  Z.light(0, ...[P(0, FLOOR - 2.6, pm + 0.15).y, P(0, FLOOR - 2.6, pm + 0.15).z]);
+  Z.light(0, ...[P(0, FLOOR - 2.2, pm - 0.15).y, P(0, FLOOR - 2.2, pm - 0.15).z]);
+  Z.light(0, ...[P(0, FLOOR - 2.2, pm + 0.15).y, P(0, FLOOR - 2.2, pm + 0.15).z]);
   Z.bake = ringBake(I.lite, 'corridor');
   Z.ringCarve = true;
   Z.commonName = COMMON_NAMES[v];

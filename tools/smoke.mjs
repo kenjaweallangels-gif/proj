@@ -5,6 +5,9 @@
  *   -> don the suit -> crew lock -> inner hatch, depress, outer hatch -> EVA (tether) -> spinning-ring contact
  *   -> back into the crew lock, repress, inner hatch opens -> doff the suit -> gravity ring: deck, gravity, walking,
  *   Coriolis, spoke ladder -> observer mode.
+ * Body / collisions (ctx.collision, exact render geometry): 1.68 m eye height on the ring deck, hand-over-hand along
+ * the lab rails, auto-brake at a wall, no passing through a lab wall / a ring cabin partition / a module hull /
+ * a docked ship at speed, the observer camera stays outside the geometry.
  * Key presses go through the real render loop; long stretches of physics are advanced deterministically by stepping
  * the modules directly (the software GPU renders only a few frames per second).
  *   node tools/smoke.mjs [--quality=low] [--timeout=600000]
@@ -56,6 +59,25 @@ const fly = (pts) => ev((wps) => {
   p.velocity.set(0, 0, 0);
   return { seen, pos: p.position.toArray() };
 }, pts);
+/**
+ * Drive the body at `speed` along `dir` (world) from its current pose for `seconds` (velocity re-imposed every
+ * step, as a hard thrust would) and report how far it got compared with the first surface on that line.
+ */
+const ram = (dir, speed, seconds, mask) => ev(([d, sp, sec, m]) => {
+  const a = window.__app, p = a.player, W = a.collision, h = 1 / 60;
+  const D = new p.position.constructor(...d).normalize();
+  const start = p.position.clone();
+  const hit = {};
+  const wall = W.raycast(start, D, 30, hit, { mask: m }) ? hit.distance : null;
+  let maxAlong = -1e9;
+  for (let t = 0; t < sec; t += h) {
+    p.velocity.copy(D).multiplyScalar(sp);
+    a.time.sim += h; a.orbit.update(a.time.sim); a.station.update(h, a.ctx); a.ships.update(h, a.ctx); a.player.update(h, a.ctx);
+    maxAlong = Math.max(maxAlong, p.position.clone().sub(start).dot(D));
+  }
+  return { wall, maxAlong, clearance: W.distance(p.position, 2, { mask: m }), mode: p.state.mode, comp: p.state.compartment };
+}, [dir, speed, seconds, mask]);
+const bodyEvents = () => ev(() => { const e = window.__bodyEv || []; window.__bodyEv = []; return e; });
 const state = () => ev(() => { const p = window.__app.player, s = p.state; return { mode: s.mode, seq: s.sequence?.name || null, comp: s.compartment, suited: s.suited, g: s.gravity, frame: s.frame, ladder: s.onLadder, inner: window.__app.station.airlock.innerHatch?.progress, outer: window.__app.station.airlock.hatch.progress, tether: s.tetherAttached }; });
 
 try {
@@ -64,6 +86,8 @@ try {
   check('app ready, no stub fallback', await ev(() => !window.__MODULE_ERRORS__), String(await ev(() => window.__MODULE_ERRORS__ || '')));
   check('interiors built', await ev(() => window.__app.station.interior?.ready && window.__app.station.interior.zones.length > 20), String(await ev(() => window.__app.station.interior?.zones?.length)));
   await page.waitForTimeout(1500);
+  await ev(() => { window.__bodyEv = []; window.__app.events.on('body', (e) => window.__bodyEv.push(e.type)); });
+  check('collision world built', await ev(() => !!window.__app.collision?.ready && window.__app.collision.bodies.length > 50), JSON.stringify(await ev(() => window.__app.collision?.stats)));
 
   // menu
   check('start menu shown', await ev(() => window.__app.hud.menu.visible === true));
@@ -81,6 +105,31 @@ try {
   await page.keyboard.down('KeyW'); await frames(8); await page.keyboard.up('KeyW');
   const glide = await ev(() => ({ v: window.__app.player.velocity.length(), prop: window.__app.player.state.propellant }));
   check('W glides inside (real loop), no propellant used', glide.v > 0.01 && glide.prop === prop0, `v ${glide.v.toFixed(3)} m/s, propellant ${glide.prop}`);
+
+  // hand over hand: W along the lab -> the hands grip the rails / walls ahead and pull (grab + push events)
+  await ev(() => window.__app.player.setView('inside'));
+  await bodyEvents();
+  await step(3.0, ['KeyW']);
+  const hoh = await ev(() => ({ v: window.__app.player.velocity.length(), hands: Object.values(window.__app.player.body.handTargets).map((t) => t.phase) }));
+  const hev = await bodyEvents();
+  check('hand over hand along the lab (auto grab + push)', hev.includes('grab') && hev.includes('push') && hoh.v > 0.6, `v ${hoh.v.toFixed(2)} m/s, events ${[...new Set(hev)].join(',')}, hands ${hoh.hands.join('/')}`);
+  // auto-brake: glide (no input) toward the lab end wall at 1 m/s -> the hands brake, no hard bump, no penetration
+  const brake = await ev(() => {
+    const a = window.__app, p = a.player, W = a.collision, h = 1 / 60;
+    p.setView('interior-lab');
+    const D = new p.position.constructor(0, 0, -1).applyQuaternion(p.quaternion);
+    const hit = {}; const wall = W.raycast(p.position, D, 20, hit, { mask: 10 }) ? hit.distance : null;
+    p.velocity.copy(D).multiplyScalar(1.0);
+    let vmin = 9, imp = 0;
+    for (let t = 0; t < 8; t += h) { a.time.sim += h; a.station.update(h, a.ctx); a.player.update(h, a.ctx); imp = Math.max(imp, p.mech.impact); }
+    return { wall, v: p.velocity.length(), imp, clearance: W.distance(p.position, 2, { mask: 10 }) };
+  });
+  const bev = await bodyEvents();
+  check('auto-brake at a wall with the hands', bev.includes('brake') && brake.v < 0.25 && brake.clearance > 0.1, JSON.stringify(brake) + ' ' + [...new Set(bev)].join(','));
+  // thrusting hard into the lab wall: no passing through
+  await ev(() => window.__app.player.setView('interior-lab'));
+  const labWall = await ram(await ev(() => new (window.__app.player.position.constructor)(0, 0, -1).applyQuaternion(window.__app.player.quaternion).toArray()), 4.0, 3.0, 10);
+  check('cannot pass through the lab wall at 4 m/s', labWall.wall !== null && labWall.maxAlong < labWall.wall - 0.1 && labWall.clearance > 0.1, JSON.stringify(labWall));
 
   // float from the lab through node 1 into the equipment lock
   await ev(() => window.__app.player.setView('inside'));
@@ -122,6 +171,36 @@ try {
   const after = await ev(() => { const p = window.__app.player; return { v: p.velocity.length(), finite: Number.isFinite(p.position.x + p.velocity.x) }; });
   check('spinning ring drags the astronaut along', after.finite && after.v > 0.5, `player ${after.v.toFixed(2)} m/s, rim surface ${ring.rimSpeed.toFixed(1)} m/s`);
 
+  // EVA: ram a module hull and a docked ship at 3 m/s (untethered): stopped at the surface
+  const hullRam = await ev(() => {
+    const a = window.__app, p = a.player;
+    p.state.tetherAttached = false; p.state.tetherStowed = true; p._reattachBlock = 99;
+    p.position.set(-6, -8, 7); p.velocity.set(0, 0, 0); p.quaternion.set(0, 0, 0, 1);
+    return true;
+  });
+  void hullRam;
+  const hull = await ram([0, 0, -1], 3.0, 3.0, 15);
+  check('EVA: cannot pass through a module hull', hull.wall !== null && hull.maxAlong < hull.wall - 0.1 && hull.mode === 'eva', JSON.stringify(hull));
+  const shipPose = await ev(() => {
+    const a = window.__app, p = a.player, W = a.collision;
+    const s = a.ships.ships.find((x) => x.state === 'docked' && x.group.visible);
+    if (!s) return null;
+    const ax = s.port.approachAxis.clone();
+    const c = s.port.position.clone().addScaledVector(ax, Math.min(4, s.length * 0.35));
+    let perp = new p.position.constructor(0, 1, 0).cross(ax); if (perp.lengthSq() < 0.1) perp.set(1, 0, 0).cross(ax); perp.normalize();
+    // pick the side with a clear approach
+    for (const sg of [1, -1]) {
+      const st = c.clone().addScaledVector(perp, sg * 9);
+      const hit = {};
+      if (W.raycast(st, perp.clone().multiplyScalar(-sg), 12, hit, { mask: 15 }) && hit.body.layer === 4) { p.position.copy(st); p.velocity.set(0, 0, 0); return { ship: s.name, dir: perp.clone().multiplyScalar(-sg).toArray() }; }
+    }
+    return { ship: s.name, dir: null };
+  });
+  if (shipPose?.dir) {
+    const shipRam = await ram(shipPose.dir, 3.0, 4.0, 15);
+    check('EVA: cannot pass through a docked ship', shipRam.wall !== null && shipRam.maxAlong < shipRam.wall - 0.1, shipPose.ship + ' ' + JSON.stringify(shipRam));
+  } else check('EVA: docked ship found for the ram test', false, JSON.stringify(shipPose));
+
   // back into the crew lock: close the outer hatch, repress, the inner hatch opens
   await ev(() => { const a = window.__app, p = a.player; p.position.copy(a.station.airlock.standPosition); p.velocity.set(0, 0, 0); p.state.tetherAttached = true; p.state.tetherStowed = false; });
   await step(0.2);
@@ -145,7 +224,13 @@ try {
   await ev(() => window.__app.setView('interior-ring'));
   await step(2.0);
   const g = await ev(() => { const p = window.__app.player, iv = p.iva; return { frame: iv.frame, g: p.state.gravity, grounded: iv.grounded, rho: Math.hypot(iv.pL.y, iv.pL.z), x: iv.pL.x, comp: p.state.compartment }; });
-  check('standing on the curved deck of the ring', g.frame === 'ring' && g.grounded && Math.abs(g.rho - (42 - 0.3)) < 0.15, JSON.stringify(g));
+  check('standing on the curved deck of the ring', g.frame === 'ring' && g.grounded && Math.abs(g.rho - (42 - 1.68)) < 0.08, JSON.stringify(g));
+  const eye = await ev(() => {
+    const a = window.__app, iv = a.player.iva, W = a.collision, hit = {};
+    const down = iv.pL.clone().setX(0).normalize();
+    return W.raycast(iv.pL, down, 4, hit, { mask: 10, frame: a.station.ring.group }) ? hit.distance : null;
+  });
+  check('eye height above the ring deck ~1.68 m (1.8 m body)', eye !== null && Math.abs(eye - 1.68) < 0.05, `${eye?.toFixed(3)} m`);
   check('spin gravity ~0.37 g at the deck', g.g > 0.3 && g.g < 0.45, `${g.g.toFixed(3)} g`);
   const phi0 = await ev(() => { const iv = window.__app.player.iva; return Math.atan2(iv.pL.z, iv.pL.y); });
   await step(2.5, ['KeyW']);
@@ -160,6 +245,20 @@ try {
     return { dphi: Math.atan2(iv.pL.z, iv.pL.y) - 0.35, grounded: iv.grounded };
   });
   check('Coriolis: a falling body lands anti-spinward', drop.dphi < -0.0005 && drop.grounded, `dphi ${drop.dphi.toFixed(5)} rad`);
+  // walk into a closed cabin partition (corridor side wall, x = +-1 m): blocked by the wall
+  const cab = await ev(() => {
+    const a = window.__app, p = a.player, iv = p.iva, h = 1 / 60, inp = a.input;
+    p.setView('interior-ring');
+    iv.yaw = Math.PI / 2; iv.pitch = 0;     // face +x (the partition)
+    for (let t = 0; t < 0.5; t += h) { a.time.sim += h; a.station.update(h, a.ctx); a.player.update(h, a.ctx); }
+    inp.keys.KeyW = true; inp.keys.ShiftLeft = true;
+    let xmax = -9;
+    for (let t = 0; t < 4; t += h) { a.time.sim += h; a.station.update(h, a.ctx); a.player.update(h, a.ctx); xmax = Math.max(xmax, iv.pL.x); }
+    inp.keys.KeyW = false; inp.keys.ShiftLeft = false;
+    return { xmax, grounded: iv.grounded, comp: p.state.compartment };
+  });
+  check('cannot walk through a ring cabin wall', cab.xmax < 1.0 - 0.15 && cab.grounded, JSON.stringify(cab));
+
   // spoke ladder: W climbs the way the camera looks (the view looks down the shaft); apparent gravity ~ radius
   await ev(() => window.__app.setView('interior-spoke'));
   await step(0.1);
@@ -179,6 +278,23 @@ try {
   await frames(2);
   await page.keyboard.press('KeyF');
   check('F returns to the astronaut', await until(() => window.__app.mode === 'play'));
+
+  // observer camera: zooming / flying into a module hull stops outside it
+  const obs = await ev(() => {
+    const a = window.__app, W = a.collision, cam = a.camera;
+    a.setView('overview');
+    const V = cam.position.constructor;
+    const out = new V(-6, -8, 6), D = new V(0, 0, -1), hit = {};
+    const wall = W.raycast(out, D, 20, hit, { mask: 15 }) ? hit.distance : null;
+    a._obsPrev = out.clone(); cam.position.copy(out);
+    a.constrainObserver();
+    let maxAlong = 0;
+    for (let k = 1; k <= 40; k++) { cam.position.copy(a._obsPrev).addScaledVector(D, 0.25); a.constrainObserver(); maxAlong = Math.max(maxAlong, cam.position.clone().sub(out).dot(D)); }
+    // a jump straight into the hull (teleport inside the wall) is pushed out too
+    a._obsPrev = null; cam.position.copy(out).addScaledVector(D, wall ?? 0); a.constrainObserver();
+    return { wall, maxAlong, clearance: W.distance(cam.position, 2, { mask: 15 }) };
+  });
+  check('observer camera stays outside the geometry', obs.wall !== null && obs.maxAlong < obs.wall - 0.2 && obs.clearance > 0.2, JSON.stringify(obs));
 
   check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (e) {

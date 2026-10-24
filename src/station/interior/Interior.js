@@ -480,8 +480,8 @@ function makeViews() {
     'interior-tunnel': { pos: V(-3.0, -1.0, 0.05), look: V(-1, 0, 0) },
     'interior-ringhub': { pos: V(-37.6, -0.6, 0.6), look: V(-1, -0.1, -0.1) },
     'interior-spoke': { ring: true, phi: 0.0, rho: 18, x: 0.05, yaw: 0, pitch: -1.2, ladder: true },
-    'interior-ring': { ring: true, phi: 0.42, rho: RING.FLOOR - 1.6, x: 0.1, yaw: 0, pitch: -0.05 },
-    'interior-pod': { ring: true, phi: Math.PI * 2 / 3 + 0.075, rho: RING.FLOOR - 1.6, x: 0.3, yaw: Math.PI, pitch: 0.12 },
-    'interior-cabin': { ring: true, phi: 0.226, rho: RING.FLOOR - 1.6, x: 0.95, yaw: 0.85, pitch: -0.28 },
+    'interior-ring': { ring: true, phi: 0.42, rho: RING.FLOOR - 1.68, x: 0.1, yaw: 0, pitch: -0.05 },
+    'interior-pod': { ring: true, phi: Math.PI * 2 / 3 + 0.075, rho: RING.FLOOR - 1.68, x: 0.3, yaw: Math.PI, pitch: 0.12 },
+    'interior-cabin': { ring: true, phi: 0.226, rho: RING.FLOOR - 1.68, x: 0.95, yaw: 0.85, pitch: -0.28 },
   };
 }
