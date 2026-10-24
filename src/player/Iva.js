@@ -1,32 +1,37 @@
 import * as THREE from 'three';
 import { containSphere } from '../station/interior/Volumes.js';
-import { colliderDistance, closestOnSegment } from './Collision.js';
+import { closestOnSegment } from './Collision.js';
+import { bodyDims } from './Body.js';
+import { COLLIDE } from '../core/CollisionWorld.js';
 
 /**
  * Intravehicular movement (player modes 'iva' and 'airlock'): the astronaut inside the pressurised volume.
+ * The body is 1.8 m tall (src/player/Body.js); `player.position` is the eye. Collisions use the real interior
+ * geometry (ctx.collision, layers INTERIOR | DOORS); the compartment volumes stay as a coarse safety net for the eye.
+ * The body mechanics (src/player/Mechanics.js, `player.mech`) move the body and drive the hand / foot targets.
  *
  * Station frame (core modules, nodes, airlock, tunnels, static parts of the ring hub): zero-g. WASD / Space /
- * Ctrl glide (pushing off with the hands, ~0.9 m/s^2, no SAFER propellant), soft collisions with the cabin
- * volume and equipment, handrail grabbing (G) and push-off (Space), optional auto-levelling to the module's
- * "overhead" (X).
+ * Ctrl give the movement intent: the hands grip the handrails (or the walls) within reach and pull the body
+ * along hand over hand; approaching a wall the hands brake. G grabs a rail explicitly, Space pushes off,
+ * V stops with the hands, X toggles auto-levelling to the module's "overhead".
  *
  * Ring frame (habitat ring, spokes and the hub's rotating collar): the body moves in the ring's rotating frame
  * with the centrifugal (omega^2 r) and Coriolis (-2 omega x v) accelerations, so the deck is "down" and walking
- * spinward makes you heavier, anti-spinward lighter, climbing pushes you sideways. Walking on the deck,
- * ladders in the spokes (auto) and in the sector halls (E), weak gravity in the hub.
+ * spinward makes you heavier, anti-spinward lighter, climbing pushes you sideways. Walking on the deck with the
+ * eye 1.68 m above it, ladders in the spokes (auto) and in the sector halls (E), weak gravity in the hub.
  * Frame changes convert position, velocity and orientation exactly (v_rot = R^-1 v - omega x r).
  */
 
-const GLIDE_ACC = 0.9, GLIDE_MAX = 1.6, GLIDE_BOOST = 2.0;
-const WALK_SPEED = 1.5, RUN_SPEED = 2.8, WALK_ACC = 9.0, JUMP = 1.3;
+const WALK_SPEED = 1.4, RUN_SPEED = 2.6, JUMP = 1.3;
 const CLIMB_SPEED = 0.85;
 const MOUSE = 0.0022, ROLL_RATE = 1.0;
 const PUSH_OFF = 1.1;
+const MASK = COLLIDE.INTERIOR | COLLIDE.DOORS;
+const EYE_SLACK = 0.25;    // the eye may leave the compartment volumes by this much before the safety net acts
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
-const _n = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _q2 = new THREE.Quaternion();
 const _m = new THREE.Matrix4();
@@ -38,6 +43,13 @@ const _right = new THREE.Vector3();
 const _camUp = new THREE.Vector3();
 const _wquat = new THREE.Quaternion();
 const _push = new THREE.Vector3();
+const _intent = new THREE.Vector3();
+const _move = new THREE.Vector3();
+const _acc = new THREE.Vector3();
+const _flat = new THREE.Vector3();
+const _hit = { point: new THREE.Vector3(), normal: new THREE.Vector3(), t: 0, distance: 0 };
+const _zg = { pos: null, vel: null, quat: new THREE.Quaternion(), suited: false, mask: MASK, intent: _intent, boost: false, stop: false, rails: null, extAcc: null };
+const _wk = { pos: null, vel: null, up: _up, facing: _flat, suited: false, mask: MASK, g: 0, move: _move, jump: false, accel: _acc, jumpSpeed: JUMP };
 
 export class IvaController {
   constructor(player, ctx) {
@@ -45,11 +57,11 @@ export class IvaController {
     this.ctx = ctx;
     this.frame = 'station';
     this.zone = null;
-    // ring-frame state (ring-local)
+    // ring-frame state (ring-local; pL is the eye)
     this.pL = new THREE.Vector3();
     this.vL = new THREE.Vector3();
     this.yaw = 0; this.pitch = 0;          // relative to the local deck frame (spinward / up)
-    this.grounded = false; this._groundTimer = 0;
+    this.grounded = false;
     this.ladder = null; this.ladderS = 0; this.ladderSway = 0; this.ladderSwayV = 0;
     this.contact = false;
     this.lastPhi = 0;
@@ -59,22 +71,26 @@ export class IvaController {
   }
 
   get interior() { return this.ctx.station?.interior || null; }
+  get mech() { return this.player.mech; }
+  get dims() { return bodyDims(this.player.state.suited); }
 
-  /** Body radius: unsuited 0.3 m, in the suit 0.42 m. */
-  radius() { return this.player.state.suited ? 0.42 : 0.3; }
+  /** Body (capsule) radius: unsuited 0.3 m, in the suit 0.42 m. */
+  radius() { return this.dims.radius; }
 
   // ------------------------------------------------------------------------------------------ placement
-  /** Place in the station frame at world position pos looking along dir (zero-g pose). */
+  /** Place in the station frame with the eye at world position pos looking along dir (zero-g pose). */
   placeStation(pos, dir) {
     const p = this.player;
     this.frame = 'station';
     this.ladder = null;
     const q = p.lookAlong(pos, dir);
     p.body.reset(pos, q);
+    this.mech?.setFrame(null);
+    this.mech?.reset(_v.set(0, 1, 0).applyQuaternion(q));
     this.zone = this.interior?.locate(pos, null, 0.3) || null;
   }
 
-  /** Place in the ring frame: ring-local (x, rho, phi), view yaw/pitch relative to the deck frame. */
+  /** Place in the ring frame: ring-local (x, rho, phi) of the eye (snapped to the deck below), yaw / pitch. */
   placeRing(x, rho, phi, yaw = 0, pitch = 0, ladder = false) {
     const I = this.interior;
     this.frame = 'ring';
@@ -83,12 +99,30 @@ export class IvaController {
     this.yaw = yaw; this.pitch = pitch;
     this.lastPhi = phi;
     this.ladder = null;
+    this.grounded = false;
     if (I) {
       I._ringUpdate();
+      this.mech?.setFrame(this.ctx.station.ring.group);
+      this._deckBasis();
+      this.mech?.reset(_up);
       this.zone = this._locateRing();
       if (ladder) this._attachNearestLadder(true);
+      else this._snapToDeck();
     }
     this._writeWorld(0);
+  }
+
+  /** Put the soles on the deck below the eye (placement). */
+  _snapToDeck() {
+    const W = this.ctx.collision;
+    if (!W?.ready) return;
+    this._deckBasis();
+    _v.copy(_up).negate();
+    if (W.raycast(this.pL, _v, 3.0, _hit, { mask: MASK, frame: this.ctx.station.ring.group }) && _hit.normal.dot(_up) > 0.5) {
+      this.pL.copy(_hit.point).addScaledVector(_up, this.dims.eyeHeight);
+      this.grounded = true;
+      if (this.mech) this.mech.grounded = true;
+    }
   }
 
   // ------------------------------------------------------------------------------------------ main
@@ -132,10 +166,15 @@ export class IvaController {
     return I.locate(_v3, this.zone, 0.6);
   }
 
+  /** Movement intent from WASD / Space / Ctrl in the view frame (components -1..1). */
+  _intentLocal(inp, out) {
+    return out.set(inp.axis('KeyA', 'KeyD'), (inp.isDown('Space') ? 1 : 0) - (inp.isDown('ControlLeft') || inp.isDown('ControlRight') ? 1 : 0), -inp.axis('KeyS', 'KeyW'));
+  }
+
   // ------------------------------------------------------------------------------------------ zero-g (station frame)
   _updateZeroG(h, inp, mdx, mdy, roll, allowMouse) {
-    const p = this.player, st = p.state, body = p.body, I = this.interior;
-    const rad = this.radius();
+    const p = this.player, st = p.state, body = p.body, I = this.interior, mech = this.mech;
+    mech.setFrame(null);
     // look: direct yaw / pitch about the body axes, Q/E roll; auto-level toward the module's overhead
     if (allowMouse && (mdx || mdy)) {
       _q.setFromAxisAngle(_v.set(0, 1, 0), -mdx * MOUSE); body.quaternion.multiply(_q);
@@ -143,50 +182,48 @@ export class IvaController {
     }
     if (roll) { _q.setFromAxisAngle(_v.set(0, 0, 1), -roll * ROLL_RATE * h); body.quaternion.multiply(_q); }
     else if (st.autoLevel && this.zone) this._autoLevel(this.zone.up, h);
+    // small body rotation from off-centre pushes (damped by the astronaut)
+    const wb = mech.wobble;
+    if (wb.lengthSq() > 1e-8) { const w = wb.length(); _q.setFromAxisAngle(_v.copy(wb).multiplyScalar(1 / w), w * h); body.quaternion.multiply(_q); }
     body.quaternion.normalize();
     body.omega.set(0, 0, 0);
-    // holding a handrail
+    body.thrusting = false;
     if (st.holding) {
+      // holding a handrail (G): crawl along it, push off with Space
       p._findHandrailIn(I.handrails);
       this._hold(h, inp);
-    } else {
-      // glide
-      _v.set(inp.axis('KeyA', 'KeyD'), (inp.isDown('Space') ? 1 : 0) - (inp.isDown('ControlLeft') || inp.isDown('ControlRight') ? 1 : 0), -inp.axis('KeyS', 'KeyW'));
-      const boost = inp.isDown('ShiftLeft') || inp.isDown('ShiftRight');
-      const vmax = boost ? GLIDE_MAX * GLIDE_BOOST : GLIDE_MAX;
-      if (_v.lengthSq() > 0) {
-        _v.normalize().applyQuaternion(body.quaternion);
-        const along = body.velocity.dot(_v);
-        if (along < vmax) body.velocity.addScaledVector(_v, Math.min(vmax - along, GLIDE_ACC * (boost ? 1.8 : 1) * h));
-        p._exertion = Math.min(1, p._exertion + 0.05 * h);
-      } else body.velocity.multiplyScalar(Math.exp(-h * (inp.isDown('KeyV') ? 3.0 : 0.12)));
-      body.thrusting = false;
-      p._findHandrailIn(I.handrails);
-      if (inp.wasPressed('KeyG') && st.nearHandrail) p._grab(st.nearHandrail);
-      // push off a wall: Space while touching
-      if (inp.wasPressed('Space') && this.contact) { _v.set(0, 0, -1).applyQuaternion(body.quaternion); body.velocity.addScaledVector(_v, PUSH_OFF * 0.6); this.ctx.audio?.play?.('release'); }
-      body.position.addScaledVector(body.velocity, h);
+      mech.holdTargets(h, p.handrailPoint, st.holding, inp.axis('KeyA', 'KeyD') + inp.axis('KeyS', 'KeyW'), null);
+      this._contain(body.position, body.velocity, 'station');
+      this.contact = true;
+      p.state.gravity = 0; this.accel.set(0, 0, 0);
+      return;
     }
-    // collisions: stay inside the compartments, bounce softly off equipment
-    const vols = I.volumesFor(this.zone, 'station');
-    const pushed = containSphere(body.position, body.velocity, rad, vols, 0.15, 0.25, _push);
-    let solidHit = false;
-    for (const c of I.solidsFor(this.zone, 'station')) {
-      const d = colliderDistance(c, body.position, _n);
-      if (d < rad) {
-        body.position.addScaledVector(_n, rad - d);
-        const vn = body.velocity.dot(_n);
-        if (vn < 0) body.velocity.addScaledVector(_n, -1.15 * vn);
-        solidHit = true;
-      }
-    }
-    const hitSpeed = pushed > 0 ? Math.abs(body.velocity.dot(_push)) : 0;
-    this.contact = pushed > 0 || solidHit;
-    if (this.contact && body.velocity.lengthSq() > 0.36 && !this._bumped) { this.ctx.audio?.play?.('impact', { strength: Math.min(0.4, body.velocity.length() * 0.2) }); this._bumped = true; }
-    if (!this.contact) this._bumped = false;
-    void hitSpeed;
+    // movement intent -> the hands (hand over hand on rails / walls, auto-brake), move and slide
+    this._intentLocal(inp, _intent);
+    if (_intent.lengthSq() > 1) _intent.normalize();
+    _intent.applyQuaternion(body.quaternion);
+    _zg.pos = body.position; _zg.vel = body.velocity; _zg.quat.copy(body.quaternion);
+    _zg.suited = st.suited; _zg.boost = inp.isDown('ShiftLeft') || inp.isDown('ShiftRight');
+    _zg.stop = inp.isDown('KeyV'); _zg.rails = I.handrails; _zg.extAcc = null; _zg.mask = MASK; _zg.safer = false;
+    if (!_zg.stop && _intent.lengthSq() === 0) body.velocity.multiplyScalar(Math.exp(-h * 0.02));   // air drag
+    mech.stepZeroG(h, _zg);
+    p._findHandrailIn(I.handrails);
+    if (inp.wasPressed('KeyG') && st.nearHandrail) p._grab(st.nearHandrail);
+    // push off a wall: Space while touching
+    if (inp.wasPressed('Space') && (mech.contact || mech.braking)) { _v.set(0, 0, -1).applyQuaternion(body.quaternion); body.velocity.addScaledVector(_v, PUSH_OFF * (st.suited ? 0.4 : 0.6)); mech.emit('push', PUSH_OFF * 0.6, body.position, 'hands'); this.ctx.audio?.play?.('release'); }
+    this._contain(body.position, body.velocity, 'station');
+    this.contact = mech.contact || mech.braking;
+    if (mech.bump(body.position)) this.ctx.audio?.play?.('impact', { strength: Math.min(0.4, mech.impact * 0.25) });
     p.state.gravity = 0;
     this.accel.set(0, 0, 0);
+  }
+
+  /** Safety net: keep the eye within the compartment volumes (+ slack); no collision world: the old sphere containment. */
+  _contain(pos, vel, frame) {
+    const vols = this.interior.volumesFor(this.zone, frame);
+    if (!vols.length) return;
+    if (this.ctx.collision?.ready) containSphere(pos, vel, -EYE_SLACK, vols, 0, 0.2, _push);
+    else containSphere(pos, vel, this.radius(), vols, 0.15, 0.25, _push);
   }
 
   /** Roll the body about its view axis so its up vector leans toward `up` (world). */
@@ -212,13 +249,20 @@ export class IvaController {
       _v.subVectors(rail.b, rail.a).multiplyScalar(1 / len);
       _v2.set(1, 0, 0).applyQuaternion(body.quaternion);
       const sign = _v.dot(_v2) >= 0 ? 1 : -1;
-      p.holdT = THREE.MathUtils.clamp(p.holdT + (along * sign * 0.8 * h) / len, 0, 1);
+      p.holdT = THREE.MathUtils.clamp(p.holdT + (along * sign * (st.suited ? 0.5 : 0.8) * h) / len, 0, 1);
     }
     p.handrailPoint.copy(rail.a).lerp(rail.b, p.holdT);
     body.position.copy(p.handrailPoint).add(p.holdOffset);
     body.velocity.set(0, 0, 0);
-    if (inp.wasPressed('Space')) { _v.set(0, 0, -1).applyQuaternion(body.quaternion); p._release(_v, PUSH_OFF); }
-    else if (inp.wasPressed('KeyG')) p._release();
+    // the held body still may not overlap the geometry
+    const W = this.ctx.collision, d = this.dims;
+    if (W?.ready) {
+      _v.set(0, 0, 1).applyQuaternion(body.quaternion);
+      _v3.copy(body.position).addScaledVector(_v, d.headBack);
+      if (W.resolveSphere(_v3, d.headRadius, null, { mask: MASK })) { body.position.add(W.lastPush); p.holdOffset.subVectors(body.position, p.handrailPoint); }
+    }
+    if (inp.wasPressed('Space')) { _v.set(0, 0, -1).applyQuaternion(body.quaternion); p._release(_v, PUSH_OFF); this.mech.emit('push', PUSH_OFF, p.handrailPoint, 'right'); }
+    else if (inp.wasPressed('KeyG')) { p._release(); this.mech.emit('release', 0.2, p.handrailPoint, 'right'); }
   }
 
   // ------------------------------------------------------------------------------------------ ring frame
@@ -242,76 +286,64 @@ export class IvaController {
   }
 
   _updateRing(h, inp, mdx, mdy, roll, allowMouse) {
-    const p = this.player, st = p.state, I = this.interior;
-    const w = I.omega, rad = this.radius();
+    const p = this.player, st = p.state, I = this.interior, mech = this.mech;
+    const w = I.omega;
+    mech.setFrame(this.ctx.station.ring.group);
     const rho = this._deckBasis();
     if (allowMouse) { this.yaw += mdx * MOUSE; this.pitch = THREE.MathUtils.clamp(this.pitch - mdy * MOUSE, -1.5, 1.5); }
     this._viewBasis();
     // apparent gravity at this radius (centrifugal), for the HUD and the physics
     const g = w * w * rho;
     st.gravity = g / 9.81;
-    if (this.ladder) this._updateLadder(h, inp, w);
-    else {
-      // fictitious accelerations (rotating frame): centrifugal + Coriolis
-      const ax = 0, ay = w * w * this.pL.y + 2 * w * this.vL.z, az = w * w * this.pL.z - 2 * w * this.vL.y;
-      this.accel.set(ax, ay, az);
-      this.coriolis = 2 * w * Math.hypot(this.vL.y, this.vL.z) * Math.abs(_f0.dot(_v.copy(this.vL).normalize()) || 0);
-      const boost = inp.isDown('ShiftLeft') || inp.isDown('ShiftRight');
-      const mx = inp.axis('KeyA', 'KeyD'), mz = inp.axis('KeyS', 'KeyW');
-      const lowG = g < 1.2;
-      if (this.grounded && !lowG) {
-        // walk: horizontal velocity tracks the input in the deck plane
-        _v.copy(_fwd).addScaledVector(_up, -_fwd.dot(_up)).normalize().multiplyScalar(mz);
-        _v.addScaledVector(_right, mx);
-        if (_v.lengthSq() > 1) _v.normalize();
-        _v.multiplyScalar(boost ? RUN_SPEED : WALK_SPEED);
-        const vUp = this.vL.dot(_up);
-        _v2.copy(this.vL).addScaledVector(_up, -vUp);              // current horizontal velocity
-        _v3.subVectors(_v, _v2);
-        const dv = _v3.length(), maxDv = WALK_ACC * h;
-        if (dv > maxDv) _v3.multiplyScalar(maxDv / dv);
-        this.vL.add(_v3);
-        if (inp.wasPressed('Space')) { this.vL.addScaledVector(_up, JUMP); this.grounded = false; this._groundTimer = 0.2; }
-        // footsteps
-        if (_v2.length() > 0.4) { this.stepTimer -= h * _v2.length() / 1.4; if (this.stepTimer <= 0) { this.stepTimer = 0.5; this.ctx.audio?.play?.('step'); } }
-      } else {
-        // airborne / weak gravity near the hub: glide with the hands
-        _v.set(mx, (inp.isDown('Space') ? 1 : 0) - (inp.isDown('ControlLeft') || inp.isDown('ControlRight') ? 1 : 0), -mz);
-        if (_v.lengthSq() > 0) {
-          _v2.copy(_right).multiplyScalar(_v.x).addScaledVector(_camUp, _v.y).addScaledVector(_fwd, -_v.z).normalize();
-          const acc = lowG ? GLIDE_ACC : 0.35;
-          this.vL.addScaledVector(_v2, acc * h);
-        }
-        if (lowG && !_v.lengthSq()) this.vL.multiplyScalar(Math.exp(-h * 0.1));
-      }
-      this.vL.x += ax * h; this.vL.y += ay * h; this.vL.z += az * h;
-      this.pL.addScaledVector(this.vL, h);
-      // collisions in the ring frame (containment + equipment)
-      const vols = I.volumesFor(this.zone, 'ring');
-      const pushed = containSphere(this.pL, this.vL, rad, vols, 0.0, 0.0, _push);
-      let ground = pushed > 0 && _push.dot(_up) > 0.6;
-      for (const c of I.solidsFor(this.zone, 'ring')) {
-        const d = colliderDistance(c, this.pL, _n);
-        if (d < rad) {
-          this.pL.addScaledVector(_n, rad - d);
-          const vn = this.vL.dot(_n);
-          if (vn < 0) this.vL.addScaledVector(_n, -vn);
-          if (_n.dot(_up) > 0.6) ground = true;
-        }
-      }
-      this._groundTimer -= h;
-      if (ground) { this.grounded = true; this._groundTimer = 0.12; }
-      else if (this._groundTimer <= 0) this.grounded = false;
-      if (this.grounded && !lowG && !(mx || mz)) {
+    if (this.ladder) { this._updateLadder(h, inp, w); this._writeWorld(h); return; }
+    // fictitious accelerations (rotating frame): centrifugal + Coriolis
+    _acc.set(0, w * w * this.pL.y + 2 * w * this.vL.z, w * w * this.pL.z - 2 * w * this.vL.y);
+    this.accel.copy(_acc);
+    this.coriolis = 2 * w * Math.hypot(this.vL.y, this.vL.z) * Math.abs(_f0.dot(_v.copy(this.vL).normalize()) || 0);
+    const boost = inp.isDown('ShiftLeft') || inp.isDown('ShiftRight');
+    const mx = inp.axis('KeyA', 'KeyD'), mz = inp.axis('KeyS', 'KeyW');
+    const lowG = g < 1.2;
+    if (!lowG) {
+      // walk: desired horizontal velocity from the input in the deck plane
+      _flat.copy(_fwd).addScaledVector(_up, -_fwd.dot(_up));
+      if (_flat.lengthSq() < 1e-6) _flat.copy(_f0).multiplyScalar(Math.cos(this.yaw)).addScaledVector(_r0, Math.sin(this.yaw));
+      _flat.normalize();
+      _move.copy(_flat).multiplyScalar(mz);
+      _v.crossVectors(_flat, _up).normalize();               // right in the deck plane
+      _move.addScaledVector(_v, mx);
+      if (_move.lengthSq() > 1) _move.normalize();
+      _move.multiplyScalar((boost ? RUN_SPEED : WALK_SPEED) * (st.suited ? 0.6 : 1));
+      _wk.pos = this.pL; _wk.vel = this.vL; _wk.suited = st.suited; _wk.g = g; _wk.mask = MASK;
+      _wk.jump = mech.grounded && inp.wasPressed('Space');
+      _wk.airMove = null;
+      mech.grounded = this.grounded;
+      mech.stepWalk(h, _wk);
+      this.grounded = mech.grounded;
+      if (this.grounded && !(mx || mz)) {
         // standing still: deck friction
         const vUp = this.vL.dot(_up);
         this.vL.multiplyScalar(Math.exp(-h * 10)).addScaledVector(_up, vUp * (1 - Math.exp(-h * 10)));
       }
-      // ladder in a sector hall: E to step on (prompt); spokes: automatic
-      this._ladderNear = this._nearestLadder(1.0);
-      if (this.zone && /^spoke/.test(this.zone.id)) this._attachNearestLadder(false);
-      else if (this._ladderNear && inp.wasPressed('KeyE')) this._attachNearestLadder(false);
+    } else {
+      // weak gravity near the hub: zero-g mechanics in the rotating frame (hands on the collar rails)
+      this._intentLocal(inp, _intent);
+      if (_intent.lengthSq() > 1) _intent.normalize();
+      _v.copy(_right).multiplyScalar(_intent.x).addScaledVector(_camUp, _intent.y).addScaledVector(_fwd, -_intent.z);
+      _intent.copy(_v);
+      _m.makeBasis(_right, _camUp, _v.copy(_fwd).negate());
+      _zg.quat.setFromRotationMatrix(_m);
+      _zg.pos = this.pL; _zg.vel = this.vL; _zg.suited = st.suited; _zg.boost = boost; _zg.stop = inp.isDown('KeyV');
+      _zg.rails = I.ringRails; _zg.extAcc = _acc; _zg.mask = MASK; _zg.safer = false;
+      mech.stepZeroG(h, _zg);
+      this.grounded = false;
     }
+    this._contain(this.pL, this.vL, 'ring');
+    this.contact = mech.contact || mech.grounded;
+    if (mech.bump(this.pL)) this.ctx.audio?.play?.('impact', { strength: Math.min(0.4, mech.impact * 0.25) });
+    // ladder in a sector hall: E to step on (prompt); spokes: automatic
+    this._ladderNear = this._nearestLadder(1.0);
+    if (this.zone && /^spoke/.test(this.zone.id)) this._attachNearestLadder(false);
+    else if (this._ladderNear && inp.wasPressed('KeyE')) this._attachNearestLadder(false);
     this._writeWorld(h);
   }
 
@@ -329,23 +361,26 @@ export class IvaController {
   _attachNearestLadder(force) {
     const n = this._nearestLadder(force ? 3 : 1.4);
     if (!n) return;
+    const L = n.ladder.a.distanceTo(n.ladder.b);
     this.ladder = n.ladder;
-    this.ladderS = n.t * n.ladder.a.distanceTo(n.ladder.b);
+    this.ladderS = Math.min(n.t * L, L - this.dims.eyeHeight);
     this.ladderSway = 0; this.ladderSwayV = 0;
     this.vL.set(0, 0, 0);
     this.grounded = false;
     this.ctx.audio?.play?.('grab');
+    this.mech?.emit('grab', 0.4, this.pL, 'hands');
   }
 
   _updateLadder(h, inp, w) {
-    const l = this.ladder, L = l.a.distanceTo(l.b);
+    const l = this.ladder, L = l.a.distanceTo(l.b), mech = this.mech;
+    const sMax = L - this.dims.eyeHeight;                                // soles on the floor at the bottom
     // climb direction: W moves toward where you look along the ladder (up unless looking down)
     const lookDown = _fwd.dot(l.up) < -0.35;
     const along = inp.axis('KeyS', 'KeyW') * (lookDown ? -1 : 1);       // +1 = up (toward the hub)
-    const speed = (inp.isDown('ShiftLeft') || inp.isDown('ShiftRight') ? 1.6 : 1) * CLIMB_SPEED;
+    const speed = (inp.isDown('ShiftLeft') || inp.isDown('ShiftRight') ? 1.6 : 1) * CLIMB_SPEED * (this.player.state.suited ? 0.6 : 1);
     const vr = -along * speed;                                           // along the ladder a -> b (outward)
     const prevS = this.ladderS;
-    this.ladderS = THREE.MathUtils.clamp(this.ladderS + vr * h, 0, L);
+    this.ladderS = THREE.MathUtils.clamp(this.ladderS + vr * h, 0, sMax);
     const ds = this.ladderS - prevS;
     // Coriolis: radial motion v_r gives 2 omega v_r sideways (anti-spinward going down); the grip is a spring
     const vRad = h > 0 ? ds / h : 0;
@@ -358,19 +393,24 @@ export class IvaController {
     this.vL.copy(l.b).sub(l.a).multiplyScalar(vRad / L);
     const rho = Math.hypot(this.pL.y, this.pL.z);
     this.accel.set(0, w * w * this.pL.y, w * w * this.pL.z);
+    mech.ladderTravel = (mech.ladderTravel || 0) + Math.abs(ds);
+    mech.ladderTargets(h, l, this.pL, this.player.state.suited);
     if (ds !== 0) { this.stepTimer -= Math.abs(ds) / 0.33; if (this.stepTimer <= 0) { this.stepTimer = 1; this.ctx.audio?.play?.('rung'); } }
     // leave the ladder: at the bottom (deck) going down, at the top (hub) going up, or G / Space
-    const atBottom = this.ladderS >= L - 0.02 && along < 0;
+    const atBottom = this.ladderS >= sMax - 0.02 && along < 0;
     const atTop = this.ladderS <= 0.02 && along > 0;
-    if (atBottom) { this.ladder = null; this.pL.addScaledVector(l.side, 0.35).addScaledVector(l.up, -0.2); this.vL.set(0, 0, 0); this.grounded = false; }
-    else if (atTop || inp.wasPressed('KeyG') || (inp.wasPressed('Space') && rho < 8)) { this.ladder = null; this.vL.addScaledVector(l.up, 0.4); }
+    if (atBottom) { this.ladder = null; this.pL.addScaledVector(l.side, 0.3); this.vL.set(0, 0, 0); this.grounded = true; mech.grounded = true; mech.emit('release', 0.2, this.pL, 'hands'); }
+    else if (atTop || inp.wasPressed('KeyG') || (inp.wasPressed('Space') && rho < 8)) { this.ladder = null; this.vL.addScaledVector(l.up, 0.4); mech.emit('push', 0.4, this.pL, 'hands'); }
   }
 
   /** Write the world pose (position, quaternion, velocity) from the ring-local state. */
   _writeWorld() {
     const I = this.interior, p = this.player, body = p.body;
     this._deckBasis(); this._viewBasis();
-    I.toWorldFromRing(this.pL, body.position);
+    // the camera follows the legs: landing compression (crouch)
+    const crouch = this.ladder ? 0 : (this.mech?.crouch || 0);
+    _v.copy(this.pL).addScaledVector(_up, -Math.max(0, crouch));
+    I.toWorldFromRing(_v, body.position);
     // camera basis in ring-local -> quaternion, then the ring rotation
     _m.makeBasis(_right, _camUp, _v.copy(_fwd).negate());
     _q.setFromRotationMatrix(_m);
@@ -399,6 +439,7 @@ export class IvaController {
     this.yaw = Math.atan2(_v.dot(_r0), _v.dot(_f0));
     this.grounded = false;
     this.ladder = null;
+    this.mech?.setFrame(this.ctx.station.ring.group);
   }
 
   _toStation() {
@@ -406,6 +447,7 @@ export class IvaController {
     this.frame = 'station';
     this.ladder = null;
     this.player.body.omega.set(0, 0, 0);
+    this.mech?.setFrame(null);
   }
 
   /** Prompt hint for the HUD (IVA-specific parts). */

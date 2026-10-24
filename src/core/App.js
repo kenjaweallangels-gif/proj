@@ -8,6 +8,7 @@ import { ParticleSystem } from './Particles.js';
 import { Input } from './Input.js';
 import { batchStatic, atlasDecals } from './StaticBatcher.js';
 import { QualityGovernor } from './QualityGovernor.js';
+import { CollisionWorld } from './CollisionWorld.js';
 import { QUALITY_PRESETS, LAYERS, SUN_LIGHT_INTENSITY, SUN_COLOR, NEAR_TO_FAR } from './constants.js';
 
 /**
@@ -36,6 +37,8 @@ const _camPos = new THREE.Vector3();
 const _bsCenter = new THREE.Vector3();
 const _shC = new THREE.Vector3(), _shZ = new THREE.Vector3(), _shD = new THREE.Vector3();
 const _shQ = new THREE.Quaternion(), _shQi = new THREE.Quaternion();
+const OBSERVER_RADIUS = 0.3;       // observer camera: kept this far from any surface
+const _obsHit = { point: new THREE.Vector3(), normal: new THREE.Vector3(), t: 0 };
 
 class Emitter {
   constructor() { this.map = new Map(); }
@@ -174,6 +177,9 @@ export class App {
     });
     this.splitMaterialVariants();
     this.station.interior?.afterMaterials?.();   // exterior carving patch for the interiors
+    // exact collisions against the render geometry (player, observer camera): ctx.collision, see CollisionWorld.js
+    try { this.collision = ctx.collision = new CollisionWorld(ctx); this.collision.build(); }
+    catch (e) { console.error('[App] collision world failed', e); this.collision = ctx.collision = null; }
     this.renderer.setup({ farScene: this.farScene, farCamera: this.farCamera, nearScene: this.nearScene, camera: this.camera });
 
     // Observer camera controls
@@ -446,8 +452,27 @@ export class App {
       this.camera.updateMatrixWorld();
       this.orbitControls.target.copy(this.camera.position).add(this.camera.getWorldDirection(_camPos).multiplyScalar(15));
     }
+    this._obsPrev = null;
     this.setMode(toObserver ? 'observer' : 'play');
     if (toObserver) this.orbitControls.update();
+  }
+
+  /**
+   * Observer camera: never inside geometry. The camera sweeps from its last valid position to where the controls
+   * put it (sphereCast) and stops at the first surface (the orbit distance shrinks: the camera is pulled in
+   * along its path), then any remaining overlap is pushed out (resolveSphere).
+   */
+  constrainObserver() {
+    const W = this.collision;
+    if (!W?.ready) return;
+    const cam = this.camera.position;
+    const prev = this._obsPrev;
+    if (prev && prev.distanceToSquared(cam) < 400 && W.sphereCast(prev, cam, OBSERVER_RADIUS, _obsHit)) {
+      const len = prev.distanceTo(cam);
+      cam.lerpVectors(prev, cam, Math.max(0, _obsHit.t - 0.01 / Math.max(len, 1e-6)));
+    }
+    W.resolveSphere(cam, OBSERVER_RADIUS);
+    (this._obsPrev || (this._obsPrev = new THREE.Vector3())).copy(cam);
   }
 
   /** Named camera views (observer) or player poses (play). Used by tools/screenshot.mjs and the menu. */
@@ -481,6 +506,7 @@ export class App {
       console.warn('unknown view', name);
     }
     this.viewName = name;
+    this._obsPrev = null;   // a new viewpoint is not swept from the old one
     if (this._dyn) this._dyn.skip = true;
     this.governor?.skipWindow();
     this.events.emit('view', name);
@@ -551,7 +577,8 @@ export class App {
     }
 
     for (const m of this.modules) { try { m.update?.(t.dt, this.ctx); } catch (e) { if (!m._errored) { console.error(`update failed in ${m.constructor.name}`, e); m._errored = true; } } }
-    if (this.mode === 'observer') this.orbitControls.update();
+    if (this.mode === 'observer') { this.orbitControls.update(); this.constrainObserver(); }
+    this.collision?.update();   // background BVH builds (nearest first)
     this.particles.update(t.dt, this.renderer.renderer, this.camera);
 
     // far camera mirrors the near camera

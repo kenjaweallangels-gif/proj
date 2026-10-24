@@ -4,6 +4,9 @@ import { CollisionWorld, closestOnSegment } from './Collision.js';
 import { SuitModel } from './SuitModel.js';
 import { Tether } from './Tether.js';
 import { IvaController } from './Iva.js';
+import { bodyDims } from './Body.js';
+import { BodyMechanics } from './Mechanics.js';
+import { COLLIDE } from '../core/CollisionWorld.js';
 
 /**
  * First-person astronaut (see docs/ARCHITECTURE.md, "Player contract").
@@ -14,7 +17,10 @@ import { IvaController } from './Iva.js';
  *    inner hatch and starts the depress; the outer hatch opens and the EVA begins. Back: E at the crew lock closes
  *    the outer hatch, repress, the inner hatch opens, E at the empty mount doffs the suit.
  *  - zero-g 6-DOF rigid body with SAFER thrusters (EvaPhysics)
- *  - sphere-vs-collider collision with station, airlock interior and ships (Collision)
+ *  - 1.8 m body (Body.js): the camera is the eye; collisions against the real render geometry (ctx.collision,
+ *    src/core/CollisionWorld.js) through the body mechanics (Mechanics.js: head sphere + compliant body capsule,
+ *    hand-over-hand, auto-brake, walking); the gameplay colliders (Collision.js) only give the HUD distance
+ *  - body state for animation / audio on `player.body` (handTargets, footTargets, bodyAxis, contact, events)
  *  - handrail grabbing / crawling / push-off, safety tether with reel, airlock exit/entry sequence
  *  - suit telemetry in `state` (read by the HUD and the audio module)
  *  - first-person suit model, shadow proxy, tether rope (SuitModel, Tether)
@@ -35,6 +41,9 @@ const DOFF_TIME = 3.0;
 const O2_DURATION = 6 * 3600;
 const POWER_DURATION = 8 * 3600;
 const HIP_OFFSET = new THREE.Vector3(0.16, -0.72, 0.12);
+const EVA_FOV = 60, IVA_FOV = 60;     // vertical degrees (~91 deg horizontal at 16:9: a natural scale for a 1.8 m eye)
+const EVA_MASK = COLLIDE.EXTERIOR | COLLIDE.SHIPS | COLLIDE.DOORS | COLLIDE.INTERIOR;
+const _zgE = { pos: null, vel: null, quat: new THREE.Quaternion(), suited: true, mask: EVA_MASK, intent: null, boost: false, stop: false, rails: null, extAcc: null, safer: true, surfaceMotion: true, restitution: RESTITUTION, friction: FRICTION };
 const _fwd = new THREE.Vector3();
 
 const _v = new THREE.Vector3();
@@ -87,6 +96,7 @@ export class Player {
     this.quaternion = this.body.quaternion;
     this.radius = BODY_RADIUS;
     this.active = true;
+    this.mech = new BodyMechanics(this, ctx);       // also fills player.body.handTargets / footTargets / events
     this.collision = new CollisionWorld();
     this._colliderSig = -1;
     this._colliderTimer = 0;
@@ -211,7 +221,9 @@ export class Player {
     this.body.reset(_v, _q);
     this.camQuat.copy(this.quaternion);
     this._refreshColliders(true);
-    if (st.mode === 'eva') this.collision.resolve(this.position, this.velocity, this.radius, 0, 0);
+    this.mech.setFrame(null);
+    this.mech.reset(_v2.set(0, 1, 0).applyQuaternion(this.quaternion));
+    if (st.mode === 'eva') this._resolveHead(EVA_MASK);
     this.applyCamera(0);
     this._updateTether(0);
   }
@@ -220,7 +232,7 @@ export class Player {
   _setSuited(on) {
     const st = this.state;
     st.suited = on;
-    this.radius = on ? BODY_RADIUS : 0.3;
+    this.radius = bodyDims(on).radius;
     this.suit?.setVisible(on && this.active);
     const interior = this.ctx.station?.interior;
     const suits = interior?.byId?.get('airlockE')?.suitObjects;
@@ -274,6 +286,7 @@ export class Player {
     const inp = ctx.input;
     const st = this.state;
     const body = this.body;
+    this.mech.begin();
     // real-time physics step (time-lapse must not fling the astronaut); clamp for robustness
     const scale = ctx.time?.scale || 1;
     let h = dt / scale;
@@ -321,8 +334,17 @@ export class Player {
       st.distanceToStation = 0;
       st.colliderDistance = 0;
     } else {
+      // hand over hand along the outside rails: W/S near a rail that runs roughly along the view (no propellant)
+      const crawlKey = inp.axis('KeyS', 'KeyW');
+      if (!st.holding && crawlKey && st.nearHandrail && st.handrailDistance < 0.35 && !st.sequence) {
+        const r = st.nearHandrail;
+        _v.subVectors(r.b, r.a).normalize();
+        _v2.set(0, 0, -1).applyQuaternion(this.quaternion);
+        if (Math.abs(_v.dot(_v2)) > 0.5) { this._grab(r); this._autoHold = true; }
+      }
       if (st.holding) {
         this._updateHolding(h, inp, mdx, mdy, rollAxis, allowMouse);
+        this._resolveHead(this._evaMask());
       } else {
         // translation thrusters in the body frame: W/S -> -Z/+Z, A/D -> -X/+X, Space/Ctrl -> +Y/-Y
         _local.set(inp.axis('KeyA', 'KeyD'), (inp.isDown('Space') ? 1 : 0) - (inp.isDown('ControlLeft') || inp.isDown('ControlRight') ? 1 : 0), -inp.axis('KeyS', 'KeyW'));
@@ -337,33 +359,34 @@ export class Player {
         // tether
         this._tetherPhysics(h);
         if (st.sequence) this._holdInChamber(h);
-        body.integrate(h);
+        body.integrate(h, false);
+        // move and slide against the hull, ships and the crew lock (auto-brake with the gloves)
+        _zgE.pos = this.position; _zgE.vel = this.velocity; _zgE.quat.copy(this.quaternion); _zgE.mask = this._evaMask();
+        this.mech.setFrame(null);
+        this.mech.stepZeroG(h, _zgE);
       }
 
-      // ----- collision -----
-      const c = this.collision.resolve(this.position, this.velocity, this.radius, RESTITUTION, FRICTION);
-      st.contact = c.count > 0;
-      st.distanceToStation = Math.max(0, c.minDistance);          // suit surface -> nearest collider surface
-      st.colliderDistance = c.minDistance + this.radius;          // body centre -> nearest collider surface
-      st.nearestCollider = c.nearest ? c.nearest.name || c.nearest.type : '';
-      if (c.impact > 0.05) {
+      // ----- contact response telemetry, HUD distance -----
+      const m = this.mech;
+      st.contact = m.contact;
+      const c = this.collision;
+      const dist = c.distance(this.position);
+      st.distanceToStation = Math.max(0, dist - this.radius);          // suit surface -> nearest collider surface (coarse)
+      st.colliderDistance = dist;
+      st.nearestCollider = '';
+      if (m.impact > 0.05 && !m.braking) {
         // angular kick from an off-centre hit: tangential velocity x normal
-        _v.crossVectors(c.normal, c.tangent).applyQuaternion(_q.copy(this.quaternion).invert());
+        const n = this.body.contact.normal;
+        _v3.copy(this.velocity).addScaledVector(n, -this.velocity.dot(n));
+        _v.crossVectors(n, _v3).applyQuaternion(_q.copy(this.quaternion).invert());
         body.omega.addScaledVector(_v, 0.35);
-        body.omega.x += (Math.random() - 0.5) * 0.1 * c.impact; body.omega.y += (Math.random() - 0.5) * 0.1 * c.impact;
-        this._impactFlash = Math.min(1, c.impact * 0.6);
-        ctx.audio?.play?.('impact', { strength: Math.min(1, c.impact / 2.5) });
-        this._exertion = Math.min(1, this._exertion + c.impact * 0.2);
-        if (st.holding && c.impact > 1.0) this._release();
+        body.omega.x += (Math.random() - 0.5) * 0.1 * m.impact; body.omega.y += (Math.random() - 0.5) * 0.1 * m.impact;
+        this._impactFlash = Math.min(1, m.impact * 0.6);
+        if (m.impact > 0.2) { ctx.audio?.play?.('impact', { strength: Math.min(1, m.impact / 2.5) }); m.bump(this.position); }
+        this._exertion = Math.min(1, this._exertion + m.impact * 0.2);
+        if (st.holding && m.impact > 1.0) this._release();
       }
       if (st.contact && body.omega.lengthSq() > 1e-4) body.omega.multiplyScalar(Math.exp(-h * 2.5)); // scraping along the hull bleeds spin
-      // while gripping a rail the hull may push the body: let the grip offset follow instead of fighting it
-      if (st.holding && c.count > 0) {
-        this.holdOffset.subVectors(this.position, this.handrailPoint);
-        const d = this.holdOffset.length();
-        if (d > 0.95) this.holdOffset.multiplyScalar(0.95 / d);
-      }
-
     }
     // ----- telemetry -----
     st.propellant = body.propellant;
@@ -401,8 +424,34 @@ export class Player {
       _q.setFromEuler(_e);
       this.camera.quaternion.copy(this.camQuat).multiply(_q);
     } else this.camera.quaternion.copy(this.camQuat);
-    if (this.camera.fov !== 70) { this.camera.fov = 70; this.camera.updateProjectionMatrix(); }
+    const fov = this.state.mode === 'eva' ? EVA_FOV : IVA_FOV;
+    if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     this.camera.updateMatrixWorld(); // the suit IK converts world targets into camera space this frame
+  }
+
+  // ---------------------------------------------------------------- collisions
+  /** EVA collision layers: inside the crew lock only the interior (and the hatches), outside everything. */
+  _evaMask() {
+    const I = this.ctx.station?.interior;
+    const z = I?.ready ? I.locate(this.position, this.iva?.zone, 0) : null;
+    return z ? (COLLIDE.INTERIOR | COLLIDE.DOORS) : EVA_MASK;
+  }
+
+  /** Push the head (helmet) sphere out of the geometry (poses, rail holding). */
+  _resolveHead(mask) {
+    const W = this.ctx.collision;
+    if (!W?.ready) { this.collision.resolve(this.position, this.velocity, this.radius, 0, 0); return; }
+    const d = bodyDims(this.state.suited);
+    _v.set(0, 0, 1).applyQuaternion(this.quaternion);
+    _v3.copy(this.position).addScaledVector(_v, d.headBack);
+    if (W.resolveSphere(_v3, d.headRadius, null, { mask })) {
+      this.position.add(W.lastPush);
+      if (this.state.holding) {
+        this.holdOffset.subVectors(this.position, this.handrailPoint);
+        const l = this.holdOffset.length();
+        if (l > 0.95) this.holdOffset.multiplyScalar(0.95 / l);
+      }
+    }
   }
 
   // ---------------------------------------------------------------- colliders
@@ -450,6 +499,30 @@ export class Player {
     if (bestRail) { st.nearHandrail = bestRail; st.handrailDistance = Math.max(0, best - this.radius); this.handrailPoint.copy(_v2); }
   }
 
+  /** Hand over hand onto the next rail within reach along dir (from the end of the held one). */
+  _nextRail(rail, dir) {
+    const rails = this.ctx.station?.handrails;
+    if (!rails) return;
+    const end = this.holdT >= 0.5 ? rail.b : rail.a;
+    let best = null, bd = 0.85;
+    for (const r of rails) {
+      if (r === rail) continue;
+      const t = closestOnSegment(r.a, r.b, end, _v2);
+      const d = _v2.distanceTo(end);
+      if (d < bd && _v2.sub(end).dot(dir) > -0.05) { bd = d; best = { r, t }; }
+    }
+    if (!best) return;
+    const st = this.state;
+    st.holding = best.r;
+    this.holdT = best.t;
+    this.handrailPoint.copy(best.r.a).lerp(best.r.b, best.t);
+    this.holdOffset.subVectors(this.position, this.handrailPoint);
+    const l = this.holdOffset.length();
+    if (l > 0.95) this.holdOffset.multiplyScalar(0.95 / l);
+    this.mech.emit('grab', 0.3, this.handrailPoint, 'left');
+    this.ctx.audio?.play?.('grab', { volume: 0.5 });
+  }
+
   _grab(rail) {
     const st = this.state;
     st.holding = rail;
@@ -463,6 +536,7 @@ export class Player {
     this.body.omega.set(0, 0, 0);
     this._killRequested = false;
     this.ctx.audio?.play?.('grab');
+    this.mech?.emit('grab', 0.4, this.handrailPoint, 'right');
     this._exertion = Math.min(1, this._exertion + 0.15);
   }
 
@@ -470,6 +544,7 @@ export class Player {
     const st = this.state;
     if (!st.holding) return;
     st.holding = null;
+    this._autoHold = false;
     if (impulseDir) { this.velocity.addScaledVector(impulseDir, speed); this.ctx.audio?.play?.('release'); }
   }
 
@@ -483,11 +558,15 @@ export class Player {
       _v.subVectors(rail.b, rail.a).multiplyScalar(1 / len);
       _v2.set(1, 0, 0).applyQuaternion(this.quaternion);
       const sign = _v.dot(_v2) >= 0 ? 1 : -1;
+      const t0 = this.holdT;
       this.holdT = THREE.MathUtils.clamp(this.holdT + (along * sign * CRAWL_SPEED * h) / len, 0, 1);
       this._exertion = Math.min(1, this._exertion + 0.3 * h);
       this.ctx.audio?.setParam?.('crawl', 1);
+      // at the end of the rail: reach for the next one in the same direction (hand over hand across rails)
+      if (this.holdT === t0 && (this.holdT === 0 || this.holdT === 1)) this._nextRail(rail, _v3.copy(_v).multiplyScalar(this.holdT === 1 ? 1 : -1));
     } else this.ctx.audio?.setParam?.('crawl', 0);
     this.handrailPoint.copy(rail.a).lerp(rail.b, this.holdT);
+    this.mech.holdTargets(h, this.handrailPoint, st.holding, along * CRAWL_SPEED, null);
     this.position.copy(this.handrailPoint).add(this.holdOffset);
     this.velocity.set(0, 0, 0);
     // look around freely (attitude hold while gripping; the hand keeps the body in place)

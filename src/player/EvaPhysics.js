@@ -12,7 +12,7 @@ import * as THREE from 'three';
  * Propellant is 0..1 and lasts ~90 s of continuous normal thrust.
  */
 
-export const BODY_RADIUS = 0.45;
+export const BODY_RADIUS = 0.42;            // suited body capsule radius (see Body.js)
 export const BODY_MASS = 180;
 export const THRUST_ACC = 0.25;
 export const BOOST_FACTOR = 3;
@@ -193,10 +193,10 @@ export class EvaPhysics {
     return d;
   }
 
-  /** Integrate position and orientation. */
-  integrate(dt) {
+  /** Integrate position (unless the caller moves the body itself, e.g. with collisions) and orientation. */
+  integrate(dt, movePosition = true) {
     const p = this.position, v = this.velocity, om = this.omega;
-    p.addScaledVector(v, dt);
+    if (movePosition) p.addScaledVector(v, dt);
     const w = om.length();
     if (w > 1e-9) {
       _axis.copy(om).multiplyScalar(1 / w);

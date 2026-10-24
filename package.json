@@ -26,7 +26,8 @@
   "type": "module",
   "private": "true",
   "dependencies": {
-    "three": "^0.186.1"
+    "three": "^0.186.1",
+    "three-mesh-bvh": "^0.9.15"
   },
   "devDependencies": {
     "playwright": "^1.56.1",
