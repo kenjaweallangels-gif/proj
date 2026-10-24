@@ -22,7 +22,7 @@ import { bevelBox, ringStack } from './Builder.js';
 const C = (hex) => new THREE.Color(hex);
 export const COL = {
   dark: C(0x3a3d42), bare: C(0xb8bcc2), steel: C(0x8e9196), gold: C(0xd9a63a), copper: C(0xb87333), black: C(0x18191c),
-  white: C(0xe9ebed), offWhite: C(0xd8dad8), gray: C(0x7c8187), darkGray: C(0x4a4e54), yellow: C(0xf2c21a), orange: C(0xe8661b),
+  white: C(0xe0e2e2), offWhite: C(0xd8dad8), gray: C(0x7c8187), darkGray: C(0x4a4e54), yellow: C(0xf2c21a), orange: C(0xe8661b),
   blue: C(0x1f3f7a), red: C(0xa81c1c), green: C(0x2f6a3a), rubber: C(0x141414), beige: C(0xcfc6ae),
 };
 

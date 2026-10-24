@@ -65,7 +65,8 @@ export class Materials {
         const t = this.textures.mli({ seed: 31, scale: 10 });
         return new THREE.MeshStandardMaterial({ color: 0x1c1d20, metalness: 0.6, roughness: 0.55, normalMap: t.normalMap, normalScale: new THREE.Vector2(0.8, 0.8) });
       },
-      truss: () => new THREE.MeshStandardMaterial({ color: 0xe8e8e6, roughness: 0.55, metalness: 0.35, map: this.textures.hullPanels({ base: '#e8e8e6', seam: '#b4b4b0', grime: 0.25, cells: 12, rivets: false, seed: 17 }).map }),
+      // white paint never exceeds ~0.75 linear albedo (sRGB ~0xe0)
+      truss: () => this._pbr('hull_white', 2, { color: 0xf2f2ee }) || new THREE.MeshStandardMaterial({ color: 0xe0e0dc, roughness: 0.55, metalness: 0.35, map: this.textures.hullPanels({ base: '#e8e8e6', seam: '#b4b4b0', grime: 0.25, cells: 12, rivets: false, seed: 17 }).map }),
       metalBare: () => this._pbr('metal_brushed', 4, { color: 0xf2f4f6 }) || new THREE.MeshStandardMaterial({ color: 0xb8bcc2, roughness: 0.42, metalness: 0.95, roughnessMap: this.textures.noise({ scale: 8, seed: 5 }) }),
       metalDark: () => new THREE.MeshStandardMaterial({ color: 0x3a3d42, roughness: 0.5, metalness: 0.85 }),
       metalTitanium: () => new THREE.MeshStandardMaterial({ color: 0x8e9196, roughness: 0.45, metalness: 0.9 }),
@@ -92,7 +93,7 @@ export class Materials {
       paintGray: () => new THREE.MeshStandardMaterial({ color: 0x7c8187, roughness: 0.65, metalness: 0.2 }),
       paintBlue: () => new THREE.MeshStandardMaterial({ color: 0x1f3f7a, roughness: 0.55, metalness: 0.15 }),
       paintYellow: () => new THREE.MeshStandardMaterial({ color: 0xe0b418, roughness: 0.55, metalness: 0.2 }),
-      antennaWhite: () => new THREE.MeshStandardMaterial({ color: 0xf4f4f0, roughness: 0.5, metalness: 0.2 }),
+      antennaWhite: () => new THREE.MeshStandardMaterial({ color: 0xe0e0dc, roughness: 0.5, metalness: 0.15 }),
       hazard: () => new THREE.MeshStandardMaterial({ map: this.textures.stripes(), roughness: 0.6, metalness: 0.1 }),
       suitWhite: () => { const t = this.textures.hullPanels({ base: '#f2f2ee', seam: '#d8d8d2', grime: 0.12, cells: 3, rivets: false, seed: 41 }); return new THREE.MeshStandardMaterial({ map: t.map, roughness: 0.85, metalness: 0.0, normalMap: this.textures.mli({ seed: 51, scale: 20, strength: 1.2 }).normalMap, normalScale: new THREE.Vector2(0.5, 0.5) }); },
       dockRing: () => new THREE.MeshStandardMaterial({ color: 0x9a9ea3, roughness: 0.4, metalness: 0.9, map: this.textures.hullPanels({ base: '#a8acb1', seam: '#50545a', grime: 0.3, cells: 16, rivets: false, seed: 61 }).map }),
