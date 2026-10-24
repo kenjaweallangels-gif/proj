@@ -190,7 +190,7 @@ export function conformSlab(H, t0, th0, w, len, h0, h1, seg = 0) {
   }
   // sides (tangential)
   const tn = (i) => new THREE.Vector3().crossVectors(N(i), ax).normalize();
-  const s0 = tn(0), s1 = tn(n).negate();
+  const s0 = tn(0).negate(), s1 = tn(n);   // N x axis points toward increasing theta
   quad(P(0, L2, h0), P(0, -L2, h0), P(0, -L2, h1), P(0, L2, h1), [s0, s0, s0, s0]);
   quad(P(n, -L2, h0), P(n, L2, h0), P(n, L2, h1), P(n, -L2, h1), [s1, s1, s1, s1]);
   const g = new THREE.BufferGeometry();

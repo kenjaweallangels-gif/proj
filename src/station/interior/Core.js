@@ -69,7 +69,7 @@ function moduleBake(h, c, ue, lite, warm = 1) {
  */
 function shellX(Z, x0, x1, rs, holes = []) {
   const M = ff(V(x0, 0, 0), X, Y), Mi = M.clone().invert();
-  const hl = holes.map((h) => ({ p: h.p.clone().applyMatrix4(Mi), d: h.d.clone().transformDirection(Mi), r: h.r }));
+  const hl = holes.map((h) => ({ p: h.p.clone().applyMatrix4(Mi), d: h.d.clone().transformDirection(Mi), r: h.r, a: h.a ? h.a.clone().transformDirection(Mi) : null, half: h.half || 0 }));
   shellTube(Z.K, M, x1 - x0, rs, hl);
 }
 
@@ -542,8 +542,9 @@ function greenhouse(I) {
     const depth = r - h - 0.1;
     const lenS = stripU1 - stripU0;
     // trough walls
-    for (const sy of [-1, 1]) W.box('paint', offset(F, 0, sy * 0.4, -depth / 2), lenS, 0.02, depth, 0x7a7d80, null, null, sy > 0 ? 8 : 4);
-    for (const sx of [-1, 1]) W.box('paint', offset(F, sx * lenS / 2, 0, -depth / 2), 0.02, 0.8, depth, 0x7a7d80, null, null, sx > 0 ? 2 : 1);
+    // (closed boxes: the trough is also seen from outside through the window strip)
+    for (const sy of [-1, 1]) W.box('paint', offset(F, 0, sy * 0.4, -depth / 2), lenS, 0.02, depth, 0x7a7d80);
+    for (const sx of [-1, 1]) W.box('paint', offset(F, sx * lenS / 2, 0, -depth / 2), 0.02, 0.8, depth, 0x7a7d80);
     W.box('glass', offset(F, 0, 0, -depth + 0.06), lenS, 0.8, 0.01, 0xffffff);
     for (let t = -4; t <= 4; t++) W.box('metal', offset(F, t * lenS / 9, 0, -depth + 0.1), 0.04, 0.8, 0.04, COL.dark);
     const cWorld = Z.toFrame(pt(F, 0, 0, -depth));
@@ -572,6 +573,8 @@ function greenhouse(I) {
     W.tube('metal', [pt(Fd, -n * slotW / 2, -0.62, 0.06), pt(Fd, n * slotW / 2, -0.62, 0.06)], 0.012, 6, 0x9fc0e0);
     W.tube('metal', [pt(Fd, -n * slotW / 2, 0.62, 0.06), pt(Fd, n * slotW / 2, 0.62, 0.06)], 0.012, 6, 0xe0c09f);
   }
+  // pressure-shell liner with slots for the three window troughs
+  shellX(Z, -len / 2 - 0.05, len / 2 + 0.05, r - 0.12, [Y, NZ, Zp].map((d) => ({ p: V((stripU0 + stripU1) / 2, 0, 0), d, r: 0.5, a: X, half: (stripU1 - stripU0) / 2 + 0.1 })));
   endBulkhead(Z, { kind: 'cbm', door: 'open', vest: 0, to: 'node2', label: 'УЗЕЛ-2 · NODE 2' }, -1, ue, h, c, false, { signName: 'ОРАНЖЕРЕЯ «ФЛОРА» · GREENHOUSE' });
   endBulkhead(Z, { kind: 'cbm', door: 'closed', vest: 0, label: 'ПОРТ P2 · DOCKING' }, 1, ue, h, c, false, { signName: 'ПОРТ P2' });
   Z.box(0, 0, 0, ue - 0.02, h, h);

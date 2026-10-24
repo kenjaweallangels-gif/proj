@@ -555,7 +555,8 @@ export function inwardTube(K, M, len, r, color, seg = 28, uv = null, mat = 'pain
  * Pressure-shell liner behind a compartment's walls: inward-facing cylinder along +Z of M (radius r, length len)
  * in ~0.25 m quads, leaving out the quads in front of `holes` ([{ p, d, r }] in M-local coordinates: hole axis
  * through p along unit d, radius r — window wells, radial hatch vestibules). Anything seen through a seam or a
- * gap between panels / racks shows this dark shell instead of open space.
+ * gap between panels / racks shows this dark shell instead of open space. A hole with `a` / `half` is a slot
+ * (radius r around the segment p ± a·half).
  */
 export function shellTube(K, M, len, r, holes = [], color = 0x34373a, mat = 'paint') {
   const W = K.W, b = W.bucket(K.set + mat);
@@ -571,7 +572,10 @@ export function shellTube(K, M, len, r, holes = [], color = 0x34373a, mat = 'pai
       for (const h of holes) {
         v.subVectors(c, h.p);
         const t = v.dot(h.d);
-        if (t > -0.3 && v.addScaledVector(h.d, -t).length() < h.r) { skip = true; break; }
+        if (t <= -0.3) continue;
+        v.addScaledVector(h.d, -t);
+        if (h.a) { const s = v.dot(h.a); v.addScaledVector(h.a, -Math.max(-h.half, Math.min(h.half, s))); }   // slot: segment along a
+        if (v.length() < h.r) { skip = true; break; }
       }
       if (skip) continue;
       const base = b.count;
