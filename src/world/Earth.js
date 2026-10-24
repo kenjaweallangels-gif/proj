@@ -1,13 +1,23 @@
 import * as THREE from 'three';
 import { HorizonCull } from './HorizonCull.js';
 import { EARTH_RADIUS_KM } from '../core/constants.js';
-import { SPHERE_VERTEX, GROUND_FRAGMENT, CLOUD_FRAGMENT, SHELL_FRAGMENT } from './shaders/EarthShaders.js';
+import { SPHERE_VERTEX, groundFragment, CLOUD_FRAGMENT, SHELL_FRAGMENT } from './shaders/EarthShaders.js';
+import { AURORA_FRAGMENT } from './shaders/AuroraShaders.js';
 import { QUAD_VERTEX, SUN_DISC_FRAGMENT, SUN_CORONA_FRAGMENT, MOON_VERTEX, MOON_FRAGMENT } from './shaders/SunMoonShaders.js';
+import { loadSeasonalDay, createNoiseTexture, imageChannel, BASE_MONTH } from './EarthTextures.js';
+import { SurfaceDetail } from './SurfaceDetail.js';
+import { Weather, latLonToObj } from './Weather.js';
 
 /**
- * FAR scene (kilometres): the Earth (ground / clouds / atmosphere shell with custom GLSL),
+ * FAR scene (kilometres): the Earth (ground / clouds / aurora / atmosphere shells with custom GLSL),
  * the Sun (HDR disc + corona, occluded by the Earth through depth) and the Moon.
  * Orientation comes from ctx.orbit every frame; the Earth centre is ctx.orbit.earthCenterFar.
+ *
+ * Surface: Blue Marble NG monthly imagery blended for the sim date (EarthTextures), NSIDC sea ice, water fraction
+ * with rivers and lakes, bathymetry, relief normals, Cox-Munk glint, Black Marble city lights; on 'ultra' 500 m
+ * imagery streamed around the sub-station point (SurfaceDetail). Weather (Weather + WeatherChunk): advected and
+ * evolving cloud cover, tropical cyclones, thunderstorm cells with lightning, cloud shadows. Night: city lights
+ * diffused by clouds, moonlit clouds and moon glint, aurora ovals, airglow.
  */
 
 const SUN_DISTANCE_KM = 1.0e6;
@@ -15,15 +25,31 @@ const SUN_ANGULAR_RADIUS = (0.53 / 2) * Math.PI / 180;
 const MOON_RADIUS_KM = 1737.4;
 const CLOUD_ALTITUDE_KM = 6;
 const ATMO_ALTITUDE_KM = 100;
-/** Cloud drift relative to the surface (rad/s). Real winds are ~5e-6 rad/s; kept a bit faster so the drift is perceptible. */
+const AURORA_SHELL_KM = 335;
+/** 'lite' only: rigid cloud drift relative to the surface (rad/s); the GPU presets advect the clouds per latitude. */
 const CLOUD_DRIFT_RATE = 3.0e-5;
 /** Full-Moon radiance on a white Lambert surface, in the scene's HDR units (a night-adapted camera, not the physical 1/400000 of sunlight). */
 const MOON_LIGHT_MAX = 0.035;
+/** GPU presets: slow eastward drift of the cloud map (rad/s, ~6 m/s at the equator); the weather evolves in the shaders. */
+const CLOUD_MAP_DRIFT = 1.0e-6;
+/** Geomagnetic north pole (IGRF-13, 2025). */
+const DIPOLE_LAT = 80.8, DIPOLE_LON = -72.7;
 
 /** Ray-march sample counts per quality preset: [atmosphere shell, ground aerial perspective, clouds]. */
 const SAMPLES = { ultra: [24, 8, 6], high: [16, 6, 5], medium: [12, 5, 4], low: [8, 4, 3], lite: [5, 2, 2] };
 
-const _q = new THREE.Quaternion();
+/**
+ * Feature set per preset. day: 'delta' = 8K base + seasonal 4K difference, 'blend' = two 4K months, 'nearest' = one
+ * month file. detail = cloud erosion octaves; cyc / cells / flashes = uniform array sizes; arcs / auroraSamples = aurora.
+ */
+const FEATURES = {
+  ultra:  { day: 'delta', clouds: 8192, night: 8192, water: 8192, normal: 4096, window: true, detail: 3, cyc: 6, cells: 24, flashes: 8, arcs: 3, auroraSamples: 6 },
+  high:   { day: 'delta', clouds: 8192, night: 8192, water: 8192, normal: 4096, window: false, detail: 2, cyc: 6, cells: 20, flashes: 8, arcs: 2, auroraSamples: 4 },
+  medium: { day: 'blend', clouds: 4096, night: 4096, water: 4096, normal: 4096, window: false, detail: 1, cyc: 5, cells: 16, flashes: 6, arcs: 2, auroraSamples: 3 },
+  low:    { day: 'blend', clouds: 4096, night: 4096, water: 4096, normal: 2048, window: false, detail: 0, cyc: 5, cells: 12, flashes: 4, arcs: 1, auroraSamples: 2 },
+  lite:   { day: 'nearest', clouds: 4096, night: 4096, water: 4096, normal: 2048, window: false, detail: 0, cyc: 0, cells: 0, flashes: 0, arcs: 0, auroraSamples: 0 },
+};
+
 const _qInv = new THREE.Quaternion();
 const _v = new THREE.Vector3();
 const _camKm = new THREE.Vector3();
@@ -31,14 +57,24 @@ const _x = new THREE.Vector3();
 const _y = new THREE.Vector3();
 const _z = new THREE.Vector3();
 const _m = new THREE.Matrix4();
-const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
 
 export class Earth {
   constructor(ctx) {
     this.ctx = ctx;
     const o = ctx.orbit;
-    const [nShell, nGround, nCloud] = SAMPLES[ctx.quality.preset] || SAMPLES.high;
+    const preset = ctx.quality.preset;
+    const lite = !!ctx.quality.lite;
+    const [nShell, nGround, nCloud] = SAMPLES[preset] || SAMPLES.high;
+    const maxTex = ctx.renderer.capabilities.maxTextureSize || 4096;
+    const f = { ...(FEATURES[lite ? 'lite' : preset] || FEATURES.high) };
+    if (maxTex < 8192) {      // 8K textures and the 8K bake need the GPU's support
+      f.clouds = Math.min(f.clouds, 4096); f.night = Math.min(f.night, 4096); f.water = Math.min(f.water, 4096);
+      if (f.day === 'delta') f.day = 'blend';
+      f.window = false;
+    }
+    this.features = f;
+    this.lite = lite;
     this.group = new THREE.Group();
     this.group.name = 'Earth';
     this.cloudAngle = 0;
@@ -54,22 +90,45 @@ export class Earth {
     this.uLimbBoost = { value: 1.4 };        // limb exposure; rises in eclipse (camera-like adaptation, see update())
     this.uMoonDir = { value: new THREE.Vector3().copy(o.moonDir) };
     this.uMoonLight = { value: 0 };          // moonlight radiance on a white surface (night-adapted HDR scale), from the lunar phase
+    this.uNightIntensity = { value: 2.0 };
+    // weather
+    this.weather = lite ? null : new Weather({ maxCyclones: f.cyc, maxCells: f.cells, maxFlashes: f.flashes });
+    this.tNoise = { value: null };
+    this.tAux = { value: null };
+    this.tClouds = { value: null };
+    this.uFlow = { value: new THREE.Vector4() };
+    this.uWx = { value: new THREE.Vector4(0.22, 0.35, 1.0, 0) };   // growth/decay, detail erosion, tropical cumulus
+    this.uCyc = { value: this.weather ? this.weather.uCyc : [] };
+    this.uCell = { value: this.weather ? this.weather.uCell : [] };
+    this.uFlash = { value: this.weather ? this.weather.uFlash : [] };
+    this.detail = f.window ? new SurfaceDetail(ctx.renderer, (p) => ctx.assetUrl(p), Math.min(16, ctx.renderer.capabilities.getMaxAnisotropy())) : null;
+    this._prevSub = { lat: o.subLatDeg, lon: o.subLonDeg, dLat: 0, dLon: 1 };
+
+    const weatherDefines = { MAX_CYC: Math.max(1, f.cyc), MAX_CELLS: Math.max(1, f.cells), DETAIL: f.detail, CLOUD_TEX_W: f.clouds.toFixed(1) };
+    const weatherUniforms = {
+      tClouds: this.tClouds, tNoise: this.tNoise, tAux: this.tAux, uFlow: this.uFlow, uWx: this.uWx,
+      uSunObj: this.uSunDirObj, uCyc: this.uCyc, uCell: this.uCell,
+    };
 
     // --- Ground ---
+    const groundDefines = lite ? { SAMPLES: nGround, MODE: 0 } : { SAMPLES: nGround, MODE: 0, ...weatherDefines };
+    if (f.window) groundDefines.DETAIL_WINDOW = 1;
     this.groundMaterial = new THREE.ShaderMaterial({
       name: 'EarthGround',
-      defines: ctx.quality.lite ? { SAMPLES: nGround, MODE: 0, INLINE_CLOUDS: 1 } : { SAMPLES: nGround, MODE: 0 },
+      defines: groundDefines,
       uniforms: {
-        tDay: { value: null }, tNight: { value: null }, tClouds: { value: null }, tOcean: { value: null }, tNormal: { value: null },
+        tDay: { value: null }, tNight: { value: null }, tWater: { value: null }, tNormal: { value: null },
         uSunDir: this.uSunDir, uSunDirObj: this.uSunDirObj, uSunColor: this.uSunColor, uEarthCenter: this.uEarthCenter,
         uSunIntensity: this.uSunIntensity, uCloudAngle: this.uCloudAngle, uMultiScatter: this.uMultiScatter,
-        uMoonDir: this.uMoonDir, uMoonLight: this.uMoonLight,
-        uNightIntensity: { value: 2.0 }, uGlint: { value: 3.0 }, uNormalStrength: { value: 0.5 },
+        uMoonDir: this.uMoonDir, uMoonLight: this.uMoonLight, uNightIntensity: this.uNightIntensity,
+        uGlint: { value: lite ? 2.0 : 1.3 }, uNormalStrength: { value: 0.5 },
+        ...(lite ? { tClouds: this.tClouds } : weatherUniforms),
+        ...(this.detail ? this.detail.uniforms : {}),
       },
-      vertexShader: SPHERE_VERTEX, fragmentShader: GROUND_FRAGMENT, toneMapped: false,
+      vertexShader: SPHERE_VERTEX, fragmentShader: groundFragment(lite), toneMapped: false,
     });
     // tessellation per preset: only the cap above the horizon is drawn (HorizonCull), so a finer globe is cheap
-    const seg = { ultra: [512, 256, 384, 192], high: [384, 192, 288, 144] }[ctx.quality.preset] || [256, 128, 192, 96];
+    const seg = { ultra: [512, 256, 384, 192], high: [384, 192, 288, 144] }[preset] || [256, 128, 192, 96];
     this.earth = new THREE.Mesh(new THREE.SphereGeometry(EARTH_RADIUS_KM, seg[0], seg[1]), this.groundMaterial);
     this.earth.name = 'EarthGround';
     this.earth.position.copy(o.earthCenterFar);
@@ -82,30 +141,59 @@ export class Earth {
     this.placeholder.position.copy(o.earthCenterFar);
     this.group.add(this.placeholder);
 
-    // --- Clouds ---
-    this.cloudMaterial = new THREE.ShaderMaterial({
-      name: 'EarthClouds',
-      defines: { SAMPLES: nCloud, MODE: 0 },
-      uniforms: {
-        tClouds: { value: null }, uSunDir: this.uSunDir, uSunColor: this.uSunColor, uEarthCenter: this.uEarthCenter,
-        uSunIntensity: this.uSunIntensity, uMultiScatter: this.uMultiScatter, uCloudGain: { value: 1.15 },
-        uMoonDir: this.uMoonDir, uMoonLight: this.uMoonLight,
-      },
-      vertexShader: SPHERE_VERTEX, fragmentShader: CLOUD_FRAGMENT,
-      transparent: true, depthWrite: false, depthTest: true, toneMapped: false,
-    });
-    this.clouds = new THREE.Mesh(new THREE.SphereGeometry(EARTH_RADIUS_KM + CLOUD_ALTITUDE_KM, seg[2], seg[3]), this.cloudMaterial);
-    this.clouds.name = 'EarthClouds';
-    this.clouds.position.copy(o.earthCenterFar);
-    this.clouds.renderOrder = 10;
-    this.clouds.visible = false;
-    this.group.add(this.clouds);
-    this.cloudCull = new HorizonCull(this.clouds, seg[2], seg[3]);
+    // --- Clouds (GPU presets; 'lite' composites them in the ground shader) ---
+    this.cloudMaterial = null; this.clouds = null; this.cloudCull = null;
+    if (!lite) {
+      this.cloudMaterial = new THREE.ShaderMaterial({
+        name: 'EarthClouds',
+        defines: { SAMPLES: nCloud, MODE: 0, MAX_FLASH: Math.max(1, f.flashes), ...weatherDefines },
+        uniforms: {
+          ...weatherUniforms, tNight: { value: null }, uFlash: this.uFlash,
+          uSunDir: this.uSunDir, uSunColor: this.uSunColor, uEarthCenter: this.uEarthCenter,
+          uSunIntensity: this.uSunIntensity, uMultiScatter: this.uMultiScatter, uCloudGain: { value: 1.15 }, uBump: { value: 1.6 },
+          uMoonDir: this.uMoonDir, uMoonLight: this.uMoonLight, uNightIntensity: this.uNightIntensity,
+        },
+        vertexShader: SPHERE_VERTEX, fragmentShader: CLOUD_FRAGMENT,
+        transparent: true, depthWrite: false, depthTest: true, toneMapped: false,
+      });
+      this.clouds = new THREE.Mesh(new THREE.SphereGeometry(EARTH_RADIUS_KM + CLOUD_ALTITUDE_KM, seg[2], seg[3]), this.cloudMaterial);
+      this.clouds.name = 'EarthClouds';
+      this.clouds.position.copy(o.earthCenterFar);
+      this.clouds.renderOrder = 10;
+      this.clouds.visible = false;
+      this.group.add(this.clouds);
+      this.cloudCull = new HorizonCull(this.clouds, seg[2], seg[3]);
+    }
+
+    // --- Aurora (GPU presets): analytic curtains evaluated on a proxy shell above the layer ---
+    this.aurora = null;
+    if (f.arcs > 0) {
+      this.uCamObj = { value: new THREE.Vector3() };
+      this.uDipole = { value: latLonToObj(DIPOLE_LAT, DIPOLE_LON, new THREE.Vector3()) };
+      this.auroraMaterial = new THREE.ShaderMaterial({
+        name: 'EarthAurora',
+        defines: { ARCS: f.arcs, AURORA_SAMPLES: f.auroraSamples, SAMPLES: 1, MODE: 0 },
+        uniforms: {
+          tNoise: this.tNoise, uCamObj: this.uCamObj, uSunObj: this.uSunDirObj, uDipole: this.uDipole,
+          uAurora: { value: this.weather.uAurora }, uAuroraGain: { value: 0.0065 },
+        },
+        vertexShader: SPHERE_VERTEX, fragmentShader: AURORA_FRAGMENT,
+        transparent: true, depthWrite: false, depthTest: true, toneMapped: false, blending: THREE.AdditiveBlending,
+      });
+      const aSeg = [192, 96];
+      this.aurora = new THREE.Mesh(new THREE.SphereGeometry(EARTH_RADIUS_KM + AURORA_SHELL_KM, aSeg[0], aSeg[1]), this.auroraMaterial);
+      this.aurora.name = 'EarthAurora';
+      this.aurora.position.copy(o.earthCenterFar);
+      this.aurora.renderOrder = 15;
+      this.aurora.visible = false;
+      this.group.add(this.aurora);
+      this.auroraCull = new HorizonCull(this.aurora, aSeg[0], aSeg[1], 4, 4);
+    }
 
     // --- Atmosphere shell (limb) ---
     this.shellMaterial = new THREE.ShaderMaterial({
       name: 'EarthAtmosphere',
-      defines: ctx.quality.lite ? { SAMPLES: nShell, MODE: 1, SKIP_GROUND: 1 } : { SAMPLES: nShell, MODE: 1 },
+      defines: lite ? { SAMPLES: nShell, MODE: 1, SKIP_GROUND: 1 } : { SAMPLES: nShell, MODE: 1 },
       uniforms: {
         uSunDir: this.uSunDir, uSunColor: this.uSunColor, uEarthCenter: this.uEarthCenter,
         uSunIntensity: this.uSunIntensity, uMultiScatter: this.uMultiScatter, uAirglow: { value: 0.022 }, uLimbBoost: this.uLimbBoost,
@@ -116,7 +204,7 @@ export class Earth {
       blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
       blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
     });
-    const shellSeg = ctx.quality.lite ? [64, 32] : [128, 64];
+    const shellSeg = lite ? [64, 32] : [128, 64];
     this.atmosphere = new THREE.Mesh(new THREE.SphereGeometry(EARTH_RADIUS_KM + ATMO_ALTITUDE_KM, shellSeg[0], shellSeg[1]), this.shellMaterial);
     this.atmosphere.name = 'EarthAtmosphere';
     this.atmosphere.position.copy(o.earthCenterFar);
@@ -164,44 +252,56 @@ export class Earth {
     this.update(0, ctx);
   }
 
-  /** Loads the NASA textures; reports progress through ctx.hud.setProgress (optional). */
+  /** Loads the NASA textures and bakes the seasonal day map; reports progress through ctx.hud.setProgress (optional). */
   async load() {
     const ctx = this.ctx;
+    const f = this.features;
     const loader = new THREE.TextureLoader();
     const maxAniso = ctx.renderer.capabilities.getMaxAnisotropy();
     const aniso = Math.max(1, Math.min(ctx.quality.anisotropy || 4, maxAniso));
-    // texture set by preset: [path, sRGB, single-channel]; 8K day/cloud maps only where the GPU allows them
-    const maxTex = ctx.renderer.capabilities.maxTextureSize || 4096;
-    const preset = ctx.quality.preset;
-    const big = (preset === 'ultra' || preset === 'high') && maxTex >= 8192;
-    const ultra8k = preset === 'ultra' && maxTex >= 8192;
-    const items = [
-      [ultra8k ? 'textures/earth/earth_day_8192.jpg' : 'textures/earth/earth_day_5400.jpg', true, false],
-      [big ? 'textures/earth/earth_night_4096_hq.jpg' : 'textures/earth/earth_night_4096.jpg', true, false],
-      [ultra8k ? 'textures/earth/earth_clouds_8192.jpg' : 'textures/earth/earth_clouds_4096.jpg', false, true],
-      [big ? 'textures/earth/earth_ocean_4096.png' : 'textures/earth/earth_specular_2048.jpg', false, true],
-      [big ? 'textures/earth/earth_normal_4096.jpg' : 'textures/earth/earth_normal_2048.jpg', false, false],
-      ['textures/sky/moon_1024.jpg', true, false],
-    ];
-    let done = 0;
+    const E = 'textures/earth/';
+    let total = 6 + (f.day === 'nearest' ? 1 : f.day === 'blend' ? 2 : 4) + (this.lite ? 0 : 1), done = 0;
     ctx.hud?.setProgress?.(0);
-    const load = async ([path, srgb, single]) => {
+    // format: 'rgb' | 'r' (grey, one byte per texel) | 'rg' (normal map xy); noMips: bake sources sampled once
+    const load = async (path, srgb, noMips = false, format = 'rgb') => {
       const t = await loader.loadAsync(ctx.assetUrl(path));
       t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-      if (single) t.format = THREE.RedFormat;     // grey maps: one byte per texel in video memory (shaders read .r)
+      if (format === 'r') t.format = THREE.RedFormat;
+      else if (format === 'rg') t.format = THREE.RGFormat;
       t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping;
-      t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
-      t.generateMipmaps = true; t.anisotropy = aniso; t.needsUpdate = true;
-      done++; ctx.hud?.setProgress?.(done / items.length);
+      t.minFilter = noMips ? THREE.LinearFilter : THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
+      t.generateMipmaps = !noMips; t.anisotropy = noMips ? 1 : aniso; t.needsUpdate = true;
+      done++; ctx.hud?.setProgress?.(Math.min(1, done / total));
       return t;
     };
-    const [day, night, clouds, ocean, normal, moon] = await Promise.all(items.map(load));
+    const date = ctx.orbit.dateAt(ctx.time.sim);
+    const [dayRes, night, clouds, water, normal, moon, aux] = await Promise.all([
+      loadSeasonalDay(ctx.renderer, load, date, f.day, aniso, `${E}earth_base_m${BASE_MONTH}_8192.jpg`),
+      load(`${E}earth_night_${f.night}.jpg`, false, false, 'r'),
+      load(`${E}earth_clouds_${f.clouds}.jpg`, false, false, 'r'),
+      load(`${E}earth_water_${f.water}.png`, false, false, 'r'),
+      load(`${E}earth_normal_${f.normal}.jpg`, false, false, 'rg'),
+      load('textures/sky/moon_1024.jpg', true),
+      this.lite ? Promise.resolve(null) : load(`${E}earth_aux_2048.png`, false, false, 'rgb'),
+    ]);
+    this.season = dayRes.season;
     const gu = this.groundMaterial.uniforms;
-    gu.tDay.value = day; gu.tNight.value = night; gu.tClouds.value = clouds; gu.tOcean.value = ocean; gu.tNormal.value = normal;
-    this.cloudMaterial.uniforms.tClouds.value = clouds;
+    gu.tDay.value = dayRes.texture; gu.tNight.value = night; gu.tWater.value = water; gu.tNormal.value = normal;
+    this.tClouds.value = clouds;
     this.moonMaterial.uniforms.tMoon.value = moon;
-    this.textures = { day, night, clouds, ocean, normal, moon };
-    this.earth.visible = true; this.clouds.visible = !this.ctx.quality.lite; this.moon.visible = true;   // lite: clouds are inlined in the ground shader
+    this.dayTarget = dayRes.target;
+    this.textures = { night, clouds, water, normal, moon };
+    if (!dayRes.target) this.textures.day = dayRes.texture;
+    if (!this.lite) {
+      this.textures.aux = aux;
+      this.tAux.value = aux;
+      this.tNoise.value = this.textures.noise = createNoiseTexture();
+      this.cloudMaterial.uniforms.tNight.value = night;
+      // CPU copies for the weather placement (land fraction, cloud cover), 1 degree
+      this.weather.setClimate(imageChannel(aux.image, 360, 180, 0), imageChannel(clouds.image, 360, 180, 0), 360, 180);
+    }
+    this.earth.visible = true; if (this.clouds) this.clouds.visible = true; if (this.aurora) this.aurora.visible = true;
+    this.moon.visible = true;
     this.group.remove(this.placeholder);
     this.placeholder.geometry.dispose(); this.placeholder.material.dispose();
     this.placeholder = null;
@@ -223,15 +323,37 @@ export class Earth {
     this.uMoonDir.value.copy(o.moonDir);
     const litFraction = 0.5 * (1 - o.sunDir.dot(o.moonDir));
     this.uMoonLight.value = MOON_LIGHT_MAX * Math.pow(litFraction, 1.6);
-    // Clouds drift slowly eastward relative to the surface (robust for t up to days)
-    this.cloudAngle = (CLOUD_DRIFT_RATE * ctx.time.sim) % (2 * Math.PI);
-    this.uCloudAngle.value = this.cloudAngle;
-    _q.setFromAxisAngle(Y_AXIS, this.cloudAngle);
-    this.clouds.quaternion.copy(o.earthQuat).multiply(_q);
-    // horizon culling from the viewpoint (km; the near camera sits within metres of the station)
+    const simT = ctx.time.sim;
     ctx.camera.getWorldPosition(_camKm).multiplyScalar(0.001);
+    if (this.lite) {
+      // 'lite': the inline cloud layer drifts rigidly eastward (robust for t up to days)
+      this.cloudAngle = (CLOUD_DRIFT_RATE * simT) % (2 * Math.PI);
+      this.uCloudAngle.value = this.cloudAngle;
+    } else {
+      this.clouds.quaternion.copy(o.earthQuat);
+      const drift = (CLOUD_MAP_DRIFT * simT) / (2 * Math.PI);
+      this.uFlow.value.set(drift - Math.floor(drift), 0, 0, simT % 1048576);
+      const scale = ctx.time.scale || 1;
+      const dtReal = dt / scale;
+      this.weather.update(simT, o.dateAt(simT), o.subLatDeg, o.subLonDeg, dt, dtReal);
+      if (this.aurora) {
+        this.aurora.quaternion.copy(o.earthQuat);
+        this.uCamObj.value.copy(_camKm).sub(o.earthCenterFar).applyQuaternion(_qInv);
+      }
+      if (this.detail) {
+        // ground-track direction (deg/frame, longitude wrapped) for the window lead
+        const p = this._prevSub;
+        let dLon = o.subLonDeg - p.lon; if (dLon > 180) dLon -= 360; if (dLon < -180) dLon += 360;
+        const dLat = o.subLatDeg - p.lat;
+        if (Math.abs(dLat) + Math.abs(dLon) > 1e-6) { p.dLat = dLat; p.dLon = dLon * Math.cos(o.subLatDeg * Math.PI / 180); }
+        p.lat = o.subLatDeg; p.lon = o.subLonDeg;
+        this.detail.update(dtReal, o.subLatDeg, o.subLonDeg, p.dLat, p.dLon / Math.max(0.2, Math.cos(o.subLatDeg * Math.PI / 180)));
+      }
+    }
+    // horizon culling from the viewpoint (km; the near camera sits within metres of the station)
     this.earthCull.update(_camKm);
-    this.cloudCull.update(_camKm);
+    if (this.cloudCull) this.cloudCull.update(_camKm);
+    if (this.aurora) this.auroraCull.update(_camKm);
     // Sun quads face the camera (the camera sits within metres of the origin, so facing it is exact for all views)
     this.sun.position.copy(o.sunDir).multiplyScalar(SUN_DISTANCE_KM);
     this.corona.position.copy(this.sun.position);
@@ -251,6 +373,8 @@ export class Earth {
   dispose() {
     this.ctx.farScene.remove(this.group);
     this.group.traverse((obj) => { obj.geometry?.dispose(); obj.material?.dispose?.(); });
-    if (this.textures) for (const t of Object.values(this.textures)) t.dispose();
+    if (this.textures) for (const t of Object.values(this.textures)) t?.dispose();
+    this.dayTarget?.dispose();
+    this.detail?.dispose();
   }
 }
