@@ -72,7 +72,8 @@ export class StationInterior {
     const ctx = this.ctx, t0 = performance.now();
     if (ctx.params?.get('interior') === '0') return;   // A/B switch for performance comparisons (no interiors at all)
     const yieldNow = () => new Promise((r) => setTimeout(r, 0));
-    const size = this.lite ? 1024 : (ctx.quality?.textureScale || 1) >= 2 ? 2048 : 1024;
+    // atlas: 4K on ultra (sharper labels, rack faces, panel seams), 2K on high, 1K otherwise
+    const size = this.lite ? 1024 : ctx.quality?.preset === 'ultra' ? 4096 : (ctx.quality?.textureScale || 1) >= 2 ? 2048 : 1024;
     const atlas = this.atlas = new Atlas(size);
     const I = { atlas, lite: this.lite, detail: this.detail };
     const builders = [];
