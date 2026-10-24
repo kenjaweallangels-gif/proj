@@ -317,9 +317,11 @@ export class StationInterior {
     if (zone) {
       // portal walk (depth 4) with frustum tests
       vis.add(zone);
-      const queue = [[zone, 0]];
-      while (queue.length) {
-        const [z, d] = queue.shift();
+      const qz = this._qz || (this._qz = []), qd = this._qd || (this._qd = []);   // reused BFS queue
+      qz.length = 0; qd.length = 0;
+      qz.push(zone); qd.push(0);
+      for (let qi = 0; qi < qz.length; qi++) {
+        const z = qz[qi], d = qd[qi];
         if (d >= (this.lite ? 1 : 4)) continue;
         for (const p of z.portals) {
           const nz = p.zone;
@@ -330,7 +332,7 @@ export class StationInterior {
           if (d > 0 && !_frustum.intersectsSphere(_sph)) continue;
           if (d === 0 && c.distanceTo(cp) > 1.2 && !_frustum.intersectsSphere(_sph)) continue;
           vis.add(nz);
-          queue.push([nz, d + 1]);
+          qz.push(nz); qd.push(d + 1);
         }
       }
     } else if (!this.lite) {
@@ -379,7 +381,7 @@ export class StationInterior {
     // ---- carving
     if (!this.lite) this._carve(zone, vis, anyRing);
     // ---- lights (in the camera's compartment) and sun direction for the window masks
-    const L = zone?.lights || [];
+    const L = zone?.lights || EMPTY;
     for (let i = 0; i < this.lights.length; i++) {
       const l = this.lights[i];
       if (zone && L.length) {
@@ -404,35 +406,38 @@ export class StationInterior {
 
   _carve(zone, vis, anyRing) {
     const U = this.carveU;
-    let n = 0;
-    const push = (c) => {
-      if (n >= MAX_CARVE) return;
-      if (c.type === 'cone') packCone(U, n++, c.a, c.b, c.ra, c.rb);
-      else packBox(U, n++, c.c, c.ax, c.ay, c.hx, c.hy, c.hz);
-    };
-    const order = zone ? [zone, ...[...this.visible].filter((z) => z !== zone)] : [...this.visible];
-    if (anyRing && n < MAX_CARVE) packTorus(U, n++, _a.set(RING.X0, 0, 0), RING.R, RING.TUBE + 0.02);
-    for (const z of order) {
-      if (z.frame === 'ring') {
-        // rotating volumes: pod drum / spoke shaft in world coordinates
-        const phi = z.phi ?? 0;
-        if (z.podCarve && n < MAX_CARVE) {
-          _b.set(0, Math.cos(phi) * RING.R, Math.sin(phi) * RING.R);
-          this.toWorldFromRing(_q.copy(_b).setX(-4.25), _a); this.toWorldFromRing(_n.copy(_b).setX(4.25), _q);
-          packCone(U, n++, _a, _q, RING.POD_R + 0.05, RING.POD_R + 0.05);
-        }
-        if (z.carveSpoke && n < MAX_CARVE) {
-          this.toWorldFromRing(_b.set(0, Math.cos(phi) * 4.2, Math.sin(phi) * 4.2), _a);
-          this.toWorldFromRing(_n.set(0, Math.cos(phi) * 37.2, Math.sin(phi) * 37.2), _q);
-          packCone(U, n++, _a, _q, 0.82, 0.82);
-        }
-        continue;
+    this._nCarve = 0;
+    if (anyRing) packTorus(U, this._nCarve++, _a.set(RING.X0, 0, 0), RING.R, RING.TUBE + 0.02);
+    // camera zone first (with its window holes: shield panels over the windows), then the other visible zones
+    if (zone) this._carveZone(zone, true);
+    for (const z of this.visible) if (z !== zone) this._carveZone(z, !zone);
+    // remaining slots: window holes of the other visible zones
+    if (zone) for (const z of this.visible) if (z !== zone && z.frame !== 'ring') for (const c of z.carve) if (c.kind === 'window') this._pushCarve(c);
+    U.uCarveCount.value = this._nCarve;
+  }
+  _pushCarve(c) {
+    if (this._nCarve >= MAX_CARVE) return;
+    if (c.type === 'cone') packCone(this.carveU, this._nCarve++, c.a, c.b, c.ra, c.rb);
+    else packBox(this.carveU, this._nCarve++, c.c, c.ax, c.ay, c.hx, c.hy, c.hz);
+  }
+  _carveZone(z, windows) {
+    const U = this.carveU;
+    if (z.frame === 'ring') {
+      // rotating volumes: pod drum / spoke shaft in world coordinates
+      const phi = z.phi ?? 0;
+      if (z.podCarve && this._nCarve < MAX_CARVE) {
+        _b.set(0, Math.cos(phi) * RING.R, Math.sin(phi) * RING.R);
+        this.toWorldFromRing(_q.copy(_b).setX(-4.25), _a); this.toWorldFromRing(_n.copy(_b).setX(4.25), _q);
+        packCone(U, this._nCarve++, _a, _q, RING.POD_R + 0.05, RING.POD_R + 0.05);
       }
-      // window holes: always for the camera's compartment (shield panels over the windows), others only if room
-      for (const c of z.carve) if (c.kind !== 'window' || z === zone || !zone) push(c);
+      if (z.carveSpoke && this._nCarve < MAX_CARVE) {
+        this.toWorldFromRing(_b.set(0, Math.cos(phi) * 4.2, Math.sin(phi) * 4.2), _a);
+        this.toWorldFromRing(_n.set(0, Math.cos(phi) * 37.2, Math.sin(phi) * 37.2), _q);
+        packCone(U, this._nCarve++, _a, _q, 0.82, 0.82);
+      }
+      return;
     }
-    if (zone) for (const z of order) if (z !== zone && z.frame !== 'ring') for (const c of z.carve) if (c.kind === 'window') push(c);
-    U.uCarveCount.value = n;
+    for (const c of z.carve) if (windows || c.kind !== 'window') this._pushCarve(c);
   }
 
   dispose() {
