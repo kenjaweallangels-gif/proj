@@ -38,6 +38,9 @@ import { MeshBVH } from 'three-mesh-bvh';
 export const COLLIDE = { EXTERIOR: 1, INTERIOR: 2, SHIPS: 4, DOORS: 8, ALL: 15 };
 
 const CELL = 12;                 // chunk size (m, anchor frame)
+// triangles smaller than this (m^2, ~1 x 1.5 cm) are fine detail (knobs, bezels, bolt heads, text): they cannot
+// stop a 0.2-0.4 m body anyway, and dropping them keeps the queries cheap in dense compartments
+const MIN_AREA = 1.5e-4;
 const BUILD_BUDGET_MS = 3;       // background BVH builds per frame
 const MAX_CONTACTS = 16;
 const NON_SOLID = /glow|halo|beam|plume|flare|strobe|blink|exhaust|shadowProxy|tether|particle|detailMetal|detailPaint|wristMirror/i;
@@ -75,7 +78,7 @@ export class CollisionWorld {
     for (let i = 0; i < MAX_CONTACTS; i++) this.contacts.push({ normal: new THREE.Vector3(), depth: 0, body: null, point: new THREE.Vector3() });
     this.contactCount = 0;
     this.lastPush = new THREE.Vector3();
-    this.stats = { bodies: 0, shared: 0, chunks: 0, built: 0, triangles: 0, builtTriangles: 0, collectMs: 0, buildMs: 0 };
+    this.stats = { bodies: 0, shared: 0, chunks: 0, built: 0, triangles: 0, builtTriangles: 0, dropped: 0, collectMs: 0, buildMs: 0 };
     this._q = { mask: COLLIDE.ALL, frame: null };
     this.ready = false;
   }
@@ -245,7 +248,7 @@ export class CollisionWorld {
         // degenerate triangles carry no surface
         const ux = B0 - A0, uy = B1 - A1, uz = B2 - A2, vx = C0 - A0, vy = C1 - A1, vz = C2 - A2;
         const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-        if (nx * nx + ny * ny + nz * nz < 1e-14) continue;
+        if (nx * nx + ny * ny + nz * nz < 4 * MIN_AREA * MIN_AREA) { this.stats.dropped++; continue; }
         const k = cellOf((A0 + B0 + C0) / 3, (A1 + B1 + C1) / 3, (A2 + B2 + C2) / 3);
         let arr = cells.get(k);
         if (!arr) { arr = []; cells.set(k, arr); }
@@ -270,7 +273,7 @@ export class CollisionWorld {
       const bb = new THREE.Box3();
       for (let i = 0; i < positions.length; i += 3) bb.expandByPoint(_v.set(positions[i], positions[i + 1], positions[i + 2]));
       bb.getBoundingSphere(sphere);
-      shared.chunks.push({ positions, sphere, bvh: null, tris: positions.length / 9 });
+      shared.chunks.push({ positions, sphere, box: bb, bvh: null, tris: positions.length / 9 });
       this.stats.chunks++;
     }
     shared.list = null;    // drop the mesh references
@@ -347,14 +350,22 @@ export class CollisionWorld {
       if (!(b.layer & q.mask)) continue;
       if (q.ignore && q.ignore === b.visibleRoot) continue;
       if (b.visibleRoot && !b.visibleRoot.visible) continue;
-      // hatches move on events, also between rendered frames (sequences stepped without rendering): fresh matrix
-      if (b.layer === COLLIDE.DOORS) b.anchor.updateWorldMatrix(true, false);
-      const M = b.anchor.matrixWorld.elements;
+      const door = b.layer === COLLIDE.DOORS;
+      let M = b.anchor.matrixWorld.elements;
       const x = b.center.x, y = b.center.y, z = b.center.z;
-      const wx = M[0] * x + M[4] * y + M[8] * z + M[12] - c.x, wy = M[1] * x + M[5] * y + M[9] * z + M[13] - c.y, wz = M[2] * x + M[6] * y + M[10] * z + M[14] - c.z;
-      const s = Math.sqrt(M[0] * M[0] + M[1] * M[1] + M[2] * M[2]);
-      const rr = b.radius * s + r;
+      let wx = M[0] * x + M[4] * y + M[8] * z + M[12] - c.x, wy = M[1] * x + M[5] * y + M[9] * z + M[13] - c.y, wz = M[2] * x + M[6] * y + M[10] * z + M[14] - c.z;
+      let s = Math.sqrt(M[0] * M[0] + M[1] * M[1] + M[2] * M[2]);
+      let rr = b.radius * s + r + (door ? 2 : 0);
       if (wx * wx + wy * wy + wz * wz > rr * rr) continue;
+      if (door) {
+        // hatches move on events, also between rendered frames (sequences stepped without rendering): fresh matrix
+        b.anchor.updateWorldMatrix(true, false);
+        M = b.anchor.matrixWorld.elements;
+        wx = M[0] * x + M[4] * y + M[8] * z + M[12] - c.x; wy = M[1] * x + M[5] * y + M[9] * z + M[13] - c.y; wz = M[2] * x + M[6] * y + M[10] * z + M[14] - c.z;
+        s = Math.sqrt(M[0] * M[0] + M[1] * M[1] + M[2] * M[2]);
+        rr = b.radius * s + r;
+        if (wx * wx + wy * wy + wz * wz > rr * rr) continue;
+      }
       if (!b.shared.chunks) this._prepare(b.shared);
       _L.multiplyMatrices(b.anchor.matrixWorld, b.base);
       _Li.copy(_L).invert();
@@ -386,6 +397,7 @@ export class CollisionWorld {
 
   /** Capsule a-b (b may be null: sphere at a). Both points are moved by the same push. */
   resolveCapsule(a, b, radius, outNormal = null, opts = null) {
+    const iterations = opts?.iterations ?? 3;
     const q = this._opts(opts);
     this.contactCount = 0;
     this.lastPush.set(0, 0, 0);
@@ -393,7 +405,7 @@ export class CollisionWorld {
     const wa = this._toWorld(a, _pa), wb = b ? this._toWorld(b, _pb) : null;
     const total = _push.set(0, 0, 0);
     let any = false;
-    for (let iter = 0; iter < 3; iter++) {
+    for (let iter = 0; iter < iterations; iter++) {
       let moved = false;
       _bc.copy(wa); if (wb) _bc.add(wb).multiplyScalar(0.5);
       const reach = radius + (wb ? wa.distanceTo(wb) * 0.5 : 0);
@@ -404,10 +416,14 @@ export class CollisionWorld {
         const la = _la, lb = wb ? _lb : null;
         for (const ch of body.shared.chunks) {
           // chunk sphere vs the local query
-          const s = ch.sphere;
-          _c.copy(la); if (lb) _c.add(lb).multiplyScalar(0.5);
-          const rq = rl + (lb ? la.distanceTo(lb) * 0.5 : 0);
-          if (_c.distanceToSquared(s.center) > (s.radius + rq) ** 2) continue;
+          // chunk bounds vs the local query box
+          const B = ch.box;
+          const minx = (lb ? Math.min(la.x, lb.x) : la.x) - rl, maxx = (lb ? Math.max(la.x, lb.x) : la.x) + rl;
+          if (maxx < B.min.x || minx > B.max.x) continue;
+          const miny = (lb ? Math.min(la.y, lb.y) : la.y) - rl, maxy = (lb ? Math.max(la.y, lb.y) : la.y) + rl;
+          if (maxy < B.min.y || miny > B.max.y) continue;
+          const minz = (lb ? Math.min(la.z, lb.z) : la.z) - rl, maxz = (lb ? Math.max(la.z, lb.z) : la.z) + rl;
+          if (maxz < B.min.z || minz > B.max.z) continue;
           if (!ch.bvh) this._buildChunk(ch);
           const hit = this._pushLocal(ch.bvh, la, lb, rl, body, true);
           if (hit) moved = true;
@@ -433,48 +449,64 @@ export class CollisionWorld {
 
   /** Push the local sphere / capsule (la, lb) out of the triangles of one BVH. Returns true if moved. */
   _pushLocal(bvh, la, lb, r, body, record) {
-    let moved = false;
-    const self = this;
-    // query bounds (local), refreshed as the shape moves
-    const box = _box;
-    const setBox = () => {
+    // (callbacks are created once: no closures per call)
+    const P = this._pl || (this._pl = this._makePushCallbacks());
+    P.la = la; P.lb = lb; P.r = r; P.body = body; P.record = record; P.moved = false;
+    P.setBox();
+    bvh.shapecast(P.cb);
+    return P.moved;
+  }
+
+  _makePushCallbacks() {
+    const self = this, box = new THREE.Box3();
+    const P = { la: null, lb: null, r: 0, body: null, record: false, moved: false };
+    P.setBox = () => {
+      const la = P.la, lb = P.lb, r = P.r;
       box.min.copy(la); box.max.copy(la);
       if (lb) { box.min.min(lb); box.max.max(lb); }
       box.min.addScalar(-r); box.max.addScalar(r);
     };
-    setBox();
-    bvh.shapecast({
+    P.cb = {
       intersectsBounds: (bb) => bb.intersectsBox(box),
       intersectsTriangle: (tri) => {
+        const la = P.la, lb = P.lb, r = P.r;
+        // cheap reject: the whole shape farther than r from the triangle's plane on one side
+        const A = tri.a, B = tri.b, C = tri.c;
+        const ux = B.x - A.x, uy = B.y - A.y, uz = B.z - A.z, vx = C.x - A.x, vy = C.y - A.y, vz = C.z - A.z;
+        let px = uy * vz - uz * vy, py = uz * vx - ux * vz, pz = ux * vy - uy * vx;
+        const pl = Math.sqrt(px * px + py * py + pz * pz);
+        if (pl < 1e-12) return false;
+        px /= pl; py /= pl; pz /= pl;
+        const da = (la.x - A.x) * px + (la.y - A.y) * py + (la.z - A.z) * pz;
+        const db = lb ? (lb.x - A.x) * px + (lb.y - A.y) * py + (lb.z - A.z) * pz : da;
+        if ((da >= r && db >= r) || (da <= -r && db <= -r)) return false;
         let d;
-        if (lb) d = segTriClosest(la, lb, tri.a, tri.b, tri.c, _cp);
-        else { closestPtTri(la.x, la.y, la.z, tri.a, tri.b, tri.c, _cp); _cp.sx = la.x; _cp.sy = la.y; _cp.sz = la.z; d = Math.hypot(_cp.sx - _cp.x, _cp.sy - _cp.y, _cp.sz - _cp.z); }
+        if (lb) d = segTriClosest(la, lb, A, B, C, _cp);
+        else { closestPtTri(la.x, la.y, la.z, A, B, C, _cp); _cp.sx = la.x; _cp.sy = la.y; _cp.sz = la.z; d = Math.hypot(_cp.sx - _cp.x, _cp.sy - _cp.y, _cp.sz - _cp.z); }
         if (d >= r) return false;
         let nx, ny, nz, depth;
         if (d > 1e-7) { nx = (_cp.sx - _cp.x) / d; ny = (_cp.sy - _cp.y) / d; nz = (_cp.sz - _cp.z) / d; depth = r - d; }
         else {
           // the shape's axis touches / pierces the triangle: push along the face normal toward the shape's centre side
-          triNormal(tri.a, tri.b, tri.c, _n);
-          const ma = (_v.copy(la).sub(tri.a)).dot(_n), mb = lb ? (_v.copy(lb).sub(tri.a)).dot(_n) : ma;
-          const side = (ma + mb) >= 0 ? 1 : -1;
-          _n.multiplyScalar(side);
-          nx = _n.x; ny = _n.y; nz = _n.z;
-          depth = r - Math.min(ma * side, mb * side, 0);
+          const side = (da + db) >= 0 ? 1 : -1;
+          nx = px * side; ny = py * side; nz = pz * side;
+          depth = r - Math.min(da * side, db * side, 0);
         }
         la.x += nx * depth; la.y += ny * depth; la.z += nz * depth;
         if (lb) { lb.x += nx * depth; lb.y += ny * depth; lb.z += nz * depth; }
-        moved = true;
-        setBox();
-        if (record) {
+        P.moved = true;
+        P.setBox();
+        if (P.record) {
           _n.set(nx, ny, nz).transformDirection(_L);
           _v.set(_cp.x, _cp.y, _cp.z).applyMatrix4(_L);
-          self._addContact(_n, depth * body._scale, body, _v);
+          self._addContact(_n, depth * P.body._scale, P.body, _v);
         }
         return false;
       },
-    });
-    return moved;
+    };
+    return P;
   }
+
 
   /**
    * Swept sphere from -> to (query frame). On a hit fills outHit { t (0..1), point (contact), normal, body,

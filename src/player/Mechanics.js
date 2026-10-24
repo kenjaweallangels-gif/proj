@@ -63,7 +63,8 @@ const _tgt = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _hit = { point: new THREE.Vector3(), normal: new THREE.Vector3(), t: 0, distance: 0, body: null };
 const _cl = { point: new THREE.Vector3(), normal: new THREE.Vector3(), distance: 0, body: null };
-const _opts = { mask: 15, frame: null };
+const _opts = { mask: 15, frame: null, iterations: 3 };
+const _optsBody = { mask: 15, frame: null, iterations: 1 };   // the compliant body iterates itself
 
 function limbTarget() { return { position: new THREE.Vector3(), normal: new THREE.Vector3(0, 1, 0), weight: 0, phase: 'free' }; }
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -160,7 +161,9 @@ export class BodyMechanics {
     if (speed > 0.12) _tgt.addScaledVector(vel, -2.5 * smooth(0.12, 0.6, speed) / speed);
     if (_tgt.lengthSq() < 1e-6) _tgt.copy(_up).negate();
     _tgt.normalize();
-    this.axis.lerp(_tgt, 1 - Math.exp(-h * par.axisRate)).normalize();
+    // (a body resting against something stays where it settled instead of swinging back into it)
+    this._axisHold = (this._axisHold || 0) - h;
+    if (this._axisHold <= 0 || speed > 0.3) this.axis.lerp(_tgt, 1 - Math.exp(-h * par.axisRate)).normalize();
     // ---- propulsion through the hands
     this.lastMoveAccel = 0;
     if (!s.safer) this._handOverHand(h, s, dims, par);
@@ -374,7 +377,9 @@ export class BodyMechanics {
     for (let it = 0; it < 3; it++) {
       _a.copy(_neck).addScaledVector(this.axis, dims.radius * 0.7);
       _b.copy(_neck).addScaledVector(this.axis, L - dims.radius);
-      if (!W.resolveCapsule(_a, _b, dims.radius, null, opts)) break;
+      _optsBody.mask = opts.mask; _optsBody.frame = opts.frame;
+      if (!W.resolveCapsule(_a, _b, dims.radius, null, _optsBody)) break;
+      this._axisHold = 0.8;
       const P = W.lastPush;
       // the body swings away from what it touches (the feet end moves the most) ...
       _v.copy(_neck).addScaledVector(this.axis, L).addScaledVector(P, 1.6);
