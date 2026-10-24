@@ -290,7 +290,14 @@ export class Earth {
   update(dt, ctx) {
     const o = ctx.orbit;
     const cam = ctx.farCamera;
-    // Earth orientation and lighting
+    // Earth placement, orientation and lighting for the current render frame (ctx.universe): the centre is
+    // (0, -6781, 0) km in the default station frame, anywhere in other frames (free camera, …)
+    const C = o.earthCenterFar;
+    this.earth.position.copy(C);
+    if (this.placeholder) this.placeholder.position.copy(C);
+    if (this.clouds) this.clouds.position.copy(C);
+    if (this.aurora) this.aurora.position.copy(C);
+    this.atmosphere.position.copy(C);
     this.earth.quaternion.copy(o.earthQuat);
     this.uSunDir.value.copy(o.sunDir);
     this.uSunColor.value.copy(o.sunColor);
@@ -318,9 +325,11 @@ export class Earth {
       const utcH = ((((o.epochMs + simT * 1000) / 3600000) % 24) + 24) % 24;
       this.weather.update(simT, utcH, o.subLatDeg, o.subLonDeg, dt, dtReal);
       if (this.aurora) {
-        // the curtains glow only in darkness: with the Sun > 30 deg above the station's horizon the whole visible
-        // cap (20 deg) is sunlit, so the shell is skipped
-        this.aurora.visible = !!this.textures && o.sunDir.y < 0.5;
+        // the curtains glow only in darkness: with the Sun > 30 deg above the observer's horizon the whole visible
+        // cap (20 deg from LEO) is sunlit, so the shell is skipped; from high above, part of the night side shows
+        const up = _v.copy(C).negate();
+        const alt = up.length() - EARTH_RADIUS_KM;
+        this.aurora.visible = !!this.textures && (o.sunDir.dot(up.normalize()) < 0.5 || alt > 3000);
         this.aurora.quaternion.copy(o.earthQuat);
         this.uCamObj.value.copy(_camKm).sub(o.earthCenterFar).applyQuaternion(_qInv);
       }
@@ -338,10 +347,10 @@ export class Earth {
     this.earthCull.update(_camKm);
     if (this.cloudCull) this.cloudCull.update(_camKm);
     if (this.aurora) this.auroraCull.update(_camKm);
-    // Sun quads face the camera (the camera sits within metres of the origin, so facing it is exact for all views)
-    this.sun.position.copy(o.sunDir).multiplyScalar(SUN_DISTANCE_KM);
-    this.corona.position.copy(this.sun.position);
+    // Sun quads at a fixed distance from the camera, facing it (the camera may sit up to ~2000 km from the origin)
     if (cam) _v.copy(cam.position); else _v.set(0, 0, 0);
+    this.sun.position.copy(_v).addScaledVector(o.sunDir, SUN_DISTANCE_KM);
+    this.corona.position.copy(this.sun.position);
     this.sun.lookAt(_v);
     this.corona.quaternion.copy(this.sun.quaternion);
   }

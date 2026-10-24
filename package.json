@@ -26,9 +26,12 @@
   "type": "module",
   "private": "true",
   "dependencies": {
-    "three": "^0.186.1"
+    "three": "^0.186.1",
+    "three-mesh-bvh": "^0.9.15"
   },
   "devDependencies": {
+    "electron": "^44.7.0",
+    "electron-builder": "^26.17.0",
     "playwright": "^1.56.1",
     "vite": "^8.3.5"
   }

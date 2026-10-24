@@ -149,12 +149,12 @@ export class Telescope {
   unavailable() {
     const ctx = this.ctx;
     if (!ctx.sky || !ctx.ephemeris) return 'Телескоп недоступен';
-    if (ctx.mode === 'observer') return null;
+    if (ctx.mode === 'observer' || ctx.mode === 'free') return null;
     const pl = ctx.player;
     if (!pl) return null;
     if (pl.state?.mode === 'eva') return null;
     if (pl.iva?.zone?.id === 'cupola') return null;
-    return 'Телескоп доступен в куполе, в открытом космосе и в камере обзора (F)';
+    return 'Телескоп доступен в куполе, в открытом космосе, в камере обзора (F) и свободной камере (C)';
   }
 
   toggle() { if (this.active) this.exit(); else this.enter(); }
@@ -197,6 +197,7 @@ export class Telescope {
     this.active = false;
     ctx.camera.fov = s.fov ?? 70; ctx.camera.updateProjectionMatrix();
     if (s.quat && ctx.mode === 'observer') ctx.camera.quaternion.copy(s.quat);
+    if (ctx.mode === 'free') ctx.freeCam?._apply?.();
     if (app?.orbitControls && s.orbit !== undefined) app.orbitControls.enabled = s.orbit;
     if (s.grade && app?.renderer?.post) Object.assign(app.renderer.post.grade, s.grade);
     ctx.camera.layers.enable(LAYERS.FIRST_PERSON);

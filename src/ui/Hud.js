@@ -3,6 +3,8 @@ import { el, setText, show } from './dom.js';
 import { Loading } from './Loading.js';
 import { Helmet } from './Helmet.js';
 import { ObserverPanel } from './Observer.js';
+import { FreePanel } from './FreePanel.js';
+import { rateLabel, rateMeaning } from '../core/Time.js';
 import { Notifications } from './Notifications.js';
 import { Menu } from './Menu.js';
 
@@ -17,6 +19,13 @@ import { Menu } from './Menu.js';
  *   hud.update(dt, ctx)                          DOM text at <= 10 Hz, canvases / marker at <= 30 Hz
  * Debug: ?menu=1 shows the start menu even in shot mode.
  */
+/** "3 ч 20 мин" / "2 сут 4 ч" for the jump notification. */
+function fmtDuration(s) {
+  if (s < 3600) return `${Math.round(s / 60)} мин`;
+  if (s < 86400) { const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60); return m ? `${h} ч ${m} мин` : `${h} ч`; }
+  const d = Math.floor(s / 86400), h = Math.round((s % 86400) / 3600); return h ? `${d} сут ${h} ч` : `${d} сут`;
+}
+
 export class Hud {
   constructor(ctx) {
     this.ctx = ctx;
@@ -27,6 +36,7 @@ export class Hud {
     this.loading = new Loading(this.root, { title: name ? `СТАНЦИЯ «${name.toUpperCase()}»` : 'ОРБИТАЛЬНАЯ СТАНЦИЯ', subtitle: 'ВЫХОД В ОТКРЫТЫЙ КОСМОС · НОО 410 KM' });
     this.helmet = new Helmet(this.root, ctx);
     this.observer = new ObserverPanel(this.root, ctx, this);
+    this.free = new FreePanel(this.root, ctx, this);
     this.notifications = new Notifications(this.root);
     this.lockHint = el('div', 'prompt hidden');
     this.lockHint.style.cssText = 'top:auto;bottom:calc(var(--inset-y) + 6px);font-size:11px;color:var(--dim)';
@@ -49,7 +59,15 @@ export class Hud {
 
     // radio log: seed with the last entries, then follow live ship events
     try { const log = ctx.ships?.getLog?.(); if (Array.isArray(log)) for (const m of log.slice(-3)) this.notifications.push(m, { kind: 'radio', ttl: 25 }); } catch (_) { /* stub */ }
-    ctx.events?.on?.('ship', (e) => { if (e && e.message) this.notify(e.message, { kind: 'radio' }); });
+    // ship radio: quiet above x60 (fast-forwarded traffic would flood the log; ships.getLog() keeps it)
+    ctx.events?.on?.('ship', (e) => { if (e && e.message && (ctx.time?.rate ?? 1) <= 60) this.notify(e.message, { kind: 'radio' }); });
+    ctx.events?.on?.('time:rate', (e) => { if (!ctx.isShot && this.started) this.notify(`Ход времени ${rateLabel(e.rate)} (${rateMeaning(e.rate)})`, { kind: 'info', ttl: 4 }); this._needsRefresh = true; });
+    ctx.events?.on?.('time:jump', (e) => { if (!ctx.isShot && this.started) this.notify(`Переход по времени: ${e.delta > 0 ? '+' : '−'}${fmtDuration(Math.abs(e.delta))}`, { kind: 'info', ttl: 4 }); this._needsRefresh = true; });
+    ctx.events?.on?.('player:rails', (on) => {
+      if (!ctx.isShot && this.started && ctx.mode === 'play') this.notify(on ? 'Ход времени выше ×10: космонавт зафиксирован относительно станции (физика и ресурсы скафандра на паузе)' : 'Ход времени ×10 или медленнее: управление космонавтом восстановлено', { kind: on ? 'warn' : 'info', ttl: 6 });
+    });
+    // free camera: the mouse is captured on a click (like the astronaut)
+    ctx.renderer?.domElement?.addEventListener?.('mousedown', () => { if (ctx.mode === 'free' && !ctx.isShot && !this.menu.visible) ctx.input?.requestPointerLock?.(); });
     ctx.events?.on?.('mode', (m) => this._applyMode(m));
     this._onPointerLock = this._onPointerLock.bind(this);
     this._onKey = this._onKey.bind(this);
@@ -98,7 +116,7 @@ export class Hud {
     // start location chosen in the menu (inside the station / suited in the airlock)
     const pl = this.ctx.player;
     if (first && choice && pl && choice !== pl.startView) { pl.startView = choice; try { this.ctx.app?.setView?.(choice); } catch (e) { console.warn(e); } }
-    if (this.ctx.mode === 'play' && !this.ctx.isShot) { try { this.ctx.input?.requestPointerLock?.(); } catch (_) { /* ignore */ } }
+    if ((this.ctx.mode === 'play' || this.ctx.mode === 'free') && !this.ctx.isShot) { try { this.ctx.input?.requestPointerLock?.(); } catch (_) { /* ignore */ } }
   }
 
   notify(text, opts = {}) { this.notifications.push(text, opts); }
@@ -112,7 +130,7 @@ export class Hud {
   _onPointerLock() {
     const locked = !!document.pointerLockElement;
     const ctx = this.ctx;
-    if (!locked && this.started && ctx.mode === 'play' && !ctx.isShot && !this.menu.visible && !this.loading.visible && !ctx.telescope?.active) this.showMenu({ pause: true });
+    if (!locked && this.started && (ctx.mode === 'play' || ctx.mode === 'free') && !ctx.isShot && !this.menu.visible && !this.loading.visible && !ctx.telescope?.active) this.showMenu({ pause: true });
   }
 
   _onKey(e) {
@@ -134,7 +152,7 @@ export class Hud {
     this.root.dataset.mode = mode;
     this._needsRefresh = true;
     this._layers();
-    if (prev === 'observer' && mode === 'play' && this.started && !this.menu.visible && !this.ctx.isShot) {
+    if ((prev === 'observer' || prev === 'free') && mode === 'play' && this.started && !this.menu.visible && !this.ctx.isShot) {
       try { this.ctx.input?.requestPointerLock?.(); } catch (_) { /* needs a gesture; the click hint covers it */ }
     }
   }
@@ -143,6 +161,7 @@ export class Hud {
     const menu = this.menu.visible, mode = this._mode, tel = !!this.ctx.telescope?.active;
     this.helmet.setVisible(!menu && mode === 'play' && !tel);
     this.observer.setVisible(!menu && mode === 'observer' && !tel);
+    this.free.setVisible(!menu && mode === 'free' && !tel);
     show(this.notifications.el, !menu);
     if (menu) show(this.lockHint, false);
   }
@@ -175,8 +194,9 @@ export class Hud {
       if (!menu) {
         if (ctx.telescope?.active) { /* the telescope panel has its own readouts */ }
         else if (this._mode === 'play') this.helmet.updateText(ctx, step);
+        else if (this._mode === 'free') this.free.updateText(ctx);
         else this.observer.updateText(ctx);
-      }
+      } else this.menu.updateText?.(ctx);
       const inp = ctx.input;
       show(this.lockHint, !menu && this._mode === 'play' && this.started && !ctx.isShot && !!inp && inp.wantPointerLock && !inp.pointerLocked && !this.loading.visible && !ctx.telescope?.active);
     }

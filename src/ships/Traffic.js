@@ -11,8 +11,10 @@ import { Path, Mover, Attitude, Rcs, targetQuat } from './Flight.js';
  * Departures open the latches / extend the petals, push off at 0.1 m/s, back out along the corridor, turn at
  * `hold`, burn and leave on a curve to ~5 km where the ship is recycled.
  *
- * Kinematics are integrated in sub-steps (<= 0.25 s) so x60..x300 time scales stay stable; RCS puffs are
- * derived from the actual velocity / attitude changes of each step.
+ * Kinematics are integrated in sub-steps (<= 0.25 s) up to 10 s per frame (time rate x600 at 60 fps); RCS puffs
+ * are derived from the actual velocity / attitude changes of each step. Larger steps (higher rates, clock jumps)
+ * fast-forward instead: flights in progress jump to their end state and the schedule runs event by event
+ * (fastForward), so any time rate stays stable and the traffic keeps pace with the clock.
  */
 
 const _p = new THREE.Vector3(), _t = new THREE.Vector3(), _v = new THREE.Vector3(), _acc = new THREE.Vector3(), _d = new THREE.Vector3();
@@ -23,6 +25,8 @@ const X = new THREE.Vector3(1, 0, 0);
 const Z = new THREE.Vector3(0, 0, 1);
 const STATION_CENTER = new THREE.Vector3(0, -8, 0);
 const D_BACK = 50, D_HOLD = 150;
+/** Frame steps above this (s) fast-forward the traffic instead of integrating it. */
+export const FAST_FORWARD_DT = 10;
 
 /** Deterministic PRNG (mulberry32) so screenshots are reproducible. */
 export function makeRng(seed) {
@@ -273,8 +277,83 @@ export class Traffic {
 
   // ------------------------------------------------------------------ scheduling
   update(dt) {
-    dt = Math.min(dt, 10);
+    if (!(dt > 0)) return;
+    if (dt > FAST_FORWARD_DT) { this.fastForward(dt); return; }
     this.t += dt;
+    this._schedule();
+
+    // integrate flying ships in sub-steps; particle look factor follows the (visual, <= x10) time scale
+    const k = Math.pow(THREE.MathUtils.clamp(this.ctx.time.scale || 1, 1, 10), 0.85);
+    const n = Math.min(48, Math.max(1, Math.ceil(dt / 0.25)));
+    const h = dt / n;
+    for (let i = this.flying.length - 1; i >= 0; i--) {
+      const ship = this.flying[i];
+      for (let s = 0; s < n && ship.flight; s++) this._step(ship, h, k);   // flight may end (docked / recycled) mid-frame
+      this.mod.updateColliders(ship);
+      if ((ship.state === 'docked' && !ship.flight) || ship.state === 'idle') this.flying.splice(i, 1);
+    }
+  }
+
+  /**
+   * Advance the traffic by a large step (s) without integrating: ships in flight are put into their end state
+   * (arrivals docked, departures gone, drones moved along their loops) and every scheduled undock / arrival in
+   * the window happens (and resolves) at its time. At most 64 events per call; the rest of the window is skipped.
+   */
+  fastForward(dt) {
+    if (!(dt > 0)) return;
+    const end = this.t + dt;
+    this._resolveFlying(dt);
+    for (let guard = 0; guard < 64; guard++) {
+      this._schedule();
+      this._resolveFlying(0);
+      const next = Math.min(this.nextUndock, this.nextArrival);
+      if (next > end) break;
+      this.t = Math.max(this.t, next);
+    }
+    this.t = end;
+    this.ctx.time?.markHitch?.(1);
+  }
+
+  /** Put every ship in flight into its end state (see fastForward); loitering drones advance by dt. */
+  _resolveFlying(dt) {
+    for (let i = this.flying.length - 1; i >= 0; i--) {
+      const ship = this.flying[i], f = ship.flight;
+      if (!f) { this.flying.splice(i, 1); continue; }
+      if (f.phase === 'loiter') {
+        f.t += dt;
+        this._loiterPos(f, f.t, ship.group.position);
+        this._loiterPos(f, f.t + 0.5, _t).sub(ship.group.position).multiplyScalar(2);
+        ship.velocity.copy(_t);
+        _d.copy(STATION_CENTER).sub(ship.group.position).normalize();
+        targetQuat(ship.mainAxis, _d, ship.upAxis, UP, ship.att.target);
+        ship.att.snap(ship.group.quaternion);
+        this.mod.updateColliders(ship);
+        continue;
+      }
+      if (ship.state === 'undock' || ship.state === 'depart') {
+        this.mod.log('gone', ship, f.port);
+        this._abortToIdle(ship);
+      } else if (ship.state === 'arrive' || ship.state === 'approach' || ship.state === 'dock') {
+        const port = f.port;
+        if (port.occupant && port.occupant !== ship) this._abortToIdle(ship);
+        else {
+          ship.burning = false; ship.engineGlow = 0;
+          this.placeDocked(ship, port, f.roll ?? ship.roll ?? 0);
+          ship.dockedSince = this.t;
+          this.mod.log('dock', ship, port);
+        }
+      } else {
+        // 'settle' after docking
+        ship.flight = null; ship.panelDeploy = 1;
+        this.mod.updateColliders(ship);
+      }
+      ship.burning = false;
+      this.flying.splice(i, 1);
+    }
+  }
+
+  /** Undock / arrival schedule at the controller time this.t. */
+  _schedule() {
     // undock schedule
     if (this.t >= this.nextUndock) {
       this.nextUndock = this.t + 90 + this.rng() * 90;
@@ -298,17 +377,6 @@ export class Traffic {
         }
       }
     } else this.nextArrival = 1e9;
-
-    // integrate flying ships in sub-steps; particle look factor follows the time scale
-    const k = Math.pow(THREE.MathUtils.clamp(this.ctx.time.scale || 1, 1, 300), 0.85);
-    const n = Math.min(48, Math.max(1, Math.ceil(dt / 0.25)));
-    const h = dt / n;
-    for (let i = this.flying.length - 1; i >= 0; i--) {
-      const ship = this.flying[i];
-      for (let s = 0; s < n && ship.flight; s++) this._step(ship, h, k);   // flight may end (docked / recycled) mid-frame
-      this.mod.updateColliders(ship);
-      if ((ship.state === 'docked' && !ship.flight) || ship.state === 'idle') this.flying.splice(i, 1);
-    }
   }
 
   // ------------------------------------------------------------------ per-ship integration

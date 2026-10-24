@@ -5,7 +5,7 @@ import { Planets } from './sky/Planets.js';
 import { DeepSky } from './sky/DeepSky.js';
 import { SkyOverlays } from './sky/Overlays.js';
 import { Moon } from './Moon.js';
-import { Ephemeris, ttFromUtcDays } from '../core/Ephemeris.js';
+import { Ephemeris, ttFromUtcDays, sunGeocentric, moonGeocentric } from '../core/Ephemeris.js';
 
 /**
  * FAR scene sky and solar-system bodies (everything beyond the Earth):
@@ -15,7 +15,8 @@ import { Ephemeris, ttFromUtcDays } from '../core/Ephemeris.js';
  *   - the Moon (Moon.js: chunked LOD sphere, LOLA heights, LROC colour, earthshine),
  *   - deep-sky objects (sky/DeepSky.js, telescope only) and the overlays (sky/Overlays.js, key C).
  *
- * `ctx.ephemeris` (core/Ephemeris.js) is created here and updated every frame for the station position.
+ * `ctx.ephemeris` (core/Ephemeris.js) is created here and updated every frame for the observer (the render origin:
+ * the station, or the free camera); it is also handed to `ctx.universe.setEphemeris` (gravity, orbit outputs).
  * The sky group follows the far camera (stars at 1.5e6 km never show parallax) and is oriented by orbit.skyQuat
  * (ECI -> render frame). Solar-system bodies are placed relative to orbit.earthCenterFar (works with any origin).
  *
@@ -51,6 +52,14 @@ export class Sky {
     this.telescope = null;          // { stars, moon, planets, dso, sigmaAiry } while the telescope drives the gains
     this.ephemeris = ctx.ephemeris = new Ephemeris();
     this.d = 0;                     // TT days since J2000 (updated per frame)
+    // gravity and the render frames (orbit.sunDir / moonPosFar) use the same Sun and Moon (core/Ephemeris.js)
+    const epochMs = ctx.time?.epochMs ?? ctx.orbit.epochMs;
+    const days = (t) => ttFromUtcDays((epochMs - Date.UTC(2000, 0, 1, 12)) / 86400000 + t / 86400);
+    this.ephemerisSource = {
+      sunPositionEci: (t, out) => sunGeocentric(days(t), out),
+      moonPositionEci: (t, out) => moonGeocentric(days(t), out),
+    };
+    ctx.universe?.setEphemeris?.(this.ephemerisSource);
 
     this.starField = new StarField(ctx, { lite: this.lite });
     this.stars = this.starField.group;          // drawn straight onto the canvas by the 'lite' path (Post.js)
@@ -115,7 +124,8 @@ export class Sky {
   _updateEphemeris(ctx) {
     const o = ctx.orbit;
     this.d = ttFromUtcDays(o.daysSinceJ2000);
-    this.ephemeris.update(this.d, o.positionEci);
+    // observer = the render origin (the station, or the free camera in its own frame)
+    this.ephemeris.update(this.d, ctx.universe?.frame?.originEci ?? o.positionEci);
   }
 
   _applyGains() {

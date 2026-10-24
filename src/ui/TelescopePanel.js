@@ -83,7 +83,7 @@ export class TelescopePanel {
     const exit = el('button', '', 'Выход (Z)'); exit.type = 'button';
     exit.addEventListener('click', () => tel.exit());
     add(foot, centre, exit);
-    const hint = el('div', 'tel-hint', 'Колесо, + / − — увеличение · ЛКМ, стрелки — наведение · C — созвездия · Z / Esc — выход');
+    const hint = el('div', 'tel-hint', 'Колесо, + / − — увеличение · ЛКМ, стрелки — наведение · N — созвездия · Z / Esc — выход');
     add(p, head, this.search, tabs, this.list, this.info, zoom, foot, hint);
     add(root, this.reticle, this.scale, this.warn, this.fieldInfo, p);
     // HUD button (outside the telescope view)
@@ -202,7 +202,7 @@ export class TelescopePanel {
   _behindEarth(ctx, topo, dist) {
     const o = ctx.orbit;
     // Earth centre relative to the station in ECI = -positionEci
-    const p = o.positionEci;
+    const p = ctx.universe?.frame?.originEci ?? o.positionEci;
     const n = Math.hypot(topo.x, topo.y, topo.z) || 1;
     const dx = topo.x / n, dy = topo.y / n, dz = topo.z / n;
     const b = -(p.x * dx + p.y * dy + p.z * dz);

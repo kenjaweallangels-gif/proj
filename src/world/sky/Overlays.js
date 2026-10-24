@@ -3,7 +3,7 @@ import { LINE_VERTEX, LINE_FRAGMENT } from '../shaders/SkyShaders.js';
 import { starRecord } from './StarCatalog.js';
 
 /**
- * Sky overlays (off by default; key C cycles: off -> constellation figures + names -> + IAU boundaries + star and
+ * Sky overlays (off by default; key N cycles: off -> constellation figures + names -> + IAU boundaries + star and
  * planet names -> off). Figures / boundaries are line segments on the celestial sphere (d3-celestial data, J2000),
  * names are drawn on a 2D canvas over the view (Russian), hidden behind the Earth (analytic test). The telescope
  * also uses `labels` for its field (DSO names).
@@ -89,7 +89,7 @@ export class SkyOverlays {
   cycle() {
     this.mode = (this.mode + 1) % 3;
     const names = ['Подсказки неба выключены', 'Созвездия', 'Созвездия, границы, названия звёзд'];
-    this.ctx.hud?.notify?.(`${names[this.mode]} (C)`, { kind: 'info' });
+    this.ctx.hud?.notify?.(`${names[this.mode]} (N)`, { kind: 'info' });
   }
 
   _ensureCanvas() {
@@ -103,7 +103,7 @@ export class SkyOverlays {
   }
 
   update(dt, ctx) {
-    if (ctx.input?.wasPressed?.('KeyC')) this.cycle();
+    if (ctx.input?.wasPressed?.('KeyN')) this.cycle();
     const on = this.mode > 0;
     if (this.figures) { this.figures.visible = on; this.borders.visible = this.mode >= 2; }
     const tel = ctx.telescope?.active;

@@ -159,7 +159,7 @@ export class Antennas {
 
     // initial pointing
     this.earthDish.snap(this._earthTarget(0));
-    this.moonDish.snap(ctx.orbit.moonDir);
+    this.moonDish.snap(ctx.orbit.local.moonDir);
   }
 
   /** Ground-station tracking: nadir with a slow fore/aft sweep and slight lateral motion. */
@@ -171,7 +171,7 @@ export class Antennas {
   update(dt, ctx) {
     this.t += dt;
     this.earthDish.track(this._earthTarget(ctx.time.sim), dt);
-    this.moonDish.track(ctx.orbit.moonDir, dt);
+    this.moonDish.track(ctx.orbit.local.moonDir, dt);
     this.radar.rotation.y += 0.8 * dt;
   }
 }

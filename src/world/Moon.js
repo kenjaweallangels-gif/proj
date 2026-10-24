@@ -312,9 +312,9 @@ export class Moon {
     const eph = ctx.ephemeris, o = ctx.orbit;
     if (!eph) return;
     const m = eph.bodies.moon;
-    // position: Earth centre + geocentric Moon in the render frame
-    _v.set(m.geo.x, m.geo.y, m.geo.z).applyQuaternion(o.skyQuat);
-    this.centerFar.copy(o.earthCenterFar).add(_v);
+    // position: the universe's Moon in the render frame (Sky hands it this ephemeris), else Earth centre + geocentric
+    if (ctx.universe && o.moonPosFar) this.centerFar.copy(o.moonPosFar);
+    else { _v.set(m.geo.x, m.geo.y, m.geo.z).applyQuaternion(o.skyQuat); this.centerFar.copy(o.earthCenterFar).add(_v); }
     const r = m.rot;
     _m4.set(r[0], r[1], r[2], 0, r[3], r[4], r[5], 0, r[6], r[7], r[8], 0, 0, 0, 0, 1);
     _q.setFromRotationMatrix(_m4);
@@ -354,7 +354,9 @@ export class Moon {
     _proj.multiplyMatrices(_cam.projectionMatrix, _cam.matrixWorldInverse);
     _frustum.setFromProjectionMatrix(_proj);
     this.surface.select(camB, pxPerRad, _frustum);
-    for (const mesh of this.surface.drawn) mesh.updateMatrixWorld();
+    // patches follow the group's layers (the universe's far-scene depth split moves the Moon to its own layer)
+    const mask = this.group.layers.mask;
+    for (const mesh of this.surface.drawn) { mesh.updateMatrixWorld(); mesh.layers.mask = mask; }
     // texture streaming by apparent diameter
     const dist = camB.length();
     const diamPx = 2 * Math.asin(Math.min(1, MOON_RADIUS_KM / dist)) * pxPerRad;

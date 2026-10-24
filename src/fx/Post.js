@@ -100,6 +100,47 @@ export const FinalGradeShader = {
     }`,
 };
 
+/**
+ * Far-scene depth slices. In the default frame the far scene (km) is one pass with near = 20 km. When the universe
+ * reports a split (`universe.farSplit`: a nearby body in front of a distant multi-shell body, e.g. the Moon from
+ * lunar orbit with the Earth behind it), the far scene is drawn twice: everything but the near body with a near
+ * plane fitted to the distant bodies, then (depth cleared) the near body alone with its own planes. The near body's
+ * objects are moved to a spare layer for the duration of the call (layers are not part of any program key).
+ */
+export function renderFarSliced(renderer, scene, camera, split, renderOnce) {
+  const objs = split.objects, L = split.layer;
+  const saved = split._saved || (split._saved = []);
+  for (let i = 0; i < objs.length; i++) { saved[i] = objs[i].layers.mask; objs[i].layers.set(L); }
+  const mask = camera.layers.mask, n0 = camera.near, f0 = camera.far, bg = scene.background;
+  try {
+    renderOnce(false);                                  // slice 1: the rest (camera planes as set by the universe)
+    camera.near = split.near; camera.far = split.far; camera.updateProjectionMatrix();
+    camera.layers.set(L);
+    scene.background = null;                            // a colour background would clear the first slice
+    renderer.clearDepth();
+    renderOnce(true);                                   // slice 2: the near body
+  } finally {
+    scene.background = bg;
+    camera.layers.mask = mask;
+    camera.near = n0; camera.far = f0; camera.updateProjectionMatrix();
+    for (let i = 0; i < objs.length; i++) objs[i].layers.mask = saved[i];
+  }
+}
+
+/** RenderPass for the far scene with optional depth slices (see renderFarSliced). */
+class FarScenePass extends RenderPass {
+  render(renderer, writeBuffer, readBuffer, deltaTime, maskActive) {
+    const split = window.__app?.universe?.farSplit;
+    if (!split || this.camera.layers.mask === 0) { super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive); return; }
+    const clear = this.clear;
+    renderFarSliced(renderer, this.scene, this.camera, split, (second) => {
+      this.clear = second ? false : clear;
+      super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
+    });
+    this.clear = clear;
+  }
+}
+
 /** Soft-knee, subtractive bright pass for UnrealBloomPass (replaces its hard luminance step; smoothWidth = knee fraction). */
 const SOFT_KNEE_HIGHPASS_FRAG = /* glsl */`
 uniform sampler2D tDiffuse;
@@ -194,7 +235,7 @@ export class PostStack {
     });
     this.composer = new EffectComposer(renderer, rt);
 
-    this.farPass = new RenderPass(farScene, farCamera);
+    this.farPass = new FarScenePass(farScene, farCamera);
     this.farPass.clear = true;
     this.nearPass = new RenderPass(nearScene, camera);
     this.nearPass.clear = false;
@@ -321,18 +362,22 @@ export class PostStack {
     if (!this.direct) { this.composer.render(); return; }
     const r = this.renderer, sc = this.scenes;
     r.autoClear = false;
+    const split = window.__app?.universe?.farSplit;
+    const drawFar = split && sc.farCamera.layers.mask !== 0
+      ? () => renderFarSliced(r, sc.farScene, sc.farCamera, split, () => r.render(sc.farScene, sc.farCamera))
+      : () => r.render(sc.farScene, sc.farCamera);
     if (this.farRT) {
       // stars are points: in the low-resolution target they would blow up into blocks after the stretch,
       // so they are drawn straight onto the canvas (Earth occlusion is analytic in their shader)
       const stars = window.__app?.ctx?.sky?.stars;
       const starsOn = !!stars && stars.visible;
       if (starsOn) stars.visible = false;
-      r.setRenderTarget(this.farRT); r.clear(); r.render(sc.farScene, sc.farCamera);
+      r.setRenderTarget(this.farRT); r.clear(); drawFar();
       if (starsOn) stars.visible = true;
       r.setRenderTarget(null); r.clear(); r.render(this.blitScene, this.blitCamera);
       if (starsOn) r.render(stars, sc.farCamera);
     } else {
-      r.setRenderTarget(null); r.clear(); r.render(sc.farScene, sc.farCamera);
+      r.setRenderTarget(null); r.clear(); drawFar();
     }
     r.clearDepth();
     r.render(sc.nearScene, sc.camera);
