@@ -19,3 +19,6 @@
 - `13-perf-6gb.md`
 - `14-ue5-port.md`
 - `15-final-qa.md`
+- `16-physics-fidelity.md`
+- `17-perception-exposure.md`
+- `18-station-systems-missions.md`
