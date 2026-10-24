@@ -320,13 +320,15 @@ void main() {
     float tanE = ndl / lh;
     float cosLat = max(cos(asin(clamp(p.y, -1.0, 1.0))), 0.05);
     vec2 duvKm = vec2(se / lh / (2.0 * PI * R_GROUND * cosLat), sn / lh / (PI * R_GROUND));
-    float h0 = terrainHeight(vUv, 0.5, wRel);
+    // (heights are 8-bit sqrt-encoded and lossy: ~50 m steps at 5 km altitude; the start point is lifted and the
+    // shadow ramps over 150 m + 25 m/km so the quantisation does not print as speckle)
+    float h0 = terrainHeight(vUv, 1.5, wRel) + 60.0;
     float occ = 0.0;
-    float d = 0.6;
-    for (int k = 0; k < 12; k++) {
-      float hs = terrainHeight(vUv + duvKm * d, d * 0.35, wRel);
+    float d = 1.0;
+    for (int k = 0; k < 11; k++) {
+      float hs = terrainHeight(vUv + duvKm * d, d * 0.5, wRel);
       float hray = h0 + d * 1000.0 * tanE - d * d * 1000.0 / (2.0 * R_GROUND);
-      occ = max(occ, smoothstep(0.0, 60.0 + d * 18.0, hs - hray));
+      occ = max(occ, smoothstep(0.0, 150.0 + d * 25.0, hs - hray));
       d *= 1.5;
     }
     terr = 1.0 - 0.92 * occ;

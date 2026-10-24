@@ -3,13 +3,18 @@
 lakes, night lights, bathymetry / land fraction, clouds, relief normals).
 
 Usage: python3 -I tools/prepare_earth_textures.py <source dir> [step ...]
-  steps (default: all): months base tiles night water aux clouds normals
-  Fetch the sources first with tools/fetch_earth_sources.sh <source dir>.
+  steps (default: all): months base water aux clouds normals day500 night500 relief  (+ 'reuse': rebuild the global
+  relief from existing relief tiles). Order matters: 'water' and 'aux' before 'day500' / fetch_terrain_tiles.py.
+  Fetch the sources first with tools/fetch_earth_sources.sh <source dir> and
+  python3 -I tools/fetch_terrain_tiles.py <source dir>/terrarium7 7.
 
 Sources (see public/textures/CREDITS.md):
   world.2004MM.3x5400x2700.jpg      NASA Blue Marble Next Generation (no topography shading, no bathymetry), monthly
                                     2004, 11 months (June is not published at this size: interpolated May/July)
-  world.200410.3x21600x10800.jpg    the same, October, full resolution (500 m)
+  world.200410.3x21600x10800.jpg    the same, October, 21600 x 10800
+  t500/world.200410.3x21600x21600.[A-D][12].jpg  October at 500 m (86400 x 43200 in 8 tiles)
+  t500/BlackMarble_2016_[A-D][12].jpg             Black Marble 2016 at 500 m (8 tiles)
+  terrarium7/7_X_Y.png              AWS Terrain Tiles (terrarium), zoom 7, land tiles (tools/fetch_terrain_tiles.py)
   gebco_08_rev_bath_21600x10800.png GEBCO_08 bathymetry via NASA Visible Earth (255 = land or < ~30 m, 0 = 8000 m)
   gebco_08_rev_elev_21600x10800.png GEBCO_08 land elevation via NASA Visible Earth (0 = sea level, 255 = 6400 m)
   night_3km.jpg                     NASA Black Marble 2016, 13500x6750
@@ -23,13 +28,13 @@ Outputs (public/textures/earth/):
   season/earth_mMM_4096.jpg   monthly day colour, sea ice from NSIDC composited over the ocean (all GPU presets bake
                               the sim date's two nearest months; 'lite' loads the nearest one)
   earth_base_m10_8192.jpg     October 8K (high/ultra: the seasonal difference of the 4K months is added to it)
-  tiles/m10/rRcC.jpg          October 21600x10800 cut into 18-degree tiles of 1080x1080 (rows 1..8 = 72N..72S),
-                              streamed around the sub-station point on 'ultra' as a high-pass detail layer
+  tiles/day|night|relief/, tiles/manifest.json, earth_relief_8192.webp / _2048.webp: see the 500 m section below
   earth_night_8192.jpg / _4096.jpg   city lights only (Black Marble minus its blue terrain background), grey
+                              (rebuilt from the 500 m tiles by 'night500'; 'night' makes them from the 3 km map)
   earth_water_8192.png / _4096.png   water fraction per texel: ocean + lakes + rivers (river width by scale rank)
   earth_aux_2048.png          R land fraction (smoothed), G sqrt(ocean depth / 8000 m), B sqrt(land elevation / 6400 m)
   earth_clouds_8192.jpg / _4096.jpg  cloud cover, grey
-  earth_normal_4096.jpg / _2048.jpg  tangent-space relief normals (+X east, +Y north), vertical exaggeration 18
+  earth_normal_2048.jpg       tangent-space relief normals for 'lite' (+X east, +Y north)
 """
 import sys, os, json, struct, math
 import numpy as np
@@ -37,7 +42,7 @@ from PIL import Image, ImageDraw, ImageFilter
 Image.MAX_IMAGE_PIXELS = None
 
 SRC = sys.argv[1]
-STEPS = set(sys.argv[2:]) or {'months', 'base', 'tiles', 'night', 'water', 'aux', 'clouds', 'normals'}
+STEPS = set(sys.argv[2:]) or {'months', 'base', 'water', 'aux', 'clouds', 'normals', 'day500', 'night500', 'relief'}
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'public', 'textures', 'earth')
 BASE_MONTH = 10
 
@@ -226,13 +231,6 @@ if 'base' in STEPS:
     img = add_sea_ice(np.asarray(day), BASE_MONTH, ocean_at(8192, 4096))
     save(Image.fromarray(img, 'RGB'), f'earth_base_m{BASE_MONTH:02d}_8192.jpg', quality=90, optimize=True, progressive=True)
 
-if 'tiles' in STEPS:
-    day = Image.open(src(f'world.2004{BASE_MONTH:02d}.3x21600x10800.jpg')).convert('RGB')
-    T = 1080
-    for r in range(1, 9):
-        for c in range(20):
-            save(day.crop((c * T, r * T, (c + 1) * T, (r + 1) * T)), f'tiles/m{BASE_MONTH:02d}/r{r}c{c}.jpg', quality=84, optimize=True, progressive=True)
-
 # ---------------------------------------------------------------- night lights
 if 'night' in STEPS:
     n = np.asarray(Image.open(src('night_3km.jpg')).convert('RGB'), dtype=np.float32) / 255.0
@@ -340,7 +338,7 @@ if 'clouds' in STEPS:
 
 if 'normals' in STEPS:
     elev = Image.open(src('gebco_08_rev_elev_21600x10800.png')).convert('L')
-    for W in (4096, 2048):
+    for W in (2048,):
         h = np.array(elev.resize((W, W // 2), Image.BOX), dtype=np.float32) * (6400.0 / 255.0)   # metres
         H = h.shape[0]
         R = 6371000.0

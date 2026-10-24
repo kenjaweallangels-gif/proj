@@ -250,9 +250,10 @@ float cloudCover(vec3 p, vec2 uv, vec2 dx, vec2 dy, float fpKm, out vec2 grad, o
     float n = 0.6 * fbm2Km(xd, 14.0) + 0.4 * fbm2Km(xd + 31.0, 4.5);
   #endif
     n = smoothstep(0.22, 0.78, n);                              // ~uniform distribution
-    float soft = 0.06 + 0.1 * smoothstep(0.3, 3.0, fpKm);
+    // soft-edged elements; thin cloud (low fraction) stays partly a veil, so it does not turn into white flakes
+    float soft = 0.16 + 0.12 * smoothstep(0.3, 3.0, fpKm);
     float cover = smoothstep(n - soft, n + soft, c * (1.0 + 2.0 * soft) - soft);
-    c = mix(c, cover, f1 * uWx.y);
+    c = mix(c, cover, f1 * uWx.y * (0.45 + 0.4 * smoothstep(0.1, 0.5, c)));
   }
   // tropical afternoon cumulus: soft puffs (~3-4 km, rounded: two octaves only, soft threshold, denser centres)
   // in clusters and streets whose extent grows with the potential

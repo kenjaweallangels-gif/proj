@@ -267,15 +267,23 @@ profile (`--callers=<fn>` prints the stacks that lead to a hot function).
 * `EarthTextures.js` — seasonal day map: the two Blue Marble NG months bracketing the sim date are blended once at
   load into a mipmapped render target (high/ultra: 8K October base + the 4K seasonal difference; medium/low: two 4K
   months; lite: the nearest month file). Also the 64³ noise texture of the weather shaders.
-* `SurfaceDetail.js` (ultra) — 500 m Blue Marble tiles (`textures/earth/tiles/`) composited into a 2048² window
-  (34°) around the sub-station point, double-buffered; the ground shader adds its high-pass near nadir.
+* `TileWindow.js` — streamed 5° tiles (`textures/earth/tiles/<layer>/rRRcCC.webp`, `tiles/manifest.json`) in a
+  toroidal N×N window around the camera's own sub-point (any render frame), one mipmapped render target per layer:
+  500 m Blue Marble October (`day`, ultra, N=5, 6000² RGBA ≈ 190 MB; the ground shader adds its high-pass to the
+  seasonal map and sharpens coasts), 500 m Black Marble lights (`night`, high N=4 / ultra N=5, RG8) and 1 km terrain
+  relief (`relief`, high N=6 / ultra N=8, slopes + height). Only changed slots are redrawn (≤ 2 tiles per frame);
+  the layers fade out above ×60 time warp or 2500 km altitude.
+* Relief: `earth_relief_8192.webp` (high/ultra) / `_2048` (medium/low) hold east/north slopes and height; the ground
+  shader lights the slopes (exaggeration `uRelief.xy`) and marches the height field toward the Sun for terrain
+  (horizon) shadows at low sun (`uRelief.z`, ultra/high/medium).
 * `Weather.js` — CPU weather state in the Earth-fixed frame: October tropical cyclones on deterministic tracks per
   basin, thunderstorm cells spawned around the visible cap from a convective climatology (ITCZ, afternoon land,
   night ocean, cyclone bands), lightning flashes in real time, aurora activity. Writes preallocated uniform arrays.
 * `shaders/WeatherChunk.js` — cloud cover = NASA cloud map (slow drift) + growth/decay noise + sub-texel grain +
   afternoon cumulus + cyclones + storm cells; sea-surface wind for the Cox–Munk glint. `shaders/AuroraShaders.js` —
   analytic auroral curtains on a proxy shell (R + 335 km).
-* Textures are built by `tools/prepare_earth_textures.py` from the sources fetched by `tools/fetch_earth_sources.sh`.
+* Textures are built by `tools/prepare_earth_textures.py` from the sources fetched by `tools/fetch_earth_sources.sh`
+  and `tools/fetch_terrain_tiles.py`.
 
 ## Station exterior detail, LOD and ambient occlusion (GPU presets)
 
