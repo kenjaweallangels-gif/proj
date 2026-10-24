@@ -189,7 +189,7 @@ function rackModule(I, spec) {
   // ---- containment volume, lights, bake
   Z.box(0, 0, 0, ue - 0.02, h, h);
   Z.light(-len / 4, 0.4, 0); Z.light(len / 4, 0.4, 0);
-  Z.carveCone(V(-len / 2, 0, 0), V(len / 2, 0, 0), r - 0.05);
+  Z.carveCone(V(-len / 2 - 0.15, 0, 0), V(len / 2 + 0.15, 0, 0), r - 0.05);   // past the end caps (a cap on the boundary would flicker)
   Z.bake = moduleBake(h, c, ue, I.lite, spec.warm ?? 1);
   Z.local = { h, c, ue, n, slotW, u0, slotU, used, across, wallFrame: (wall, u, d) => wallFrame(wall, u, h, d), bevelFrame: (u, sv, sw) => bevelFrame(u, h, c, sv, sw) };
   spec.extras?.(Z, Z.local);
@@ -386,7 +386,7 @@ function nodeModule(I, spec) {
   }
   Z.box(0, 0, 0, ue - 0.02, h, h);
   Z.light(0, 0.5, 0);
-  Z.carveCone(V(-2.5, 0, 0), V(2.5, 0, 0), 2.4);
+  Z.carveCone(V(-ue - (spec.ends.a.vest ?? 0) - 0.15, 0, 0), V(ue + (spec.ends.b.vest ?? 0) + 0.15, 0, 0), 2.4);   // incl. the axial vestibules
   Z.bake = moduleBake(h, c, ue, I.lite);
   spec.extras?.(Z);
   return Z;
@@ -560,7 +560,7 @@ function greenhouse(I) {
   endBulkhead(Z, { kind: 'cbm', door: 'closed', vest: 0, label: 'ПОРТ P2 · DOCKING' }, 1, ue, h, c, false, { signName: 'ПОРТ P2' });
   Z.box(0, 0, 0, ue - 0.02, h, h);
   Z.light(-3, 0.4, 0); Z.light(3, 0.4, 0);
-  Z.carveCone(V(-len / 2, 0, 0), V(len / 2, 0, 0), r - 0.05);
+  Z.carveCone(V(-len / 2 - 0.15, 0, 0), V(len / 2 + 0.15, 0, 0), r - 0.05);
   const base = moduleBake(h, c, ue, I.lite);
   Z.bake = (x, y, z, nx, ny, nz, name) => {
     const f = base(x, y, z, nx, ny, nz, name);
