@@ -449,7 +449,7 @@ function cupola(I, x) {
   // frame: six trapezoid windows and the round nadir window
   const y0 = 1.0, y1 = 1.96, r0 = 1.42, r1 = 0.86;
   const ring = (y, rr) => W.torus('metal', sub(V0M(), 0, y, 0, 'x', Math.PI / 2), rr, 0.04, 8, 6, 0xbfc2c4, Math.PI * 2, Math.PI / 6);
-  ring(y0, r0 + 0.02); ring(y1, r1 + 0.02);
+  { const d0 = W.detail; W.detail = 1; ring(y0, r0 + 0.02); ring(y1, r1 + 0.02); W.detail = d0; }   // exactly six sides (hexagonal frame)
   const vtx = (k, y, rr) => { const a = (k / 6) * Math.PI * 2 + Math.PI / 6; return V(Math.cos(a) * rr, y, Math.sin(a) * rr); };
   for (let k = 0; k < 6; k++) {
     // mullion beam between windows
@@ -691,6 +691,18 @@ function dockingHub(I, ports) {
       laptop(K, offset(F, -1.2, 0.7, 0), 'scrDock', 0.3);
     }
   }
+  // finished corners: chamfered trim along the six hex edges and around both end walls; pressure-shell liner
+  const rv = ap / Math.cos(Math.PI / 6);
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * Math.PI * 2 + Math.PI / 3, dv = V(0, Math.sin(a), Math.cos(a));
+    W.chamferBox('paint', ff(dv.clone().multiplyScalar(rv - 0.045), dv.clone().negate(), X), 2 * ue, 0.16, 0.09, 0.02, 0xc9cbc6);
+    for (const s of [-1, 1]) {
+      const a2 = a + Math.PI / 6, de = V(0, Math.sin(a2), Math.cos(a2));
+      const F = ff(V(s * (ue - 0.03), 0, 0).addScaledVector(de, ap - 0.03), de.clone().negate(), X);
+      W.chamferBox('paint', rot(F, 'z', Math.PI / 2), side + 0.04, 0.06, 0.07, 0.015, 0xc9cbc6);
+    }
+  }
+  shellX(Z, -ue - 0.1, ue + 0.1, rv + 0.06, [0, 1, 2, 3, 4, 5].map((k) => ({ p: V(0, 0, 0), d: faceDir(k), r: 0.62 })));
   // the central volume: hex prism approximated by a cylinder of the apothem
   Z.cyl(V(-ue + 0.02, 0, 0), V(ue - 0.02, 0, 0), ap - 0.02);
   Z.light(-1.5, 0.8, 0); Z.light(1.5, -0.8, 0);

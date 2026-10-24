@@ -162,7 +162,7 @@ export class HabitatRing {
       }
     }
     // cable bundles riding on the utility ring
-    for (const [x, rad] of [[-1.72, Ri], [1.72, Ri], [0.25, Ri - 1.55], [-0.25, Ri - 1.55]]) b.add('cable', torusAt(V(x, 0, 0), X_AXIS, rad, 0.05, 5, 160), false);
+    for (const [x, rad] of [[-1.69, Ri], [1.69, Ri], [0.17, Ri - 1.5], [-0.17, Ri - 1.5]]) b.add('cable', torusAt(V(x, 0, 0), X_AXIS, rad, 0.05, 5, 160), false);   // resting on the lattice tori
     for (let k = 0; k < 24; k++) {
       const p0 = (k / 24) * Math.PI * 2, p1 = ((k + 1) / 24) * Math.PI * 2;
       this.dynamic.push({ col: Colliders.capsule(radial(p0).multiplyScalar(Ri - 0.6), radial(p1).multiplyScalar(Ri - 0.6), 1.9, 'utilityRing', true) });

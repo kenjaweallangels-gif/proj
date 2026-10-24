@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { LAYOUT } from './Layout.js';
-import { HullFrame, Instancer, boxAt, bevelBoxAt, tubeAt, torusAt, latheAt, plate, sphereAt, mat, scaleUV, Colliders, X_AXIS, Y_AXIS, Z_AXIS, TEX_M } from './Builder.js';
+import { HullFrame, Instancer, boxAt, bevelBoxAt, tubeAt, torusAt, latheAt, plate, exact, sphereAt, mat, scaleUV, Colliders, X_AXIS, Y_AXIS, Z_AXIS, TEX_M } from './Builder.js';
 import { COL, boltCircle, radialBolts, boltRow, wif, latch, connectorPanel, vent, pClamp } from './Detail.js';
 import { endProfile, endFlange, weldLand, mliBand, shieldPanels, windowBolts, hullWif, hullConnectors, hullVent, conformSlab } from './HullKit.js';
 import { cameraAssembly, frameYZ } from './Hardware.js';
@@ -282,11 +282,11 @@ export function buildModules(ctx, station, b, rails) {
       b.add('hullWhite', g);
     }
     b.add('hullWhite', latheAt(C, DOWN, [[1.2, 0.84], [1.55, 0.84], [1.66, 0.87], [1.66, 0.97], [1.58, 1.0], [1.2, 1.0]], 48));
-    const frust = (rt, rb, h, y, open) => new THREE.CylinderGeometry(rt, rb, h, 6, 1, open).translate(cx, y, 0);
+    const frust = (rt, rb, h, y, open) => exact(() => new THREE.CylinderGeometry(rt, rb, h, 6, 1, open)).translate(cx, y, 0);
     b.add('windowGlow', frust(0.68, 1.2, 0.9, top - 1.5, false), false, cupolaGlow);
     // hex frame rings (lathe with six segments: flats line up with the window faces)
-    b.add('metalDark', latheAt(C, DOWN, [[1.36, 0.98], [1.58, 0.98], [1.58, 1.1], [1.36, 1.1], [1.36, 0.98]], 6));
-    b.add('metalDark', latheAt(C, DOWN, [[0.62, 1.92], [0.95, 1.92], [0.95, 2.02], [0.62, 2.02], [0.62, 1.92]], 6));
+    b.add('metalDark', exact(() => latheAt(C, DOWN, [[1.36, 0.98], [1.58, 0.98], [1.58, 1.1], [1.36, 1.1], [1.36, 0.98]], 6)));
+    b.add('metalDark', exact(() => latheAt(C, DOWN, [[0.62, 1.92], [0.95, 1.92], [0.95, 2.02], [0.62, 2.02], [0.62, 1.92]], 6)));
     const vtx = (k, d, r) => { const a = (k / 6) * Math.PI * 2 + Math.PI / 6; return V(cx + r * Math.cos(a), top - d, r * Math.sin(a)); };
     for (let k = 0; k < 6; k++) {
       const p0 = vtx(k, 1.06, 1.5), p1 = vtx(k, 1.96, 0.88);

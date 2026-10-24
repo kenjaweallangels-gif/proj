@@ -133,6 +133,16 @@ export function latheAt(c, dir, profile, seg = 48) {
   return g;
 }
 
+/**
+ * Run `fn` with the three-lod tessellation factor at 1: for shapes whose segment count is a design value
+ * (hexagonal rings, six-sided frusta) and must not be scaled by the preset's detail factor.
+ */
+export function exact(fn) {
+  const f = globalThis.__THREE_DETAIL;
+  globalThis.__THREE_DETAIL = 1;
+  try { return fn(); } finally { globalThis.__THREE_DETAIL = f; }
+}
+
 /** Box w×h×d with chamfered edges (bevel b) centred at c, optional quaternion; planar UVs in TEX_M. */
 export function bevelBoxAt(c, w, h, d, quat = null, bevel = Math.min(w, h, d) * 0.12) {
   const g = bevelBox(w, h, d, bevel);
