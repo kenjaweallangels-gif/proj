@@ -76,7 +76,10 @@ export function buildModules(ctx, station, b, rails) {
       if (D) weldLand(b, D, H, t); else b.add('metalDark', torusAt(H.axisPoint(t), H.dir, r + 0.015, 0.035, 5, 48), false);
     }
     // MLI sections (gold / silver bands slightly proud of the hull) with taped edges, tie-downs, closure seam
-    for (const s of mli) {
+    for (const s0 of mli) {
+      // never overlap the end collars (two blanket layers 1 cm apart z-fight at a distance)
+      const s = { ...s0, from: Math.max(s0.from, -len / 2 + 0.74), to: Math.min(s0.to, len / 2 - 0.74) };
+      if (s.to - s.from < 0.2) continue;
       b.add(s.mat, tubeAt(H.axisPoint((s.from + s.to) / 2), H.dir, r + 0.06, s.to - s.from, 48));
       if (D) mliBand(b, D, H, s.from, s.to, s.mat, { seamTheta: H.thetaFor(V(0, -1, 0)) + 0.9 });
     }
