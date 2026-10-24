@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { LAYOUT } from './Layout.js';
 import { boxAt, bevelBoxAt, bevelBox, tubeAt, torusAt, latheAt, sphereAt, mat, scaleUV, Colliders, X_AXIS, Y_AXIS, Z_AXIS } from './Builder.js';
 import { COL, boltCircle, radialBolts, boltRow, connectorPanel, standoffFoot } from './Detail.js';
+import { domeAt } from './Builder.js';
 import { grappleFixture } from './Hardware.js';
 import { conformLatheAt } from './HullKit.js';
 
@@ -248,5 +249,50 @@ export function buildGreebles(ctx, station, b, rails, mods) {
     colliders.push(Colliders.box(V(cx, y0 + 0.7, 0), V(1.6, 0.9, 1.7), null, 'transporter'));
   }
 
+  // ---------- external payload carriers under the outboard truss (ELC-style): deck on four trunnion struts from
+  // the bottom longerons, payload boxes / tank / antenna / sensor hanging below, grapple fixture, harnesses
+  for (const [cx, seed] of [[-71, 0], [58, 1]]) {
+    const yDeck = -h - 0.55;
+    // trunnion struts: longeron clamp block, strut, deck fitting
+    for (const dx of [-1.7, 1.7]) for (const sz of [-1, 1]) {
+      const top = V(cx + dx, -h - 0.12, sz * (h - 0.05)), bot = V(cx + dx * 0.9, yDeck + 0.08, sz * 1.15);
+      b.add('metalBare', bevelBoxAt(V(cx + dx, -h, sz * h), 0.26, 0.42, 0.42, null, 0.04), false);
+      const d = bot.clone().sub(top);
+      b.add('truss', tubeAt(top.clone().lerp(bot, 0.5), d.clone().normalize(), 0.06, d.length(), 10, { uv: false }), false);
+      b.add('metalBare', bevelBoxAt(bot, 0.18, 0.14, 0.18, null, 0.03), false);
+    }
+    b.add('hullWhiteAged', bevelBoxAt(V(cx, yDeck, 0), 4.4, 0.16, 2.8, null, 0.04));
+    b.add('metalDark', bevelBoxAt(V(cx, yDeck - 0.1, 0), 4.2, 0.05, 2.6, null, 0.015), false);
+    // payloads (hanging below the deck)
+    const kit = seed ? [['mliGold', -1.2, 0.8, 1.4, 0.9, -0.55], ['mliSilver', 0.6, 1.0, 1.0, 1.1, 0.55], ['betaCloth', 1.5, 0.6, 0.8, 0.6, -0.6]]
+      : [['mliSilver', -1.3, 0.9, 1.2, 1.0, 0.5], ['mliGold', 0.3, 0.7, 1.4, 0.8, -0.5], ['hullWhite', 1.55, 0.5, 0.7, 0.7, 0.6]];
+    for (const [mn, x, hh, w, d, z] of kit) {
+      const c = V(cx + x, yDeck - 0.125 - hh / 2, z);
+      b.add(mn, bevelBoxAt(c, w, hh, d, null, 0.05));
+      b.add('metalDark', bevelBoxAt(c.clone().setY(yDeck - 0.15), w + 0.1, 0.05, d + 0.1, null, 0.012), false);   // payload interface plate
+    }
+    // tank in a cradle, small dish antenna on a mast, sensor head
+    const tc = V(cx - 0.2, yDeck - 0.65, seed ? 0.75 : -0.85);
+    b.add('mliSilver', tubeAt(tc, X_AXIS, 0.32, 1.1, 20), false);
+    for (const e of [-1, 1]) b.add('mliSilver', domeAt(tc.clone().add(V(e * 0.55, 0, 0)), V(e, 0, 0), 0.32, 0.2, 20), false);
+    for (const dx of [-0.35, 0.35]) b.add('metalDark', bevelBoxAt(V(tc.x + dx, (yDeck - 0.15 + tc.y + 0.3) / 2, tc.z), 0.08, yDeck - 0.15 - (tc.y + 0.3) + 0.04, 0.5, null, 0.015), false);
+    const am = V(cx + 1.6, yDeck - 0.15, seed ? -1.0 : 0.95);
+    b.add('metalBare', tubeAt(am.clone().add(V(0, -0.35, 0)), Y_AXIS, 0.04, 0.7, 10, { uv: false }), false);
+    b.add('antennaWhite', latheAt(am.clone().add(V(0, -0.72, 0)), V(0, -1, 0), [[0.03, 0.0], [0.34, 0.1], [0.36, 0.12], [0.33, 0.11], [0.0, 0.02]], 32), false);
+    b.add('metalDark', tubeAt(am.clone().add(V(0, -0.95, 0)), Y_AXIS, 0.025, 0.24, 8, { uv: false }), false);
+    if (D) {
+      grappleFixture(b, D, new THREE.Matrix4().makeRotationX(Math.PI).setPosition(cx - 1.75, yDeck - 0.125, seed ? -0.9 : 0.9), { size: 0.5 });
+      for (const sz of [-1, 1]) boltRow(D, new THREE.Matrix4().setPosition(cx, yDeck + 0.08, 0), -2.05, sz * 1.25, 2.05, sz * 1.25, 12, 0, 0.012, 0.009);
+      D.rod('mid', 'paint', COL.black, V(cx - 1.9, yDeck - 0.13, -1.2), V(cx + 1.9, yDeck - 0.13, -1.2), 0.02, 'cyl8');
+      for (let i = 0; i < 6; i++) pClampAt(D, cx - 1.6 + i * 0.64, yDeck - 0.13, -1.2);
+    }
+    colliders.push(Colliders.box(V(cx, yDeck - 0.6, 0), V(2.3, 0.8, 1.5), null, 'payloadCarrier'));
+  }
+
   return { colliders };
+}
+
+/** P-clamp around a line along X at (x, y, z) hanging under a deck. */
+function pClampAt(D, x, y, z) {
+  D.part('mid', 'metal', COL.bare, 'bbox', new THREE.Matrix4(), x, y + 0.025, z, 0.05, 0.03, 0.08);
 }
