@@ -162,8 +162,9 @@ export class Radiators {
       b.add('truss', tubeAt(V(0, mastEnd / 2, 0), Y_AXIS, 0.35, 3.0, 12));
       b.add('hazard', tubeAt(V(0, sy * 0.4, 0), Y_AXIS, 0.37, 0.5, 12, { uv: false }), false);
       const yc = mastEnd + sy * L / 2;
-      const panel = new THREE.PlaneGeometry(W, L).translate(0, yc, 0);
-      scaleUV(panel, W / 7, L / 7.5);
+      // panel with real thickness (4 cm honeycomb sandwich) between the edge tubes
+      const panel = new THREE.BoxGeometry(W, L, 0.04).translate(0, yc, 0);
+      { const uv = panel.attributes.uv; for (let i = 0; i < uv.count; i++) { const f = Math.floor(i / 4); if (f >= 4) uv.setXY(i, uv.getX(i) * W / 7, uv.getY(i) * L / 7.5); else uv.setXY(i, uv.getX(i) * 0.01, uv.getY(i) * 0.01); } }
       b.add('radiator', panel);
       for (const ex of [-1, 1]) b.add('metalDark', tubeAt(V(ex * W / 2, yc, 0), Y_AXIS, 0.07, L, 6, { uv: false }), false);
       b.add('metalDark', tubeAt(V(0, mastEnd + sy * L, 0), X_AXIS, 0.07, W, 6, { uv: false }), false);

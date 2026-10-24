@@ -321,8 +321,11 @@ export function rod(k, b, surf, p0, p1, r, { seg = 8, shadow = false, rEnd = nul
 }
 
 /** Box with optional bevel (RoundedBox-like via chamfered extrusion) centred at c with quaternion q. */
-export function block(k, b, surf, c, w, h, d, q = null, { shadow = false, bev = 0, tint = null, uv = true } = {}) {
+export function block(k, b, surf, c, w, h, d, q = null, { shadow = false, bev = null, tint = null, uv = true } = {}) {
   let g;
+  // finished edges by default (L0 / L1): a small chamfer unless the caller asks for a square box (bev: 0)
+  if (bev === null) bev = k.far ? 0 : Math.min(0.02, Math.min(w, h, d) * 0.12);
+  if (bev > 0 && Math.min(w, h, d) < 2.6 * bev) bev = Math.min(w, h, d) / 2.6;
   if (bev > 0 && !k.far) {
     const sh = new THREE.Shape();
     const x = w / 2 - bev, y = h / 2 - bev;

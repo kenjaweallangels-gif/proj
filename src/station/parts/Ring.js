@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { LAYOUT } from './Layout.js';
-import { Builder, Instancer, unitCylinder, boxAt, bevelBoxAt, tubeAt, torusAt, domeAt, latheAt, scaleUV, Colliders, X_AXIS, Y_AXIS, TEX_M } from './Builder.js';
+import { Builder, Instancer, unitCylinder, boxAt, bevelBoxAt, bevelBox, tubeAt, torusAt, domeAt, latheAt, scaleUV, Colliders, X_AXIS, Y_AXIS, TEX_M } from './Builder.js';
 import { COL, boltCircle, radialBolts, vent } from './Detail.js';
 import { grappleFixture } from './Hardware.js';
 
@@ -41,6 +41,46 @@ export class HabitatRing {
       return out.makeBasis(tan, n, tan.clone().cross(n)).setPosition(p);
     };
     this.dynamic = [];
+    /**
+     * Closed slab on the rim tube: phi (around the ring) x psi (around the tube, 0 = outward, pi = toward the axis)
+     * between tube radii rho0 and rho1 — panels that hug the torus.
+     */
+    const torusSlab = (phiA, phiB, psiA, psiB, rho0, rho1, nPhi = 3, nPsi = 6) => {
+      const pos = [], nor = [], uv = [], idx = [];
+      const P = (ph, ps, rho) => { const rad = V(0, Math.cos(ph), Math.sin(ph)); const n = rad.clone().multiplyScalar(Math.cos(ps)).addScaledVector(X_AXIS, Math.sin(ps)); return rad.multiplyScalar(R).addScaledVector(n, rho); };
+      const Nn = (ph, ps) => V(0, Math.cos(ph), Math.sin(ph)).multiplyScalar(Math.cos(ps)).addScaledVector(X_AXIS, Math.sin(ps));
+      const grid = (rho, sgn) => {
+        const base = pos.length / 3;
+        for (let i = 0; i <= nPhi; i++) for (let j = 0; j <= nPsi; j++) {
+          const ph = phiA + (phiB - phiA) * i / nPhi, ps = psiA + (psiB - psiA) * j / nPsi;
+          const p = P(ph, ps, rho), n = Nn(ph, ps).multiplyScalar(sgn);
+          pos.push(p.x, p.y, p.z); nor.push(n.x, n.y, n.z); uv.push((ph - phiA) * (R + rho) / TEX_M, (ps - psiA) * rho / TEX_M);
+        }
+        for (let i = 0; i < nPhi; i++) for (let j = 0; j < nPsi; j++) { const a0 = base + i * (nPsi + 1) + j, a1 = a0 + nPsi + 1; idx.push(a0, a1, a0 + 1, a1, a1 + 1, a0 + 1); }
+      };
+      grid(rho1, 1); grid(rho0, -1);
+      const wall = (pts, n) => { const base = pos.length / 3; for (const p of pts) { pos.push(p.x, p.y, p.z); nor.push(n.x, n.y, n.z); uv.push(0, 0); } idx.push(base, base + 1, base + 2, base, base + 2, base + 3); };
+      for (const [ph, sg] of [[phiA, -1], [phiB, 1]]) for (let j = 0; j < nPsi; j++) {
+        const ps0 = psiA + (psiB - psiA) * j / nPsi, ps1 = psiA + (psiB - psiA) * (j + 1) / nPsi;
+        wall([P(ph, ps0, rho0), P(ph, ps1, rho0), P(ph, ps1, rho1), P(ph, ps0, rho1)], V(0, -Math.sin(ph), Math.cos(ph)).multiplyScalar(sg));
+      }
+      for (const [ps, sg] of [[psiA, -1], [psiB, 1]]) for (let i = 0; i < nPhi; i++) {
+        const ph0 = phiA + (phiB - phiA) * i / nPhi, ph1 = phiA + (phiB - phiA) * (i + 1) / nPhi;
+        const t = V(0, Math.cos((ph0 + ph1) / 2), Math.sin((ph0 + ph1) / 2)).multiplyScalar(-Math.sin(ps)).addScaledVector(X_AXIS, Math.cos(ps)).multiplyScalar(sg);
+        wall([P(ph0, ps, rho0), P(ph1, ps, rho0), P(ph1, ps, rho1), P(ph0, ps, rho1)], t);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx);
+      // make every triangle's winding agree with its normal
+      const pa = g.attributes.position, na = g.attributes.normal, I = g.index, e1 = V(0, 0, 0), e2 = V(0, 0, 0), vA = V(0, 0, 0), fn = V(0, 0, 0), vn = V(0, 0, 0);
+      for (let k = 0; k < I.count; k += 3) {
+        vA.fromBufferAttribute(pa, I.getX(k)); e1.fromBufferAttribute(pa, I.getX(k + 1)).sub(vA); e2.fromBufferAttribute(pa, I.getX(k + 2)).sub(vA);
+        fn.crossVectors(e1, e2); vn.fromBufferAttribute(na, I.getX(k));
+        if (fn.dot(vn) < 0) { const t = I.getX(k + 1); I.setX(k + 1, I.getX(k + 2)); I.setX(k + 2, t); }
+      }
+      g.computeBoundingSphere();
+      return g;
+    };
     const spokes = 6;
     const radial = (phi) => V(0, Math.cos(phi), Math.sin(phi));
     const tangent = (phi) => V(0, -Math.sin(phi), Math.cos(phi));
@@ -73,8 +113,10 @@ export class HabitatRing {
       const q = _q.setFromAxisAngle(X_AXIS, phi);         // local Y -> radial(phi)
       const pod = nearPod(phi);
       if (!pod) {
-        b.add('radiator', boxAt(radial(phi).multiplyScalar(R - r - 0.08), 2.4, 0.08, (R - r) * segLen - 0.12, q));
-        b.add('hullWhiteAged', bevelBoxAt(radial(phi).multiplyScalar(R + r + 0.03), 2.8, 0.06, (R + r) * segLen - 0.18, q));
+        // curved panels that follow the tube (flat boxes floated up to 0.28 m off the torus at their edges)
+        const dphiI = (0.06 / (R - r)), dphiO = (0.09 / (R + r));
+        b.add('radiator', torusSlab(phi - segLen / 2 + dphiI, phi + segLen / 2 - dphiI, Math.PI - 1.2 / r, Math.PI + 1.2 / r, r - 0.02, r + 0.07));
+        b.add('hullWhiteAged', torusSlab(phi - segLen / 2 + dphiO, phi + segLen / 2 - dphiO, -1.4 / r, 1.4 / r, r - 0.02, r + 0.05));
       }
       if (pod) continue;
       const chord = R * segLen - 0.16;
@@ -91,11 +133,12 @@ export class HabitatRing {
       }
       // skylights on the inner face flanking the radiator band (every third segment)
       if (k % 3 === 1) for (const sx of [-1, 1]) {
-        const c = radial(phi).multiplyScalar(R - r + 0.25).setX(sx * 1.95);
-        for (const sa of [-1, 1]) b.add('metalDark', bevelBoxAt(c.clone().setX(c.x + sa * 0.3), 0.1, 0.1, 1.1, q, 0.02), false);
-        for (const sz of [-1, 1]) b.add('metalDark', bevelBoxAt(c.clone().addScaledVector(tangent(phi), sz * 0.5), 0.5, 0.1, 0.1, q, 0.02), false);
-        b.add('windowGlow', boxAt(c.clone().addScaledVector(radial(phi), 0.03), 0.52, 0.04, 0.92, q), false);
-        b.add('glass', boxAt(c.clone().addScaledVector(radial(phi), -0.02), 0.52, 0.012, 0.92, q), false);
+        // frame on the tube surface (local X along the ring, Y out of the tube, Z across), pane recessed 6 cm
+        const F = tubeFrame(phi, Math.PI - Math.asin(sx * 1.95 / r), r, new THREE.Matrix4());
+        for (const sa of [-1, 1]) b.add('metalDark', bevelBox(1.1, 0.1, 0.1, 0.02).translate(0, 0.04, sa * 0.3).applyMatrix4(F), false);
+        for (const sz of [-1, 1]) b.add('metalDark', bevelBox(0.1, 0.1, 0.5, 0.02).translate(sz * 0.5, 0.04, 0).applyMatrix4(F), false);
+        b.add('windowGlow', new THREE.BoxGeometry(0.92, 0.04, 0.52).translate(0, -0.03, 0).applyMatrix4(F), false);
+        b.add('glass', new THREE.BoxGeometry(0.92, 0.012, 0.52).translate(0, 0.03, 0).applyMatrix4(F), false);
       }
     }
 
