@@ -302,10 +302,9 @@ export class Weather {
 
   // ------------------------------------------------------------------ per frame
   /**
-   * @param simT sim seconds since the epoch, date = civil Date of simT, dtSim / dtReal = frame steps
+   * @param simT sim seconds since the epoch, utcH = UTC hour of simT (0..24), dtSim / dtReal = frame steps
    */
-  update(simT, date, subLat, subLon, dtSim, dtReal, flashScale = 1) {
-    const utcH = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
+  update(simT, utcH, subLat, subLon, dtSim, dtReal, flashScale = 1) {
     this.updateCyclones(simT);
     this.updateCells(simT, utcH, subLat, subLon, dtSim);
     this.updateLightning(dtReal, simT);

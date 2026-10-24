@@ -29,7 +29,7 @@ const AURORA_SHELL_KM = 335;
 /** 'lite' only: rigid cloud drift relative to the surface (rad/s); the GPU presets advect the clouds per latitude. */
 const CLOUD_DRIFT_RATE = 3.0e-5;
 /** Full-Moon radiance on a white Lambert surface, in the scene's HDR units (a night-adapted camera, not the physical 1/400000 of sunlight). */
-const MOON_LIGHT_MAX = 0.035;
+const MOON_LIGHT_MAX = 0.05;
 /** GPU presets: slow eastward drift of the cloud map (rad/s, ~6 m/s at the equator); the weather evolves in the shaders. */
 const CLOUD_MAP_DRIFT = 1.0e-6;
 /** Geomagnetic north pole (IGRF-13, 2025). */
@@ -90,7 +90,7 @@ export class Earth {
     this.uLimbBoost = { value: 1.4 };        // limb exposure; rises in eclipse (camera-like adaptation, see update())
     this.uMoonDir = { value: new THREE.Vector3().copy(o.moonDir) };
     this.uMoonLight = { value: 0 };          // moonlight radiance on a white surface (night-adapted HDR scale), from the lunar phase
-    this.uNightIntensity = { value: 2.0 };
+    this.uNightIntensity = { value: 1.4 };
     // weather
     this.weather = lite ? null : new Weather({ maxCyclones: f.cyc, maxCells: f.cells, maxFlashes: f.flashes });
     this.tNoise = { value: null };
@@ -121,7 +121,7 @@ export class Earth {
         uSunDir: this.uSunDir, uSunDirObj: this.uSunDirObj, uSunColor: this.uSunColor, uEarthCenter: this.uEarthCenter,
         uSunIntensity: this.uSunIntensity, uCloudAngle: this.uCloudAngle, uMultiScatter: this.uMultiScatter,
         uMoonDir: this.uMoonDir, uMoonLight: this.uMoonLight, uNightIntensity: this.uNightIntensity,
-        uGlint: { value: lite ? 2.0 : 1.3 }, uNormalStrength: { value: 0.5 },
+        uGlint: { value: lite ? 2.0 : 1.6 }, uNormalStrength: { value: 0.5 },
         ...(lite ? { tClouds: this.tClouds } : weatherUniforms),
         ...(this.detail ? this.detail.uniforms : {}),
       },
@@ -187,7 +187,7 @@ export class Earth {
       this.aurora.renderOrder = 15;
       this.aurora.visible = false;
       this.group.add(this.aurora);
-      this.auroraCull = new HorizonCull(this.aurora, aSeg[0], aSeg[1], 4, 4);
+      this.auroraCull = new HorizonCull(this.aurora, aSeg[0], aSeg[1]);
     }
 
     // --- Atmosphere shell (limb) ---
@@ -335,7 +335,8 @@ export class Earth {
       this.uFlow.value.set(drift - Math.floor(drift), 0, 0, simT % 1048576);
       const scale = ctx.time.scale || 1;
       const dtReal = dt / scale;
-      this.weather.update(simT, o.dateAt(simT), o.subLatDeg, o.subLonDeg, dt, dtReal);
+      const utcH = ((((o.epochMs + simT * 1000) / 3600000) % 24) + 24) % 24;
+      this.weather.update(simT, utcH, o.subLatDeg, o.subLonDeg, dt, dtReal);
       if (this.aurora) {
         this.aurora.quaternion.copy(o.earthQuat);
         this.uCamObj.value.copy(_camKm).sub(o.earthCenterFar).applyQuaternion(_qInv);
@@ -347,7 +348,7 @@ export class Earth {
         const dLat = o.subLatDeg - p.lat;
         if (Math.abs(dLat) + Math.abs(dLon) > 1e-6) { p.dLat = dLat; p.dLon = dLon * Math.cos(o.subLatDeg * Math.PI / 180); }
         p.lat = o.subLatDeg; p.lon = o.subLonDeg;
-        this.detail.update(dtReal, o.subLatDeg, o.subLonDeg, p.dLat, p.dLon / Math.max(0.2, Math.cos(o.subLatDeg * Math.PI / 180)));
+        this.detail.update(dtReal, o.subLatDeg, o.subLonDeg, p.dLat, p.dLon / Math.max(0.2, Math.cos(o.subLatDeg * Math.PI / 180)), scale);
       }
     }
     // horizon culling from the viewpoint (km; the near camera sits within metres of the station)

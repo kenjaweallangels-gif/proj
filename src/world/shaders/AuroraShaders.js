@@ -55,9 +55,13 @@ void main() {
   vec3 e2 = cross(ax, e1);
   float alpha0 = radians(18.0 + uAurora.w);
   // quick reject: the in-layer segment never comes near the oval
-  float cA = dot(normalize(ro + rd * tA), ax), cB = dot(normalize(ro + rd * tB), ax), cM = dot(mid, ax);
-  float angMin = acos(clamp(max(max(cA, cB), cM), -1.0, 1.0)), angMax = acos(clamp(min(min(cA, cB), cM), -1.0, 1.0));
-  if (angMin > alpha0 + radians(9.0) || angMax < alpha0 - radians(6.0)) discard;
+  float cMax = -1.0, cMin = 1.0;
+  for (int k = 0; k <= 6; k++) {
+    float ck = dot(normalize(ro + rd * mix(tA, tB, float(k) / 6.0)), ax);
+    cMax = max(cMax, ck); cMin = min(cMin, ck);
+  }
+  float angMin = acos(clamp(cMax, -1.0, 1.0)), angMax = acos(clamp(cMin, -1.0, 1.0));
+  if (angMin > alpha0 + radians(10.0) || angMax < alpha0 - radians(7.0)) discard;
 
   float time = uAurora.z;
   vec3 sum = vec3(0.0);

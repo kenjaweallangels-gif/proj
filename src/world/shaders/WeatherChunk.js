@@ -19,7 +19,7 @@ uniform vec4 uCell[MAX_CELLS * 2];   // [centre.xyz, anvil radius km], [maturity
 
 const float KM_TO_TEX_GROWTH = 1.0 / 5200.0;     // growth/decay noise: ~650 km cells
 const float KM_TO_TEX_DETAIL = 1.0 / 56.0;       // grain: ~7 km cells (then x2.17, x4.63)
-const float KM_TO_TEX_CU = 1.0 / 30.0;           // fair-weather cumulus: ~4 km cells
+const float KM_TO_TEX_CU = 1.0 / 44.0;           // fair-weather cumulus: ~5.5 km cells
 
 float nz(vec3 x) { return texture(tNoise, x).r; }
 float wz(vec3 x) { return texture(tNoise, x).g; }
@@ -99,7 +99,7 @@ float cyclones(vec3 p, out float storm, out float wall, out float wind) {
     float cdo = smoothstep(rc * (1.2 + 1.2 * (n1 - 0.5) + 0.6 * (n2 - 0.5)), rc * 0.6, r);
     d = max(d, cdo) * (0.86 + 0.28 * n3);
     // eye: clear, a few low clouds on its floor, steep wall
-    float eye = smoothstep(re * 0.75, re * 1.2, r + (n3 - 0.5) * re * 0.6);
+    float eye = smoothstep(re * 0.8, re * 1.3, r * (1.0 + 0.25 * (n2 - 0.5)));
     d = mix(d, 0.18 * n3, (1.0 - eye) * smoothstep(0.35, 0.7, I));
     d *= smoothstep(0.03, 0.3, I) * (0.8 + 0.2 * I);
     c = max(c, d);
@@ -127,7 +127,7 @@ float stormCells(vec3 p, out float core) {
     vec2 qa = vec2((q.x - B.z * ra * 0.5) * 0.6, q.y);           // anvil plume drifts downwind (east/west)
     float r = length(qa);
     vec2 dirA = qa / max(r, 1.0e-3);
-    float lobes = nz(vec3(dirA * 0.9, B.y));                       // lobed outline
+    float lobes = nz(vec3(dirA * 0.17, B.y)) * 0.7 + nz(vec3(dirA * 0.45, B.y + 0.3)) * 0.3;   // 5-8 lobes
     float fib = nz(vec3(q * (1.0 / 12.0), B.y + 0.5));             // fibrous / lumpy texture inside
     float re = ra * (0.75 + 0.5 * lobes);
     float anvil = smoothstep(re, re * 0.45, r) * (0.75 + 0.25 * fib);
@@ -178,9 +178,11 @@ float cloudCover(vec3 p, vec2 uv, vec2 dx, vec2 dy, float fpKm, out vec2 grad, o
   float cuP = cumulusPotential(p, uv, mean);
   if (cuP > 0.01) {
     float cuFade = 1.0 - smoothstep(0.8, 2.5, fpKm);
-    float w = wz(pKm * KM_TO_TEX_CU) * 0.8 + 0.2 * nz(pKm * KM_TO_TEX_CU * 0.29);
-    float cu = smoothstep(0.7 - 0.1 * cuP, 0.78 - 0.1 * cuP, w) * min(1.0, cuP * 1.5);
-    c = max(c, mix(0.06 * cuP, cu * 0.9, cuFade));
+    // puffs of a fixed size (a few km) in clusters whose extent grows with the potential
+    float cluster = smoothstep(0.42, 0.62, nz(pKm * (1.0 / 360.0)) + 0.55 * (cuP - 0.6));
+    float w = wz(pKm * KM_TO_TEX_CU) * 0.85 + 0.15 * nz(pKm * KM_TO_TEX_CU * 0.29);
+    float cu = smoothstep(0.52, 0.72, w) * cluster;
+    c = max(c, mix(0.2 * cluster * cuP, cu * 0.85, cuFade));
   }
 #endif
   float wind;

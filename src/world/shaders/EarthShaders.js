@@ -167,7 +167,7 @@ void main() {
   // 500 m imagery around the sub-station point: add its high-pass (the part the 5 km texture lacks)
   vec2 wuv = vec2(fract(vUv.x - uWin.x), vUv.y - uWin.y) * uWin.zw;
   vec2 wdx = dFdx(wuv), wdy = dFdy(wuv);
-  vec2 wpx = max(abs(wdx), abs(wdy)) * vec2(4096.0, 2048.0);
+  vec2 wpx = max(abs(wdx), abs(wdy)) * vec2(textureSize(tWin, 0));
   float wlod = log2(max(max(wpx.x, wpx.y), 1.0e-4));
   float wedge = smoothstep(0.0, 0.07, min(min(wuv.x, 1.0 - wuv.x), min(wuv.y, 1.0 - wuv.y)));
   float wgt = uWinFade * wedge * (1.0 - smoothstep(0.5, 1.4, wlod));
@@ -217,9 +217,12 @@ void main() {
   // surfactant slicks and wind gusts streak the glint pattern
   float wind = mix(surfaceWind(p), 2.5, inland);
   float slick = nz(pKm * (1.0 / 70.0)) * 0.6 + nz(pKm * (1.0 / 260.0)) * 0.4;
-  float s2 = (0.003 + 0.00512 * wind) * exp((slick - 0.5) * 1.6);
+  float s2 = (0.003 + 0.00512 * wind) * exp((slick - 0.5) * 2.2);
   float ndv = max(dot(N, V), 1.0e-3);
-  vec3 glint = S * Tsun * waterGlint(N, V, L, s2) * wOpen * shadow * uGlint;
+  // rivers and small lakes cover a fraction of a 5 km texel; the eye resolves them as thin lines, so their glint
+  // is spread less thinly than the area average
+  float wGlint = wOpen + inland * (sqrt(wOpen) - wOpen) * 0.4;
+  vec3 glint = S * Tsun * waterGlint(N, V, L, s2) * wGlint * shadow * uGlint;
   float Fv = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
   vec3 skyRefl = S * amb * 0.25 * Fv * wOpen;
 

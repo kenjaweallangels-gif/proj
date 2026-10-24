@@ -3,19 +3,20 @@ import * as THREE from 'three';
 /**
  * 'ultra': full-resolution (21600 x 10800, ~1.9 km/px at the equator, 500 m/px source) day imagery streamed
  * around the sub-station point. The Blue Marble image is shipped as 18-degree tiles (tools/prepare_earth_textures.py);
- * a 4096 x 2048 window (68 x 34 degrees, texel-aligned with the tiles) is composited from them into one of two
+ * a 2048 x 2048 window (34 x 34 degrees, texel-aligned with the tiles) is composited from them into one of two
  * mipmapped sRGB render targets and swapped in when complete, so the ground shader always samples a finished
  * window. The ground shader adds only the window's high-pass (what the 8K texture lacks), with the seasonal
- * colour coming from the 8K bake, and fades it out with distance, at the window edges and while swapping.
+ * colour coming from the 8K bake, and fades it out with distance and at the window edges. At high time scales
+ * (the ground races by) the layer fades out and the window stops following.
  *
  *   const sd = new SurfaceDetail(renderer, assetUrl, anisotropy);  material.uniforms: sd.uniforms
- *   sd.update(dtReal, subLatDeg, subLonDeg, trackDirLat, trackDirLon)
+ *   sd.update(dtReal, subLatDeg, subLonDeg, trackDirLat, trackDirLon, timeScale)
  */
 const FULL_W = 21600, FULL_H = 10800, TILE = 1080, COLS = 20, ROW_MIN = 1, ROW_MAX = 8;
-const WIN_W = 4096, WIN_H = 2048;
+const WIN_W = 2048, WIN_H = 2048;      // 34 x 34 degrees: the 2 km texels only matter within ~10 degrees of nadir
 const PX_PER_DEG = FULL_W / 360;
-const LEAD_DEG = 7;                    // window centre leads the sub-station point along the ground track
-const RECENTRE_X = 950, RECENTRE_Y = 420;   // re-centre when the wanted centre drifts this far (window texels)
+const LEAD_DEG = 6;                    // window centre leads the sub-station point along the ground track
+const RECENTRE_X = 560, RECENTRE_Y = 560;   // re-centre when the wanted centre drifts this far (window texels)
 
 const SHIFTS = [0, FULL_W, -FULL_W];
 
@@ -109,14 +110,15 @@ export class SurfaceDetail {
 
   /**
    * @param dtReal real seconds since the last frame
-   * @param lat/lon sub-station point (deg); vLat/vLon its ground-track rate (deg per real second, for the lead)
+   * @param lat/lon sub-station point (deg); dirLat/dirLon ground-track direction (any scale, for the lead)
    */
-  update(dtReal, lat, lon, dirLat, dirLon) {
+  update(dtReal, lat, lon, dirLat, dirLon, timeScale = 1) {
     const u = this.uniforms;
+    const fast = timeScale > 10;
     // the wanted window: centred a little ahead of the station along the ground track
     const n = Math.hypot(dirLat, dirLon) || 1;
     const want = this.originFor(lat + (LEAD_DEG * dirLat) / n, lon + (LEAD_DEG * dirLon) / n);
-    if (!this.job) {
+    if (!this.job && !fast) {
       let dx = Math.abs(want.x0 - this.win.x0); dx = Math.min(dx, FULL_W - dx);
       if (this.front < 0 || dx > RECENTRE_X || Math.abs(want.y0 - this.win.y0) > RECENTRE_Y) this.startJob(want.x0, want.y0);
     }
@@ -152,7 +154,8 @@ export class SurfaceDetail {
         this.job = null;           // same imagery, texel-aligned: the swap is seamless where both windows overlap
       }
     }
-    if (this.front >= 0) u.uWinFade.value = Math.min(1, u.uWinFade.value + dtReal / 1.5);
+    if (this.front >= 0) u.uWinFade.value = Math.min(fast ? 0 : 1, Math.max(0, u.uWinFade.value + (fast ? -dtReal : dtReal) / 1.5));
+    else u.uWinFade.value = 0;
   }
 
   dispose() {
