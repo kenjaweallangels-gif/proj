@@ -198,6 +198,17 @@ export class InteriorMaterials {
   }
 
   update(sunDir) { this.sunW.copy(sunDir); }
+
+  /**
+   * 'lite': inside a compartment other than the cupola the far scene (Earth, sky) is not drawn, so the window
+   * glass turns into an opaque bright haze instead of showing the black clear colour.
+   */
+  setLiteHaze(on) {
+    const g = this._liteSet?.glass;
+    if (!g || g.userData.haze === on) return;
+    g.userData.haze = on;
+    if (on) { g.color.setRGB(4.6, 5.6, 6.4); g.opacity = 0.92; } else { g.color.set(0x9db6c8); g.opacity = 0.12; }
+  }
 }
 
 // ------------------------------------------------------------------------------------------ carving

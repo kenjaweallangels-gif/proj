@@ -377,7 +377,10 @@ export class StationInterior {
     const showExterior = !zone || (windows && !this.lite);
     const mask = showExterior ? this._baseMask : ((1 << INTERIOR_LAYER) | (1 << LAYERS.FIRST_PERSON));
     if (cam.layers.mask !== mask) cam.layers.mask = mask;
-    const farMask = showExterior || (zone && windows) ? this._farMask : 0;
+    // 'lite': Earth / sky through the windows only in the cupola (the far scene costs ~30 % of a lite frame)
+    const farOn = showExterior || (zone && windows && (!this.lite || zone.id === 'cupola'));
+    if (this.lite) this.mats.setLiteHaze(!!zone && !farOn);
+    const farMask = farOn ? this._farMask : 0;
     if (ctx.farCamera.layers.mask !== farMask) ctx.farCamera.layers.mask = farMask;
     if (ctx.sunLight) ctx.sunLight.shadow.autoUpdate = showExterior;
     const glowOn = !zone;
