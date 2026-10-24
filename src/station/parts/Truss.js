@@ -99,7 +99,7 @@ export function buildTruss(ctx, station, b, rails) {
   const ribs = new Instancer(new THREE.BoxGeometry(1, 1, 1), m.get('metalDark'), { name: 'trayRibs' });
   for (let i = 0; i <= nBays; i++) ribs.add(mat(-H + i * bay, h + 0.2, 0, null, new THREE.Vector3(0.12, 0.3, 2.4)));
   ribs.build(station);
-  for (const [y, z, r] of [[h + 0.22, 0, 0.07], [h + 0.22, 0.2, 0.05], [h + 0.22, -0.2, 0.05], [0.3, h + 0.2, 0.06], [-0.3, h + 0.2, 0.05], [0.3, -h - 0.2, 0.06], [-0.3, -h - 0.2, 0.05]]) {
+  for (const [y, z, r] of [[h + 0.22, 0, 0.07], [h + 0.2, 0.118, 0.05], [h + 0.2, -0.118, 0.05], [0.3, h + 0.2, 0.06], [-0.3, h + 0.2, 0.05], [0.3, -h - 0.2, 0.06], [-0.3, -h - 0.2, 0.05]]) {
     b.add('cable', tubeAt(V(0, y, z), X_AXIS, r, 2 * H - 2, 6, { uv: false }), false);
   }
   // cable clamp bars: the top ones span between the two trays, the side ones run from the upper to the lower
