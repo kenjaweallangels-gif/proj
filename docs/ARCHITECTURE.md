@@ -183,6 +183,19 @@ States: 'docked' | 'undock' | 'depart' | 'arrive' (inbound) | 'approach' | 'dock
 noseOffset = 0: a docked ship's position equals `port.position`. `ships.getLog()` returns the last 20 Russian event lines;
 `events.emit('ship', {type, ship, port})` fires on undock/dock/depart/arrive. Observer view `ships` frames the docked traffic.
 
+Types (fictional names, real analogues): `soyuz` «Сокол» (Soyuz MS), `progress` «Обоз» (Progress MS), `dragon` «Вега»
+(Crew Dragon), `starliner` «Пегас» (Starliner) — small ports; `cygnus` «Лебедь» (Cygnus), `htvx` «Аист» (HTV-X),
+`dreamchaser` «Стриж» (Dream Chaser + cargo module) — large ports (berthed vehicles dock with a passive CBM-class ring);
+`drone` «Шмель». Each type is authored once (`author(kit)` in `src/ships/types/*`) and built as a three-level template
+(`src/ships/Kit.js`): L0 full detail (relief-quilted blankets, bolts, handrails, thruster bells, latches) within
+~25 m + 5 × bounding radius, L1 to 500 m, L2 (one flat material) beyond; 'lite' uses L1 only close up, L2 otherwise.
+Ships clone the template (shared geometry); hidden levels are detached from the scene graph after start-up.
+Part animation (`types/Common.js`) follows the traffic state: wings / fans / folding wings deploy at the start of an
+arrival, Kurs antennas deploy and track, probe extension / contact / retraction, IDSS soft-capture ring and hooks,
+nose cone / hatch cover open at the hold point and close after the push-off, strobes / docking lights / LEDs.
+Debug: `?shipshow=clean` (row of every type 120 m above the station, views `ship-<type>[-dock|-aft|-top|-side]`),
+`&shipanim=1` (cycles the mechanisms), `?shipshow=track&shipff=<s>` (views `track-<type>`, traffic fast-forwarded).
+
 ## 'lite' preset (CPU rasterisers)
 
 Picked automatically when the WebGL renderer string names a software rasteriser (`App.isSoftwareRenderer`).

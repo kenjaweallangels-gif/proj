@@ -217,6 +217,8 @@ export class Ships {
     _cam.setFromMatrixPosition(ctx.camera.matrixWorld);
     for (let i = 0; i < this.ships.length; i++) this._animate(this.ships[i], dt, t);
     for (let i = 0; i < this.showcase.length; i++) this._animate(this.showcase[i], dt, t);
+    // debug: ?shipsoff=1 hides every ship (to measure their share of draw calls / triangles)
+    if (this._off ?? (this._off = ctx.params?.get?.('shipsoff') === '1')) for (const s of this.ships) s.group.visible = false;
   }
 
   _animate(ship, dt, t) {
