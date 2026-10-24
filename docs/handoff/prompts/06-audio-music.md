@@ -1,0 +1,14 @@
+# 06 — Sound design and soundtrack
+
+Goal: physically motivated sound for the whole project and an original soundtrack in the spirit of X3/X4 (Egosoft): cosmic majesty and melancholy (do NOT copy any melody, progression signature or recording; style only).
+Start from wip/audio (merged in package 00).
+Do: buses (master/music/sfx/ambience/radio/UI) with limiter; acoustics: no sound through vacuum (EVA hears breath, fans, radio and structure-borne contact only), airlock depress fades air sound with pressure, per-zone convolution reverb, hatches occlude; inventory: IVA movement (cloth, grabs on metal, velcro, pushes, bumps), footsteps per surface in the ring, ladder rungs, hatches/latches, airlock pump/valves/hiss, suit donning (zips, bearing clicks, helmet latch, pressurisation), EVA breath/fans/SAFER valve clicks/tether reel, station life (ECLSS fans, pumps, scrubber cycles, galley fridge, exercise machines, alarms, PA), docking heard inside (RCS thuds via structure, hook motors, latches), telescope motors, UI, radio with quindar tones; consume player.body events and ctx.events; music: generative WebAudio engine and/or offline-rendered OGG stems (2-5 min, loopable) for moods: station calm, EVA awe, night-side melancholy, sunrise swell, docking tension, telescope/deep space, flight drive, lunar orbit — adaptive crossfades, ducking under radio; menu sliders (master/music/sfx/radio) and music on/off.
+Acceptance: offline renders analysed (no clipping, no DC, click-free loops, music ~-18 LUFS); listening checklist in docs/agent-tasks/audio-tuning.md completed by the user; audio CPU < 5 % of a core.
+
+## Common instructions
+
+Read AGENTS.md, docs/ARCHITECTURE.md, docs/handoff/README.md, STATUS.md, BUDGETS.md, DIAGRAMS.md and QA-CHECKLIST.md first.
+Work on branch `feat/audio` (create it from the current main line; if a WIP branch is named below, start from it and merge the main line in).
+Target: Ubuntu, NVIDIA RTX 3060 6 GB, 1920x1080 at 60 fps on the ultra preset; run the tools with GPU=1 so you measure the real GPU.
+Scope: you may edit only src/audio/**, public/audio/**, menu sound settings in src/ui/Menu.js. Anything else: minimal hooks, listed in your final summary.
+Definition of done: everything in "Acceptance" below, `npx vite build` passes, `npm run smoke` passes (extend it with checks for your feature), screenshots of the affected views at ultra 1920x1080 day (t=600) and night (t=2000) saved under shots/audio/ and reviewed critically against real photos/references, performance within BUDGETS.md (fps.mjs with governor=0, cpuframe.mjs before/after), docs updated (ARCHITECTURE.md, README.md in Russian, CREDITS.md for assets, docs/handoff/STATUS.md). Commit in small steps with clear English messages. Finish with a short report: what changed, measurements, screenshots, open issues.

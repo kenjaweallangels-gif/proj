@@ -1,0 +1,14 @@
+# 01 — Earth: reality-grade surface by day and night
+
+Goal: the Earth seen from 410 km must match ISS photography. The user's complaints: too little detail, mountains/relief not readable, rivers and seas not visible, the surface hidden by uniform clouds, city lights look like blobs, the cloud field looks artificial.
+Start from the merged main line (after package 00) — wip/earth already added 500 m day/night and 1 km relief tile windows around the observer's sub-point, terrain shadows and softer cloud elements; read docs/agent-tasks/earth-detail-gpu-verification.md.
+Do: verify every item on the GPU at nadir, oblique and limb views, day, terminator and night; relief must read (Himalaya, Andes, Alps, Rockies) with horizon-based self-shadowing near the terminator and seasonal snow; crisp coastlines, shallow shelves (turquoise), sediment plumes, rivers/lakes with glint; clouds: realistic coverage (~65 % globally, many clear regions), thin cirrus you can see through, cumulus fields with natural spacing, cyclones with eye/eyewall/rainbands (keep), cloud shadows; night: point-like settlements and road chains between cities (Black Marble 500 m tiles near nadir or Natural Earth roads/populated places), sodium vs LED colours, moonlit terrain, lightning in storms, aurora (keep). Keep lite as it is.
+Acceptance: side-by-side comparison images with real ISS photos of the same regions (store references' URLs, not the photos) in shots/earth/; Earth GPU cost <= 4 ms and VRAM <= 1.2 GB on ultra; no visible tile seams or popping while the station moves at x1 and x60.
+
+## Common instructions
+
+Read AGENTS.md, docs/ARCHITECTURE.md, docs/handoff/README.md, STATUS.md, BUDGETS.md, DIAGRAMS.md and QA-CHECKLIST.md first.
+Work on branch `feat/earth` (create it from the current main line; if a WIP branch is named below, start from it and merge the main line in).
+Target: Ubuntu, NVIDIA RTX 3060 6 GB, 1920x1080 at 60 fps on the ultra preset; run the tools with GPU=1 so you measure the real GPU.
+Scope: you may edit only src/world/Earth*.js, Weather.js, SurfaceDetail.js, src/world/shaders/*, public/textures/earth/**, tools/*earth*. Anything else: minimal hooks, listed in your final summary.
+Definition of done: everything in "Acceptance" below, `npx vite build` passes, `npm run smoke` passes (extend it with checks for your feature), screenshots of the affected views at ultra 1920x1080 day (t=600) and night (t=2000) saved under shots/earth/ and reviewed critically against real photos/references, performance within BUDGETS.md (fps.mjs with governor=0, cpuframe.mjs before/after), docs updated (ARCHITECTURE.md, README.md in Russian, CREDITS.md for assets, docs/handoff/STATUS.md). Commit in small steps with clear English messages. Finish with a short report: what changed, measurements, screenshots, open issues.
