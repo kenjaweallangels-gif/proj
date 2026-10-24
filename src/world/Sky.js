@@ -27,7 +27,7 @@ import { Ephemeris, ttFromUtcDays } from '../core/Ephemeris.js';
 /** Gain of the dark-adapted eye relative to the physical (daylight-camera) scale of the far scene. */
 export const DARK_ADAPTED = 2.0e5;
 /** Perceptual boost of extended faint light (spatial summation of the eye) for the Milky Way / zodiacal light. */
-const MW_BOOST = 2.5;
+const MW_BOOST = 3.5;
 /** Milky Way texel value -> physical HDR radiance (0.0015 = 23.7 mag / arcsec^2). */
 const MW_PHYS = 8.7e-7;
 /** Zodiacal light S10 unit -> physical HDR radiance. */
