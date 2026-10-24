@@ -249,7 +249,7 @@ try {
   const cab = await ev(() => {
     const a = window.__app, p = a.player, iv = p.iva, h = 1 / 60, inp = a.input;
     p.setView('interior-ring');
-    iv.yaw = Math.PI / 2; iv.pitch = 0;     // face +x (the partition)
+    iv.placeRing(0, 42 - 1.68, 0.19, Math.PI / 2, 0);   // sector 1 corridor beside closed cabin 1-01, facing +x (its partition)
     for (let t = 0; t < 0.5; t += h) { a.time.sim += h; a.station.update(h, a.ctx); a.player.update(h, a.ctx); }
     inp.keys.KeyW = true; inp.keys.ShiftLeft = true;
     let xmax = -9;

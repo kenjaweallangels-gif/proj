@@ -13,6 +13,7 @@ src/core/Materials.js      shared PBR material library (hull, MLI foil, truss, s
 src/core/Textures.js       procedural canvas textures (panel lines, MLI wrinkles, decals, text…)
 src/core/Particles.js      GPU sprite particle pool (RCS puffs, vents, debris glints)
 src/core/Input.js          keyboard/mouse/pointer-lock/gamepad state
+src/core/CollisionWorld.js exact collisions against the render geometry (BVH, three-mesh-bvh): ctx.collision
 src/core/constants.js      units, layers, quality presets
 src/world/Earth.js         FAR scene: Earth (day/night/clouds/ocean/atmosphere), Sun disc, Moon
 src/world/Sky.js           FAR scene: star catalogue + Milky Way
@@ -21,6 +22,8 @@ src/ships/Ships.js         NEAR scene: ship types + docking traffic controller
 src/station/interior/*     pressurised compartment interiors (zones), visibility, carving, interior lights / materials
 src/player/Player.js       first-person astronaut: IVA (inside) + EVA physics, controls, airlock sequence, suit model
 src/player/Iva.js          inside the station: zero-g glide, handrails, spin-gravity walking (Coriolis), ladders
+src/player/Body.js         body dimensions (1.8 m, eye 1.68 m; suited 1.9 m) and collision shapes — shared with the suit / body visuals
+src/player/Mechanics.js    body mechanics: hand over hand, auto-brake, move-and-slide, walking, ladders; IK targets + events
 src/ui/Hud.js              helmet HUD / visor overlay / menus / loading (DOM + canvas)
 src/audio/Audio.js         procedural WebAudio (breathing, suit fans, radio, thrusters, hatch)
 src/fx/Post.js             post-processing passes (bloom, final grade, SMAA) and lens flare
@@ -61,6 +64,7 @@ ctx = {
   hemiLight,           // earthshine HemisphereLight
   events,              // tiny emitter: events.on(name, fn), events.emit(name, data)
   earth, sky, station, ships, player, hud, audio,   // module instances (filled as created)
+  collision,           // CollisionWorld (created after load; null if it failed) — see "Collisions" below
   mode,                // 'play' | 'observer'
   isShot,              // true when driven by tools/screenshot.mjs (fixed dt, no pointer lock)
 }
@@ -121,8 +125,9 @@ class Player {
 }
 ```
 Zero-g 6-DOF with momentum; SAFER thrusters (translation + rotation), tether to the airlock
-with elastic limit, sphere-vs-collider collision (radius ~0.45 m), handrail grabbing/push-off.
-Modes: 'iva' — inside without the suit (radius 0.3 m), 'airlock' — inside in the suit (0.42 m), 'eva' — outside.
+with elastic limit, collisions against the real geometry (`ctx.collision`), handrail grabbing/push-off.
+Modes: 'iva' — inside without the suit, 'airlock' — inside in the suit, 'eva' — outside.
+`player.position` is the **eye** (= camera). Body: see "Body and collisions" below.
 Inside, `player.iva` (src/player/Iva.js) moves the body: zero-g glide in the station frame; in the ring zones (and the
 hub's rotating collar) the state lives in ring-local coordinates (`iva.pL`, `iva.vL`, rotating frame with centrifugal
 and Coriolis accelerations), walking on the deck, ladders in the spokes. `player.position/quaternion/velocity` are
@@ -328,3 +333,67 @@ built once per variant (k mod 3) and shared by rotated meshes. Ring zones are ch
   URL `?start=inside|airlock` (menu: «НАЧАЛО»). The old `airlock` view = suited in the crew lock, inner hatch closed.
 * Player state additions: `suited`, `inside`, `compartment` (zone name for the HUD), `frame`, `gravity` (g),
   `onLadder`, `autoLevel`, `nearSuit`, `nearInnerHatch`; sequences `don`, `doff`, `innerClose`, `innerOpen`.
+
+## Body and collisions
+
+**Body (`src/player/Body.js`, `BODY.unsuited` / `BODY.suited`)** — unsuited: 1.80 m, eye 1.68 m above the soles,
+head top 0.12 m above the eye, neck 0.20 m below, body capsule radius 0.30 m around an axis 0.10 m behind the eye,
+head sphere r 0.20 m, step height 0.30 m. Suited (EVA suit + PLSS/SAFER): 1.90 m, eye 1.72 m, radius 0.42 m (axis
+0.16 m behind the eye), helmet sphere r 0.28 m. The suit / body visuals should match these numbers.
+Collision model: rigid head sphere (keeps the camera ≥ 0.15 m off walls; camera near plane 0.05 m, FOV 60° vertical);
+with spin gravity a rigid upright capsule from the head down to `stepHeight` above the soles + a downward sphere
+cast for the floor (steps / stairs / curved deck, landing); in zero-g a compliant body capsule hanging from the neck
+that trails behind the head when moving (head-first through hatches), relaxes toward "down" at rest and swings away
+from what it touches. The compartment volumes (`interior.volumesFor`) stay as a coarse safety net for the eye only.
+
+**Mechanics (`src/player/Mechanics.js`, `player.mech`)** — the same in IVA (unsuited: lighter, faster), the airlock
+(suited) and EVA (suited, propulsion by SAFER): hand over hand (WASD intent: a free hand reaches the rail or wall
+within arm's reach ahead, grips and pulls with limited muscle force — unsuited 2.4 m/s², suited 1.0 m/s²; the
+other hand reaches mid-stroke; off-centre pushes give a small damped rotation; without any grip only a weak swim
+acceleration), auto-brake (sphere cast along the velocity: the hands — the feet when moving feet-first — absorb
+the approach speed over the remaining reach), move-and-slide in substeps (≤ 0.45 × head radius per substep, a
+swept cast first for fast motion), ring walking (traction-limited by the apparent gravity, step cadence with planted
+feet, landing compression), ladders (hands and feet on the rungs, 0.33 m), EVA hand over hand along the outside
+rails with W/S near a rail that runs along the view (and onto the next rail at the end). The old gameplay colliders
+(`station.colliders`, ship colliders, `Collision.js`) remain only for the HUD distance; surface motion of contacts
+comes from the touched body (ring spin `omega × r`, `ship.velocity`).
+
+**Body state for animation / audio — `player.body`** (the EvaPhysics instance; station-frame metres, every mode):
+```js
+player.body.handTargets.left|right = { position, normal, weight /*0..1*/, phase: 'free'|'reach'|'grip'|'brake'|'ladder'|'rail' }
+player.body.footTargets.left|right = { position, normal, weight, phase: 'free'|'swing'|'plant'|'ladder'|'brake' }
+player.body.bodyAxis      // unit vector neck -> feet
+player.body.torsoLean     // { forward, side } radians relative to the view
+player.body.crouch        // leg compression after a landing (m; the camera dips by it)
+player.body.contact       // { touching, grounded, normal, point, speed /*impact m/s*/, surface: 'interior'|'exterior'|'ship'|'door'|'' }
+player.body.events        // this frame's [{ type: 'grab'|'release'|'push'|'brake'|'step'|'land'|'bump', strength, position, limb }]
+ctx.events.on('body', (ev) => …)   // the same events as they happen
+```
+
+**CollisionWorld (`src/core/CollisionWorld.js`, `ctx.collision`)** — built by `App.start` after the modules have
+loaded (after `applyLite`, so 'lite' collides with its batched geometry). Every solid mesh of the station
+(exterior, ring, arrays, antennas, airlock hatches), the interiors (station-frame zones and ring zones) and the ships
+(L1 + shared holders, in each pivot's frame) is assigned to its parent (anchor); the anchor's triangles are merged
+in the anchor frame, split into 12 m chunks with one BVH each; identical anchors (ring sectors, ships of a type)
+share them. Queries read the anchors' current `matrixWorld`, so moving parts need no refit. BVHs are built lazily
+(first query) and in the background (`collision.update()`, ≤ 3 ms per frame, nearest first): loading only collects.
+Not solid: glow / halo / beam / plume / strobe / additive / depth-write-free transparent materials (glass *is*
+solid), first-person and shadow-proxy meshes, DetailSet hardware, the spacesuits on their mounts, `userData.noCollide`.
+Layers (`COLLIDE`): `EXTERIOR` 1, `INTERIOR` 2, `SHIPS` 4, `DOORS` 8 (under an `userData.animated` pivot), `ALL` 15.
+IVA queries `INTERIOR | DOORS`; EVA everything (inside the crew lock `INTERIOR | DOORS`); the observer camera everything.
+```js
+// coordinates: station-frame metres (= world), or the local frame of opts.frame (e.g. station.ring.group)
+// opts = { mask = COLLIDE.ALL, frame = null, ignore = <ship group> }
+collision.resolveSphere(center, radius, outNormal?, opts?)   -> boolean  // pushes center out; contacts in collision.contacts[0..contactCount)
+collision.resolveCapsule(a, b, radius, outNormal?, opts?)    -> boolean  // a and b move by the same push (collision.lastPush)
+collision.sphereCast(from, to, radius, outHit?, opts?)       -> boolean  // outHit { t 0..1, distance, point, normal, body }
+collision.raycast(origin, dir, far, outHit?, opts?)          -> boolean  // outHit { t (= distance, m), point, normal, body }
+collision.closest(point, maxDistance, out, opts?)            -> boolean  // out { point, normal, distance, body }
+collision.distance(point, maxDistance, opts?)                -> number
+collision.surfaceVelocity(body, worldPoint, out)             // ring spin / ship velocity of a contact's body
+```
+Resolve calls do up to three push iterations; callers move in substeps of at most about half the radius (or sweep
+first with `sphereCast`) so nothing tunnels. The observer camera (`App.constrainObserver`) sweeps from its last
+valid position to where OrbitControls put it and stops at the first surface (radius 0.3 m), then pushes out any
+overlap; a free camera should do the same: `sphereCast(prev, next, r, hit)` → stop at `hit.t`, then
+`resolveSphere(pos, r)`.
