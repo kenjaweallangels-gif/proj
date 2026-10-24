@@ -160,13 +160,18 @@ try {
     return { dphi: Math.atan2(iv.pL.z, iv.pL.y) - 0.35, grounded: iv.grounded };
   });
   check('Coriolis: a falling body lands anti-spinward', drop.dphi < -0.0005 && drop.grounded, `dphi ${drop.dphi.toFixed(5)} rad`);
-  // spoke ladder: climbing up toward the hub, apparent gravity drops
+  // spoke ladder: W climbs the way the camera looks (the view looks down the shaft); apparent gravity ~ radius
   await ev(() => window.__app.setView('interior-spoke'));
   await step(0.1);
-  const lad0 = await ev(() => { const p = window.__app.player; return { ladder: p.state.onLadder, g: p.state.gravity }; });
+  const ladState = () => ev(() => { const p = window.__app.player, iv = p.iva; return { ladder: p.state.onLadder, g: p.state.gravity, rho: Math.hypot(iv.pL.y, iv.pL.z) }; });
+  const lad0 = await ladState();
   await step(3.0, ['KeyW']);
-  const lad1 = await ev(() => { const p = window.__app.player; return { ladder: p.state.onLadder, g: p.state.gravity }; });
-  check('spoke ladder: on the ladder, climbing reduces gravity', lad0.ladder && lad1.g < lad0.g - 0.01, `${lad0.g.toFixed(3)} g -> ${lad1.g.toFixed(3)} g`);
+  const lad1 = await ladState();
+  await step(3.0, ['KeyS']);
+  const lad2 = await ladState();
+  const dg = lad1.g - lad0.g, dr = lad1.rho - lad0.rho;
+  check('spoke ladder: climbing moves along the spoke, gravity follows the radius', lad0.ladder && lad2.ladder && Math.abs(dr) > 1 && Math.abs(dg) > 0.01 && dg * dr > 0 && (lad2.g - lad1.g) * dg < 0,
+    `${lad0.g.toFixed(3)} g (rho ${lad0.rho.toFixed(1)}) -> ${lad1.g.toFixed(3)} g (rho ${lad1.rho.toFixed(1)}) -> ${lad2.g.toFixed(3)} g`);
 
   // observer mode toggle
   await page.keyboard.press('KeyF');
