@@ -25,6 +25,8 @@ src/ui/Hud.js              helmet HUD / visor overlay / menus / loading (DOM + c
 src/audio/Audio.js         procedural WebAudio (breathing, suit fans, radio, thrusters, hatch)
 src/fx/Post.js             post-processing passes (bloom, final grade, SMAA) and lens flare
 tools/screenshot.mjs       Playwright headless screenshot of any view (for visual verification)
+tools/interior-stats.mjs   interior build statistics (zones, triangles, atlas use); interior-debug.mjs runs a probe
+                           snippet against window.__app (optional --shot=out.png)
 public/textures, public/data   NASA Earth/Moon textures, star catalogue (see CREDITS.md)
 ```
 
@@ -312,6 +314,11 @@ built once per variant (k mod 3) and shared by rotated meshes. Ring zones are ch
   `splitMaterialVariants()`: exterior materials get a carve patch that discards fragments inside up to 12 active
   volumes (cones / boxes / the ring torus), so hull parts that poke into the cabins vanish (GPU presets only).
 * Exposure: inside, `renderer.post.grade.autoExposure` is switched off and a fixed interior exposure is used.
+* 'lite': portal walk depth 1, no carving (the exterior layers are simply not drawn inside); the far scene (Earth)
+  is drawn through the windows only in the cupola, elsewhere the glass turns into an opaque haze. Interior meshes
+  set their transform through position / quaternion / scale and carry `userData.noBatch` (the lite StaticBatcher
+  calls `updateMatrix()` on everything and must not merge them). URL `?interior=0` skips the interiors entirely
+  (A/B performance comparisons).
 * Physics queries: `locate(worldPos, hint)`, `frameFor(zone, pos)`, `volumesFor(zone, frame)` (containment union,
   `Volumes.js`), `solidsFor(zone, frame)`, `handrails` (station frame), `ringRails`, `ladders` (ring-local).
   Hatch passages are volumes flagged `passage` that reach 1 m into both neighbours (so the containment union has no
