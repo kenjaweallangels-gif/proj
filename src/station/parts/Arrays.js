@@ -112,7 +112,7 @@ export class SolarArrays {
       this.ends.push({ group: g, X0, wings, angle: 0 });
     }
     // snap to the Sun at start
-    const sun = ctx.orbit.sunDir;
+    const sun = ctx.orbit.local.sunDir;
     const target = Math.atan2(sun.z, sun.y);
     for (const e of this.ends) { e.angle = target; e.group.rotation.x = target; }
     this._syncColliders();
@@ -130,7 +130,7 @@ export class SolarArrays {
   }
 
   update(dt, ctx) {
-    const sun = ctx.orbit.sunDir;
+    const sun = ctx.orbit.local.sunDir;
     const target = Math.atan2(sun.z, sun.y);   // cell normal (0, cos a, sin a) -> toward the Sun
     for (const e of this.ends) { e.angle = slew(e.angle, target, dt); e.group.rotation.x = e.angle; }
     this._syncColliders();
@@ -192,13 +192,13 @@ export class Radiators {
       this.colliders.push(col);
       this.panels.push({ group: g, angle: 0, col });
     }
-    const sun = ctx.orbit.sunDir;
+    const sun = ctx.orbit.local.sunDir;
     const t = Math.atan2(-sun.z, sun.x);
     for (const p of this.panels) { p.angle = t; p.group.rotation.y = t; _q.setFromAxisAngle(Y_AXIS, t); p.col.quaternion.copy(_q); }
   }
 
   update(dt, ctx) {
-    const sun = ctx.orbit.sunDir;
+    const sun = ctx.orbit.local.sunDir;
     // panel normal (sin a, 0, cos a) must be perpendicular to the Sun: sin a*sx + cos a*sz = 0
     const target = Math.atan2(-sun.z, sun.x);
     for (const p of this.panels) {

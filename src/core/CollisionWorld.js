@@ -329,7 +329,8 @@ export class CollisionWorld {
   _opts(opts) {
     const q = this._q;
     q.mask = opts?.mask ?? COLLIDE.ALL;
-    q.frame = opts?.frame || null;
+    // default: the station frame (ctx.stationRoot: identity unless the render origin floats away)
+    q.frame = opts?.frame || this.ctx.stationRoot || null;
     q.ignore = opts?.ignore || null;
     if (q.frame) { _F.copy(q.frame.matrixWorld); _Fi.copy(_F).invert(); }
     return q;
