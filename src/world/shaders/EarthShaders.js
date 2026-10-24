@@ -54,8 +54,74 @@ float waterGlint(vec3 N, vec3 V, vec3 L, float s2) {
 // have converted; lit boats on open water (squid fleets) are green-white.
 vec3 cityTint(float lum, float region, float onWater) {
   vec3 sodium = vec3(1.0, 0.60, 0.26), led = vec3(0.92, 0.93, 1.0);
-  float f = clamp(0.15 + 0.55 * region + 0.45 * smoothstep(0.08, 0.7, lum), 0.0, 1.0);
+  float f = clamp(0.1 + 0.55 * region + 0.25 * smoothstep(0.08, 0.7, lum), 0.0, 1.0);
   return mix(mix(sodium, led, f), vec3(0.72, 1.0, 0.82), onWater);
+}`;
+
+/**
+ * Night-light sampling for the GPU presets: the Black Marble texels (~5 km) are magnified ~10x near nadir, where
+ * bilinear filtering shows diamond blobs and a blurred mip shows blocks. Catmull-Rom (5 bilinear taps) when
+ * magnified, cubic B-spline (4 taps) for the soft halo / glow through clouds, and a sub-texel city texture (street
+ * grid in a district-rotated frame + scattered lamps) modulated by the light map where the screen resolves it.
+ */
+const NIGHT_GLSL = /* glsl */`
+float nightCatmullRom(sampler2D tex, vec2 uv) {
+  vec2 sz = vec2(textureSize(tex, 0));
+  vec2 sp = uv * sz;
+  vec2 t1 = floor(sp - 0.5) + 0.5;
+  vec2 f = sp - t1;
+  vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+  vec2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+  vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+  vec2 w3 = f * f * (-0.5 + 0.5 * f);
+  vec2 w12 = w1 + w2;
+  vec2 t0 = (t1 - 1.0) / sz, t3 = (t1 + 2.0) / sz, t12 = (t1 + w2 / w12) / sz;
+  float r = textureLod(tex, vec2(t12.x, t0.y), 0.0).r * w12.x * w0.y
+          + textureLod(tex, vec2(t0.x, t12.y), 0.0).r * w0.x * w12.y
+          + textureLod(tex, t12, 0.0).r * w12.x * w12.y
+          + textureLod(tex, vec2(t3.x, t12.y), 0.0).r * w3.x * w12.y
+          + textureLod(tex, vec2(t12.x, t3.y), 0.0).r * w12.x * w3.y;
+  float wsum = w12.x * w0.y + w0.x * w12.y + w12.x * w12.y + w3.x * w12.y + w12.x * w3.y;
+  return max(r / wsum, 0.0);
+}
+
+// Cubic B-spline (smooth, no blocks) of an integer mip level, 4 bilinear taps.
+float nightBSpline(sampler2D tex, vec2 uv, int lod) {
+  vec2 sz = vec2(textureSize(tex, lod));
+  vec2 st = uv * sz - 0.5;
+  vec2 i = floor(st), f = st - i;
+  vec2 f2 = f * f, f3 = f2 * f;
+  vec2 w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0;
+  vec2 w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+  vec2 w2 = (1.0 + 3.0 * f + 3.0 * f2 - 3.0 * f3) / 6.0;
+  vec2 w3 = f3 / 6.0;
+  vec2 g0 = w0 + w1, g1 = w2 + w3;
+  vec2 h0 = (i - 0.5 + w1 / g0) / sz, h1 = (i + 1.5 + w3 / g1) / sz;
+  float l = float(lod);
+  return g0.y * (g0.x * textureLod(tex, h0, l).r + g1.x * textureLod(tex, vec2(h1.x, h0.y), l).r)
+       + g1.y * (g0.x * textureLod(tex, vec2(h0.x, h1.y), l).r + g1.x * textureLod(tex, h1, l).r);
+}
+
+// Sub-texel city texture (mean ~1) at scales a 0.3-2 km pixel can show: arterial roads every 3.2 km (lines
+// antialiased by the footprint) in one of three fixed orientations per district (a continuously varying angle would
+// scramble the lines: s is ~10^4 km), a few bright clusters (junctions, malls, stadiums) and dark blocks (parks,
+// water, industry). s = surface coordinates in km.
+float streetLines(vec2 r, float w) {
+  vec2 d = abs(fract(r / 3.2) - 0.5) * 3.2;                 // km to the nearest arterial, per axis
+  return max(1.0 - smoothstep(0.0, w, d.x), 1.0 - smoothstep(0.0, w, d.y));
+}
+float cityTexture(vec2 s, float fpKm, float district) {
+  float w = max(fpKm * 0.6, 0.12);
+  float grid;
+  if (district < 0.45) grid = streetLines(s, w);
+  else if (district < 0.6) grid = streetLines(mat2(0.891, 0.454, -0.454, 0.891) * s, w);
+  else grid = streetLines(mat2(0.629, 0.777, -0.777, 0.629) * s, w);
+  // only some arterials stand out (lit strips, highways), in patches; the rest of the grid is faint
+  float lit = smoothstep(0.4, 0.75, fbm2Km(vec3(s, 5.0), 3.0));
+  grid *= min(1.0, 0.35 / w) * (0.25 + 0.75 * lit);
+  float pts = smoothstep(0.7, 0.86, fbmKm(vec3(s, 11.0), 2.2));
+  float blocks = fbm2Km(vec3(s, 37.0), 4.0);
+  return (0.55 + 1.1 * grid + 1.4 * pts) * (0.35 + 1.3 * blocks);
 }`;
 
 const LIGHT_COMMON_UNIFORMS = /* glsl */`
@@ -151,6 +217,7 @@ ${LIGHT_COMMON_UNIFORMS}
 ${ATMOSPHERE_GLSL}
 ${WEATHER_GLSL}
 ${SURFACE_COMMON}
+${NIGHT_GLSL}
 
 void main() {
   vec3 N = normalize(vNormalW);
@@ -231,15 +298,32 @@ void main() {
   vec3 moonlit = moonCol * (albedo * max(dot(Np, uMoonDir), 0.0) * (1.0 - 0.5 * (1.0 - shadow))
                + waterGlint(N, V, uMoonDir, s2) * wOpen * 0.8);
 
-  // City lights (Black Marble, grey): colour by region and brightness, a scattering halo from a blurred mip.
+  // City lights (Black Marble, grey): Catmull-Rom when magnified, a sub-texel street / lamp texture where the
+  // screen resolves it, colour by region and brightness, a faint B-spline halo (air glow around big cities).
   // Clouds dim and diffuse them in the cloud layer (alpha), not here.
   float nightMask = smoothstep(0.1, -0.1, ndl);
   vec3 city = vec3(0.0);
   if (nightMask > 0.0) {
-    float Ln = textureGrad(tNight, vUv, duvx, duvy).r;
-    float Lh = textureGrad(tNight, vUv, duvx * 8.0, duvy * 8.0).r;      // ~3 mip levels softer: scattering halo
+    vec2 nsz = vec2(textureSize(tNight, 0));
+    float nl = log2(max(max(length(duvx * nsz), length(duvy * nsz)), 1.0e-4));
+    float Ln = nl < 0.0 ? nightCatmullRom(tNight, vUv) : textureGrad(tNight, vUv, duvx, duvy).r;
+    float fpKm = length(fwidth(vObjPos));
+    float dFade = 1.0 - smoothstep(0.8, 3.0, fpKm);
+    // the Black Marble values are display-encoded: ~linear radiance = Ln^2.2, scaled so the brightest cores stay
+    // below white at the night exposure (warm, not blown-out blobs)
+    float core = pow(Ln, 2.2) * 0.25;
+    if (dFade > 0.0 && Ln > 0.01) {
+      gFpKm = fpKm;
+      float latR = asin(clamp(p.y, -1.0, 1.0));
+      vec2 sKm = vec2(vUv.x * 2.0 * PI * R_GROUND * cos(latR), vUv.y * PI * R_GROUND);
+      float district = fbm2Km(pKm, 25.0);
+      float tex = cityTexture(sKm, fpKm, district);
+      // dense cores stay bright and even; suburbs and towns break into streets and lamps
+      core *= mix(1.0, tex, dFade * (1.0 - 0.2 * smoothstep(0.55, 0.9, Ln)));
+    }
+    float Lh = nightBSpline(tNight, vUv, 3);
     float region = nz(pKm * (1.0 / 4000.0) + 0.21);
-    city = (pow(Ln, 2.4) + 0.1 * Lh * Lh) * cityTint(Ln, region, smoothstep(0.5, 0.9, water) * (1.0 - inland)) * uNightIntensity * nightMask;
+    city = (core + 0.006 * Lh * Lh) * cityTint(Ln, region, smoothstep(0.5, 0.9, water) * (1.0 - inland)) * uNightIntensity * nightMask;
   }
   vec3 surface = direct + ambient + glint + skyRefl + moonlit + city + albedo * vec3(0.0016, 0.0019, 0.0024);
 
@@ -271,6 +355,7 @@ ${LIGHT_COMMON_UNIFORMS}
 ${ATMOSPHERE_GLSL}
 ${WEATHER_GLSL}
 ${SURFACE_COMMON}
+${NIGHT_GLSL}
 
 void main() {
   vec3 p = normalize(vObjPos);
@@ -290,18 +375,30 @@ void main() {
     float s = uFlash[i * 2 + 1].x;
     flash += F.w * exp(-sqrt(d2) / s);                       // bright core, wide scattered halo
   }
-  // relief: uv gradient of the cloud map (smooth, texture space) + finite differences (4 km) of the analytic storms
+  // relief: uv gradient of the cloud map (smooth, texture space) + finite differences (3 km) of the storm-top
+  // height; storm tops also cast shadows (eye floor in the lee of the eyewall, towers at low sun)
   vec3 N = normalize(vNormalW);
   if (alpha < 0.004 && flash < 0.002) discard;
   vec3 T = normalize(vTangentW - N * dot(vTangentW, N));
   vec3 B = cross(N, T);
   vec2 sg = vec2(0.0);
+  float selfShadow = 0.0;
   if (proc > 0.01) {
     vec3 eo = normalize(cross(vec3(0.0, 1.0, 0.0), p) + vec3(1.0e-6, 0.0, 0.0)), no = cross(p, eo);
-    float dd = 4.0 / R_GROUND;
+    float dd = 3.0 / R_GROUND;
     sg = vec2(stormCover(normalize(p + eo * dd)), stormCover(normalize(p + no * dd))) - proc;
+    // height 1 ~ 12 km cloud top; one probe 10 km toward the Sun
+    vec3 st = uSunObj - p * dot(uSunObj, p);
+    float stl = length(st);
+    if (stl > 1.0e-3 && dot(uSunObj, p) > -0.05) {
+      float tanE = dot(uSunObj, p) / stl;
+      float hS = stormCover(normalize(p + st / stl * (10.0 / R_GROUND)));
+      selfShadow = smoothstep(0.0, 2.5, (hS - proc) * 12.0 - 10.0 * max(tanE, 0.0));
+    }
   }
-  vec3 Np = normalize(N - (T * g.x + B * g.y) * uBump - (T * sg.x + B * sg.y) * 1.2);
+  // (the cloud map's own relief is hidden under a cyclone: its texels would print through the overcast)
+  // thin cirrus (height < ~0.5) is flat: no relief from its edges
+  vec3 Np = normalize(N - (T * g.x + B * g.y) * (uBump * (1.0 - storm)) - (T * sg.x + B * sg.y) * (0.8 * smoothstep(0.6, 0.9, proc)));
 
   vec3 L = uSunDir;
   float ndl = dot(N, L);
@@ -312,19 +409,19 @@ void main() {
   float lam = max(ndlP, 0.0);
   lam = max(lam, 0.05 * smoothstep(-0.06, 0.02, ndl));    // clouds stay lit a little past the ground terminator
   float thick = mix(1.0, 0.8, c) * (1.0 + 0.08 * proc);    // dense cores slightly darker; convective tops bright
-  vec3 lit = S * Tsun * lam * thick * 0.97;
+  vec3 lit = S * Tsun * lam * thick * 0.97 * (1.0 - 0.6 * selfShadow);
   lit += S * skyAmbient(ndl) * 0.09;
   lit += vec3(0.72, 0.82, 1.0) * uMoonLight * max(dot(Np, uMoonDir), 0.0) * thick;   // moonlit clouds
   lit += vec3(0.0015);                                      // starlight / earth-glow at night
   // city lights seen through the cloud: blurred, warm, a fraction of what clear air shows
   float nightMask = smoothstep(0.08, -0.12, ndl);
   if (nightMask > 0.0) {
-    float Lb = textureGrad(tNight, vUv, duvx * 11.0, duvy * 11.0).r;      // ~3.5 mip levels softer
+    float Lb = nightBSpline(tNight, vUv, 4);                              // ~80 km soft glow, no texel blocks
     lit += Lb * Lb * vec3(1.0, 0.7, 0.42) * uNightIntensity * 0.5 * nightMask;
   }
   if (flash > 0.002) {
     // the flash lights the cloud from inside: brightest where the cloud is thick, mottled by the cloud tops
-    float tops = nz(p * (R_GROUND / 30.0)) * 0.6 + nz(p * (R_GROUND / 9.0)) * 0.4;
+    float tops = fbmKm(p * R_GROUND, 4.0);
     lit += flash * vec3(0.74, 0.82, 1.0) * (0.12 + 0.88 * c * c) * (0.45 + 1.1 * tops);
     alpha = max(alpha, min(flash * 0.08, 0.3));
   }

@@ -142,7 +142,7 @@ export class Weather {
       const c = this.cyclones[n++];
       c.active = true; c.lat = lat; c.lon = lon; c.I = I;
       c.radius = B.radius * (0.55 + 0.45 * Math.min(1, I * 1.3));
-      c.eye = 34 - 22 * I;
+      c.eye = 30 - 10 * I;              // eye radius km (the clear part is ~80 %: 32-48 km wide)
       c.hemi = lat >= 0 ? 1 : -1;
       c.spin = ((simT / (9 * 3600)) * 2 * Math.PI + b * 1.7) % (2 * Math.PI);
       latLonToObj(lat, lon, c.dir);
