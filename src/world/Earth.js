@@ -47,7 +47,7 @@ const SAMPLES = { ultra: [24, 8, 6], high: [16, 6, 5], medium: [12, 5, 4], low: 
  */
 const FEATURES = {
   ultra:  { day: 'delta', clouds: 8192, night: 8192, water: 8192, relief: 8192, tiles: { day: 5, night: 5, relief: 8 }, shadows: true, detail: 3, cyc: 6, cells: 24, flashes: 8, arcs: 3, auroraSamples: 6 },
-  high:   { day: 'delta', clouds: 8192, night: 8192, water: 8192, relief: 8192, tiles: { day: 0, night: 4, relief: 6 }, shadows: true, detail: 2, cyc: 6, cells: 20, flashes: 8, arcs: 2, auroraSamples: 4 },
+  high:   { day: 'delta', clouds: 8192, night: 8192, water: 8192, relief: 8192, tiles: { day: 0, night: 4, relief: 5 }, shadows: true, detail: 2, cyc: 6, cells: 20, flashes: 8, arcs: 2, auroraSamples: 4 },
   medium: { day: 'blend', clouds: 4096, night: 4096, water: 4096, relief: 2048, tiles: { day: 0, night: 0, relief: 0 }, shadows: true, detail: 1, cyc: 5, cells: 16, flashes: 6, arcs: 2, auroraSamples: 3 },
   low:    { day: 'blend', clouds: 4096, night: 4096, water: 4096, relief: 2048, tiles: { day: 0, night: 0, relief: 0 }, shadows: false, detail: 0, cyc: 5, cells: 12, flashes: 4, arcs: 1, auroraSamples: 2 },
   lite:   { day: 'nearest', clouds: 4096, night: 4096, water: 4096, normal: 2048, tiles: { day: 0, night: 0, relief: 0 }, shadows: false, detail: 0, cyc: 0, cells: 0, flashes: 0, arcs: 0, auroraSamples: 0 },

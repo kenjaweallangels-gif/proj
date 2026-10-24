@@ -14,6 +14,7 @@ import * as THREE from 'three';
  */
 const COLS = 72, ROW_MIN = 3, ROW_MAX = 33;   // rows 3..32 = 75N..75S
 const TILE_DEG = 5;
+const MAX_DRAWS = 12;                         // slot draws (clears + tiles) per frame, one render
 
 const VERT = /* glsl */`
 varying vec2 vUv;
@@ -68,14 +69,21 @@ export class TileWindow {
     this.cleared = false;
     this.loader = new THREE.ImageBitmapLoader();
     this.loader.setOptions({ imageOrientation: 'flipY', premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
-    this.mat = new THREE.ShaderMaterial({
-      uniforms: { tTile: { value: null }, uRect: { value: new THREE.Vector4() }, uClear: { value: 0 }, uOneChannel: { value: this.oneChannel ? 1 : 0 } },
-      vertexShader: VERT, fragmentShader: FRAG, depthTest: false, depthWrite: false, toneMapped: false,
-    });
-    this.quad = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).translate(0.5, 0.5, 0), this.mat);
-    this.quad.frustumCulled = false;
+    // a pool of quads: all slot draws of a frame go into one render (one mip-chain rebuild of the window)
+    this.geo = new THREE.PlaneGeometry(1, 1).translate(0.5, 0.5, 0);
     this.scene = new THREE.Scene();
-    this.scene.add(this.quad);
+    this.quads = [];
+    for (let i = 0; i < MAX_DRAWS; i++) {
+      const mat = new THREE.ShaderMaterial({
+        uniforms: { tTile: { value: null }, uRect: { value: new THREE.Vector4() }, uClear: { value: 0 }, uOneChannel: { value: this.oneChannel ? 1 : 0 } },
+        vertexShader: VERT, fragmentShader: FRAG, depthTest: false, depthWrite: false, toneMapped: false,
+      });
+      const q = new THREE.Mesh(this.geo, mat);
+      q.frustumCulled = false; q.visible = false; q.renderOrder = i;
+      this.quads.push(q);
+      this.scene.add(q);
+    }
+    this.nDraw = 0;
     this.cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     this._clearColor = new THREE.Color();
     this._order = [];
@@ -93,11 +101,15 @@ export class TileWindow {
     return out.set((sx / n) * 2 - 1, (1 - (sy + 1) / n) * 2 - 1, ((sx + 1) / n) * 2 - 1, (1 - sy / n) * 2 - 1);
   }
 
+  /** Queues a slot draw (tex = null clears the slot); false when this frame's batch is full. */
   draw(id, tex) {
-    const u = this.mat.uniforms;
+    if (this.nDraw >= MAX_DRAWS) return false;
+    const q = this.quads[this.nDraw++];
+    const u = q.material.uniforms;
     this.slotRect(id, u.uRect.value);
     u.tTile.value = tex; u.uClear.value = tex ? 0 : 1;
-    this.renderer.render(this.scene, this.cam);
+    q.visible = true;
+    return true;
   }
 
   /** Window origin for a centre (deg). */
@@ -166,13 +178,22 @@ export class TileWindow {
     gl.autoClear = false;
     gl.setRenderTarget(this.rt);
     if (!this.cleared) { gl.setClearColor(0x000000, 0); gl.clear(true, false, false); this.cleared = true; changes && (changes.length = 0); }
-    if (changes) { for (const ch of changes) this.draw(ch.clearId, null); changes.length = 0; }
+    this.nDraw = 0;
+    if (changes) {
+      let k = 0;
+      while (k < changes.length && this.draw(changes[k].clearId, null)) k++;
+      changes.splice(0, k);
+    }
+    const drawn = [];
     if (ready) for (const job of ready) {
-      this.draw(job.id, job.tex);
+      if (!this.draw(job.id, job.tex)) break;
       this.slots[job.slot] = job.id;
       this.pending.delete(job.id);
-      job.tex.image?.close?.(); job.tex.dispose();
+      drawn.push(job);
     }
+    if (this.nDraw > 0) gl.render(this.scene, this.cam);
+    for (const q of this.quads) { q.visible = false; q.material.uniforms.tTile.value = null; }
+    for (const job of drawn) { job.tex.image?.close?.(); job.tex.dispose(); }
     gl.setRenderTarget(prev);
     gl.setClearColor(this._clearColor, prevAlpha);
     gl.autoClear = prevAuto;
@@ -180,7 +201,8 @@ export class TileWindow {
 
   dispose() {
     this.disposed = true;
-    this.rt.dispose(); this.quad.geometry.dispose(); this.mat.dispose();
+    this.rt.dispose(); this.geo.dispose();
+    for (const q of this.quads) q.material.dispose();
     for (const job of this.pending.values()) job.tex?.dispose();
   }
 }

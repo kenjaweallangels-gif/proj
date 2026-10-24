@@ -271,7 +271,7 @@ profile (`--callers=<fn>` prints the stacks that lead to a hot function).
   toroidal N×N window around the camera's own sub-point (any render frame), one mipmapped render target per layer:
   500 m Blue Marble October (`day`, ultra, N=5, 6000² RGBA ≈ 190 MB; the ground shader adds its high-pass to the
   seasonal map and sharpens coasts), 500 m Black Marble lights (`night`, high N=4 / ultra N=5, RG8) and 1 km terrain
-  relief (`relief`, high N=6 / ultra N=8, slopes + height). Only changed slots are redrawn (≤ 2 tiles per frame);
+  relief (`relief`, high N=5 / ultra N=8, slopes + height). Only changed slots are redrawn (≤ 2 tiles per frame);
   the layers fade out above ×60 time warp or 2500 km altitude.
 * Relief: `earth_relief_8192.webp` (high/ultra) / `_2048` (medium/low) hold east/north slopes and height; the ground
   shader lights the slopes (exaggeration `uRelief.xy`) and marches the height field toward the Sun for terrain
