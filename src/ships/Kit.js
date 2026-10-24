@@ -392,7 +392,9 @@ export function porthole(k, b, p, n, r, { lit = true, frame = 0.05, surf = 'meta
   ring.rotateX(Math.PI / 2);
   b.add(surf, axial(ring, p, n), false);
   const pane = new THREE.CircleGeometry(r, k.seg(28, 8));
-  b.add(lit ? 'window' : 'glassDark', axial(pane, p.clone().addScaledVector(n, -0.004), n), false);
+  b.add(lit ? 'window' : 'glassDark', axial(pane, p.clone().addScaledVector(n, -0.012), n), false);
+  // clear outer pane seated in the frame (reflections / Fresnel), the lit cabin hint behind it
+  b.add('glass', axial(new THREE.CircleGeometry(r + frame * 0.2, k.seg(28, 8)), p.clone().addScaledVector(n, 0.012), n), false);
   if (k.near) boltCircle(k, b, p.clone().addScaledVector(n, 0.03), n, r + frame * 0.65, 12, 0.007);
 }
 

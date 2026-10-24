@@ -18,8 +18,8 @@ the final report of that pass (z-fighting gone, interior holes mostly gone); wha
 3. **Parallel cable / pipe runs** (truss sides, node tops): gapcheck reports a few small enclosed gaps between parallel
    lines and their clamps. Either bundle the lines (touching, with straps) or tune gapcheck's `inSurface` test
    (border pixels two steps away from the silhouette).
-4. **Ship windows.** Ship portholes are an emissive warm disc in a frame (lit cabin); add a real pane (clear glass,
-   see `Materials.clearGlass`) in front with the interior hint behind it — needs a glass bucket in `ShipBuilder`.
+4. **Ship windows** have a clear outer pane (ShipBuilder 'glass' bucket) over the lit-cabin hint; a modelled cabin
+   behind the window (crew seats, panels) would remove the flat emissive disc.
 5. **Interior back faces** in the ring corridors / pods: a few remaining one-sided surfaces seen through doorways
    (gapcheck interior set, areas cor*, pod*); close them or add `shellTube`-style liners for the polar volumes.
 6. **Handrail stand-offs over MLI bands**: rails stand on the hull and pierce the blankets; give the stanchions a

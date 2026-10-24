@@ -89,10 +89,11 @@ const TEXTURED = {
   mliGold: ['mli', 0xd9a63a], mliSilver: ['mli', 0xcfd3d8], mliDark: ['mli', 0x3a3a3c],
   solar: ['solar', 0xffffff], solarDark: ['solar', 0x9aa0b8],
   // quilted thermal blankets (Soyuz EVTI, beta cloth)
+  glass: ['glass', 0xffffff],   // clear window pane (Materials 'glass')
   blanketGreen: ['blanket', 0x8e957d], blanketWhite: ['blanket', 0xefeee9], blanketGrey: ['blanket', 0xb3b5b0], betaCloth: ['blanket', 0xe6e3d8],
 };
 /** Flat stand-in (far LOD: one material) for every textured bucket. */
-const FLAT_PROXY = { hull: 'paintWhite', mli: 'kapton', solar: 'solarFlat', blanket: 'feltFlat' };
+const FLAT_PROXY = { hull: 'paintWhite', mli: 'kapton', solar: 'solarFlat', blanket: 'feltFlat', glass: 'glassDark' };
 
 /** Per-ship animated emissive texture (one texel per surface class, linear radiance). */
 export class ShipLights {
@@ -149,7 +150,8 @@ export function shipMaterials(materials) {
   const blanket = new THREE.MeshStandardMaterial({ map: q.map, normalMap: q.normalMap, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.88, metalness: 0.0, vertexColors: true });
   blanket.name = 'shipBlanket';
   const inst = new Map();
-  s = { lutTex, flatStatic, hull, mli, solar, blanket,
+  const glass = materials.get('glass');
+  s = { lutTex, flatStatic, hull, mli, solar, blanket, glass,
     /** Separate material instances for InstancedMesh users (see App.splitMaterialVariants). */
     inst(m) { if (!inst.has(m)) { const c = m.clone(); c.name = `${m.name}Inst`; inst.set(m, c); } return inst.get(m); },
     flatLit(lights) {
@@ -289,7 +291,7 @@ export const LocalColliders = {
 };
 
 // ------------------------------------------------------------------------------------------ builder
-const BUCKET_ORDER = ['hull', 'blanket', 'mli', 'solar', 'flat'];
+const BUCKET_ORDER = ['hull', 'blanket', 'mli', 'solar', 'flat', 'glass'];
 
 /** Collects geometries into the four material buckets and merges each into one mesh. */
 export class ShipBuilder {
@@ -347,7 +349,8 @@ export class ShipBuilder {
       const material = key === 'flat' ? (flatMaterial || (lights ? this.shared.flatLit(lights) : this.shared.flatStatic)) : this.shared[key];
       const mesh = new THREE.Mesh(merged, material);
       mesh.name = `${name}:${key}`;
-      mesh.castShadow = !!shadows && key !== 'flat' && b.shadow;
+      mesh.castShadow = !!shadows && key !== 'flat' && key !== 'glass' && b.shadow;
+      if (key === 'glass') { mesh.renderOrder = 10; mesh.receiveShadow = false; }
       mesh.receiveShadow = !!receive;
       parent.add(mesh);
       meshes.push(mesh);
