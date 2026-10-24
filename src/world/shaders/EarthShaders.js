@@ -311,7 +311,7 @@ void main() {
     float dFade = 1.0 - smoothstep(0.8, 3.0, fpKm);
     // the Black Marble values are display-encoded: ~linear radiance = Ln^2.2, scaled so the brightest cores stay
     // below white at the night exposure (warm, not blown-out blobs)
-    float core = pow(Ln, 2.2) * 0.25;
+    float core = pow(Ln, 2.2) * 0.36;
     if (dFade > 0.0 && Ln > 0.01) {
       gFpKm = fpKm;
       float latR = asin(clamp(p.y, -1.0, 1.0));
