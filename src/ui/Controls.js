@@ -27,6 +27,8 @@ export const FALLBACK_CONTROLS = [
 const UI_ROWS = [
   { key: 'H', ru: 'помощь (эта таблица)' },
   { key: 'Esc', ru: 'меню / пауза' },
+  { key: 'Z', ru: 'телескоп (купол, открытый космос, камеры обзора)' },
+  { key: 'N', ru: 'подсказки неба: созвездия, названия' },
 ];
 
 /** Free camera rows (FreeCamera.js), appended to every list. */

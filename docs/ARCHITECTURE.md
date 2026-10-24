@@ -18,8 +18,11 @@ src/core/Textures.js       procedural canvas textures (panel lines, MLI wrinkles
 src/core/Particles.js      GPU sprite particle pool (RCS puffs, vents, debris glints)
 src/core/Input.js          keyboard/mouse/pointer-lock/gamepad state
 src/core/constants.js      units, layers, quality presets
-src/world/Earth.js         FAR scene: Earth (day/night/clouds/ocean/atmosphere), Sun disc, Moon
-src/world/Sky.js           FAR scene: star catalogue + Milky Way
+src/world/Earth.js         FAR scene: Earth (day/night/clouds/ocean/atmosphere), Sun disc
+src/world/Sky.js           FAR scene: stars, Milky Way, zodiacal light, planets, Moon, DSOs, overlays (src/world/sky/*)
+src/world/Moon.js          FAR scene: the Moon (chunked LOD sphere, LOLA heights, LROC maps, 16K tiles; src/world/moon/*)
+src/core/Ephemeris.js      Sun, Moon, planets, Galilean moons, IAU orientations, phases, magnitudes (pure functions)
+src/telescope/Telescope.js telescope tool (key Z): aim, zoom 60..0.05 deg, tracking, camera exposure; UI src/ui/TelescopePanel.js
 src/station/Station.js     NEAR scene: the station (composes src/station/parts/*)
 src/ships/Ships.js         NEAR scene: ship types + docking traffic controller
 src/station/interior/*     pressurised compartment interiors (zones), visibility, carving, interior lights / materials
@@ -32,7 +35,8 @@ tools/screenshot.mjs       Playwright headless screenshot of any view (for visua
 tools/astro-test.mjs       plain-Node unit checks of Astro.js / Time.js (also run at the end of npm run smoke)
 tools/interior-stats.mjs   interior build statistics (zones, triangles, atlas use); interior-debug.mjs runs a probe
                            snippet against window.__app (optional --shot=out.png)
-public/textures, public/data   NASA Earth/Moon textures, star catalogue (see CREDITS.md)
+public/textures, public/data   NASA Earth/Moon textures, star catalogues, sky / DSO / planet data (see CREDITS.md)
+tools/sky/                 build + pack scripts of the sky / Moon / planet data (pack_sky.py writes public/)
 ```
 
 ## Units and frames
@@ -260,7 +264,7 @@ profile (`--callers=<fn>` prints the stacks that lead to a hot function).
 
 ## Earth (`src/world/`)
 
-* `Earth.js` — ground / cloud / aurora / atmosphere shells, Sun, Moon. `FEATURES[preset]` picks textures and shader
+* `Earth.js` — ground / cloud / aurora / atmosphere shells, Sun (the Moon is `world/Moon.js`). `FEATURES[preset]` picks textures and shader
   detail (8K night, clouds and water on high/ultra when `maxTextureSize ≥ 8192`, cloud-detail octaves, cyclone /
   storm-cell / flash array sizes, aurora arcs and samples). 'lite' keeps the old cheap path: one ground shader with
   the cloud layer inlined, no weather, no aurora.
@@ -431,3 +435,104 @@ are placed as they are) stop and slide on the station hull, the airlock and the 
 within its volumes and off its equipment. Backend: `ctx.collision.sphereCast / resolveSphere` (exact BVH service,
 src/core/CollisionWorld.js) when present, otherwise the analytic colliders and the interior volumes; fast moves are
 swept in radius-sized steps. Jumps (B, «К …» buttons) teleport without sweeping.
+
+## Ephemeris (`src/core/Ephemeris.js`, `ctx.ephemeris`)
+
+Pure functions of `d` = TT days since J2000.0 (`ttFromUtcDays(orbit.daysSinceJ2000)`; TT − UTC = 69.184 s), writing
+into caller-supplied `{x, y, z}` objects (no allocations, no three.js). Frame: ICRF / J2000 equator (= star catalogue,
+= the ECI of `orbit.skyQuat`), km.
+
+* `planetHeliocentric(name, d, out)`, `planetGeocentric(name, d, out, lightTime = true, helioOut?)` — JPL approximate
+  Keplerian elements (Standish & Williams, 1800–2050 table; 15″–600″), Mercury … Neptune; astrometric (light time).
+* `earthHeliocentric(d, out)` (EMB − Moon / 82.30057), `sunGeocentric(d, out)`.
+* `moonGeocentric(d, out, eclOut?)` — Meeus ch. 47 (60 + 60 ELP terms; matches Meeus example 47.a to 1e−6°),
+  precessed from the equinox of date to J2000.
+* `bodyRotation(name, d, m9)` — IAU WGCCRE 2009 pole + prime meridian, row-major body-fixed → ECI matrix (body frame:
+  +x lon 0, +y lon 90° E, +z north); the Moon with the full E1…E13 libration series (mean-Earth frame of LOLA / LROC).
+  Also `moonPole(d)`, `rotationFromPole(a0, d0, W, m)`, `applyMat3 / applyMat3T`.
+* `planetMagnitude(name, r_au, delta_au, phaseDeg, {ringTilt, subLat})` (Mallama & Hilton 2018),
+  `moonMagnitude(phaseDeg, distKm)`, `phaseAngle(rel, helio)`, `galileanMoons(d, jupGeo, outs[4])` (Meeus ch. 44).
+* `BODY_DATA` (radii, albedo, B−V, Russian names), `PLANETS`, `GALILEAN`, `AU_KM`.
+* `class Ephemeris`: `update(d, observerEci)` fills `bodies[name]` = `{ geo, helio, topo (observer-relative ECI km),
+  dist, ra, dec, phase, illum, mag, angRadius, rot (body → ECI), sunDir, ringTilt (Saturn), occulted (Galilean) }`.
+  Sky creates `ctx.ephemeris`, updates it every frame for the observer = the render origin (`universe.frame.originEci`:
+  the station or the free camera) and hands `{ sunPositionEci, moonPositionEci }` (sim seconds) to
+  `universe.setEphemeris`, so gravity, `orbit.sunDir / moonPosFar` and the sky agree.
+  Sanity checks: Venus inferior conjunction 24 Oct 2026, Saturn opposition 4 Oct, full Moon 26 Oct ~03:44 UTC,
+  lunar librations within ±7°.
+
+## Sky (`src/world/Sky.js` + `src/world/sky/*`)
+
+* **Radiometry.** A white Lambert surface in full sunlight = 1.45 HDR. A star of magnitude m puts
+  `10^(−0.4 m) · 2.04e−11 · π · 1.45 / Ω_px` HDR·px into the image (Ω_px = solid angle of a device pixel); an extended
+  source of μ mag/arcsec² has radiance `3.95 · 10^(−0.4 μ)`. One **sky gain** multiplies stars, Milky Way, zodiacal
+  light and DSOs: in the normal view `DARK_ADAPTED (2e5) × post.exposure.skyExposure`; the post exposure's sky meter
+  (Exposure.js) dims the sky in proportion to the light in view (sunlit Earth / station / Sun / a large Moon: up to
+  ~6.5 mag; slow dark adaptation, fast light adaptation). The telescope sets its own gains. The Moon and resolved
+  planets are physical surfaces (gain 1, like the Earth) in the normal view.
+* **Stars** (`sky/StarField.js`, `sky/StarCatalog.js`, `data/sky/stars_*.bin`, format `STR3` documented in
+  `tools/sky/pack_sky.py`): Hipparcos + Tycho-2 (HYG v4.4 + Gaia DR3 photometry), positions at epoch 2026.8, sorted by
+  V in chunks a (V ≤ 7), b (≤ 9.5), c (≤ 10.5); the normal view draws a prefix per preset (`STAR_BUDGET`: ultra 586k,
+  high 400k, medium 200k, low 80k, lite 9.3k). Chunk d (V > 10.5, 1.93 M) and the Gaia-only stars (0.92 M) are
+  cell-sorted and loaded by the telescope into 512 frustum-culled sky cells. Point shader: PSF = Gaussian core
+  (σ = 0.75 px at 1080 lines, ≥ 0.6, plus the pixel box) + 12 % Moffat wing; energy-conserving at any sub-pixel phase
+  (no twinkle while the sky turns), the sprite never clips the core, stars fade in / out smoothly at the drawing
+  threshold (no popping when the exposure changes); saturated cores spread (σ ∝ peak^0.175 for the eye, 0.1 in the
+  telescope) so bright stars look larger; Airy core added in the telescope. 'lite': drawn straight onto the canvas
+  with analytic Earth / Moon occlusion.
+* **Milky Way**: NASA SVS Deep Star Maps 2020 (Gaia DR2 sky without the Hipparcos / Tycho-2 stars), 8K on high / ultra
+  (4K medium / low, 2K lite), sRGB-encoded linear radiance, seam-free mip selection; calibrated 0.0015 =
+  23.7 mag/arcsec², × `MW_BOOST` (3.5, spatial summation of the eye). Zodiacal light + gegenschein in the same pass.
+  In the telescope the map fades to 20 % below ~1.5° (the resolved deep stars take over its light).
+* **Planets** (`sky/Planets.js`): points (ephemeris magnitudes) + lit textured ellipsoids once resolved (proxy
+  distance 8·10⁵ km at the true angular size and direction, true phase and pole), Saturn's rings with shadows both
+  ways, Galilean moons. Maps load on demand (2K, 4K above ~350 px), evicted after 30 s unused.
+* **Deep sky** (`sky/DeepSky.js`, telescope only): 37 image tiles (gnomonic, north up) as tangent quads scaled to the
+  catalogue V; procedural profiles for the other galaxies / globulars / planetaries / nebulae; ≤ 10 tiles resident;
+  catalogue stars fade inside a visible tile.
+* **Overlays** (`sky/Overlays.js`, key N: off → figures + names → + boundaries + star / planet names; URL
+  `?overlay=1|2`): line segments on the sphere + a 2D label canvas (Russian names), hidden behind the Earth.
+* URL `?stars=<n>` overrides the star budget.
+
+## Moon (`src/world/Moon.js`, `src/world/moon/MoonSurface.js`; `ctx.moon`, `universe.body('moon')`)
+
+* Position `orbit.moonPosFar` (= this ephemeris through `universe.setEphemeris`), orientation from the IAU model
+  (`moon.quaternion` = body → render frame). The universe's built-in Moon body lists `moon.group`; the patches copy
+  the group's layer mask each frame, so the far-scene depth split near the Moon draws them in their own slice.
+* Geometry: cube-sphere quadtree, 16×16-cell patches with skirts, CPU-displaced by LOLA heights (4096×2048 on GPU
+  presets, 2.7 km/px; 2048 'lite'), vertices relative to the patch centre (camera-relative precision); a node splits
+  while a cell projects larger than 5 px (`maxLevel` 10 = 0.17 km cells); horizon + frustum culling; ≤ 8 new patches
+  per frame (the parent is shown meanwhile); LRU eviction. LOD runs in `farScene.onBeforeRender` for the far camera,
+  so it uses this frame's telescope / free-camera pose.
+* Shading: LROC colour × 0.24 (normal albedo 0.12), LOLA normal map (tangent space), lunar-Lambert (McEwen) with the
+  opposition surge, earthshine from the Earth's phase (1e−4 of sunlight at full Earth × 25 for the eye); within ~15°
+  of the terminator a 14-step height-field march casts rim / mountain shadows and lights peaks beyond it.
+* Streaming / VRAM: colour 2K → 4K (> 400 px) → 8K (> 1500 px); normal 4K (> 120 px) → 8K (> 1500 px); above
+  3500 px the 16K colour + normal tile (90°×90°, 0.67 km/px) under the view axis, with the global maps back at 4K;
+  unused levels are disposed after 15 s. Peak ≈ 300 MB on ultra.
+* API: `centerFar`, `quaternion`, `radius`, `heightAt(latRad, lonRad)` (m), `heightKmDir(dirBody)`,
+  `surfacePoint(lat, lon, out)` (body km), `bodyToFar(v, out)`, `setGain(g)`, `surface.stats`.
+* **Low orbit (50–100 km), next steps** (see docs/agent-tasks/moon-low-orbit.md): the LOD already refines to 0.17 km
+  cells; add (1) a finer height source (16K-level LOLA heights streamed per tile, `tools/sky/build_moon_tiles.py`,
+  sampled in `heightKmDir`), (2) procedural crater / regolith detail below the data resolution (displacement +
+  normals in the patch builder, detail normals in the shader), (3) per-patch bounding boxes and `heightAt` for
+  collision / altimetry.
+
+## Telescope (`src/telescope/Telescope.js`, `src/ui/TelescopePanel.js`, `ctx.telescope`)
+
+Key **Z** or the HUD button «ТЕЛЕСКОП (Z)» — from the observer camera, the free camera, the cupola and EVA. A 300 mm
+instrument on an equatorial mount: north up, sidereal tracking; aim by dragging (LMB) or the arrows, zoom 60° … 0.05°
+(wheel, + / −, presets); the catalogue panel (Russian; Sun, Moon, planets, Galilean moons, named stars, 200 DSOs;
+search by Russian / Latin name, M / NGC / IC numbers) selects and tracks a target (slew, offset kept). Readouts: name,
+type, constellation, RA / Dec J2000, distance, magnitude, angular size, phase, elongation; field, magnification, exit
+pupil, limiting magnitude. Optics: magnification M = 70° / fov; stars gain M² over extended light up to the aperture
+limit; above M = D / 7 mm the image dims by (D / 7 mm / M)²; Airy core 0.42 λ / D. Camera exposure: metered from the
+Moon / planet discs (spot-weighted on the target) or the Earth (post exposure); long exposures on dark fields;
+resolved bodies keep a local adaptation. The Sun engages a solar filter (1e−5, warning; flare / glare off).
+The camera and fov are set in `lateUpdate` (after the controllers); movement keys / mouse look are masked from the
+player and the free camera. Esc / Z exit (camera fov and pose restored).
+Views: `setView('tele-<target>-<fovDeg>')` (e.g. `tele-M42-1.5`, `tele-jupiter-0.06`, `tele-moon-0.7`), URL
+`?telescope=<target>&fov=<deg>`; `await telescope.whenSettled()` waits for the lazy data of the field.
+App hooks (small): module order `… ships, telescope, player …`, a `lateUpdate` pass after the camera controllers,
+`setView` handles `tele-*`, the free camera gets no input while the telescope is open. HUD: the helmet / observer /
+free panels hide in telescope mode; Esc closes the telescope instead of opening the pause menu.

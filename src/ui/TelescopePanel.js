@@ -180,6 +180,8 @@ export class TelescopePanel {
         const o = e.dso;
         if (o.v !== undefined || o.b !== undefined) lines.push(['Блеск', `${(o.v ?? o.b).toFixed(1)}ᵐ`]);
         if (o.maj) lines.push(['Размер', `${o.maj.toFixed(o.maj < 10 ? 1 : 0)}′${o.min ? ` × ${o.min.toFixed(o.min < 10 ? 1 : 0)}′` : ''}`]);
+        const tile = ctx.sky?.deepSky?.tiles?.find((t) => t.info.id === o.id);
+        if (tile) lines.push(['Снимок', `<span class="d">${tile.info.credit} · ${tile.info.licence}</span>`]);
         occl = this._behindEarth(ctx, e.dir, 1e12);
       }
     } else lines.push(['', '<span class="d">Выберите объект в каталоге или наведите телескоп мышью</span>']);
