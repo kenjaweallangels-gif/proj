@@ -68,7 +68,12 @@ export class Weather {
   }
 
   /** Low-resolution land fraction and cloud cover grids (Uint8, row 0 = north) for placement decisions. */
-  setClimate(land, cloud, w, h) { this.land = land; this.cloud = cloud; this.gridW = w; this.gridH = h; }
+  setClimate(land, cloud, w, h) {
+    this.land = land; this.cloud = cloud; this.gridW = w; this.gridH = h;
+    // anything derived before the grids arrived (constructor update) is stale: tracks without landfall, no cells
+    this.tracks.clear();
+    this._initialised = false;
+  }
 
   sample(grid, lat, lon) {
     if (!grid) return 0;
