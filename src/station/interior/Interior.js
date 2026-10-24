@@ -158,6 +158,22 @@ export class StationInterior {
       this.ringRoot.add(z.ringGroup);
       this.ringRails.push(...(rec.ringRails || []));
     }
+    // docking-port status lamps: green = a ship is docked behind the hatch
+    if (rec.statusLamps) {
+      if (!this._lampGeo) {
+        this._lampGeo = new THREE.BoxGeometry(0.07, 0.07, 0.012);
+        this._lampMats = [new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 0.9, 0.15) }), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.25, 3.2, 0.45) })];
+        for (const m of this._lampMats) m.userData.interior = true;
+        this.lamps = [];
+      }
+      for (const L of rec.statusLamps) {
+        const mesh = new THREE.Mesh(this._lampGeo, this._lampMats[0]);
+        mesh.matrixAutoUpdate = false; mesh.matrix.multiplyMatrices(rec.M, L.M);
+        mesh.layers.set(INTERIOR_LAYER);
+        z.group.add(mesh);
+        this.lamps.push({ mesh, port: L.port, on: false });
+      }
+    }
     // spacesuits (individually hideable)
     if (rec.suits) {
       z.suitObjects = rec.suits.map((s) => {
@@ -338,6 +354,14 @@ export class StationInterior {
       if (z.group.visible !== on) z.group.visible = on;
       if (z.ringGroup && z.ringGroup.visible !== on) z.ringGroup.visible = on;
       if (on) { if (z.hasWindows) windows = true; if (z.frame === 'ring') anyRing = true; }
+    }
+    if (this.lamps && (this._lampTimer = (this._lampTimer || 0) - dt) <= 0) {
+      this._lampTimer = 1;
+      const ports = this.station.dockingPorts || [];
+      for (const l of this.lamps) {
+        const on = !!ports.find((pp) => pp.id === l.port)?.occupant;
+        if (on !== l.on) { l.on = on; l.mesh.material = this._lampMats[on ? 1 : 0]; }
+      }
     }
     if (this.innerDoor) { const on = vis.has(this.byId.get('airlockE')) || vis.has(this.byId.get('airlockC')); for (const m of this.innerDoor) m.visible = on; }
     // ---- exterior: layers, far scene, shadow map, glow discs

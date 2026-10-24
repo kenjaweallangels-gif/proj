@@ -162,6 +162,7 @@ try {
   check('Coriolis: a falling body lands anti-spinward', drop.dphi < -0.0005 && drop.grounded, `dphi ${drop.dphi.toFixed(5)} rad`);
   // spoke ladder: climbing up toward the hub, apparent gravity drops
   await ev(() => window.__app.setView('interior-spoke'));
+  await step(0.1);
   const lad0 = await ev(() => { const p = window.__app.player; return { ladder: p.state.onLadder, g: p.state.gravity }; });
   await step(3.0, ['KeyW']);
   const lad1 = await ev(() => { const p = window.__app.player; return { ladder: p.state.onLadder, g: p.state.gravity }; });
