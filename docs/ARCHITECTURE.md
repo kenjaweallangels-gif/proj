@@ -391,7 +391,11 @@ in the anchor frame, split into 12 m chunks with one BVH each; identical anchors
 share them. Queries read the anchors' current `matrixWorld`, so moving parts need no refit. BVHs are built lazily
 (first query) and in the background (`collision.update()`, ≤ 3 ms per frame, nearest first): loading only collects.
 Not solid: glow / halo / beam / plume / strobe / additive / depth-write-free transparent materials (glass *is*
-solid), first-person and shadow-proxy meshes, DetailSet hardware, the spacesuits on their mounts, `userData.noCollide`.
+solid), first-person and shadow-proxy meshes, DetailSet hardware, the spacesuits on their mounts, `userData.noCollide`,
+and triangles under 1.5 cm² (knobs, bolt heads, text, leaves: they cannot stop a 0.2–0.4 m body; ~13 % of the input).
+Cost (high preset, measured in the SwiftShader container, ~3× slower than a desktop): collecting 25 ms at load, all
+BVHs ~1.0 s in total spread over background frames (1.3 M triangles); per player step 0.05–0.75 ms of queries
+(walking the ring ~0.06, EVA ~0.1, hand over hand in a dense module ~0.75).
 Layers (`COLLIDE`): `EXTERIOR` 1, `INTERIOR` 2, `SHIPS` 4, `DOORS` 8 (under an `userData.animated` pivot), `ALL` 15.
 IVA queries `INTERIOR | DOORS`; EVA everything (inside the crew lock `INTERIOR | DOORS`); the observer camera everything.
 ```js
