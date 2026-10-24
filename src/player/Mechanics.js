@@ -34,8 +34,8 @@ import { closestOnSegment } from './Collision.js';
 
 const PARAMS = {
   // grip: muscle acceleration through a gripping hand (m/s^2); vmax / vboost: glide speed with WASD / Shift
-  unsuited: { grip: 2.4, surfaceGrip: 1.5, vmax: 1.6, vboost: 3.0, swim: 0.25, stop: 3.5, brake: 7.0, reach: 0.72, shoulderDown: 0.22, shoulderSide: 0.2, reachTime: 0.16, restitution: 0.05, friction: 0.25, wobble: 1.0, walkAcc: 4.5, axisRate: 3.0 },
-  suited: { grip: 1.0, surfaceGrip: 0.6, vmax: 1.0, vboost: 1.5, swim: 0.1, stop: 1.6, brake: 3.5, reach: 0.6, shoulderDown: 0.3, shoulderSide: 0.26, reachTime: 0.3, restitution: 0.08, friction: 0.25, wobble: 0.5, walkAcc: 2.5, axisRate: 1.6 },
+  unsuited: { grip: 2.4, surfaceGrip: 1.5, vmax: 1.6, vboost: 3.0, swim: 0.25, stop: 3.5, brake: 7.0, reach: 0.72, stretch: 1.0, shoulderDown: 0.22, shoulderSide: 0.2, reachTime: 0.16, restitution: 0.05, friction: 0.25, wobble: 1.0, walkAcc: 4.5, axisRate: 3.0 },
+  suited: { grip: 1.0, surfaceGrip: 0.6, vmax: 1.0, vboost: 1.5, swim: 0.1, stop: 1.6, brake: 3.5, reach: 0.6, stretch: 0.85, shoulderDown: 0.3, shoulderSide: 0.26, reachTime: 0.3, restitution: 0.08, friction: 0.25, wobble: 0.5, walkAcc: 2.5, axisRate: 1.6 },
 };
 export function mechParams(suited) { return suited ? PARAMS.suited : PARAMS.unsuited; }
 
@@ -181,17 +181,18 @@ export class BodyMechanics {
   /** Best grip point for a hand reaching along dir: a handrail point, else a surface point. */
   _findGrip(hand, s, dims, par, dir, out) {
     const sh = this._shoulder(hand, dims, par, s.pos, _sh);
+    // reach = arm + a lean of the body toward the grip (stretch)
     _tgt.copy(sh).addScaledVector(dir, par.reach * 0.75);
-    let best = par.reach, rail = null;
+    let best = par.stretch + 0.5, rail = null;
     const rails = s.rails;
     if (rails) for (let i = 0, n = rails.length; i < n; i++) {
       const r = rails[i];
       const mx = (r.a.x + r.b.x) * 0.5 - sh.x, my = (r.a.y + r.b.y) * 0.5 - sh.y, mz = (r.a.z + r.b.z) * 0.5 - sh.z;
-      const hl = r.a.distanceTo(r.b) * 0.5 + par.reach + 0.3;
+      const hl = r.a.distanceTo(r.b) * 0.5 + par.stretch + 0.3;
       if (mx * mx + my * my + mz * mz > hl * hl) continue;
       closestOnSegment(r.a, r.b, _tgt, _v);
       const d = _v.distanceTo(sh);
-      if (d > par.reach || d < 0.15) continue;
+      if (d > par.stretch || d < 0.15) continue;
       const ahead = _v2.subVectors(_v, sh).dot(dir);
       if (ahead < 0.08) continue;
       const score = _v.distanceTo(_tgt);
@@ -200,9 +201,9 @@ export class BodyMechanics {
     if (rail) { hand.normal.subVectors(sh, out).normalize(); return rail; }
     // any surface within reach ahead (palm against the wall: friction-limited)
     const W = this.world;
-    if (W && W.closest(_tgt, par.reach * 0.55, _cl, this._queryOpts(s.mask))) {
+    if (W && W.closest(_tgt, par.stretch * 0.75, _cl, this._queryOpts(s.mask))) {
       const d = _cl.point.distanceTo(sh);
-      if (d <= par.reach && _v2.subVectors(_cl.point, sh).dot(dir) > -0.05) { out.copy(_cl.point); hand.normal.copy(_cl.normal); return 'surface'; }
+      if (d <= par.stretch && _v2.subVectors(_cl.point, sh).dot(dir) > -0.05) { out.copy(_cl.point); hand.normal.copy(_cl.normal); return 'surface'; }
     }
     return null;
   }
@@ -228,7 +229,7 @@ export class BodyMechanics {
         hd.weight = 1;
         const rel = _v.subVectors(hd.grip, sh);
         const behind = il > 1e-3 ? -rel.dot(dir) : 0;
-        if (rel.length() > par.reach * 1.08 || behind > par.reach * 0.6 || (il < 1e-3 && !s.stop) || hd.t > 2.5) {
+        if (rel.length() > par.stretch * 1.05 || behind > par.reach * 0.6 || (il < 1e-3 && !s.stop) || hd.t > 2.5) {
           if (hd.dv > 0.05) this.emit('push', hd.dv, hd.grip, hd.side);
           this.emit('release', 0.2, hd.grip, hd.side);
           hd.phase = 'free'; hd.t = 0; hd.rail = null;

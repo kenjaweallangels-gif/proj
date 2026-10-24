@@ -275,7 +275,8 @@ try {
   const brake = await ev(() => {
     const a = window.__app, p = a.player, W = a.collision, h = 1 / 60;
     p.setView('interior-lab');
-    const D = new p.position.constructor(0, 0, -1).applyQuaternion(p.quaternion);
+    const D = new p.position.constructor(-1, 0, 0);          // along the lab toward its end bulkhead, head first
+    p.quaternion.copy(p.lookAlong(p.position, D));
     const hit = {}; const wall = W.raycast(p.position, D, 20, hit, { mask: 10 }) ? hit.distance : null;
     if (wall) p.position.addScaledVector(D, wall - 1.7);
     p.velocity.copy(D).multiplyScalar(1.0);
@@ -286,8 +287,8 @@ try {
   const bev = await bodyEvents();
   check('auto-brake at a wall with the hands', bev.includes('brake') && brake.v < 0.25 && brake.clearance > 0.1, JSON.stringify(brake) + ' ' + [...new Set(bev)].join(','));
   // thrusting hard into the lab wall: no passing through
-  await ev(() => window.__app.player.setView('interior-lab'));
-  const labWall = await ram(await ev(() => new (window.__app.player.position.constructor)(0, 0, -1).applyQuaternion(window.__app.player.quaternion).toArray()), 4.0, 3.0, 10);
+  await ev(() => { const p = window.__app.player; p.setView('interior-lab'); p.quaternion.copy(p.lookAlong(p.position, new p.position.constructor(-1, 0, 0))); });
+  const labWall = await ram([-1, 0, 0], 4.0, 3.0, 10);
   check('cannot pass through the lab wall at 4 m/s', labWall.wall !== null && labWall.maxAlong < labWall.wall - 0.1 && labWall.clearance > 0.1, JSON.stringify(labWall));
 
   // float from the lab through node 1 into the equipment lock
