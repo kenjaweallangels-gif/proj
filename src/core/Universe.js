@@ -36,6 +36,7 @@ const NEAR_NEAR_DEFAULT = 0.05, NEAR_FAR_DEFAULT = 6000;
 const DEPTH_STEPS = 16777216;          // 24-bit depth (float depth has the same precision near 1)
 const EARTH_SHELLS = [EARTH_RADIUS_KM, EARTH_RADIUS_KM + 6, EARTH_RADIUS_KM + 335];   // ground, clouds, aurora proxy
 const SPLIT_LAYER = 6;
+const byClearance = (a, b) => a._clear - b._clear;
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3();
 const _m = new THREE.Matrix4(), _m2 = new THREE.Matrix4();
@@ -287,18 +288,10 @@ export class Universe {
     const fp = farCamera.position;
     const list = this._depthList || (this._depthList = []);
     list.length = 0;
-    const consider = (b, center, radius, shells) => {
-      const d = _v.copy(center).sub(fp).length();
-      let surf = radius;
-      if (shells) for (const r of shells) if (r < d && r > surf) surf = r;
-      b.distanceKm = d;
-      b._clear = d - surf; b._d = d; b._r = shells ? shells[shells.length - 1] : radius;
-      list.push(b);
-    };
-    consider(this.earthBody, this.orbit.earthCenterFar, EARTH_RADIUS_KM, EARTH_SHELLS);
-    consider(this.moonBody, this.orbit.moonPosFar, R_MOON, null);
-    for (const b of this.bodies) if (b.farObject && b.farObject.visible !== false) consider(b, b.renderKm, b.radius, b.shells || null);
-    list.sort((a, b) => a._clear - b._clear);
+    this._consider(list, fp, this.earthBody, this.orbit.earthCenterFar, EARTH_RADIUS_KM, EARTH_SHELLS);
+    this._consider(list, fp, this.moonBody, this.orbit.moonPosFar, R_MOON, null);
+    for (const b of this.bodies) if (b.farObject && b.farObject.visible !== false) this._consider(list, fp, b, b.renderKm, b.radius, b.shells || null);
+    list.sort(byClearance);
     const nearest = list[0];
     let fnear = THREE.MathUtils.clamp(0.4 * Math.max(nearest._clear, 0), 0.01, 1e6);
     if (f.isStation && rc - EARTH_RADIUS_KM < 2000) fnear = Math.min(fnear, FAR_NEAR_DEFAULT);
@@ -317,6 +310,16 @@ export class Universe {
     this.farSplit = split;
     const nearUse = split ? split.nearRest : fnear;
     if (Math.abs(farCamera.near - nearUse) > nearUse * 0.02 || farCamera.far !== FAR_FAR_DEFAULT) { farCamera.near = nearUse; farCamera.far = FAR_FAR_DEFAULT; farCamera.updateProjectionMatrix(); }
+  }
+
+  /** Depth bookkeeping of one body seen from the far camera: distance, clearance to its nearest shell below the camera. */
+  _consider(list, fp, b, center, radius, shells) {
+    const d = _v.copy(center).sub(fp).length();
+    let surf = radius;
+    if (shells) for (const r of shells) if (r < d && r > surf) surf = r;
+    b.distanceKm = d;
+    b._clear = d - surf; b._d = d; b._r = shells ? shells[shells.length - 1] : radius;
+    list.push(b);
   }
 
   _split(body, near, far, nearRest) {

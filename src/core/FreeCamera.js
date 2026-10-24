@@ -4,8 +4,8 @@
  *
  * The camera is anchored to a reference body and moves relative to it:
  *   'station' — offset in metres in the station's LVLH frame (co-moving and co-rotating: the station stays put,
- *               like the observer camera); the render frame stays the default station frame (no change at all
- *               for the station modules). Left beyond 2000 km.
+ *               like the observer camera); within 20 km the render frame is the default station frame (no change
+ *               at all for the station modules), farther out the origin follows the camera. Left beyond 2000 km.
  *   'earth'   — offset in km from the Earth's centre, ECI axes (at rest relative to the Earth's centre);
  *   'moon'    — offset in km from the Moon's centre (moves with the Moon), entered within 60 000 km.
  * For 'earth' / 'moon' the render frame follows the camera (floating origin: the camera sits at the render
@@ -21,6 +21,8 @@ import { localBasis } from './Universe.js';
 import { EARTH_RADIUS_KM } from './constants.js';
 
 const STATION_LEAVE_KM = 2000, STATION_ENTER_KM = 1500;
+/** Within this distance (m) of the station the free camera uses the default render frame. */
+const STATION_FRAME_M = 20000;
 const MOON_ENTER_KM = 60000, MOON_LEAVE_KM = 66000;
 const R_MOON = 1737.4;
 export const SPEED_MIN_EXP = -1, SPEED_MAX_EXP = 7.5;   // log10(m/s)
@@ -249,9 +251,14 @@ export class FreeCamera {
   _apply() {
     const app = this.app, u = app.universe, cam = app.camera;
     this._toEci(this.anchor, this.offset, this.eci);
-    if (this.anchor === 'station') {
+    if (this.anchor === 'station' && this.offset.lengthSq() < STATION_FRAME_M * STATION_FRAME_M) {
+      // near the station: the default frame itself (station modules see exactly what they always see)
       u.useStationFrame();
       cam.position.copy(this.offset);
+    } else if (this.anchor === 'station') {
+      // farther out: floating origin at the camera, station LVLH axes (the station root carries the offset)
+      u.setFrame({ originEci: this.eci, axes: this.app.orbit.lvlhToEci, name: 'free-station' });
+      cam.position.set(0, 0, 0);
     } else {
       this._anchorAxes(this.anchor, this.offset, this.axes);
       u.setFrame({ originEci: this.eci, axes: this.axesMode === 'local' ? this.axes : 'inertial', name: `free-${this.anchor}` });

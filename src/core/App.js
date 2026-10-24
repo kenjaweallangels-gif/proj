@@ -388,8 +388,11 @@ export class App {
    * near the hull, the whole station from far away. The centre is snapped to the shadow-map texel grid
    * so shadows do not shimmer while the camera moves.
    */
-  fitShadow(sunDir) {
-    const light = this.sunLight, cam = this.camera.getWorldPosition(_camPos);
+  fitShadow(sunDirRender) {
+    // all in the station frame (the render frame may be elsewhere: free camera), placed through the station root
+    const u = this.universe, inStation = u.isStationFrame;
+    const sunDir = inStation ? sunDirRender : this.orbit.local.sunDir;
+    const light = this.sunLight, cam = inStation ? this.camera.getWorldPosition(_camPos) : u.cameraInStation(_camPos);
     // distance from the camera to the station's bounding box (~ +-100 m along the spine, +-50 m across)
     const dx = Math.max(0, Math.abs(cam.x) - 100), dy = Math.max(0, Math.abs(cam.y) - 50), dz = Math.max(0, Math.abs(cam.z) - 50);
     const dist = Math.hypot(dx, dy, dz);
@@ -404,6 +407,7 @@ export class App {
     extent = this._shadowExtent;
     // centre: ahead of the camera, kept inside the station's box
     const fwd = this.camera.getWorldDirection(_bsCenter);
+    if (!inStation) fwd.applyQuaternion(_shQi.copy(u.stationRoot.quaternion).invert());
     _shC.copy(cam).addScaledVector(fwd, Math.min(extent * 0.6, 40));
     if (extent > 120) _shC.set(0, 0, 0);
     _shC.x = THREE.MathUtils.clamp(_shC.x, -110, 110); _shC.y = THREE.MathUtils.clamp(_shC.y, -60, 60); _shC.z = THREE.MathUtils.clamp(_shC.z, -60, 60);
@@ -414,8 +418,9 @@ export class App {
     _shC.applyQuaternion(_shQi);
     _shC.x = Math.round(_shC.x / texel) * texel; _shC.y = Math.round(_shC.y / texel) * texel;
     _shC.applyQuaternion(_shQ);
+    if (!inStation) u.stationToRender(_shC, _shC);
     light.target.position.copy(_shC);
-    light.position.copy(_shC).addScaledVector(sunDir, 450);
+    light.position.copy(_shC).addScaledVector(sunDirRender, 450);
   }
 
   /** 'lite': hide small-part batches farther than LITE_DETAIL_DISTANCE from the camera. */

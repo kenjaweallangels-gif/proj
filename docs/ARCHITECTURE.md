@@ -418,7 +418,8 @@ render frame in km, the near scene the same frame in metres.
 C toggles (from the astronaut or the observer camera; menu «СВОБОДНАЯ КАМЕРА», observer button), F → observer.
 6-DOF: mouse look (pointer lock, or drag), Q/E roll, W/S A/D Space/Ctrl, Shift ×10, wheel / + / − change the cruise
 speed logarithmically (`speedExp` = log10 m/s, −1 … 7.5: 0.1 m/s … 30 000 km/s). Anchors: `'station'` (offset in m in
-station LVLH, default frame; left beyond 2000 km), `'earth'` (ECI, km), `'moon'` (km from the Moon centre, within
+station LVLH, co-moving; the default frame within 20 km, beyond that the origin follows the camera with LVLH axes;
+left beyond 2000 km), `'earth'` (ECI, km), `'moon'` (km from the Moon centre, within
 60 000 km); in the last two the render frame follows the camera (floating origin, camera at the render origin) with
 inertial axes or the local vertical (O). B returns to the station (overview pose). API: `enter(prevMode)`, `exit()`,
 `jumpTo('station' | 'earth' | 'moon')`, `lookAtBody(name)`, `setAxesMode('inertial' | 'local')`, `info(out)`

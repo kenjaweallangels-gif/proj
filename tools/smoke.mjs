@@ -96,7 +96,7 @@ async function coreChecks() {
   // x3600 for a few real seconds: everything advances and stays finite
   const before = await ev(() => { const a = window.__app; return { sim: a.time.sim, traffic: a.ships.traffic.t, log: a.ships.getLog().length, frames: a.frameCount }; });
   await obs.locator('.tc-presets button', { hasText: /^×3600$/ }).click({ timeout: 60000 });
-  await page.waitForTimeout(4000);
+  await page.waitForTimeout(6000);
   const after = await ev(() => {
     const a = window.__app, o = a.orbit;
     const ok = (v) => Number.isFinite(v.x + v.y + v.z);
@@ -104,7 +104,9 @@ async function coreChecks() {
     return { sim: a.time.sim, traffic: a.ships.traffic.t, frames: a.frameCount, shipsOk, states: a.ships.ships.map((s) => s.state).join(','),
       orbitOk: ok(o.sunDir) && ok(o.earthCenterFar) && Number.isFinite(o.sunVisible), playerOk: ok(a.player.position), docked: a.ships.ships.filter((s) => s.state === 'docked').length };
   });
-  check('x3600: sim time advanced by hours in a few seconds', after.sim - before.sim > 3600, `${((after.sim - before.sim) / 3600).toFixed(2)} h in ${after.frames - before.frames} frames`);
+  // each frame advances min(real dt, 1/20 s) x 3600 = up to 3 min (the software GPU renders a few frames per second)
+  const nf = after.frames - before.frames;
+  check('x3600: rendering continues, sim time advances 3 min per frame', nf >= 3 && after.sim - before.sim >= 150 * (nf - 1), `${((after.sim - before.sim) / 3600).toFixed(2)} h in ${nf} frames`);
   check('x3600: docking traffic kept pace (fast-forward)', after.traffic - before.traffic > 0.9 * (after.sim - before.sim), `traffic +${(after.traffic - before.traffic).toFixed(0)} s`);
   check('x3600: ships / orbit / player stay finite, ships docked', after.shipsOk && after.orbitOk && after.playerOk && after.docked > 0, after.states);
   await obs.locator('.tc-row button', { hasText: /^×1$/ }).click({ timeout: 60000 });
