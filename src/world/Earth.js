@@ -338,6 +338,9 @@ export class Earth {
       const utcH = ((((o.epochMs + simT * 1000) / 3600000) % 24) + 24) % 24;
       this.weather.update(simT, utcH, o.subLatDeg, o.subLonDeg, dt, dtReal);
       if (this.aurora) {
+        // the curtains glow only in darkness: with the Sun > 30 deg above the station's horizon the whole visible
+        // cap (20 deg) is sunlit, so the shell is skipped
+        this.aurora.visible = !!this.textures && o.sunDir.y < 0.5;
         this.aurora.quaternion.copy(o.earthQuat);
         this.uCamObj.value.copy(_camKm).sub(o.earthCenterFar).applyQuaternion(_qInv);
       }

@@ -23,6 +23,9 @@ const float KM_TO_TEX_CU = 1.0 / 44.0;           // fair-weather cumulus: ~5.5 k
 
 float nz(vec3 x) { return texture(tNoise, x).r; }
 float wz(vec3 x) { return texture(tNoise, x).g; }
+// explicit-LOD variants for taps inside non-uniform branches (no implicit derivatives there)
+float nzl(vec3 x, float l) { return textureLod(tNoise, x, l).r; }
+float wzl(vec3 x, float l) { return textureLod(tNoise, x, l).g; }
 
 // Base cloud map drifting slowly eastward (rigid rotation at a few m/s: per-latitude advection either shears the
 // map into streaks within a day or needs a flow-map reset that superposes or dissolves two unrelated cloud fields).
@@ -160,27 +163,30 @@ float cloudCover(vec3 p, vec2 uv, vec2 dx, vec2 dy, float fpKm, out vec2 grad, o
 #if DETAIL > 0
   // grain below the 5 km texels where the screen resolves it: thin and broken cloud gets a fine cellular /
   // fBm texture (multiplicative, so the real structure of the map is kept); thick cores stay smooth
-  vec3 xd = pKm * KM_TO_TEX_DETAIL + vec3(0.0, 0.0, uFlow.w * 3.0e-6);
   float f1 = 1.0 - smoothstep(2.0, 5.0, fpKm);
-  float n = 0.6 * nz(xd) + 0.4 * wz(xd * 0.8 + 0.2);
+  float edge = 4.0 * c * (1.0 - c);
+  if (f1 * edge > 0.0) {
+    vec3 xd = pKm * KM_TO_TEX_DETAIL + vec3(0.0, 0.0, uFlow.w * 3.0e-6);
+    float l0 = log2(max(fpKm * KM_TO_TEX_DETAIL * 64.0, 1.0e-3));   // 64 noise texels per period
+    float n = 0.6 * nzl(xd, l0) + 0.4 * wzl(xd * 0.8 + 0.2, l0 - 0.32);
   #if DETAIL > 1
     float f2 = 1.0 - smoothstep(1.0, 2.5, fpKm);
-    n = mix(n, 0.55 * n + 0.45 * nz(xd * 2.17 + 0.31), f2);
+    if (f2 > 0.0) n = mix(n, 0.55 * n + 0.45 * nzl(xd * 2.17 + 0.31, l0 + 1.12), f2);
   #endif
   #if DETAIL > 2
     float f3 = 1.0 - smoothstep(0.5, 1.4, fpKm);
-    n = mix(n, 0.65 * n + 0.35 * wz(xd * 4.63 + 0.67), f3);
+    if (f3 > 0.0) n = mix(n, 0.65 * n + 0.35 * wzl(xd * 4.63 + 0.67, l0 + 2.21), f3);
   #endif
-  float edge = 4.0 * c * (1.0 - c);
-  c *= 1.0 + uWx.y * f1 * edge * (n - 0.5) * 1.6;
-  c = clamp(c, 0.0, 1.0);
+    c = clamp(c * (1.0 + uWx.y * f1 * edge * (n - 0.5) * 1.6), 0.0, 1.0);
+  }
   // tropical afternoon cumulus
   float cuP = cumulusPotential(p, uv, mean);
   if (cuP > 0.01) {
     float cuFade = 1.0 - smoothstep(0.8, 2.5, fpKm);
     // puffs of a fixed size (a few km) in clusters whose extent grows with the potential
-    float cluster = smoothstep(0.42, 0.62, nz(pKm * (1.0 / 360.0)) + 0.55 * (cuP - 0.6));
-    float w = wz(pKm * KM_TO_TEX_CU) * 0.85 + 0.15 * nz(pKm * KM_TO_TEX_CU * 0.29);
+    float lc = log2(max(fpKm * KM_TO_TEX_CU * 64.0, 1.0e-3));
+    float cluster = smoothstep(0.42, 0.62, nzl(pKm * (1.0 / 360.0), lc - 3.03) + 0.55 * (cuP - 0.6));
+    float w = wzl(pKm * KM_TO_TEX_CU, lc) * 0.85 + 0.15 * nzl(pKm * KM_TO_TEX_CU * 0.29, lc - 1.79);
     float cu = smoothstep(0.52, 0.72, w) * cluster;
     c = max(c, mix(0.2 * cluster * cuP, cu * 0.85, cuFade));
   }
