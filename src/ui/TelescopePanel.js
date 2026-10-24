@@ -108,6 +108,7 @@ export class TelescopePanel {
   show(on) {
     this._attach();
     show(this.root, on);
+    if (on) show(this.button, false);
     if (on) { this._fillList(); this.refreshTarget(); }
     else this.search.blur();
   }
@@ -196,9 +197,20 @@ export class TelescopePanel {
     let w = '';
     if (tel.filter) w = 'СОЛНЕЧНЫЙ ФИЛЬТР УСТАНОВЛЕН · смотреть на Солнце без фильтра нельзя — это ослепляет';
     else if (occl) w = 'Объект скрыт Землёй';
+    else if (e && e.body !== 'moon' && this._behindMoon(ctx, e)) w = 'Объект скрыт Луной';
     setText(this.warn, w);
     show(this.warn, !!w);
     setClass(this.warn, 'sun', tel.filter);
+  }
+
+  _behindMoon(ctx, e) {
+    const m = ctx.ephemeris?.bodies?.moon;
+    if (!m) return false;
+    const d = this.tel.dirOf(e, this._dir2 || (this._dir2 = this.tel.aim.clone()));
+    const b = (m.topo.x * d.x + m.topo.y * d.y + m.topo.z * d.z);
+    if (b <= 0) return false;
+    const dist = e.kind === 'body' ? ctx.ephemeris.bodies[e.body].dist : Infinity;
+    return m.dist * m.dist - b * b < m.data.radius * m.data.radius && b < dist;
   }
 
   _behindEarth(ctx, topo, dist) {
