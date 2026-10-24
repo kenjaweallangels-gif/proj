@@ -64,7 +64,7 @@ const state = () => ev(() => { const p = window.__app.player, s = p.state; retur
 /** Sky, Moon, telescope (also alone with --only=sky). Starts in play mode away from the cupola. */
 async function skyChecks() {
   // ---- sky and telescope
-  const sky = await ev(() => { const a = window.__app, s = a.sky, m = a.ephemeris?.bodies?.moon; return { stars: s.starField.count, moonKm: m?.dist, patches: s.moon.surface.patchCount, mw: !!s.milkyWayTexture }; });
+  const sky = await ev(() => { const a = window.__app, s = a.sky, m = a.sky.ephemeris.bodies.moon; return { stars: s.starField.count, moonKm: m?.dist, patches: s.moon.surface.patchCount, mw: !!s.milkyWayTexture }; });
   check('sky: catalogue stars, Milky Way, ephemeris Moon, Moon LOD patches', sky.stars > 1000 && sky.mw && sky.moonKm > 350000 && sky.moonKm < 410000 && sky.patches >= 6, JSON.stringify(sky));
   await page.keyboard.press('KeyZ');
   await frames(2);
@@ -87,11 +87,11 @@ async function skyChecks() {
   await page.keyboard.down('Equal'); await frames(4); await page.keyboard.up('Equal');
   await frames(30);
   const trk = await ev(() => {
-    const a = window.__app, T = a.telescope, b = a.ephemeris.bodies.jupiter;
+    const a = window.__app, T = a.telescope, b = a.sky.ephemeris.bodies.jupiter;
     const V = a.camera.position.constructor;
     const fwd = new V(0, 0, -1).applyQuaternion(a.camera.getWorldQuaternion(a.camera.quaternion.clone())).applyQuaternion(a.orbit.skyQuat.clone().invert());
     const dir = new V(b.topo.x, b.topo.y, b.topo.z).normalize();
-    return { err: fwd.angleTo(dir) * 180 / Math.PI, fov: a.camera.fov, rPx: a.sky.planets.radiusPx('jupiter'), lim: T.limitMag };
+    return { err: fwd.angleTo(dir) * 180 / Math.PI, fov: a.camera.fov, rPx: a.sky.planets.radiusPx('jupiter'), lim: T.limitMag, ang: b.angRadius, buf: [a.renderer.renderer.getPixelRatio(), a.renderer.renderer.domElement.width, a.renderer.renderer.domElement.height, a.governor?.describe?.()], err2: a.modules.filter((m) => m._errored || m._lateErrored).map((m) => m.constructor.name), X: T.readout };
   });
   check('telescope zooms to ~0.05 deg and tracks Jupiter (disc resolved)', trk.fov < 0.08 && trk.err < trk.fov * 0.1 && trk.rPx > 10, JSON.stringify(trk));
   await page.keyboard.press('Escape');

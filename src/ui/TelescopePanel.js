@@ -59,8 +59,8 @@ export class TelescopePanel {
     this.search.addEventListener('input', () => this._fillList());
     this.search.addEventListener('keydown', (e) => {
       e.stopPropagation();
-      if (e.key === 'Enter') { const first = this._items?.[0]; if (first) tel.select(first); }
-      if (e.key === 'Escape') this.search.blur();
+      if (e.key === 'Enter') { const first = this._items?.[0]; if (first) tel.select(first); this.search.blur(); }
+      if (e.key === 'Escape') { this.search.blur(); tel.exit(); }
     });
     const tabs = el('div', 'tel-tabs');
     this.tabs = {};

@@ -159,11 +159,25 @@ export class Telescope {
 
   toggle() { if (this.active) this.exit(); else this.enter(); }
 
+  _insideModule() {
+    const I = this.ctx.station?.interior;
+    if (!I?.locate) return false;
+    try {
+      const u = this.ctx.universe;
+      const p = u?.cameraInStation ? u.cameraInStation(_n) : _n.copy(this.ctx.camera.position);
+      const z = I.locate(p, null, 0.1);
+      return !!z && z.id !== 'cupola';
+    } catch (_) { return false; }
+  }
+
   enter(target = null) {
     const ctx = this.ctx;
     const why = this.unavailable();
     if (why) { ctx.hud?.notify?.(why, { kind: 'warn' }); return false; }
     if (!this.active) {
+      // the observer camera may have been left inside a module (it starts where the astronaut was): use the
+      // overview pose outside the hull instead
+      if (ctx.mode === 'observer' && !ctx.isShot && this._insideModule()) { this._switching = true; try { ctx.app?.setView?.('overview'); } finally { this._switching = false; } }
       this.active = true;
       const app = ctx.app;
       this._saved = {
@@ -238,7 +252,7 @@ export class Telescope {
     this._switching = true;
     try {
       // a clear vantage point outside the hull (the observer camera may sit inside a module)
-      if (this.unavailable() || (ctx.mode === 'observer' && ctx.camera.position.length() < 120)) ctx.app?.setView?.('overview');
+      if (this.unavailable() || (ctx.mode === 'observer' && (this._insideModule() || ctx.camera.position.length() < 120))) ctx.app?.setView?.('overview');
       this.enter();
       this.select(m[1]);
       this.setFov(parseFloat(m[2] || '10'), true);

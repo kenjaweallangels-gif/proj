@@ -31,7 +31,8 @@ export class QualityGovernor {
     const q = this.app.quality;
     const base = { pr: this.app.renderer.basePixelRatio(), msaa: q.msaa || 0, shadow: q.shadowMapSize || 2048, env: q.envUpdateInterval || 2, bloom: !!q.bloom,
       detail: 1, ao: !!this.app.renderer.post?.aoPass };
-    const floor = this.app.renderer.floorPixelRatio();
+    // no resolution floor (?minh=0): never step below half the preset scale (a 0 px drawing buffer renders nothing)
+    const floor = this.app.renderer.floorPixelRatio() || Math.min(base.pr, 0.5);
     const L = [{ ...base }];
     const push = (patch) => L.push({ ...L[L.length - 1], ...patch });
     // 1. supersampling above the resolution floor, in steps
