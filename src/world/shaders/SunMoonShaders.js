@@ -1,4 +1,4 @@
-/** Sun disc + corona quads (always facing the camera) and the Moon sphere. */
+/** Sun disc + corona quads (always facing the camera). The Moon is world/Moon.js. */
 
 export const QUAD_VERTEX = /* glsl */`
 varying vec2 vUv;
@@ -35,35 +35,4 @@ void main() {
   vec3 col = uColor * uIntensity * g;
   col += (hash(gl_FragCoord.xy) - 0.5) * 0.002;
   gl_FragColor = vec4(max(col, 0.0), 1.0);
-}`;
-
-export const MOON_VERTEX = /* glsl */`
-varying vec3 vWorldPos, vNormalW;
-varying vec2 vUv;
-void main() {
-  vec4 wp = modelMatrix * vec4(position, 1.0);
-  vWorldPos = wp.xyz;
-  vNormalW = normalize(mat3(modelMatrix) * normal);
-  vUv = uv;
-  gl_Position = projectionMatrix * viewMatrix * wp;
-}`;
-
-/** Moon: albedo map lit by the Sun; Lambert blended with Lommel-Seeliger (flat lunar look) + opposition surge. */
-export const MOON_FRAGMENT = /* glsl */`
-uniform sampler2D tMoon;
-uniform vec3 uSunDir, uSunColor;
-uniform float uIntensity;
-varying vec3 vWorldPos, vNormalW;
-varying vec2 vUv;
-void main() {
-  vec3 N = normalize(vNormalW);
-  vec3 V = normalize(cameraPosition - vWorldPos);
-  vec3 alb = texture2D(tMoon, vUv).rgb;
-  float ndl = max(dot(N, uSunDir), 0.0);
-  float ndv = max(dot(N, V), 1.0e-3);
-  float ls = 2.0 * ndl / (ndl + ndv);                       // Lommel-Seeliger, ~1 at full Moon centre
-  float surge = 1.0 + 0.5 * pow(max(dot(V, uSunDir), 0.0), 16.0);   // retro-reflection (opposition effect)
-  vec3 col = alb * uIntensity * uSunColor * mix(ndl, ls, 0.6) * surge;
-  col += alb * 0.0015;                                      // earthshine
-  gl_FragColor = vec4(col, 1.0);
 }`;
