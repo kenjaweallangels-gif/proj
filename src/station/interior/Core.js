@@ -338,6 +338,8 @@ function nodeModule(I, spec) {
       else if (rs.door === 'open') openDoorCBM(K, F, 2.95, rs.hinge ?? 1);
       if (rs.len > 0) vestibuleCBM(K, ff(V(0, 0, 0).applyMatrix4(F), dir(F, 0, 0, -1), dir(F, 1, 0, 0)), rs.len, { lamp: true });
       if (rs.end === 'closedCBM') hatchDoorCBM(K, ff(pt(F, 0, 0, -rs.len + 0.02), dir(F, 0, 0, 1), dir(F, 1, 0, 0)));
+      // carve the exterior stub / hatch cover out of the radial vestibule (they would z-fight with its hatch)
+      if (rs.len > 0) Z.carveCone(pt(F, 0, 0, 0.1), pt(F, 0, 0, -rs.len - 0.12), CBM.w * 0.75);
       if (rs.end === 'ids') idsEnd(Z, ff(pt(F, 0, 0, -rs.len), dir(F, 0, 0, 1), dir(F, 1, 0, 0)), rs.port);
       if (rs.door !== 'closed' && rs.pass !== false) {
         const L = rs.len + 0.5;
