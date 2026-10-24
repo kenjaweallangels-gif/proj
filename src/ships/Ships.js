@@ -49,7 +49,7 @@ export class Ships {
     for (const [type, number, where] of FLEET) if (SHIP_TYPES[type]) this._create(type, number, where);
     this._initialPlacement();
     this.showcase = [];
-    if (ctx.params?.get?.('shipshow')) this._buildShowcase(ctx.params.get('shipanim') === '1');
+    if (ctx.params?.get?.('shipshow')) this._buildShowcase(ctx.params.get('shipanim') === '1', ctx.params.get('shipshow') !== 'track');
     this.buildTimeMs = performance.now() - t0;
     const tris = [...this.templates.values()].map((t) => `${t.type} ${t.lodTris.map((n) => Math.round(n / 100) / 10 + 'k').join('/')}`).join(', ');
     (this.showcase.length ? console.warn : console.info)(`[Ships] templates (L0/L1/L2 triangles): ${tris}; build ${this.buildTimeMs.toFixed(0)} ms (${JSON.stringify(this.buildTimes)})`);
@@ -150,10 +150,10 @@ export class Ships {
   }
 
   // ------------------------------------------------------------------ debug showcase
-  _buildShowcase(demo) {
+  _buildShowcase(demo, row = true) {
     const types = Object.keys(SHIP_TYPES).filter((t) => SHIP_TYPES[t].docks);
     const vps = this.ctx.station?.viewpoints;
-    types.forEach((type, i) => {
+    if (row) types.forEach((type, i) => {
       const s = this._instance(type, 9);
       s.state = 'docked'; s.velocity = new THREE.Vector3(); s.strobePhase = i * 0.37; s.petalExtend = 0; s.petalOpen = 0; s.demo = demo;
       s.group.position.set(-80 + i * 27, 120, 40);
@@ -179,8 +179,26 @@ export class Ships {
       vps[`ship-${type}-side`] = view(0.0, 1, -0.12);
     });
     vps && (vps['ship-row'] = { position: [0, 135, 140], target: [0, 120, 40] });
+    // views that follow the first flying / docked traffic ship of each type: track-<type>
+    if (vps) for (const type of types) {
+      const self = this;
+      const pick = () => self.ships.find((s) => s.type === type && s.group.visible && s.state !== 'docked') || self.ships.find((s) => s.type === type && s.group.visible);
+      const cam = (s) => {   // broadside, on the side away from the station centre, a little above
+        const p = s.group.position, ax = new THREE.Vector3(0, 0, 1).applyQuaternion(s.group.quaternion);
+        // the ship's local Y is perpendicular to its wings / arrays: look along it, from the side away from the station
+        const side = new THREE.Vector3(0, 1, 0).applyQuaternion(s.group.quaternion);
+        if (side.dot(new THREE.Vector3().subVectors(p, new THREE.Vector3(0, -8, 0))) < 0) side.negate();
+        const up = new THREE.Vector3().crossVectors(ax, side).normalize();
+        const c = p.clone().addScaledVector(ax, -s.length * 0.45);
+        return { c, pos: c.clone().addScaledVector(side, s.length * 1.1 + 5).addScaledVector(up, 2.5).addScaledVector(ax, 2) };
+      };
+      vps[`track-${type}`] = {
+        get position() { const s = pick(); return s ? cam(s).pos.toArray() : [0, 0, 60]; },
+        get target() { const s = pick(); return s ? cam(s).c.toArray() : [0, 0, 0]; },
+      };
+    }
     // debug views: no HUD panels over the ships
-    if (typeof document !== 'undefined' && this.ctx.params.get('shipshow') === 'clean') document.getElementById('ui')?.style.setProperty('display', 'none');
+    if (typeof document !== 'undefined' && ['clean', 'track'].includes(this.ctx.params.get('shipshow'))) document.getElementById('ui')?.style.setProperty('display', 'none');
   }
 
   // ------------------------------------------------------------------ runtime
@@ -190,6 +208,10 @@ export class Ships {
       this._detached = true;
       for (const s of this.ships) detach(s.rig);
       for (const s of this.showcase) detach(s.rig);
+      // debug: ?shipff=<s> fast-forwards the traffic (and the part animation) before the first frame
+      const ff = parseFloat(ctx.params?.get?.('shipff') || '0');
+      for (let k = 0; k < ff; k++) { this.traffic.update(1); for (const s of this.ships) if (s.group.visible) animateShip(1, s, t - ff + k); }
+      if (ff) console.warn(`[Ships] after ${ff} s: ${this.ships.map((s) => `${s.name}:${s.state}${s.flight ? '/' + s.flight.phase : ''}`).join(' ')}`);
     }
     this.traffic.update(dt);
     _cam.setFromMatrixPosition(ctx.camera.matrixWorld);

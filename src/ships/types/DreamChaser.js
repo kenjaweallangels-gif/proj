@@ -56,11 +56,10 @@ function loft(k, d0, d1, p0, p1, nd, np, lift = 0, uv = 1) {
   return g;
 }
 
-function wingShape() {
-  // span x (outward), chord y (= ship z): root -0.15..-3.55, tip at 2.05 span -0.15..-1.45
-  const s = new THREE.Shape();
-  s.moveTo(0, -0.15); s.lineTo(2.05, -0.15); s.lineTo(2.05, -1.45); s.lineTo(0.9, -2.7); s.lineTo(0, -3.55); s.closePath();
-  return s;
+/** Wing planform for side sx: span x (outward), chord y (= ship z, negative toward the nose); `flipY` mirrors the chord. */
+function wingShape(sx, flipY = 1) {
+  const pts = [[0, -0.15], [2.05, -0.15], [2.05, -1.45], [0.9, -2.7], [0, -3.55]];
+  return new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(sx * x, flipY * y)));
 }
 
 function dreamChaserAuthor(k) {
@@ -133,16 +132,14 @@ function dreamChaserAuthor(k) {
     const hp = V(sx * 1.5, -0.4, Z_AFT - 0.6);
     tpl.pivot(name, { position: hp, quaternion: new THREE.Quaternion().setFromAxisAngle(Z_AXIS, sx * 0.17) });
     const wb = k.on(name);
-    const shape = wingShape();
-    const g = new THREE.ExtrudeGeometry(shape, { depth: 0.16, bevelEnabled: !k.far, bevelThickness: 0.03, bevelSize: 0.04, bevelSegments: k.near ? 2 : 1 });
+    // wing box (black tiles all round), planform mirrored in the shape itself (the shape helpers fix the winding)
+    const g = new THREE.ExtrudeGeometry(wingShape(sx), { depth: 0.16, bevelEnabled: !k.far, bevelThickness: 0.03, bevelSize: 0.04, bevelSegments: k.near ? 2 : 1 });
     g.rotateX(Math.PI / 2); g.translate(0, 0.08, 0);     // shape y -> ship z, thickness along y
-    if (sx < 0) { g.applyMatrix4(new THREE.Matrix4().makeScale(-1, 1, 1)); flipWinding(g); }
     scaleUV(g, 0.6, 0.6);
     wb.add('tilesHS', g, true);
-    const skin = new THREE.ShapeGeometry(shape, 2); skin.rotateX(-Math.PI / 2); skin.scale(0.97, 1, 0.97); skin.translate(0, 0.122, -0.04);
-    // ShapeGeometry normal +Z -> after rotateX(-90) +Y (up); shape y -> -z: mirror z back
-    skin.applyMatrix4(new THREE.Matrix4().makeScale(1, 1, -1)); flipWinding(skin);
-    if (sx < 0) { skin.applyMatrix4(new THREE.Matrix4().makeScale(-1, 1, 1)); flipWinding(skin); }
+    // white upper skin: ShapeGeometry faces +Z -> rotateX(-90) faces +Y; the chord is pre-mirrored (z = -y)
+    const skin = new THREE.ShapeGeometry(wingShape(sx, -1), 2); skin.rotateX(-Math.PI / 2);
+    skin.scale(0.97, 1, 0.97); skin.translate(0, 0.122, -0.04);
     scaleUV(skin, 0.6, 0.6);
     if (!k.far) wb.add('tilesWhite', skin, false);
     // elevon gap
@@ -165,13 +162,6 @@ function dreamChaserAuthor(k) {
   k.collider(C.capsule(V(0, -0.05, Z_AFT - 6.0), V(0, -0.2, Z_AFT - 8.6), 0.8, 'nose'));
   for (const sx of [-1, 1]) k.collider(C.box(V(sx * (RS + 0.6 + 1.6), 0, zW), V(1.65, 0.1, 0.68), null, 'ssWing'));
   return { wings: ws, hinges };
-}
-
-function flipWinding(g) {
-  const idx = g.index;
-  if (idx) for (let i = 0; i < idx.count; i += 3) { const a = idx.getX(i); idx.setX(i, idx.getX(i + 2)); idx.setX(i + 2, a); }
-  else { const p = g.attributes.position, n = g.attributes.normal, u = g.attributes.uv; for (let i = 0; i < p.count; i += 3) for (const at of [p, n, u]) { if (!at) continue; for (let c = 0; c < at.itemSize; c++) { const t = at.getComponent(i, c); at.setComponent(i, c, at.getComponent(i + 2, c)); at.setComponent(i + 2, c, t); } } }
-  return g;
 }
 
 export const DREAMCHASER = {

@@ -26,7 +26,7 @@ function starlinerAuthor(k) {
   lathe(k, b, 'paintWhite', [[1.24, -0.66], [1.24, -0.6], [1.12, -0.55]], { seg: 64 });
   flange(k, b, -0.6, 1.12, { h: 0.035, w: 0.04, bolts: 36 });
   // crew module backshell (white tiles), blue band, shoulder
-  lathe(k, b, 'tilesWhite', [[2.26, -2.66], [2.3, -2.56], CM[0], CM[1], [1.24, -0.66]], { seg: 96, bev: 0.025, uv: 5 });
+  lathe(k, b, 'tilesWhite', [[2.26, -2.66], [2.3, -2.56], CM[0], CM[1], [1.24, -0.66]], { seg: 96, bev: 0.025, uv: 3, relief: { depth: 0.006, mode: 'groove', width: 0.07, sub: 3 } });
   lathe(k, b, 'paintBlue', [[rCM(-2.3) + 0.004, -2.3], [rCM(-2.12) + 0.004, -2.12]], { seg: 96, bev: 0, shadow: false });
   seam(k, b, -2.3, rCM(-2.3) + 0.006, { surf: 'paintWhite', t: 0.008 });
   seam(k, b, -2.12, rCM(-2.12) + 0.006, { surf: 'paintWhite', t: 0.008 });

@@ -220,17 +220,55 @@ export function bevel(profile, d) {
 }
 
 /** Surface of revolution about Z with LOD tessellation (and bevelled corners on L0/L1). */
-export function lathe(k, b, surf, profile, { seg = 48, bev = 0.012, shadow = true, tint = null, th0 = 0, thl = Math.PI * 2, uv = 1 } = {}) {
-  const prof = k.far ? profile : bevel(profile, bev);
+export function lathe(k, b, surf, profile, { seg = 48, bev = 0.012, shadow = true, tint = null, th0 = 0, thl = Math.PI * 2, uv = 1, relief = null } = {}) {
+  let prof = k.far ? profile : bevel(profile, bev);
+  let segs = k.seg(seg);
+  // L0 surface relief (quilted blanket pillows / tile grooves): resample the profile and tessellate around
+  if (relief && k.near) {
+    const step = TEX_M / (8 * uv) / (relief.sub || 5);    // texture cells (8 per UV unit) split into `sub` quads
+    prof = resample(prof, step);
+    const rMax0 = Math.max(...prof.map((p) => p[0]));
+    segs = Math.max(segs, Math.round((thl * rMax0) / step));
+  }
   const pts = prof.map(([r, z]) => new THREE.Vector2(Math.max(0, r), z));
   // profile points must run aft -> fore along the outside (outward normal = direction rotated clockwise)
-  const g = new THREE.LatheGeometry(pts, k.seg(seg), th0 + Math.PI / 2, thl);   // theta from +X toward +Y
+  const g = new THREE.LatheGeometry(pts, segs, th0 + Math.PI / 2, thl);   // theta from +X toward +Y
   g.rotateX(Math.PI / 2);
   let len = 0; for (let i = 1; i < prof.length; i++) len += Math.hypot(prof[i][0] - prof[i - 1][0], prof[i][1] - prof[i - 1][1]);
   const rMax = Math.max(...prof.map((p) => p[0]));
   scaleUV(g, uv * (2 * Math.PI * rMax) / TEX_M * (thl / (2 * Math.PI)), uv * len / TEX_M);
+  if (relief && k.near) applyRelief(g, prof, relief);
   if (b) b.add(surf, g, shadow, tint);   // b = null: just return the geometry (to transform it first)
   return g;
+}
+
+/** Resample a [r, z] polyline so that no segment is longer than `step` (keeps the corners). */
+function resample(prof, step) {
+  const out = [prof[0]];
+  for (let i = 1; i < prof.length; i++) {
+    const [r0, z0] = prof[i - 1], [r1, z1] = prof[i];
+    const n = Math.max(1, Math.ceil(Math.hypot(r1 - r0, z1 - z0) / step));
+    for (let j = 1; j <= n; j++) out.push([r0 + (r1 - r0) * j / n, z0 + (z1 - z0) * j / n]);
+  }
+  return out;
+}
+
+/**
+ * Displace a lathe along its normals so the geometry follows the texture's cell grid (8 cells per UV unit:
+ * quilt pillows of the blanket texture, panel / tile seams of the hull texture):
+ * relief = { depth (m), mode: 'pillow' | 'groove', width (fraction of a cell) }.
+ */
+function applyRelief(g, prof, { depth, mode = 'pillow', width = 0.08 }) {
+  const pos = g.attributes.position, nor = g.attributes.normal, uvs = g.attributes.uv, np = prof.length;
+  for (let v = 0; v < pos.count; v++) {
+    if (prof[v % np][0] < 0.05) continue;
+    const fu = ((uvs.getX(v) * 8) % 1 + 1) % 1, fv = ((uvs.getY(v) * 8) % 1 + 1) % 1;
+    let d;
+    if (mode === 'pillow') d = depth * Math.pow(Math.max(0, Math.sin(Math.PI * fu) * Math.sin(Math.PI * fv)), 0.45);
+    else { const e = Math.min(fu, 1 - fu, fv, 1 - fv); d = e < width ? -depth * (1 - e / width) : 0; }
+    pos.setXYZ(v, pos.getX(v) + nor.getX(v) * d, pos.getY(v) + nor.getY(v) * d, pos.getZ(v) + nor.getZ(v) * d);
+  }
+  g.computeVertexNormals();
 }
 
 /** Ring with a bevelled rectangular section at z (axis Z): inner radius r, radial height h, axial width w. */

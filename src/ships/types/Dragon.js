@@ -37,7 +37,7 @@ function dragonAuthor(k) {
     for (const dx of [-0.05, 0.05]) b.add('lens', axial(new THREE.CircleGeometry(0.035, 12), p.clone().add(V(dx, 0, 0.061)), Z_AXIS), false);
   }
   // sidewall: white backshell with panel seams, shoulder and the heat shield rim
-  lathe(k, b, 'hull', [[1.9, -3.72], [1.92, -3.66], [1.9, -3.6], SIDE[0], SIDE[1], [1.38, -0.82]], { seg: 96, bev: 0.02, uv: 0.55 });
+  lathe(k, b, 'hull', [[1.9, -3.72], [1.92, -3.66], [1.9, -3.6], SIDE[0], SIDE[1], [1.38, -0.82]], { seg: 96, bev: 0.02, uv: 0.55, relief: { depth: 0.006, mode: 'groove', width: 0.02, sub: 4 } });
   for (const z of [-1.4, -2.2, -2.95]) seam(k, b, z, rSide(z) + 0.002, { surf: 'metalDark', t: 0.006 });
   if (k.near) for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2 + 0.13; rod(k, b, 'metalDark', onSide(a, -3.5, 0.002), onSide(a, -0.75, 0.002), 0.005, { seg: 4 }); }
   lathe(k, b, 'tilesHS', [[1.76, -3.98], [1.86, -3.86], [1.9, -3.72]], { seg: 80, uv: 4 });

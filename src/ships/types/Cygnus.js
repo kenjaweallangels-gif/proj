@@ -42,7 +42,7 @@ function cygnusAuthor(k) {
   cbmPassive(k, { depth: 0.62 });
   // pressurised cargo module: short forward cone, silver cylinder with bolted ring frames
   lathe(k, b, 'hullSilver', [[PCM_R, -1.0], [PCM_R - 0.01, -0.92], [1.49, -0.66], [1.49, -0.6]], { seg: 96 });
-  lathe(k, b, 'hullSilver', [[PCM_R, -5.0], [PCM_R, -1.0]], { seg: 96, uv: 1.2 });
+  lathe(k, b, 'hullSilver', [[PCM_R, -5.0], [PCM_R, -1.0]], { seg: 96, uv: 1.2, relief: { depth: 0.008, mode: 'groove', width: 0.04, sub: 3 } });
   for (const z of [-1.0, -2.35, -3.7, -5.0]) flange(k, b, z, PCM_R, { h: 0.035, w: 0.07, bolts: k.near ? 72 : 0, surf: 'metalBare' });
   // longitudinal MMOD panel seams + white blanket patches
   if (!k.far) for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; rod(k, b, 'metalDark', V(Math.cos(a) * (PCM_R + 0.003), Math.sin(a) * (PCM_R + 0.003), -1.03), V(Math.cos(a) * (PCM_R + 0.003), Math.sin(a) * (PCM_R + 0.003), -4.97), 0.005, { seg: 4 }); }
