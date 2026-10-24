@@ -426,10 +426,14 @@ export function buildModules(ctx, station, b, rails) {
     addRcsPod(power.point(5.5, thp, power.r + 0.3), power.normal(thp), [dirs[0], V(1, 0, 0)]);
   }
   for (const z of [-1.1, 1.1]) {
-    const c = V(logi.center.x - logi.len / 2 - 1.2, CY, z);
-    b.add('metalDark', tubeAt(c, V(-1, 0, 0), 0.22, 1.1, 20, { rTop: 0.55, uv: false }));
-    b.add('metalDark', tubeAt(V(c.x + 0.7, CY, z), X_AXIS, 0.2, 0.4, 12, { uv: false }), false);
-    b.add('mliSilver', torusAt(V(c.x + 0.4, CY, z), X_AXIS, 0.32, 0.1, 6, 16), false);
+    // reboost engine: mounting flange on the cap face, chamber, throat, thin-walled bell with a rolled lip and a
+    // sooty inner liner (an open nozzle, not a capped cone)
+    const P0 = V(logi.center.x - logi.len / 2 - 0.96, CY, z), NX = V(-1, 0, 0);
+    b.add('metalBare', latheAt(P0, NX, [[0.18, -0.03], [0.36, -0.03], [0.36, 0.03], [0.26, 0.06], [0.24, 0.06]], 24), false);
+    b.add('metalDark', latheAt(P0, NX, [[0.24, 0.0], [0.24, 0.3], [0.17, 0.4], [0.2, 0.55], [0.36, 0.95], [0.56, 1.3], [0.585, 1.33], [0.56, 1.335]], 28));
+    b.add('nozzle', latheAt(P0, NX, [[0.56, 1.335], [0.535, 1.31], [0.34, 0.96], [0.185, 0.56], [0.15, 0.43], [0.0, 0.43]], 28), false);
+    b.add('mliSilver', torusAt(P0.clone().addScaledVector(NX, 0.18), X_AXIS, 0.26, 0.06, 6, 20), false);
+    if (D) radialBolts(D, new THREE.Matrix4().compose(P0.clone().addScaledVector(NX, 0.0), new THREE.Quaternion().setFromUnitVectors(Y_AXIS, NX), V(1, 1, 1)), 0.36, 12, 0, 0.012, 0.009);
   }
   b.label('ОПАСНО · DANGER', 2.4, 0.3, mat(logi.center.x - 3.0, CY + logi.r + 0.42, -0.9, _q.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0))), { width: 1024, color: '#b01818' });
   b.labelAt(`${LAYOUT.stationName} · ${LAYOUT.stationNameLatin}`, 7.4, 0.92, V(hab2.center.x - 0.4, CY + 0.35, hab2.r + 0.17), Z_AXIS, { width: 1024 });
