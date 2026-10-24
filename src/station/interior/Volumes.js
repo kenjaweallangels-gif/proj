@@ -102,11 +102,12 @@ export function containSphere(p, vel, rad, vols, e, f, outN) {
 }
 
 /** Smallest signed distance of point p to the union (ignores gates when ignoreGates). */
-export function unionDistance(p, vols, ignoreGates = false) {
+export function unionDistance(p, vols, ignoreGates = false, skipPassages = false) {
   let best = Infinity;
   for (let i = 0, n = vols.length; i < n; i++) {
     const v = vols[i];
     if (!ignoreGates && v.gate && !v.gate.isOpen) continue;
+    if (skipPassages && v.passage) continue;
     const d = volumeDistance(v, p, _n);
     if (d < best) best = d;
   }

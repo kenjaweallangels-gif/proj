@@ -369,7 +369,7 @@ export class Player {
     st.propellant = body.propellant;
     st.thrusting = body.thrusting; st.boost = body.boost && body.thrusting; st.killing = body.killing;
     st.rotationThrust = body.rotThrust;
-    st.speedRelative = this.velocity.length();
+    st.speedRelative = this.iva?.frame === 'ring' && st.mode !== 'eva' ? this.iva.vL.length() : this.velocity.length();   // ring: relative to the deck
     st.angularSpeed = body.omega.length();
     st.distanceToAirlock = this.position.distanceTo(this.airlock?.standPosition || this.hatchCenter);
     st.canEnterAirlock = st.mode === 'eva' && !st.sequence && st.distanceToAirlock < 1.5;

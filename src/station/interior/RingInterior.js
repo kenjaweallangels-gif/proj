@@ -133,7 +133,7 @@ function buildHub(I) {
       hatchDoorRound(K, offset(rot(hinge, 'y', 1.9), -hr - 0.06, 0, 0), hr - 0.03);
       if (!I.lite) { sign(K, offset(F, 0, 1.4, 0), 'СТУПИЦА КОЛЬЦА · RING HUB', 1.2, 0.12, { ph: 48, border: '#2a2d32' }); display(K, offset(F, -1.9, 0.6, 0.02), 0.7, 0.44, 'scrGraph'); rack(K, offset(F, 2.0, 0.6, 0), 'locker', 1.0, 1.4); }
       lightPanel(K, offset(F, 0, 3.0, 0), 1.0, 0.25);
-      Z.cyl(V(xb - 1.0, hy, 0), V(xb + 1.0, hy, 0), hr - 0.05);
+      Z.cyl(V(xb - 1.0, hy, 0), V(xb + 1.0, hy, 0), hr - 0.05).passage = true;
       Z.portal('spine', V(xb + 0.05, hy, 0), 0.6);
     }
   }

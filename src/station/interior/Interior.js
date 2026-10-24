@@ -237,16 +237,22 @@ export class StationInterior {
   locate(p, hint = null, margin = 0.05) {
     // the compartment in which the point lies deepest (passages overlap their neighbours a little)
     this.toRing(p, _q);
-    const dist = (z) => unionDistance(z.frame === 'ring' ? _q : p, z.volumes, true);
+    // Passage volumes (hatch vestibules reaching into the neighbours) only count when the point is in
+    // no compartment proper, so a camera just past a hatch belongs to the compartment it looks into.
+    const best0 = this._locate(p, hint, 0, true);
+    return best0 || this._locate(p, hint, margin, false);
+  }
+
+  _locate(p, hint, margin, skipPassages) {
     let best = null, bd = margin;
     // (the hint only breaks ties: a stale hint must not shadow the compartment the point really is in)
-    if (hint) { const d0 = dist(hint); if (d0 <= bd) { best = hint; bd = d0 - 1e-4; } }
+    if (hint) { const d0 = unionDistance(hint.frame === 'ring' ? _q : p, hint.volumes, true, skipPassages); if (d0 <= bd) { best = hint; bd = d0 - 1e-4; } }
     // broad phase: bounding spheres
     for (const z of this.zones) {
       if (z === hint) continue;
       const c = z.frame === 'ring' ? _q : p;
       if (c.distanceToSquared(z.sphere.center) > (z.sphere.radius + 1) ** 2) continue;
-      const d = dist(z);
+      const d = unionDistance(c, z.volumes, true, skipPassages);
       if (d < bd) { bd = d; best = z; }
     }
     return best;
@@ -460,6 +466,6 @@ function makeViews() {
     'interior-spoke': { ring: true, phi: 0.0, rho: 18, x: 0.05, yaw: 0, pitch: -1.2, ladder: true },
     'interior-ring': { ring: true, phi: 0.42, rho: RING.FLOOR - 1.6, x: 0.1, yaw: 0, pitch: -0.05 },
     'interior-pod': { ring: true, phi: Math.PI * 2 / 3 + 0.075, rho: RING.FLOOR - 1.6, x: 0.3, yaw: Math.PI, pitch: 0.12 },
-    'interior-cabin': { ring: true, phi: 0.155, rho: RING.FLOOR - 1.6, x: 1.6, yaw: Math.PI / 2, pitch: -0.1 },
+    'interior-cabin': { ring: true, phi: 0.258, rho: RING.FLOOR - 1.6, x: 1.5, yaw: Math.PI / 2, pitch: -0.1 },
   };
 }

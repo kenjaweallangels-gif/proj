@@ -314,6 +314,8 @@ built once per variant (k mod 3) and shared by rotated meshes. Ring zones are ch
 * Exposure: inside, `renderer.post.grade.autoExposure` is switched off and a fixed interior exposure is used.
 * Physics queries: `locate(worldPos, hint)`, `frameFor(zone, pos)`, `volumesFor(zone, frame)` (containment union,
   `Volumes.js`), `solidsFor(zone, frame)`, `handrails` (station frame), `ringRails`, `ladders` (ring-local).
+  Hatch passages are volumes flagged `passage` that reach 1 m into both neighbours (so the containment union has no
+  pinch at hatches); `locate` ignores them unless the point lies in no compartment proper.
 * Views: `interior.views` — `inside` (start), `interior-lab|logistics|node1|node2|node3|hab1|hab2|greenhouse|medical|
   service|dock|stowage|tunnel|ringhub|spoke|ring|pod|cabin`, `cupola-inside`, `airlock-inside`; `player.hasView(name)`.
   URL `?start=inside|airlock` (menu: «НАЧАЛО»). The old `airlock` view = suited in the crew lock, inner hatch closed.
