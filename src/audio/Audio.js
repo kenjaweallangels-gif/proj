@@ -1,359 +1,295 @@
+import { Engine } from './Engine.js';
+import { Body } from './Body.js';
+import { Suit } from './Suit.js';
+import { Airlock } from './Airlock.js';
+import { StationLife } from './StationLife.js';
+import { Radio } from './Radio.js';
+import { Traffic } from './Traffic.js';
+import { Music } from './Music.js';
+import { roomClass } from './Zones.js';
+import { FOLEY } from './foley.js';
+
 /**
- * Procedural WebAudio for the EVA (no asset files). Everything is synthesised from noise buffers
- * and oscillators:
- *   fan        suit ventilation hum (filtered noise + 120 Hz tone)      – continuous
- *   breath     breathing loop shaped by an envelope, rate follows heartRate
- *   heart      two low thumps per beat, audible above 100 bpm
- *   rcs / rot  thruster hiss bursts while thrusting (translation / rotation)
- *   depress / repress   airlock air hiss fading out / rising
- *   hatchMotor + clunk  hatch drive whine and latch
- *   radio      quindar tones + faint filtered chatter, occasionally
- *   warn       beeps: tether taut, low propellant, low O2
- *   grab / release / impact / click / detach
- *   cabin      inside the station: ventilation hum of the modules (fans, pumps), louder in the service module
- *   step / rung / suit   footsteps in the gravity ring, ladder rungs, donning / doffing the spacesuit
- * The AudioContext is created lazily on the first user gesture; every method is safe to call
- * when no context exists (screenshot mode, autoplay policy).
+ * Sound of the station (see docs/ARCHITECTURE.md, "Audio"). Everything is procedural (src/audio/foley.js,
+ * rendered in a worker) except the soundtrack (offline-rendered Opus loops in public/audio/music).
  *
- *   audio.play(name, opts)   audio.setParam(name, value)   audio.muted (M toggles)   audio.update(dt, ctx)
+ *   Engine / Mixer   buses (music, sfx, ambience, voice, ui -> master -> limiter), acoustic paths:
+ *                    air (cabin atmosphere: pressure-scaled, room reverb, helmet muffling), body (structure /
+ *                    own body), suit (inside the helmet), radio (headset), pa (station loudspeakers)
+ *   Body             own contacts: grabs, push-offs, bumps, velcro, clothing, footsteps by surface, ladders
+ *   Suit             breath / heart / fans / pump / SAFER / reel / caution tones, donning and doffing
+ *   Airlock          depress, repress, hatches (from the player's sequence state)
+ *   StationLife      ventilation beds per compartment, positional equipment, random life events
+ *   Traffic          docking heard through the structure, station attitude jets, radio calls
+ *   Radio            headset (quindar) or PA transmissions with subtitles
+ *   Music            adaptive soundtrack director
+ *
+ * The AudioContext is created lazily on the first user gesture; every method is safe without it.
+ *
+ *   audio.play(name, opts)          legacy + any foley entry by name (opts: path, gain, pos, rate, at)
+ *   audio.event(name, data)         scenario hooks: explosion, collision, launch, asteroid, comet, engine,
+ *                                   alarm, pa, telescope, scenario
+ *   audio.setMusicMood(mood|null)   force a music mood (station|eva|night|sunrise|docking|deep|flight|lunar)
+ *   audio.setVolume(cat, v)         cat: master|music|sfx|ambience|voice|ui (0..1, persisted)
+ *   audio.setMusicEnabled(bool), audio.muted, audio.volume, audio.setParam(name, value), audio.update(dt, ctx)
  */
+const SETTINGS_KEY = 'audio.settings';
+const DEFAULTS = { master: 1, music: 0.7, sfx: 0.85, ambience: 0.75, voice: 0.8, ui: 0.6, musicOn: true };
+const PREWARM = [
+  'bed_module', 'bed_node', 'bed_airlock', 'bed_ring', 'bed_service', 'cloth_loop', 'suitfan_loop', 'suitpump_loop', 'safer_loop', 'radio_hiss',
+  'hand_rail', 'glove_rail', 'push_off', 'bump_soft', 'bump_hard', 'cloth', 'step_grate', 'step_carpet', 'step_panel', 'step_mat', 'rung_hand', 'rung_foot',
+  'breath_in', 'breath_out', 'breath_in_hard', 'breath_out_hard', 'safer_valve', 'heart', 'suit_beep', 'ui_click', 'ui_tick', 'latch', 'latch_small',
+  'pump_loop', 'hiss_loop', 'rush_loop', 'motor_loop', 'valve_open', 'ratchet', 'seal', 'hinge_creak', 'zipper', 'bearing_clicks', 'helmet_latch', 'suit_hiss',
+  'carabiner', 'glove_tap', 'reel_loop', 'tether_twang', 'suit_impact', 'quindar_in', 'quindar_out', 'radio_babble', 'pa_chime',
+  'bed_hub', 'bed_spoke', 'bed_tunnel', 'bed_cupola', 'bed_green', 'freezer_loop', 'fridge_loop', 'fridge_clunk', 'irrigation_loop', 'treadmill_loop', 'ergo_loop',
+  'laptop_beep', 'keys', 'scrubber_cycle', 'water_gurgle', 'struct_creak', 'dock_contact', 'dock_latch', 'spring_thunk', 'thruster_thump', 'velcro', 'brake_rub',
+  'jump', 'land_body', 'servo_loop', 'caution_tone', 'warning_tone', 'explosion_near', 'debris_rattle',
+];
+
+function loadSettings() {
+  const s = { ...DEFAULTS };
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) Object.assign(s, JSON.parse(raw));
+    else { const v = parseFloat(localStorage.getItem('hud.volume')); if (Number.isFinite(v)) s.master = Math.max(0, Math.min(1, v)); }
+  } catch (_) { /* storage blocked */ }
+  return s;
+}
+
 export class Audio {
   constructor(ctx) {
     this.ctx = ctx;
     this.ac = null;
     this.ready = false;
-    this._muted = false;
-    this._volume = 1;
-    this.params = { crawl: 0, radio: 1 };
+    this._muted = ctx.params?.get?.('mute') === '1';
+    this.settings = loadSettings();
+    if (ctx.params?.get?.('music') === '0') this.settings.musicOn = false;
+    this.params = { crawl: 0, radio: 1, fan: 1 };
+    this.moodOverride = null;
+    this.telescope = false;
     this.time = 0;
-    this.breathPhase = 0;
-    this.heartPhase = 0;
-    this.radioTimer = 12 + Math.random() * 20;
-    this.warnTimer = 0;
-    this.rcsTimer = 0;
-    this.nodes = {};
-    this._pending = [];
+    this._moodTimer = 0;
+    this._night = null; this._sunPrev = null; this.sunriseUntil = 0; this.dockCool = 0; this.wonderUntil = 0;
+    this.L = { zone: null, inside: false, x: 0, density: 0, helmet: 0, capture: false };
     this._gesture = () => this._init();
     for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, this._gesture, { passive: true });
-    if (ctx.params?.get?.('mute') === '1') this._muted = true;
+    // interface sounds: buttons and sliders of the HUD / menu
+    this._uiClick = (e) => { if (e.target?.closest?.('button')) this.play('ui', { kind: 'click' }); };
+    this._uiInput = (e) => { if (e.target?.type === 'range') { const t = performance.now(); if (t - (this._uiT || 0) > 70) { this._uiT = t; this.play('ui', { kind: 'tick' }); } } };
+    ctx.uiRoot?.addEventListener?.('click', this._uiClick, true);
+    ctx.uiRoot?.addEventListener?.('input', this._uiInput, true);
   }
 
+  // ------------------------------------------------------------------ settings
   get muted() { return this._muted; }
-  set muted(v) { this._muted = !!v; this._applyMaster(); }
-  /** Master volume 0..1 (also `setParam('volume', v)`). */
-  get volume() { return this._volume; }
-  set volume(v) { this._volume = Math.min(1, Math.max(0, +v || 0)); this._applyMaster(); }
-  _applyMaster() {
-    if (this.nodes.master && this.ac) this.nodes.master.gain.setTargetAtTime(this._muted ? 0 : this._volume, this.ac.currentTime, 0.05);
+  set muted(v) { this._muted = !!v; this._applyVolumes(); }
+  /** Master volume 0..1 (also setParam('volume', v)). */
+  get volume() { return this.settings.master; }
+  set volume(v) { this.setVolume('master', v); }
+  get musicEnabled() { return this.settings.musicOn !== false; }
+  setMusicEnabled(on) { this.settings.musicOn = !!on; this._save(); this.music?.setEnabled(!!on); }
+  getVolume(cat) { return this.settings[cat]; }
+  setVolume(cat, v) {
+    if (!(cat in DEFAULTS) || cat === 'musicOn') return;
+    this.settings[cat] = Math.max(0, Math.min(1, +v || 0));
+    this._save(); this._applyVolumes();
   }
+  _save() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings)); localStorage.setItem('hud.volume', String(this.settings.master)); } catch (_) { /* storage blocked */ } }
+  _applyVolumes() { if (this.engine) this.engine.mixer.setVolumes(this.settings, this._muted); }
 
-  // ---------------------------------------------------------------- setup
+  // ------------------------------------------------------------------ setup
   _init() {
     if (this.ac) { if (this.ac.state === 'suspended') this.ac.resume().catch(() => {}); return; }
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
-      const ac = this.ac = new AC({ latencyHint: 'interactive' });
-      const N = this.nodes;
-      N.master = ac.createGain(); N.master.gain.value = this._muted ? 0 : this._volume; N.master.connect(ac.destination);
-      // gentle compressor keeps thruster bursts from clipping the quiet suit ambience
-      N.comp = ac.createDynamicsCompressor(); N.comp.threshold.value = -18; N.comp.ratio.value = 4; N.comp.connect(N.master);
-      this.noiseBuf = this._noiseBuffer(2.0);
-      this._buildFan(); this._buildBreath(); this._buildRcs(); this._buildAir(); this._buildRadio(); this._buildCrawl(); this._buildCabin();
-      this.ready = true;
-      for (const [name, opts] of this._pending) this.play(name, opts);
-      this._pending.length = 0;
+      this.start(new AC({ latencyHint: 'interactive' }));
     } catch (e) { console.warn('[Audio] unavailable:', e?.message || e); this.ac = null; }
   }
 
-  _noiseBuffer(seconds) {
-    const ac = this.ac, n = Math.floor(ac.sampleRate * seconds), buf = ac.createBuffer(1, n, ac.sampleRate), d = buf.getChannelData(0);
-    let b0 = 0, b1 = 0, b2 = 0;
-    for (let i = 0; i < n; i++) {
-      // pinkish noise (Paul Kellet's economy filter)
-      const w = Math.random() * 2 - 1;
-      b0 = 0.99765 * b0 + w * 0.0990460; b1 = 0.96300 * b1 + w * 0.2965164; b2 = 0.57000 * b2 + w * 1.0526913;
-      d[i] = (b0 + b1 + b2 + w * 0.1848) * 0.11;
-    }
-    return buf;
+  /** Build the engine on an AudioContext (also used with an OfflineAudioContext by tools/audio/render-engine.mjs). */
+  start(ac, { music = true } = {}) {
+    this.ac = ac;
+    const ctx = this.ctx;
+    const e = this.engine = new Engine(ac, ctx);
+    this.body = new Body(e, ctx);
+    this.suit = new Suit(e, ctx);
+    this.airlock = new Airlock(e, ctx);
+    this.life = new StationLife(e, ctx);
+    this.music = music ? new Music(e, ctx) : null;
+    this.radio = new Radio(e, ctx, (s) => this.music?.duck(s));
+    this.traffic = new Traffic(e, ctx, this.radio);
+    this._applyVolumes();
+    if (this.music && !this.musicEnabled) this.music.setEnabled(false);
+    e.bank.prewarm(PREWARM);
+    this.ready = true;
+    for (const ev of ['pointerdown', 'keydown']) window.removeEventListener(ev, this._gesture);
+    // keep resuming on gestures (autoplay policies may suspend the context again)
+    this._resume = () => { if (this.ac?.state === 'suspended') this.ac.resume().catch(() => {}); };
+    for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, this._resume, { passive: true });
   }
 
-  _noiseSource(loop = true) { const s = this.ac.createBufferSource(); s.buffer = this.noiseBuf; s.loop = loop; return s; }
-  _gain(v, dest) { const g = this.ac.createGain(); g.gain.value = v; g.connect(dest || this.nodes.comp); return g; }
-  _filter(type, f, q = 1, dest) { const fl = this.ac.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q; if (dest) fl.connect(dest); return fl; }
-
-  _buildFan() {
-    const N = this.nodes, ac = this.ac;
-    N.fanGain = this._gain(0.0);
-    const bp = this._filter('bandpass', 420, 0.9, N.fanGain);
-    const src = this._noiseSource(); src.connect(bp); src.start();
-    const tone = ac.createOscillator(); tone.type = 'sine'; tone.frequency.value = 120;
-    const tone2 = ac.createOscillator(); tone2.type = 'triangle'; tone2.frequency.value = 241.3;
-    const tg = this._gain(0.35, N.fanGain); tone.connect(tg); const tg2 = this._gain(0.08, N.fanGain); tone2.connect(tg2);
-    tone.start(); tone2.start();
-    N.fanGain.gain.setTargetAtTime(0.11, ac.currentTime, 1.5);
-  }
-
-  _buildBreath() {
-    const N = this.nodes;
-    N.breathGain = this._gain(0.0);
-    N.breathFilter = this._filter('bandpass', 700, 0.8, N.breathGain);
-    const src = this._noiseSource(); src.connect(N.breathFilter); src.start();
-    // heartbeat: low sine thumps are scheduled in update()
-    N.heartGain = this._gain(0.9);
-    N.heartFilter = this._filter('lowpass', 140, 0.7, N.heartGain);
-  }
-
-  _buildRcs() {
-    const N = this.nodes;
-    N.rcsGain = this._gain(0.0);
-    const hp = this._filter('highpass', 1400, 0.7, N.rcsGain);
-    const src = this._noiseSource(); src.connect(hp); src.start();
-    N.rotGain = this._gain(0.0);
-    const bp = this._filter('bandpass', 3200, 2.5, N.rotGain);
-    const src2 = this._noiseSource(); src2.connect(bp); src2.start();
-    // thruster solenoid click layer
-    N.rcsClick = this._filter('bandpass', 1800, 6, this.nodes.comp);
-  }
-
-  _buildAir() {
-    const N = this.nodes;
-    N.airGain = this._gain(0.0);
-    N.airFilter = this._filter('lowpass', 2500, 0.6, N.airGain);
-    const src = this._noiseSource(); src.connect(N.airFilter); src.start();
-  }
-
-  _buildRadio() {
-    const N = this.nodes;
-    N.radioGain = this._gain(0.0);
-    N.radioFilter = this._filter('bandpass', 1300, 2.2, N.radioGain);
-    const src = this._noiseSource(); src.connect(N.radioFilter); src.start();
-  }
-
-  _buildCrawl() {
-    const N = this.nodes;
-    N.crawlGain = this._gain(0.0);
-    const bp = this._filter('bandpass', 260, 1.2, N.crawlGain);
-    const src = this._noiseSource(); src.connect(bp); src.start();
-  }
-
-  _buildCabin() {
-    const N = this.nodes, ac = this.ac;
-    N.cabinGain = this._gain(0.0);
-    // broadband fan noise (low-passed), a 50/100 Hz pump hum and a faint high whine of avionics fans
-    const lp = this._filter('lowpass', 520, 0.7, N.cabinGain);
-    const src = this._noiseSource(); src.playbackRate.value = 0.7; src.connect(lp); src.start();
-    const hum = ac.createOscillator(); hum.type = 'sine'; hum.frequency.value = 50;
-    const hum2 = ac.createOscillator(); hum2.type = 'triangle'; hum2.frequency.value = 100.4;
-    const whine = ac.createOscillator(); whine.type = 'sine'; whine.frequency.value = 1830;
-    const hg = this._gain(0.22, N.cabinGain); hum.connect(hg); const hg2 = this._gain(0.06, N.cabinGain); hum2.connect(hg2);
-    const wg = this._gain(0.004, N.cabinGain); whine.connect(wg);
-    hum.start(); hum2.start(); whine.start();
-  }
-
-  // ---------------------------------------------------------------- one-shots
-  /** play(name, opts). Unknown names are ignored. Safe without an AudioContext. */
+  // ------------------------------------------------------------------ one-shots
+  /** play(name, opts). Legacy names from the player module, 'ui', or any foley bank entry. Safe without a context. */
   play(name, opts = {}) {
-    if (!this.ac) return;   // no context yet (before the first user gesture) or audio unavailable: silently ignore
+    if (!this.ready) return;
     if (this.ac.state === 'suspended') this.ac.resume().catch(() => {});
-    const ac = this.ac, t = ac.currentTime, N = this.nodes;
+    const e = this.engine, st = this.ctx.player?.state || {};
     switch (name) {
-      case 'depress': {
-        const d = opts.duration || 8;
-        N.airGain.gain.cancelScheduledValues(t); N.airGain.gain.setValueAtTime(0.0, t); N.airGain.gain.linearRampToValueAtTime(0.55, t + 0.4);
-        N.airGain.gain.setValueAtTime(0.55, t + 0.6); N.airGain.gain.exponentialRampToValueAtTime(0.002, t + d);
-        N.airFilter.frequency.cancelScheduledValues(t); N.airFilter.frequency.setValueAtTime(3000, t); N.airFilter.frequency.exponentialRampToValueAtTime(220, t + d);
-        this._beep(1200, 0.08, 0.15, t); this._beep(1200, 0.08, 0.15, t + 0.18);
+      case 'grab': this.body.contact('grab', opts.strength ?? 0.5, true); break;
+      case 'release': this.body.contact('push', opts.strength ?? 0.5, true); break;
+      case 'impact': this.body.contact('bump', opts.strength ?? 0.5, true); break;
+      case 'step': this.body.contact('step', opts.strength ?? Math.min(1, (st.speedRelative || 1.4) / 2.8), true); break;
+      case 'rung': this.body.contact('rung', opts.strength ?? 0.5, true); break;
+      case 'click': this.suit.click(!!st.suited); break;
+      case 'detach': e.shot('carabiner', { path: 'body', gain: 0.5, rate: 0.9 }); e.shot('suit_beep', { path: 'radio', gain: 0.3, v: 0, at: 0.15 }); e.shot('suit_beep', { path: 'radio', gain: 0.3, v: 2, at: 0.45 }); this.music?.duck(1.5, 0.6); break;
+      case 'depress': case 'repress': case 'hatchMotor': break;            // driven by the sequence state (Airlock)
+      case 'clunk': if (!this.airlock.busy(e.now())) e.shot('latch', { path: st.suited ? 'body' : 'air', gain: 0.4, rate: 1.2 }); break;
+      case 'suit': { const kind = st.sequence?.name === 'doff' || (st.suited && st.sequence?.name !== 'don') ? 'doff' : 'don'; this.suit.sequence(kind, opts.duration || 3); break; }
+      case 'radio': this.radio.say(opts.text || null, { helmet: this.suit.helmet }); break;
+      case 'warn': e.shot('suit_beep', { path: 'radio', gain: opts.gain ?? 0.25, v: 0, rate: (opts.freq || 880) / 880 }); break;
+      case 'ui': e.shot(opts.kind === 'tick' ? 'ui_tick' : 'ui_click', { path: 'ui', gain: opts.kind === 'tick' ? 0.25 : 0.4, jitter: 0.05 }); break;
+      case 'telescopeMotor': this.event('telescope', { moving: true, duration: opts.duration || 2 }); break;
+      default:
+        if (FOLEY[name]) e.shot(name, opts);
+        break;
+    }
+  }
+
+  /**
+   * Scenario hooks for upcoming events. Outside, sound does not travel through vacuum: explosions, launches and
+   * flybys are silent unless felt through the structure (contact) or reported on the radio; the music answers.
+   */
+  event(name, d = {}) {
+    if (!this.ready) return;
+    const e = this.engine, st = this.ctx.player?.state || {}, L = this.L;
+    switch (name) {
+      case 'explosion': {
+        const s = Math.max(0.1, Math.min(1, d.strength ?? 0.8));
+        if (L.inside && d.inside !== false) { e.shot('explosion_near', { path: 'air', gain: 0.9 * s, pos: d.position || null, ref: 10, prio: 1 }); e.shot('debris_rattle', { path: 'air', gain: 0.5 * s, at: 0.3, pos: d.position || null, ref: 6 }); this.event('alarm', { kind: 'warning', count: 3 }); }
+        else if (d.contact || st.holding || st.contact) e.shot('explosion_near', { path: 'body', gain: 0.6 * s, lp: 300, prio: 1 });
+        this.music?.duck(4, 0.5);
         break;
       }
-      case 'repress': {
-        const d = opts.duration || 6;
-        N.airGain.gain.cancelScheduledValues(t); N.airGain.gain.setValueAtTime(0.02, t); N.airGain.gain.linearRampToValueAtTime(0.5, t + d * 0.6); N.airGain.gain.linearRampToValueAtTime(0.0, t + d);
-        N.airFilter.frequency.cancelScheduledValues(t); N.airFilter.frequency.setValueAtTime(300, t); N.airFilter.frequency.exponentialRampToValueAtTime(3200, t + d);
+      case 'collision': {
+        const s = Math.max(0.1, Math.min(1, d.strength ?? 0.5));
+        if (L.inside) e.shot('bump_hard', { path: 'air', gain: 0.8 * s, pos: d.position || null, rate: 0.6, ref: 4 });
+        e.shot('suit_impact', { path: 'body', gain: 0.7 * s, rate: 0.8 });
         break;
       }
-      case 'hatchMotor': {
-        const d = opts.duration || 4;
-        const osc = ac.createOscillator(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(140, t); osc.frequency.linearRampToValueAtTime(190, t + 0.6); osc.frequency.setValueAtTime(190, t + d - 0.4); osc.frequency.linearRampToValueAtTime(120, t + d);
-        const lp = this._filter('lowpass', 900, 1.5); const g = this._gain(0.0); lp.connect(g); osc.connect(lp);
-        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.09, t + 0.3); g.gain.setValueAtTime(0.09, t + d - 0.3); g.gain.linearRampToValueAtTime(0, t + d);
-        const rumble = this._noiseSource(); const rl = this._filter('lowpass', 180, 0.8); const rg = this._gain(0.0); rl.connect(rg); rumble.connect(rl);
-        rg.gain.setValueAtTime(0, t); rg.gain.linearRampToValueAtTime(0.25, t + 0.4); rg.gain.setValueAtTime(0.25, t + d - 0.3); rg.gain.linearRampToValueAtTime(0, t + d);
-        osc.start(t); osc.stop(t + d + 0.05); rumble.start(t); rumble.stop(t + d + 0.05);
-        this._clunk(t + 0.05, 0.6);
+      case 'launch': case 'asteroid': case 'comet':
+        this.music?.sting('sting_wonder');
+        if (name !== 'launch') this.wonderUntil = this.time + (d.duration || 120);
+        break;
+      case 'engine': {
+        if (!this._engineLoop) this._engineLoop = e.loop('rush_loop', 'body', { gain: 0, rate: 0.35, lp: 400 });
+        this._engineLoop.set(Math.max(0, Math.min(1, d.throttle ?? 0)) * 0.5, 0.2);
         break;
       }
-      case 'clunk': this._clunk(t, 1.0); break;
-      case 'grab': this._clunk(t, 0.45, 260); this._beep(900, 0.05, 0.05, t + 0.02); break;
-      case 'release': this._clunk(t, 0.25, 320); break;
-      case 'detach': this._clunk(t, 0.5, 200); this._beep(660, 0.25, 0.2, t + 0.1); this._beep(520, 0.25, 0.2, t + 0.4); break;
-      case 'click': this._beep(1500, 0.03, 0.08, t); break;
-      case 'impact': {
-        const s = Math.min(1, opts.strength ?? 0.5);
-        this._clunk(t, 0.4 + 0.9 * s, 90 + 60 * s);
-        // the shell rings through the suit
-        const osc = ac.createOscillator(); osc.type = 'sine'; osc.frequency.value = 330 + Math.random() * 60; const g = this._gain(0.0); osc.connect(g);
-        g.gain.setValueAtTime(0.06 * s, t); g.gain.exponentialRampToValueAtTime(0.0005, t + 0.5); osc.start(t); osc.stop(t + 0.55);
+      case 'alarm': {
+        const tone = d.kind === 'warning' ? 'warning_tone' : 'caution_tone', n = d.count || 2, path = this.suit.helmet > 0.5 ? 'radio' : 'pa';
+        for (let k = 0; k < n; k++) e.shot(tone, { path, gain: 0.35, at: k * 1.25, jitter: 0, prio: 1 });
+        this.music?.duck(n * 1.25 + 0.5, 0.4);
         break;
       }
-      case 'warn': this._beep(opts.freq || 880, opts.dur || 0.12, opts.gain || 0.12, t); break;
-      case 'step': this._clunk(t, 0.18 + Math.random() * 0.06, 70 + Math.random() * 20); break;
-      case 'rung': this._clunk(t, 0.16, 420 + Math.random() * 60); break;
-      case 'suit': {
-        // donning / doffing: fabric rustle, a zipper, the helmet latching, a short pressure-check hiss
-        const d = opts.duration || 3;
-        for (let k = 0; k < 5; k++) this._clunk(t + 0.2 + k * d * 0.15, 0.12, 200 + k * 30);
-        const zs = this._noiseSource(false); const zf = this._filter('bandpass', 2600, 3); const zg = this._gain(0.0); zf.connect(zg); zs.connect(zf);
-        zg.gain.setValueAtTime(0, t + d * 0.3); zg.gain.linearRampToValueAtTime(0.08, t + d * 0.32); zg.gain.linearRampToValueAtTime(0.0, t + d * 0.5);
-        zs.start(t + d * 0.3); zs.stop(t + d * 0.52);
-        this._clunk(t + d * 0.85, 0.7, 160);
-        const hs = this._noiseSource(false); const hf = this._filter('highpass', 2000, 0.7); const hgn = this._gain(0.0); hf.connect(hgn); hs.connect(hf);
-        hgn.gain.setValueAtTime(0.07, t + d * 0.9); hgn.gain.exponentialRampToValueAtTime(0.001, t + d * 1.1); hs.start(t + d * 0.9); hs.stop(t + d * 1.12);
+      case 'pa': this.radio.say(d.text || null, { helmet: this.suit.helmet }); break;
+      case 'telescope': {
+        if ('active' in d) this.telescope = !!d.active;
+        if (d.moving) {
+          if (!this._servo) this._servo = e.loop('servo_loop', L.inside ? 'air' : 'body', { gain: 0 });
+          this._servo.set(0.12, 0.08);
+          clearTimeout(this._servoT); this._servoT = setTimeout(() => this._servo?.set(0, 0.15), (d.duration || 1.5) * 1000);
+        }
         break;
       }
-      case 'radio': this._radioBurst(t); break;
+      case 'scenario': this.setMusicMood(d.music ?? null); break;
       default: break;
     }
   }
 
-  /** setParam(name, value): 'volume' (0..1 master), 'crawl' (0/1), 'fan' (0..1), 'radio' (0..1 chatter level). */
+  setMusicMood(mood) { this.moodOverride = mood || null; }
+
+  /** setParam(name, value): 'volume' (master), 'muted', 'crawl' (0/1), 'fan' (0..1), 'radio' (0..1 chatter level). */
   setParam(name, value) {
     if (name === 'volume') { this.volume = value; return; }
     if (name === 'muted') { this.muted = !!value; return; }
     this.params[name] = +value || 0;
-    if (!this.ac || !this.ready) return;
-    const N = this.nodes, t = this.ac.currentTime;
-    if (name === 'fan' && N.fanGain) N.fanGain.gain.setTargetAtTime(0.11 * this.params.fan, t, 0.3);
+    if (this.suit && name === 'fan') this.suit.fanParam = this.params.fan;
+    if (this.radio && name === 'radio') this.radio.level = this.params.radio;
   }
 
-  _beep(freq, dur, gain, t) {
-    const ac = this.ac; const osc = ac.createOscillator(); osc.type = 'square'; osc.frequency.value = freq;
-    const lp = this._filter('lowpass', freq * 2.5, 0.8); const g = this._gain(0.0); lp.connect(g); osc.connect(lp);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + 0.008); g.gain.setValueAtTime(gain, t + dur - 0.01); g.gain.linearRampToValueAtTime(0, t + dur);
-    osc.start(t); osc.stop(t + dur + 0.02);
-  }
-
-  _clunk(t, strength = 1, freq = 120) {
-    const ac = this.ac;
-    const src = this._noiseSource(false); const lp = this._filter('lowpass', 180 + freq, 1.2); const g = this._gain(0.0); lp.connect(g); src.connect(lp);
-    g.gain.setValueAtTime(0.6 * strength, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.18); src.start(t); src.stop(t + 0.25);
-    const osc = ac.createOscillator(); osc.type = 'sine'; osc.frequency.setValueAtTime(freq, t); osc.frequency.exponentialRampToValueAtTime(freq * 0.55, t + 0.15);
-    const og = this._gain(0.0); osc.connect(og); og.gain.setValueAtTime(0.35 * strength, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.22); osc.start(t); osc.stop(t + 0.25);
-  }
-
-  _radioBurst(t) {
-    const N = this.nodes, ac = this.ac;
-    // quindar tone, chatter (random AM envelope), closing tone
-    this._quindar(t);
-    const len = 1.8 + Math.random() * 2.5;
-    const g = N.radioGain.gain, lvl = Math.min(1, Math.max(0, this.params.radio ?? 1));
-    g.cancelScheduledValues(t); g.setValueAtTime(0, t + 0.3);
-    let tt = t + 0.35;
-    while (tt < t + 0.35 + len) {
-      const seg = 0.06 + Math.random() * 0.16;
-      g.linearRampToValueAtTime((Math.random() < 0.25 ? 0.01 : 0.05 + Math.random() * 0.08) * lvl, tt + seg * 0.5);
-      g.linearRampToValueAtTime(0.02 * lvl, tt + seg);
-      tt += seg;
-    }
-    g.linearRampToValueAtTime(0, tt + 0.1);
-    N.radioFilter.frequency.setValueAtTime(1100 + Math.random() * 500, t);
-    this._quindar(tt + 0.25);
-    void ac;
-  }
-
-  _quindar(t) {
-    const ac = this.ac; const osc = ac.createOscillator(); osc.type = 'sine'; osc.frequency.value = 2525;
-    const g = this._gain(0.0); osc.connect(g);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.045, t + 0.01); g.gain.setValueAtTime(0.045, t + 0.24); g.gain.linearRampToValueAtTime(0, t + 0.26);
-    osc.start(t); osc.stop(t + 0.3);
-  }
-
-  /** One short thruster pulse: a 60 ms filtered noise burst with a sharp attack and a solenoid click. */
-  _rcsBurst(t, strength = 1) {
-    const ac = this.ac, N = this.nodes;
-    const src = this._noiseSource(false); src.playbackRate.value = 1 + Math.random() * 0.3;
-    const hp = this._filter('highpass', 1200 + Math.random() * 600, 0.8); const g = this._gain(0.0); hp.connect(g); src.connect(hp);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.22 * strength, t + 0.006); g.gain.exponentialRampToValueAtTime(0.002, t + 0.07);
-    src.start(t); src.stop(t + 0.09);
-    const click = this._noiseSource(false); const cf = this._filter('bandpass', 1800, 6); const cg = this._gain(0.0); cf.connect(cg); click.connect(cf);
-    cg.gain.setValueAtTime(0.12 * strength, t); cg.gain.exponentialRampToValueAtTime(0.001, t + 0.02); click.start(t); click.stop(t + 0.03);
-    void N;
-  }
-
-  _thump(t, gain) {
-    const ac = this.ac, N = this.nodes;
-    const osc = ac.createOscillator(); osc.type = 'sine'; osc.frequency.setValueAtTime(58, t); osc.frequency.exponentialRampToValueAtTime(34, t + 0.14);
-    const g = ac.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + 0.012); g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
-    osc.connect(g); g.connect(N.heartFilter); osc.start(t); osc.stop(t + 0.18);
-  }
-
-  // ---------------------------------------------------------------- per frame
+  // ------------------------------------------------------------------ per frame
   update(dt, ctx) {
     const inp = ctx.input;
     if (inp?.wasPressed('KeyM')) this.muted = !this.muted;
-    if (!this.ac || !this.ready) return;
-    const ac = this.ac, t = ac.currentTime, N = this.nodes;
-    const p = ctx.player?.state;
-    if (!p) return;
-    const dtr = Math.min(Math.max(dt / (ctx.time?.scale || 1), 0), 0.1);
-    this.time += dtr;
-    const active = ctx.mode !== 'observer';
-
-    // inside the station: cabin ventilation; without the suit no suit fan and a quieter, open-air breath
-    const unsuited = p.suited === false;
-    const insideCabin = p.mode === 'iva' || p.mode === 'airlock';
-    const loud = typeof p.compartment === 'string' && p.compartment.includes('ВЕКТОР') ? 1.6 : p.frame === 'ring' ? 0.7 : 1;
-    N.cabinGain.gain.setTargetAtTime(active && insideCabin && p.airlockPressure > 0.3 ? 0.075 * loud * (unsuited ? 1 : 0.45) : 0, t, 0.6);
-    // breathing: rate follows heart rate; inhale brighter, exhale darker
-    const bpm = 11 + (p.heartRate - 60) * 0.22;
-    this.breathPhase = (this.breathPhase + dtr * bpm / 60) % 1;
-    const ph = this.breathPhase;
-    const inhale = ph < 0.42 ? Math.sin((ph / 0.42) * Math.PI) : 0;
-    const exhale = ph >= 0.48 && ph < 0.95 ? Math.sin(((ph - 0.48) / 0.47) * Math.PI) : 0;
-    const effort = 0.5 + (p.heartRate - 60) / 80;
-    N.breathGain.gain.setTargetAtTime((inhale * 0.045 + exhale * 0.07) * effort * (active ? 1 : 0.3) * (unsuited ? 0.25 : 1), t, 0.03);
-    N.breathFilter.frequency.setTargetAtTime(inhale > 0 ? 900 : 520, t, 0.05);
-
-    // heartbeat (lub-dub) when the pulse is high
-    if (p.heartRate > 100) {
-      const prev = this.heartPhase;
-      this.heartPhase += dtr * p.heartRate / 60;
-      if (Math.floor(this.heartPhase) > Math.floor(prev)) {
-        const g = 0.25 + 0.6 * Math.min(1, (p.heartRate - 100) / 40);
-        this._thump(t + 0.01, g); this._thump(t + 0.01 + 0.17, g * 0.75);
-      }
-    } else this.heartPhase = 0;
-
-    // thrusters: a low sustained hiss plus short solenoid-pulsed noise bursts (SAFER pulses at ~10 Hz)
-    const rcs = active && p.thrusting ? (p.boost ? 0.16 : 0.09) : 0;
-    N.rcsGain.gain.setTargetAtTime(rcs, t, 0.03);
-    this.rcsTimer -= dtr;
-    if (active && p.thrusting && this.rcsTimer <= 0) { this._rcsBurst(t, p.boost ? 1.5 : 1); this.rcsTimer = p.boost ? 0.07 : 0.1; }
-    if (!p.thrusting) this.rcsTimer = 0;
-    const rot = active && (p.rotationThrust || 0) > 0.05 ? 0.07 * Math.min(1, p.rotationThrust) : (active && p.killing ? 0.06 : 0);
-    N.rotGain.gain.setTargetAtTime(rot, t, 0.05);
-    N.crawlGain.gain.setTargetAtTime(active && this.params.crawl > 0 ? 0.12 : 0, t, 0.08);
-
-    // fan slows down (power saving) with low power; 'fan' param scales it
-    N.fanGain.gain.setTargetAtTime(unsuited ? 0 : 0.11 * (this.params.fan ?? 1) * (0.6 + 0.4 * Math.min(1, (p.power ?? 1) * 4)), t, 0.5);
-
-    // warnings
-    this.warnTimer -= dtr;
-    if (active && this.warnTimer <= 0) {
-      if (p.o2 < 0.1) { this._beep(1040, 0.14, 0.14, t); this._beep(1040, 0.14, 0.14, t + 0.2); this.warnTimer = 1.6; }
-      else if (p.propellant < 0.15 && p.mode === 'eva') { this._beep(760, 0.1, 0.1, t); this._beep(620, 0.1, 0.1, t + 0.14); this.warnTimer = 2.2; }
-      else if (p.tetherTaut) { this._beep(880, 0.1, 0.1, t); this.warnTimer = 0.8; }
-      else if (!p.tetherAttached && p.mode === 'eva') { this._beep(500, 0.2, 0.08, t); this.warnTimer = 3.0; }
-      else this.warnTimer = 0.3;
+    if (!this.ready) return;
+    const scale = ctx.time?.scale || 1;
+    const h = Math.min(Math.max(dt / scale, 0), 0.1);
+    this.time += h;
+    const e = this.engine, p = ctx.player, st = p?.state;
+    if (!st) return;
+    ctx.camera.updateMatrixWorld?.();
+    e.setListener(ctx.camera.matrixWorld);
+    // ---- listener context: compartment, cabin air, helmet
+    const I = ctx.station?.interior, L = this.L;
+    const zone = I?.enabled ? I.cameraZone : (st.inside ? p.iva?.zone : null);
+    L.zone = zone || null; L.inside = !!zone;
+    L.x = 0;
+    if (zone && zone.frame === 'ring' && I.ringInv) { const m = I.ringInv.elements, c = e.listener; L.x = m[0] * c.x + m[4] * c.y + m[8] * c.z + m[12]; }
+    L.density = !zone ? 0 : zone.id === 'airlockC' ? Math.max(0, Math.min(1, st.airlockPressure ?? 1)) : 1;
+    const play = ctx.mode !== 'observer';
+    L.helmet = play ? this.suit.helmet : 0;
+    e.mixer.setAcoustics(L.density, L.helmet);
+    if (zone) e.mixer.setRoom(roomClass(zone, L.x));
+    const menu = !!ctx.hud?.menu?.visible, paused = !!ctx.app?.paused;
+    e.mixer.setPause(menu ? 0.3 : paused ? 0.45 : 1);
+    const active = play && !menu && !paused;
+    // ---- modules
+    this.body.update(active ? h : 0, this.params.crawl > 0 && active);
+    this.suit.update(h, st, active);
+    this.airlock.update(h, st);
+    this.life.update(h, L);
+    this.traffic.update(h, L);
+    this.radio.update(h, st, L.helmet, active && st.mode !== 'observer');
+    // ---- sunrise / sunset (thermal creaks of the hull; the sunrise piece outside)
+    const sun = ctx.orbit?.sunVisible ?? 1;
+    if (this._sunPrev !== null && scale <= 10) {
+      if ((this._sunPrev < 0.5) !== (sun < 0.5)) this.life.thermal();
+      if (this._sunPrev < 0.04 && sun >= 0.04) this.sunriseUntil = this.time + 125;
     }
+    this._sunPrev = sun;
+    if (this._night === null) this._night = sun < 0.25;
+    else if (scale <= 10 || menu) this._night = this._night ? sun < 0.35 : sun < 0.15;
+    // ---- music
+    if (L.capture) { L.capture = false; if (this.music?.mood === 'docking') this.music.sting('sting_capture', 0.8); this.dockCool = this.time + 240; }
+    this._moodTimer -= h;
+    if (this.music && this._moodTimer <= 0) { this._moodTimer = 0.5; this.music.update(0.5, this._musicMood(ctx, L, menu)); }
+    e.update();
+  }
 
-    // radio chatter now and then
-    this.radioTimer -= dtr;
-    if (this.radioTimer <= 0) { this._radioBurst(t); this.radioTimer = 25 + Math.random() * 45; }
+  _musicMood(ctx, L, menu) {
+    if (this.moodOverride) return this.moodOverride;
+    if (menu) return 'menu';
+    if (this.telescope || ctx.telescope?.active || ctx.sky?.telescope?.active) return 'deep';
+    if (this.time < this.wonderUntil) return 'deep';
+    const outside = !L.inside, z = L.zone?.id;
+    const view = outside || z === 'cupola' || z === 'hub';
+    // docking nearby (and a view of it)
+    if (view && this.time > this.dockCool) {
+      const ships = ctx.ships?.ships;
+      if (ships) for (let i = 0; i < ships.length; i++) { const s = ships[i]; if ((s.state === 'approach' || s.state === 'dock') && s.group?.position && s.group.position.distanceTo(ctx.camera.position) < 300) return 'docking'; }
+    }
+    if (view && this.time < this.sunriseUntil) return 'sunrise';
+    if (view) return this._night ? 'night' : 'eva';
+    return 'station';
   }
 
   dispose() {
-    for (const ev of ['pointerdown', 'keydown']) window.removeEventListener(ev, this._gesture);
-    if (this.ac) this.ac.close().catch(() => {});
+    for (const ev of ['pointerdown', 'keydown']) { window.removeEventListener(ev, this._gesture); if (this._resume) window.removeEventListener(ev, this._resume); }
+    this.ctx.uiRoot?.removeEventListener?.('click', this._uiClick, true);
+    this.ctx.uiRoot?.removeEventListener?.('input', this._uiInput, true);
+    this.traffic?.dispose();
+    this.engine?.bank.dispose();
+    if (this.ac && this.ac.close) this.ac.close().catch(() => {});
   }
 }

@@ -1,8 +1,8 @@
 import { el, add, setText, show, setClass } from './dom.js';
 import { loadControls, controlsTable, FALLBACK_CONTROLS } from './Controls.js';
+import { buildAudioSettings } from '../audio/AudioMenu.js';
 
 const QUALITIES = [['ultra', 'Ультра'], ['high', 'Высокое'], ['medium', 'Среднее'], ['low', 'Низкое']];
-const VOLUME_KEY = 'hud.volume';
 
 /** Start menu / pause overlay and the help overlay (H). */
 export class Menu {
@@ -67,21 +67,10 @@ export class Menu {
     this.startField = sf;
     left.append(sf);
 
-    // volume
-    const vf = el('div', 'menu-field');
-    const vl = el('label'); const vlab = el('span', '', 'ГРОМКОСТЬ'); this.volVal = el('span', '', '100%'); vl.append(vlab, this.volVal);
-    this.vol = el('input'); this.vol.type = 'range'; this.vol.min = '0'; this.vol.max = '1'; this.vol.step = '0.05';
-    let v0 = 1; try { const s = localStorage.getItem(VOLUME_KEY); if (s !== null && Number.isFinite(parseFloat(s))) v0 = Math.max(0, Math.min(1, parseFloat(s))); } catch (_) { /* storage blocked */ }
-    this.vol.value = String(v0);
-    this.vol.addEventListener('input', () => this._applyVolume(parseFloat(this.vol.value), true));
-    const muteRow = el('div', 'menu-note');
-    this.muteBtn = el('button', 'btn-s', ''); this.muteBtn.type = 'button'; this.muteBtn.style.cssText = 'padding:4px 10px;background:rgba(12,24,40,.6);border:1px solid var(--line);border-radius:2px;font-size:11px';
-    this.muteBtn.addEventListener('click', () => { const a = ctx.audio; if (!a) return; try { a.muted = !a.muted; } catch (_) { /* stub */ } this._renderMute(); });
-    muteRow.append(this.muteBtn);
-    add(vf, vl, this.vol, muteRow);
-    left.append(vf);
-    this._applyVolume(v0, false);
-    this._renderMute();
+    // sound settings: built on first show (the audio module is created after the HUD), see src/audio/AudioMenu.js
+    this.audioSlot = el('div');
+    left.append(this.audioSlot);
+    this.audioUi = null;
 
     this.note = el('div', 'menu-note', 'Esc — меню · H — помощь · F — камера обзора · T — ускорение времени · P — пауза');
     left.append(this.note);
@@ -107,16 +96,10 @@ export class Menu {
     });
   }
 
-  _applyVolume(v, persist) {
-    const vol = Math.max(0, Math.min(1, Number.isFinite(v) ? v : 1));
-    setText(this.volVal, `${Math.round(vol * 100)}%`);
-    try { this.ctx.audio?.setParam?.('volume', vol); } catch (_) { /* stub audio */ }
-    if (persist) { try { localStorage.setItem(VOLUME_KEY, String(vol)); } catch (_) { /* storage blocked */ } }
-  }
-
   _renderMute() {
-    let m = false; try { m = !!this.ctx.audio?.muted; } catch (_) { /* ignore */ }
-    setText(this.muteBtn, m ? 'Звук: выкл (M)' : 'Звук: вкл (M)');
+    const a = this.ctx.audio;
+    if (!this.audioUi && a && a.settings) { try { this.audioUi = buildAudioSettings(a); this.audioSlot.append(this.audioUi.el); } catch (e) { console.warn(e); } }
+    this.audioUi?.refresh();
   }
 
   /** show({pause}) — pause overlay shows «ПРОДОЛЖИТЬ». */
