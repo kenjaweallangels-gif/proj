@@ -14,7 +14,7 @@ import { fetchStars, buildStarGeometry, STAR_DISTANCE_KM, CELL_RA, CELL_DEC } fr
  */
 
 /** Stars drawn in the normal view per preset (prefix of the magnitude-sorted catalogue). */
-export const STAR_BUDGET = { ultra: 300000, high: 200000, medium: 110000, low: 50000, lite: 9300 };
+export const STAR_BUDGET = { ultra: 586000, high: 400000, medium: 200000, low: 80000, lite: 9300 };
 /** Physical energy of a magnitude-0 star: 2.04e-11 (V = 0 / Sun) x pi x 1.45 (white Lambert radiance). */
 export const STAR_K = 2.04e-11 * Math.PI * 1.45;
 
@@ -25,7 +25,7 @@ export class StarField {
     this.group = new THREE.Group();
     this.group.name = 'Stars';
     this.uniforms = {
-      uFluxScale: { value: 1 }, uSigma: { value: 0.75 }, uWing: { value: 0.12 }, uSaturate: { value: 1 }, uThreshold: { value: 1e-4 },
+      uFluxScale: { value: 1 }, uSigma: { value: 0.75 }, uWing: { value: 0.12 }, uSaturate: { value: 1 }, uSatExp: { value: 0.175 }, uThreshold: { value: 1e-4 },
       uMagLimit: { value: 30 }, uMaxSize: { value: 64 },
       uEarthCenter: { value: new THREE.Vector3() }, uEarthRadius: { value: 6371 + 60 }, uMoon: { value: new THREE.Vector4(0, 0, 0, 0) },
       uFade: { value: Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, 1, 1)) }, uFadeAmount: { value: new Array(8).fill(0) },
@@ -127,11 +127,30 @@ export class StarField {
     return deep.promise;
   }
 
+  /** The rest of a magnitude-sorted chunk, re-bucketed into sky cells (frustum-culled like the deep files). */
   _addRest(deep, cat, from, name) {
     if (from >= cat.count) return;
-    const p = new THREE.Points(buildStarGeometry(cat, from, cat.count), this.deepMaterial);
-    p.name = `Stars_${name}_rest`; p.frustumCulled = false; p.renderOrder = -20;
-    deep.group.add(p);
+    const n = cat.count - from, R = cat.rec, b = cat.bytes;
+    const cellOf = new Uint16Array(n), counts = new Uint32Array(CELL_RA * CELL_DEC + 1);
+    for (let i = 0; i < n; i++) {
+      const o = (from + i) * R;
+      const ra = (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16)) / 16777216;
+      const dec = ((b[o + 3] | (b[o + 4] << 8) | (b[o + 5] << 16)) / 16777215 - 0.5) * Math.PI;
+      const band = Math.min(CELL_DEC - 1, Math.floor((Math.sin(dec) + 1) * 0.5 * CELL_DEC));
+      const c = band * CELL_RA + Math.min(CELL_RA - 1, Math.floor(ra * CELL_RA));
+      cellOf[i] = c; counts[c + 1]++;
+    }
+    for (let c = 0; c < CELL_RA * CELL_DEC; c++) counts[c + 1] += counts[c];
+    const fill = counts.slice();
+    const bytes = new Uint8Array(n * R);
+    for (let i = 0; i < n; i++) { const k = fill[cellOf[i]]++; bytes.set(b.subarray((from + i) * R, (from + i + 1) * R), k * R); }
+    const sorted = { count: n, rec: R, bytes, cells: counts };
+    for (let c = 0; c < CELL_RA * CELL_DEC; c++) {
+      if (counts[c + 1] <= counts[c]) continue;
+      const p = new THREE.Points(buildStarGeometry(sorted, counts[c], counts[c + 1]), this.deepMaterial);
+      p.name = `Stars_${name}_${c}`; p.frustumCulled = true; p.renderOrder = -20;
+      deep.group.add(p); deep.cells.push(p);
+    }
   }
 
   setDeepVisible(on) {

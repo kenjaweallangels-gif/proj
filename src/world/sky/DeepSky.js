@@ -246,6 +246,7 @@ export class DeepSky {
       // show tiles from ~6x their size downward (the catalogue stars carry the wide view)
       const vis = inView ? 1 - THREE.MathUtils.smoothstep(fovRad, t.radius * 5, t.radius * 14) : 0;
       if (vis > 0 && !t.loaded) this._loadTile(t);
+      if (vis > 0) t.last = performance.now();
       t.mesh.visible = vis > 0 && t.loaded;
       t.mat.uniforms.uScale.value = t.loaded ? (t.scale || 0) * this.gain * vis : 0;
       if (t.mesh.visible && k < 8) {
@@ -253,6 +254,12 @@ export class DeepSky {
         deepU.uFadeAmount.value[k] = vis * 0.85;
         k++;
       }
+    }
+    // VRAM: keep at most 10 tiles (5.6 MB each with mips), drop the least recently seen
+    const loaded = this.tiles.filter((t) => t.loaded && !t.mesh.visible);
+    if (loaded.length > 10) {
+      loaded.sort((a, b) => (a.last || 0) - (b.last || 0));
+      for (const t of loaded.slice(0, loaded.length - 10)) { t.mat.uniforms.tMap.value?.dispose(); t.mat.uniforms.tMap.value = null; t.loaded = false; t.loading = false; }
     }
   }
 

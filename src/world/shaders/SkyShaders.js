@@ -33,6 +33,7 @@ uniform float uThreshold;   // smallest HDR value worth drawing
 uniform float uMagLimit;    // hard limit of this draw (stars fade over the last 0.5 mag)
 uniform float uMaxSize;     // device px
 uniform float uSaturate;    // core peak (HDR) that displays as white
+uniform float uSatExp;      // perceived growth of saturated cores (sigma ~ (peak / white)^uSatExp)
 #ifdef EARTH_OCCLUSION
 uniform vec3 uEarthCenter;  // relative to the camera (km)
 uniform float uEarthRadius; // ground + atmosphere (km)
@@ -58,13 +59,18 @@ void main() {
     }
   }
 #endif
-  float s = uSigma, sw = 3.0 * uSigma;
+  // the pixel footprint (box filter) adds 1/12 px^2 to the variance: point-sampling the result about the true
+  // sub-pixel centre keeps the summed energy constant to < 0.2 % at any sub-pixel phase (no twinkle while panning)
+  float s = sqrt(uSigma * uSigma + 0.0833), sw = 3.0 * s;
   float pc = E * (1.0 - uWing) / (2.0 * PI * s * s);
-  if (pc < uThreshold) { cull(); return; }
+  // stars near the drawing threshold fade in / out smoothly (exposure changes never pop them)
+  if (pc < 0.5 * uThreshold) { cull(); return; }
+  E *= smoothstep(0.5 * uThreshold, 1.5 * uThreshold, pc);
+  pc = E * (1.0 - uWing) / (2.0 * PI * s * s);
   // a display cannot show a core brighter than white: spread saturated cores (energy kept) so that brighter stars
-  // look larger, as the eye perceives them (perceived size ~ peak^0.35 beyond saturation)
+  // look larger, as the eye perceives them
   float sat = pc / uSaturate;
-  if (sat > 1.0) { s *= pow(sat, 0.175); sw = 3.0 * s; pc = E * (1.0 - uWing) / (2.0 * PI * s * s); }
+  if (sat > 1.0) { s *= pow(sat, uSatExp); sw = 3.0 * s; pc = E * (1.0 - uWing) / (2.0 * PI * s * s); }
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mv;
 #ifdef EARTH_OCCLUSION
@@ -75,9 +81,10 @@ void main() {
   if (bm > 0.0 && dot(uMoon.xyz, uMoon.xyz) - bm * bm < uMoon.w * uMoon.w) { cull(); return; }
 #endif
   float pw = E * uWing * 1.5 / (PI * sw * sw);
-  float rc = s * sqrt(2.0 * log(pc / uThreshold));
+  float rc = s * sqrt(2.0 * log(max(pc / uThreshold, 1.0)));
   float rw = pw > uThreshold ? sw * sqrt(pow(pw / uThreshold, 0.4) - 1.0) : 0.0;
-  float size = clamp(2.0 * max(max(rc, rw), 0.75) + 1.0, 1.0, uMaxSize);
+  // never clip the core: at least 2.6 sigma around the centre (+1 px for the sub-pixel offset of the sprite)
+  float size = clamp(2.0 * max(max(rc, rw), 2.6 * s) + 2.0, 1.0, uMaxSize);
   gl_PointSize = size;
   vSize = size;
   vE = E;

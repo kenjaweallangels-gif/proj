@@ -25,9 +25,9 @@ import { Ephemeris, ttFromUtcDays } from '../core/Ephemeris.js';
  */
 
 /** Gain of the dark-adapted eye relative to the physical (daylight-camera) scale of the far scene. */
-const DARK_ADAPTED = 1.0e5;
+export const DARK_ADAPTED = 2.0e5;
 /** Perceptual boost of extended faint light (spatial summation of the eye) for the Milky Way / zodiacal light. */
-const MW_BOOST = 5;
+const MW_BOOST = 2.5;
 /** Milky Way texel value -> physical HDR radiance (0.0015 = 23.7 mag / arcsec^2). */
 const MW_PHYS = 8.7e-7;
 /** Zodiacal light S10 unit -> physical HDR radiance. */
@@ -137,10 +137,15 @@ export class Sky {
     u.uSigma.value = Math.sqrt(sigmaEye * sigmaEye + airy * airy);
     u.uThreshold.value = 0.0026 / E;      // ACES maps exposed values below ~0.0022 to black
     u.uSaturate.value = 1.0 / E;           // core peak (HDR) at display white: brighter cores spread (perceived size)
+    // the eye's perceived star size grows with brightness; at the eyepiece / camera the stars stay tighter
+    u.uSatExp.value = tel ? 0.1 : 0.175;
+    u.uWing.value = tel ? 0.05 : 0.12;
     if (!this._maxPoint) { try { const gl = r.getContext(); this._maxPoint = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1] || 64; } catch (_) { this._maxPoint = 64; } }
     u.uMaxSize.value = Math.min(96, this._maxPoint);
     const mw = this.milkyWayMaterial.uniforms;
-    const Smw = tel ? tel.dso : S;
+    // telescope: the 8K map (2.6' / texel) only blurs when magnified; the resolved deep stars take over its light
+    const fovDeg = cam?.fov ?? 70;
+    const Smw = tel ? tel.dso * (0.2 + 0.8 * THREE.MathUtils.smoothstep(fovDeg, 1.5, 10)) : S;
     mw.uMwScale.value = MW_PHYS * Smw * MW_BOOST;
     mw.uZodiScale.value = ZODI_PHYS * Smw * MW_BOOST;
     // skip the full-screen Milky Way pass (and the stars) when the exposure makes them invisible
@@ -148,7 +153,7 @@ export class Sky {
     this.stars.visible = STAR_K * S / omegaPx * 30 > u.uThreshold.value;   // Venus-class objects still show
     this.planets.setGains(S, tel ? tel.planets : 1, E);
     this.moon.setGain(tel ? tel.moon : 1);
-    this.deepSky.setGain(tel ? tel.dso : 0, E);
+    this.deepSky.setGain(tel ? tel.dso * MW_BOOST : 0, E);      // same perceptual boost as the Milky Way
   }
 
   update(dt, ctx) {

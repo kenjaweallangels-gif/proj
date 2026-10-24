@@ -11,12 +11,13 @@ Writes
   data/sky/stars_{a,b,c}.bin   Hipparcos+Tycho-2 (HYG + Gaia DR3 counterparts) by magnitude: a V<=7, b 7<V<=9.5,
                                c 9.5<V<=10.5; each sorted by V (any prefix is a magnitude-limited sample). Indices of
                                a, b, c continue each other = indices of star_names.json (`i`).
-  data/sky/stars_d.bin         10.5<V<=12.0, sorted by sky cell (telescope only, loaded lazily)
-  data/sky/stars_gaia.bin      Gaia DR3 G<12 sources without HIP/Tycho-2 counterpart, V<=12.0, by sky cell (telescope)
+  data/sky/stars_d.bin         V>10.5 (to 13.9; complete to ~11.5, Tycho-2 limit), sorted by sky cell (telescope only, lazy)
+  data/sky/stars_gaia.bin      Gaia DR3 G<12 sources without HIP/Tycho-2 counterpart (V 9-13.9), by sky cell (telescope)
   data/sky/star_names.json, constellations.json, dso.json, dso_images.json
   textures/sky/milkyway_{8192,4096,2048}.jpg
   textures/dso/*.jpg
-  textures/moon/moon_color_{8192,4096,2048}.jpg, moon_normal_{8192,4096}.jpg (re-encoded), moon_height_2048.bin
+  textures/moon/moon_color_{8192,4096,2048}.jpg, moon_normal_{8192,4096}.jpg (re-encoded), moon_height_{2048,4096}.bin,
+  textures/moon/tiles16k/moon_{color,normal}16k_r{0,1}c{0..3}.jpg (90 x 90 deg, streamed by the telescope / close range)
   textures/planets/*.jpg|png
 
 Star format "STR3" (little-endian): 32-byte header char[4] 'STR3', u32 version=1, u32 count, u32 recordSize=8,
@@ -96,11 +97,10 @@ def stars():
         idx = np.nonzero(m)[0]
         assert idx.size == 0 or (idx[-1] - idx[0] + 1 == idx.size), 'magnitude chunks must be contiguous'
         write_str3(os.path.join(out, f'stars_{name}.bin'), ra[m], dec[m], vb[m], bvb[m], v[m])
-    m = (v > 10.5) & (v <= 12.0)
+    m = v > 10.5
     write_str3(os.path.join(out, 'stars_d.bin'), ra[m], dec[m], vb[m], bvb[m], v[m], cells=True)
     ra, dec, vb, bvb, v = read_str2(os.path.join(src, 'stars/stars_gaia_extra.bin'))
-    m = v <= 12.0
-    write_str3(os.path.join(out, 'stars_gaia.bin'), ra[m], dec[m], vb[m], bvb[m], v[m], cells=True)
+    write_str3(os.path.join(out, 'stars_gaia.bin'), ra, dec, vb, bvb, v, cells=True)
     # names: keep the fields the app uses
     names = json.load(open(os.path.join(src, 'stars/star_names.json')))
     keep = ('i', 'hip', 'name', 'ru', 'bayer', 'flam', 'con', 'v', 'bv', 'spect', 'dist_pc')
@@ -135,24 +135,29 @@ def moon():
     M = os.path.join(pub, 'textures/moon')
     for s in (8192, 4096, 2048):
         copy(os.path.join(src, f'moon/moon_color_{s}.jpg'), os.path.join(M, f'moon_color_{s}.jpg'))
-    jpeg(os.path.join(src, 'moon/moon_normal_8192.jpg'), os.path.join(M, 'moon_normal_8192.jpg'), 85)
+    jpeg(os.path.join(src, 'moon/moon_normal_8192.jpg'), os.path.join(M, 'moon_normal_8192.jpg'), 90)
     jpeg(os.path.join(src, 'moon/moon_normal_4096.jpg'), os.path.join(M, 'moon_normal_4096.jpg'), 90)
     h = np.fromfile(os.path.join(src, 'moon/moon_height_4096x2048.u16'), dtype='<u2').reshape(2048, 4096).astype(np.float64)
     hm = (h - 20000.0) * 0.5
-    h2 = hm.reshape(1024, 2, 2048, 2).mean(axis=(1, 3))
-    step = 0.5
-    q = np.round(h2 / step).astype(np.int32)
-    dlt = np.diff(q, axis=1, prepend=0).astype(np.int16)
-    payload = b'MHT1' + struct.pack('<IIff', 2048, 1024, step, 0.0) + dlt.tobytes()
-    p = os.path.join(M, 'moon_height_2048.bin')
-    open(p, 'wb').write(gzip.compress(payload, 9))
-    print(p, os.path.getsize(p), 'range', h2.min(), h2.max())
+    for w, hh in ((2048, hm.reshape(1024, 2, 2048, 2).mean(axis=(1, 3))), (4096, hm)):
+        step = 0.5
+        q = np.round(hh / step).astype(np.int32)
+        dlt = np.diff(q, axis=1, prepend=0).astype(np.int16)
+        payload = b'MHT1' + struct.pack('<IIff', w, w // 2, step, 0.0) + dlt.tobytes()
+        p = os.path.join(M, f'moon_height_{w}.bin')
+        open(p, 'wb').write(gzip.compress(payload, 9))
+        print(p, os.path.getsize(p), 'range', hh.min(), hh.max())
+    for kind in ('color', 'normal'):
+        for r in range(2):
+            for c in range(4):
+                f = f'moon_{kind}16k_r{r}c{c}.jpg'
+                copy(os.path.join(src, 'moon/tiles16k', f), os.path.join(M, 'tiles16k', f))
 
 
 def planets():
     P = os.path.join(pub, 'textures/planets')
-    for f in ('mercury_2048.jpg', 'venus_clouds_2048.jpg', 'mars_2048.jpg', 'jupiter_cassini_3600.jpg', 'saturn_2048.jpg',
-              'saturn_ring_2048x64.png', 'uranus_2048.jpg', 'neptune_2048.jpg'):
+    for f in ('mercury_2048.jpg', 'mercury_4096.jpg', 'venus_clouds_2048.jpg', 'venus_clouds_4096.jpg', 'mars_2048.jpg', 'mars_4096.jpg',
+              'jupiter_cassini_3600.jpg', 'saturn_2048.jpg', 'saturn_ring_2048x64.png', 'uranus_2048.jpg', 'neptune_2048.jpg'):
         copy(os.path.join(src, 'planets', f), os.path.join(P, f))
 
 

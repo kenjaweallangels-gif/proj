@@ -180,6 +180,44 @@ try {
   await page.keyboard.press('KeyF');
   check('F returns to the astronaut', await until(() => window.__app.mode === 'play'));
 
+  // ---- sky and telescope
+  const sky = await ev(() => { const a = window.__app, s = a.sky, m = a.ephemeris?.bodies?.moon; return { stars: s.starField.count, moonKm: m?.dist, patches: s.moon.surface.patchCount, mw: !!s.milkyWayTexture }; });
+  check('sky: catalogue stars, Milky Way, ephemeris Moon, Moon LOD patches', sky.stars > 1000 && sky.mw && sky.moonKm > 350000 && sky.moonKm < 410000 && sky.patches >= 6, JSON.stringify(sky));
+  await page.keyboard.press('KeyZ');
+  await frames(2);
+  check('telescope refused away from the cupola / EVA / observer camera', await ev(() => window.__app.telescope.active === false));
+  await page.keyboard.press('KeyF');
+  await until(() => window.__app.mode === 'observer');
+  await page.keyboard.press('KeyZ');
+  check('Z opens the telescope (observer camera)', await until(() => window.__app.telescope.active === true, 20000));
+  await page.locator('.tel-search').fill('Юпитер');
+  await page.locator('.tel-search').press('Enter');
+  check('catalogue search selects Jupiter', await until(() => window.__app.telescope.target?.id === 'jupiter', 20000));
+  const fov0 = await ev(() => window.__app.telescope.fovTarget);
+  const canvasBox = await page.locator('#app canvas').first().boundingBox();
+  await page.mouse.move(canvasBox.x + canvasBox.width * 0.3, canvasBox.y + canvasBox.height * 0.5);
+  for (let i = 0; i < 6; i++) await page.mouse.wheel(0, -120);
+  await frames(2);
+  const fov1 = await ev(() => window.__app.telescope.fovTarget);
+  check('mouse wheel zooms in', fov1 < fov0 * 0.6, `${fov0.toFixed(2)} -> ${fov1.toFixed(3)} deg`);
+  await ev(() => window.__app.telescope.setFov(0.05));
+  await page.keyboard.down('Equal'); await frames(4); await page.keyboard.up('Equal');
+  await frames(30);
+  const trk = await ev(() => {
+    const a = window.__app, T = a.telescope, b = a.ephemeris.bodies.jupiter;
+    const V = a.camera.position.constructor;
+    const fwd = new V(0, 0, -1).applyQuaternion(a.camera.getWorldQuaternion(a.camera.quaternion.clone())).applyQuaternion(a.orbit.skyQuat.clone().invert());
+    const dir = new V(b.topo.x, b.topo.y, b.topo.z).normalize();
+    return { err: fwd.angleTo(dir) * 180 / Math.PI, fov: a.camera.fov, rPx: a.sky.planets.radiusPx('jupiter'), lim: T.limitMag };
+  });
+  check('telescope zooms to ~0.05 deg and tracks Jupiter (disc resolved)', trk.fov < 0.08 && trk.err < trk.fov * 0.1 && trk.rPx > 10, JSON.stringify(trk));
+  await page.keyboard.press('Escape');
+  check('Esc closes the telescope, camera fov restored', await until(() => !window.__app.telescope.active && window.__app.camera.fov > 60, 20000));
+  await page.keyboard.press('KeyC');
+  await frames(2);
+  check('C toggles the constellation overlay', await ev(() => window.__app.sky.overlays.mode === 1 && window.__app.sky.overlays.figures.visible));
+  await page.keyboard.press('KeyC'); await page.keyboard.press('KeyC');
+
   check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (e) {
   console.log('FAIL  exception —', e.message); failed++;

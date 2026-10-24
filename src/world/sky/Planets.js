@@ -22,10 +22,10 @@ import { bvToLinearRgb } from '../StarColor.js';
 
 const PROXY_KM = 8.0e5;
 const MAPS = {
-  mercury: { file: 'mercury_2048.jpg', mean: 0.228, sat: 1.0, k: 1.0 },
-  venus: { file: 'venus_clouds_2048.jpg', mean: 0.556, sat: 0.35, k: 0.85 },
-  mars: { file: 'mars_2048.jpg', mean: 0.182, sat: 0.85, k: 1.0 },
-  jupiter: { file: 'jupiter_cassini_3600.jpg', mean: 0.364, sat: 1.0, k: 0.85 },
+  mercury: { file: 'mercury_2048.jpg', hi: 'mercury_4096.jpg', mean: 0.228, sat: 1.0, k: 1.0 },
+  venus: { file: 'venus_clouds_2048.jpg', hi: 'venus_clouds_4096.jpg', mean: 0.556, sat: 0.35, k: 0.85 },
+  mars: { file: 'mars_2048.jpg', hi: 'mars_4096.jpg', mean: 0.182, sat: 0.85, k: 1.0 },
+  jupiter: { file: 'jupiter_cassini_3600.jpg', mean: 0.364, sat: 1.0, k: 0.85 },   // Cassini PIA07782 (real colour); 3600 px is the finest
   saturn: { file: 'saturn_2048.jpg', mean: 0.616, sat: 0.8, k: 0.85 },
   uranus: { file: 'uranus_2048.jpg', mean: 0.564, sat: 0.7, k: 0.8 },
   neptune: { file: 'neptune_2048.jpg', mean: 0.123, sat: 0.6, k: 0.8 },
@@ -226,15 +226,38 @@ export class Planets {
     } catch (e) { console.warn('[Planets] ring texture', e); }
   }
 
-  _loadMap(name) {
-    if (this.textures[name] || !MAPS[name]) return;
-    this.textures[name] = 'loading';
-    new THREE.TextureLoader().loadAsync(this.ctx.assetUrl(`textures/planets/${MAPS[name].file}`)).then((t) => {
+  /** On-demand globe maps: 2K once the disc is a few pixels, 4K (where shipped) above ~350 px radius; unused maps
+   *  are disposed after 30 s (VRAM). */
+  _loadMap(name, hi) {
+    const m = MAPS[name];
+    if (!m) return;
+    const file = hi && m.hi && !this.ctx.quality?.lite ? m.hi : m.file;
+    const key = `${name}:${file}`;
+    this._used = this._used || {};
+    this._used[key] = performance.now();
+    const cur = this.textures[key];
+    if (cur === 'loading') return;
+    const u = this.discs[name].mat.uniforms;
+    if (cur) { if (u.tMap.value !== cur) { u.tMap.value = cur; u.uHasMap.value = 1; } return; }
+    this.textures[key] = 'loading';
+    new THREE.TextureLoader().loadAsync(this.ctx.assetUrl(`textures/planets/${file}`)).then((t) => {
       t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping;
       t.anisotropy = Math.min(8, this.ctx.renderer.capabilities.getMaxAnisotropy());
-      this.textures[name] = t;
-      const u = this.discs[name].mat.uniforms; u.tMap.value = t; u.uHasMap.value = 1;
-    }).catch((e) => { console.warn('[Planets] map', name, e); });
+      this.textures[key] = t;
+      u.tMap.value = t; u.uHasMap.value = 1;
+    }).catch((e) => { console.warn('[Planets] map', file, e); delete this.textures[key]; });
+  }
+
+  _evictMaps() {
+    const now = performance.now();
+    for (const key in this.textures) {
+      const t = this.textures[key];
+      if (t === 'loading' || now - (this._used?.[key] || 0) < 30000) continue;
+      const name = key.split(':')[0];
+      const u = this.discs[name].mat.uniforms;
+      if (u.tMap.value === t) { u.tMap.value = null; u.uHasMap.value = 0; }
+      t.dispose(); delete this.textures[key];
+    }
   }
 
   /** Gains: points share the star gain; discs get `discs` (telescope: local adaptation per body). */
@@ -266,7 +289,7 @@ export class Planets {
       const show = fadeDisc > 0.001 && !b.occulted;
       disc.mesh.visible = show;
       if (!show) return;
-      if (rPx > 2.5) this._loadMap(name);
+      if (rPx > 2.5) this._loadMap(name, rPx > 350);
       const mesh = disc.mesh;
       // proxy distance along the true direction (ECI -> far frame)
       _v.set(x, y, z).applyQuaternion(o.skyQuat);
@@ -285,7 +308,7 @@ export class Planets {
       u.uSunL.value.copy(_sun).applyQuaternion(_q);
       const rAu = Math.hypot(b.helio.x, b.helio.y, b.helio.z) / AU_KM;
       u.uRadiance.value = 1.45 * disc.albedo / (rAu * rAu);
-      u.uGain.value = this.gainDiscs;
+      u.uGain.value = typeof this.gainDiscs === 'number' ? this.gainDiscs : (this.gainDiscs[name] ?? this.gainPoints);
       u.uFade.value = fadeDisc;
       if (disc.ring) {
         disc.ring.mat.uniforms.uRadiance.value = u.uRadiance.value * 0.6 / disc.albedo;
@@ -296,6 +319,7 @@ export class Planets {
     });
     this.posAttr.needsUpdate = true;
     this.starAttr.needsUpdate = true;
+    if ((this._evictT = (this._evictT || 0) + 1) % 300 === 0) this._evictMaps();
   }
 
   /** Apparent radius in device px of a body's disc (last frame). */

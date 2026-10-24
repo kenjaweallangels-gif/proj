@@ -19,6 +19,7 @@ const MODULE_LOADERS = {
   Sky: [() => import('../world/Sky.js'), () => import('../stubs/Sky.js')],
   Station: [() => import('../station/Station.js'), () => import('../stubs/Station.js')],
   Ships: [() => import('../ships/Ships.js'), () => import('../stubs/Ships.js')],
+  Telescope: [() => import('../telescope/Telescope.js'), () => import('../stubs/Telescope.js')],
   Player: [() => import('../player/Player.js'), () => import('../stubs/Player.js')],
   Hud: [() => import('../ui/Hud.js'), () => import('../stubs/Hud.js')],
   Audio: [() => import('../audio/Audio.js'), () => import('../stubs/Audio.js')],
@@ -149,7 +150,7 @@ export class App {
     };
 
     // Modules (order matters: later modules may use earlier ones through ctx)
-    const [Earth, Sky, Station, Ships, Player, Hud, Audio] = await Promise.all(['Earth', 'Sky', 'Station', 'Ships', 'Player', 'Hud', 'Audio'].map(loadModuleClass));
+    const [Earth, Sky, Station, Ships, Telescope, Player, Hud, Audio] = await Promise.all(['Earth', 'Sky', 'Station', 'Ships', 'Telescope', 'Player', 'Hud', 'Audio'].map(loadModuleClass));
     this.earth = ctx.earth = new Earth(ctx);
     this.sky = ctx.sky = new Sky(ctx);
     // geometry detail factor for everything built from here on (see src/core/three-lod.js);
@@ -158,10 +159,12 @@ export class App {
     this.station = ctx.station = new Station(ctx);
     this.nearScene.add(this.station);
     this.ships = ctx.ships = new Ships(ctx);
+    // the telescope captures input before the player and sets the camera after it (lateUpdate)
+    this.telescope = ctx.telescope = new Telescope(ctx);
     this.player = ctx.player = new Player(ctx);
     this.hud = ctx.hud = new Hud(ctx);
     this.audio = ctx.audio = new Audio(ctx);
-    this.modules = [this.earth, this.sky, this.station, this.ships, this.player, this.hud, this.audio];
+    this.modules = [this.earth, this.sky, this.station, this.ships, this.telescope, this.player, this.hud, this.audio];
     globalThis.__THREE_DETAIL = 1;
 
     this.hud.showLoading?.('Загрузка…');
@@ -452,6 +455,15 @@ export class App {
 
   /** Named camera views (observer) or player poses (play). Used by tools/screenshot.mjs and the menu. */
   setView(name) {
+    // telescope views: 'tele-<target>-<fov deg>' (e.g. tele-M42-1, tele-jupiter-0.02)
+    if (this.telescope?.handlesView?.(name)) {
+      this.telescope.enterView(name);
+      this.viewName = name;
+      if (this._dyn) this._dyn.skip = true;
+      this.governor?.skipWindow();
+      this.events.emit('view', name);
+      return;
+    }
     const vp = this.station.viewpoints?.[name];
     // Sun-facing views: look along orbit.sunDir so the Sun/limb is in frame (sunrise ~t=3200, sunset ~t=1165)
     const s = this.orbit.sunDir;
@@ -552,6 +564,8 @@ export class App {
 
     for (const m of this.modules) { try { m.update?.(t.dt, this.ctx); } catch (e) { if (!m._errored) { console.error(`update failed in ${m.constructor.name}`, e); m._errored = true; } } }
     if (this.mode === 'observer') this.orbitControls.update();
+    // camera overrides after the controllers (telescope)
+    for (const m of this.modules) { if (m.lateUpdate) { try { m.lateUpdate(t.dt, this.ctx); } catch (e) { if (!m._lateErrored) { console.error(`lateUpdate failed in ${m.constructor.name}`, e); m._lateErrored = true; } } } }
     this.particles.update(t.dt, this.renderer.renderer, this.camera);
 
     // far camera mirrors the near camera

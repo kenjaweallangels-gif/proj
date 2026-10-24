@@ -112,7 +112,7 @@ export class Hud {
   _onPointerLock() {
     const locked = !!document.pointerLockElement;
     const ctx = this.ctx;
-    if (!locked && this.started && ctx.mode === 'play' && !ctx.isShot && !this.menu.visible && !this.loading.visible) this.showMenu({ pause: true });
+    if (!locked && this.started && ctx.mode === 'play' && !ctx.isShot && !this.menu.visible && !this.loading.visible && !ctx.telescope?.active) this.showMenu({ pause: true });
   }
 
   _onKey(e) {
@@ -121,6 +121,7 @@ export class Hud {
     if (e.code === 'KeyH') { this.toggleHelp(); return; }
     if (e.code === 'Escape') {
       if (this.menu.helpVisible) { this.menu.showHelp(false); return; }
+      if (this.ctx.telescope?.active && !this.menu.visible) { this.ctx.telescope.exit(); return; }
       // Esc both exits pointer lock (-> pause menu via pointerlockchange) and may arrive here: ignore it right after opening
       if (this.menu.visible) { if (this.menu.paused && performance.now() - (this._menuShownAt || 0) > 400) this.startFromMenu(); return; }
       if (this.started && !this.ctx.isShot && !this.loading.visible) this.showMenu({ pause: true });
@@ -139,9 +140,9 @@ export class Hud {
   }
 
   _layers() {
-    const menu = this.menu.visible, mode = this._mode;
-    this.helmet.setVisible(!menu && mode === 'play');
-    this.observer.setVisible(!menu && mode === 'observer');
+    const menu = this.menu.visible, mode = this._mode, tel = !!this.ctx.telescope?.active;
+    this.helmet.setVisible(!menu && mode === 'play' && !tel);
+    this.observer.setVisible(!menu && mode === 'observer' && !tel);
     show(this.notifications.el, !menu);
     if (menu) show(this.lockHint, false);
   }
@@ -172,15 +173,16 @@ export class Hud {
       const step = this._textAcc; this._textAcc = 0;
       this.notifications.update(step);
       if (!menu) {
-        if (this._mode === 'play') this.helmet.updateText(ctx, step);
+        if (ctx.telescope?.active) { /* the telescope panel has its own readouts */ }
+        else if (this._mode === 'play') this.helmet.updateText(ctx, step);
         else this.observer.updateText(ctx);
       }
       const inp = ctx.input;
-      show(this.lockHint, !menu && this._mode === 'play' && this.started && !ctx.isShot && !!inp && inp.wantPointerLock && !inp.pointerLocked && !this.loading.visible);
+      show(this.lockHint, !menu && this._mode === 'play' && this.started && !ctx.isShot && !!inp && inp.wantPointerLock && !inp.pointerLocked && !this.loading.visible && !ctx.telescope?.active);
     }
     if (force || this._fastAcc >= (lite ? 1 / 10 : 1 / 30)) {
       const step = this._fastAcc; this._fastAcc = 0;
-      if (!menu && this._mode === 'play') this.helmet.updateFast(step, ctx);
+      if (!menu && this._mode === 'play' && !ctx.telescope?.active) this.helmet.updateFast(step, ctx);
     }
   }
 

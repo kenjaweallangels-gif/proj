@@ -16,7 +16,8 @@ import { applyMat3T } from '../core/Ephemeris.js';
  *    the Moon (1e-4 of sunlight at full Earth, boosted for the eye); near the terminator a height-field ray march casts
  *    the long shadows of crater rims and mountains (GPU presets, when the Moon is large on screen).
  *  - Textures stream in by apparent size: colour 2K -> 4K (> 400 px) -> 8K (> 1500 px, high / ultra); normals 4K
- *    (> 120 px) -> 8K (> 1500 px).
+ *    (> 120 px) -> 8K (> 1500 px); above 3500 px the 16K colour + normal tile (90 x 90 deg, 0.67 km / px) under the
+ *    view axis replaces them inside its bounds (one tile pair resident).
  *
  * API: `centerFar` (Vector3, far frame), `quaternion` (body -> far), `radius`, `heightAt(latRad, lonRad)` (metres),
  * `surfacePoint(latRad, lonRad, out)` (body-fixed km), `bodyToFar(vBody, out)`, `setGain(g)`, `surface` (MoonSurface).
@@ -42,6 +43,8 @@ const MOON_FRAGMENT = /* glsl */`
 #define PI 3.14159265359
 uniform sampler2D tColor;
 uniform sampler2D tNormal;
+uniform sampler2D tDetailColor, tDetailNormal;
+uniform vec4 uDetail;        // 16K tile bounds: lon0, lat0 (rad), span (rad), on (0/1)
 uniform sampler2D tHeight;
 uniform float uHasNormal, uRelief, uGain, uAlbedo, uNormalStrength;
 uniform vec3 uSunB;          // body frame: direction to the Sun
@@ -77,11 +80,22 @@ void main() {
   vec3 d = normalize(vDir);
   vec2 uv = lonLatUv(d);
   vec3 alb = sampleEq(tColor, uv).rgb * uAlbedo;
+  // 16K tile under the telescope (0.67 km / px): inside its 90 x 90 deg bounds it replaces the global maps
+  float inTile = 0.0;
+  vec2 duv = vec2(0.5);
+  if (uDetail.w > 0.5) {     // uniform branch: the samples below run in uniform control flow (valid derivatives)
+    float lon = atan(d.y, d.x), lat = asin(clamp(d.z, -1.0, 1.0));
+    duv = vec2(lon - uDetail.x, lat - uDetail.y) / uDetail.z;
+    inTile = all(greaterThan(duv, vec2(0.002))) && all(lessThan(duv, vec2(0.998))) ? 1.0 : 0.0;
+    alb = mix(alb, texture2D(tDetailColor, clamp(duv, 0.0, 1.0)).rgb * uAlbedo, inTile);
+  }
   vec3 east = normalize(vec3(-d.y, d.x, 0.0) + vec3(1.0e-6, 0.0, 0.0));
   vec3 north = cross(d, east);
   vec3 N = normalize(vNormalB);
   if (uHasNormal > 0.5) {
-    vec3 t = sampleEq(tNormal, uv).xyz * 2.0 - 1.0;
+    vec3 tg = sampleEq(tNormal, uv).xyz;
+    if (uDetail.w > 0.5) tg = mix(tg, texture2D(tDetailNormal, clamp(duv, 0.0, 1.0)).xyz, inTile);
+    vec3 t = tg * 2.0 - 1.0;
     t.xy *= uNormalStrength;
     N = normalize(east * t.x + north * t.y + d * t.z);
   }
@@ -105,7 +119,7 @@ void main() {
     for (int i = 0; i < 14; i++) {
       vec3 q = normalize(d + tdir * (x / ${MOON_RADIUS_KM.toFixed(1)}));
       float ray = h0 + x * tanE + x * x / (2.0 * ${MOON_RADIUS_KM.toFixed(1)});
-      float pen = x * 0.0047 + 0.15;             // half the solar disc
+      float pen = x * 0.0047 + 0.6;              // half the solar disc + the LOLA texel (2.7 km) smoothing
       shade = min(shade, smoothstep(-pen, pen, ray - heightKm(q)));
       x *= 1.32;
     }
@@ -169,6 +183,7 @@ export class Moon {
 
     this.uniforms = {
       tColor: { value: null }, tNormal: { value: null }, tHeight: { value: null },
+      tDetailColor: { value: null }, tDetailNormal: { value: null }, uDetail: { value: new THREE.Vector4(0, 0, 1, 0) },
       uHasNormal: { value: 0 }, uRelief: { value: 0 }, uGain: { value: 1 }, uAlbedo: { value: 0.24 }, uNormalStrength: { value: 1.0 },
       uSunB: { value: new THREE.Vector3(1, 0, 0) }, uEarthB: { value: new THREE.Vector3(1, 0, 0) }, uCamB: { value: new THREE.Vector3() },
       uSunColor: { value: new THREE.Color(1, 1, 1) }, uEarthshine: { value: new THREE.Color(0, 0, 0) }, uPhaseDeg: { value: 0 },
@@ -193,7 +208,8 @@ export class Moon {
   async load() {
     const ctx = this.ctx;
     try {
-      this.height = await loadHeight(ctx.assetUrl('textures/moon/moon_height_2048.bin'));
+      // GPU presets: LOLA 4096 x 2048 (2.7 km / px); 'lite': 2048 x 1024
+      this.height = await loadHeight(ctx.assetUrl(`textures/moon/moon_height_${this.lite ? 2048 : 4096}.bin`));
       const H = this.height;
       // GPU copy (half float, km) for the terminator shadows
       const half = new Uint16Array(H.w * H.h);
@@ -208,8 +224,9 @@ export class Moon {
       this.heightTexture = t;
       this.uniforms.tHeight.value = t;
     } catch (e) { console.warn('[Moon] height map', e); }
-    await this._loadColor(2048);
-    if (!this.lite && this.maxNormal) this._loadNormal(4096);    // background: a 30 px Moon does not need it yet
+    this._want('c', 2048);
+    await new Promise((res) => { const t = setInterval(() => { if (!this._loading.c2048) { clearInterval(t); res(); } }, 30); });
+    this._want('c', 2048);
     this.surface.buildRoots();
     this.group.visible = true;
   }
@@ -224,24 +241,43 @@ export class Moon {
     });
   }
 
-  async _loadColor(size) {
-    if (size <= this.colorSize || this._loading['c' + size]) return;
-    this._loading['c' + size] = true;
-    try {
-      const t = await this._texture(`textures/moon/moon_color_${size}.jpg`, true);
-      if (size > this.colorSize) { const old = this.uniforms.tColor.value; this.uniforms.tColor.value = t; this.colorSize = size; old?.dispose(); }
-      else t.dispose();
-    } catch (e) { console.warn('[Moon] colour', size, e); }
+  /**
+   * Texture cache (VRAM budget): the wanted colour / normal level is bound as soon as it is loaded (until then the
+   * best loaded one); levels unused for 15 s are disposed (the 2K colour stays). With the 16K tile resident the
+   * global maps drop back to 4K: peak ~300 MB for the Moon on ultra.
+   */
+  _want(kind, size) {
+    const key = kind + size;
+    const c = this._cache || (this._cache = new Map());
+    let e = c.get(key);
+    if (!e) {
+      e = { kind, size, tex: null, last: 0, loading: true };
+      c.set(key, e);
+      this._loading[key] = true;
+      this._texture(`textures/moon/moon_${kind === 'c' ? 'color' : 'normal'}_${size}.jpg`, kind === 'c')
+        .then((t) => { e.tex = t; }).catch((err) => console.warn('[Moon] texture', key, err))
+        .finally(() => { e.loading = false; this._loading[key] = false; });
+    }
+    e.last = performance.now();
+    // bind the wanted level, else the largest loaded one not above it
+    let best = e.tex ? e : null;
+    if (!best) for (const x of c.values()) if (x.kind === kind && x.tex && x.size <= size && (!best || x.size > best.size)) best = x;
+    if (!best) for (const x of c.values()) if (x.kind === kind && x.tex && (!best || x.size < best.size)) best = x;
+    if (best) {
+      best.last = e.last;
+      const u = this.uniforms;
+      if (kind === 'c') { u.tColor.value = best.tex; this.colorSize = best.size; }
+      else { u.tNormal.value = best.tex; u.uHasNormal.value = 1; this.normalSize = best.size; }
+    }
   }
 
-  async _loadNormal(size) {
-    if (size <= this.normalSize || this._loading['n' + size]) return;
-    this._loading['n' + size] = true;
-    try {
-      const t = await this._texture(`textures/moon/moon_normal_${size}.jpg`, false);
-      if (size > this.normalSize) { const old = this.uniforms.tNormal.value; this.uniforms.tNormal.value = t; this.uniforms.uHasNormal.value = 1; this.normalSize = size; old?.dispose(); }
-      else t.dispose();
-    } catch (e) { console.warn('[Moon] normal', size, e); }
+  _evict() {
+    const now = performance.now();
+    for (const [key, e] of this._cache || []) {
+      if (!e.tex || key === 'c2048') continue;
+      const bound = e.tex === this.uniforms.tColor.value || e.tex === this.uniforms.tNormal.value;
+      if (!bound && now - e.last > 15000) { e.tex.dispose(); this._cache.delete(key); }
+    }
   }
 
   /** Height above the 1737.4 km sphere (km) for a unit body-fixed direction (bilinear, 2048 x 1024 LOLA). */
@@ -323,19 +359,57 @@ export class Moon {
     const dist = camB.length();
     const diamPx = 2 * Math.asin(Math.min(1, MOON_RADIUS_KM / dist)) * pxPerRad;
     this.apparentDiameterPx = diamPx;
-    if (diamPx > 400) this._loadColor(Math.min(4096, this.maxColor));
-    if (diamPx > 1500) this._loadColor(this.maxColor);
-    if (this.maxNormal) {
-      if (diamPx > 120) this._loadNormal(4096);
-      if (diamPx > 1500) this._loadNormal(this.maxNormal);
-    }
+    const tile = this.maxColor >= 8192 && diamPx > 3500;
+    this._want('c', tile ? 4096 : diamPx > 1500 ? this.maxColor : diamPx > 400 ? Math.min(4096, this.maxColor) : 2048);
+    if (this.maxNormal && diamPx > 120) this._want('n', tile ? 4096 : diamPx > 1500 ? this.maxNormal : 4096);
+    if ((this._evictT = (this._evictT || 0) + 1) % 120 === 0) this._evict();
     this.uniforms.uRelief.value = !this.lite && this.heightTexture && diamPx > 250 ? 1 : 0;
+    if (!tile && this.uniforms.uDetail.value.w > 0 && diamPx < 2500) {
+      // tile no longer needed: free it
+      const u = this.uniforms; u.uDetail.value.w = 0;
+      u.tDetailColor.value?.dispose(); u.tDetailNormal.value?.dispose(); u.tDetailColor.value = u.tDetailNormal.value = null; this._detailKey = null;
+    }
+    // 16K tile under the view axis once the Moon is huge on screen (high / ultra)
+    if (tile) {
+      const fwd = _v.set(0, 0, -1).applyQuaternion(camera.quaternion).applyQuaternion(_qi);
+      const b = camB.dot(fwd), c = camB.lengthSq() - MOON_RADIUS_KM * MOON_RADIUS_KM;
+      const disc = b * b - c;
+      if (disc > 0) {
+        const p = _w.copy(camB).addScaledVector(fwd, -b - Math.sqrt(disc)).normalize();
+        const lon = Math.atan2(p.y, p.x), lat = Math.asin(p.z);
+        const col = Math.min(3, Math.floor((lon + Math.PI) / (Math.PI / 2))), row = lat >= 0 ? 0 : 1;
+        this._loadDetail(row, col);
+      }
+    }
+  }
+
+  /** 16K colour + normal tile (row 0 = north, col 0 = lon -180..-90); one tile pair resident at a time. */
+  async _loadDetail(row, col) {
+    const key = `r${row}c${col}`;
+    if (this._detailKey === key || this._detailLoading) return;
+    this._detailLoading = key;
+    try {
+      const [c, n] = await Promise.all([
+        this._texture(`textures/moon/tiles16k/moon_color16k_${key}.jpg`, true),
+        this._texture(`textures/moon/tiles16k/moon_normal16k_${key}.jpg`, false),
+      ]);
+      for (const t of [c, n]) { t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; }
+      const u = this.uniforms;
+      u.tDetailColor.value?.dispose(); u.tDetailNormal.value?.dispose();
+      u.tDetailColor.value = c; u.tDetailNormal.value = n;
+      u.uDetail.value.set(-Math.PI + col * Math.PI / 2, row === 0 ? 0 : -Math.PI / 2, Math.PI / 2, 1);
+      this._detailKey = key;
+    } catch (e) { console.warn('[Moon] 16K tile', key, e); }
+    this._detailLoading = null;
   }
 
   dispose() {
     this.ctx.farScene.remove(this.group);
     this.surface.dispose();
     this.material.dispose();
-    this.uniforms.tColor.value?.dispose(); this.uniforms.tNormal.value?.dispose(); this.heightTexture?.dispose();
+    const u = this.uniforms;
+    for (const e of (this._cache || new Map()).values()) e.tex?.dispose();
+    for (const t of [u.tDetailColor, u.tDetailNormal]) t.value?.dispose();
+    this.heightTexture?.dispose();
   }
 }
