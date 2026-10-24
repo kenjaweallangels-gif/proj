@@ -297,7 +297,7 @@ export class Audio {
     if (!p) return;
     const dtr = Math.min(Math.max(dt / (ctx.time?.scale || 1), 0), 0.1);
     this.time += dtr;
-    const active = ctx.mode !== 'observer';
+    const active = ctx.mode === 'play';
 
     // inside the station: cabin ventilation; without the suit no suit fan and a quieter, open-air breath
     const unsuited = p.suited === false;

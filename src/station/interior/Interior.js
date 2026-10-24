@@ -310,13 +310,16 @@ export class StationInterior {
     const cam = ctx.camera;
     this._ringUpdate();
     cam.updateMatrixWorld();
-    const cp = _p.setFromMatrixPosition(cam.matrixWorld);
+    // camera in the station frame (the render frame may be elsewhere: free camera far from the station)
+    const u = ctx.universe, remote = !!u && !u.isStationFrame;
+    const cp = remote ? u.cameraInStation(_p, cam) : _p.setFromMatrixPosition(cam.matrixWorld);
     const zone = this.locate(cp, this.cameraZone, 0.25);
     this.cameraZone = zone;
     this.inside = !!zone;
     const vis = this.visible;
     vis.clear();
     _pm.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    if (remote) { u.stationRoot.updateMatrixWorld(); _pm.multiply(u.stationRoot.matrixWorld); }
     _frustum.setFromProjectionMatrix(_pm);
     if (zone) {
       // portal walk (depth 4) with frustum tests
@@ -398,7 +401,7 @@ export class StationInterior {
         l.intensity = (L.length === 1 && i === 1) ? 0 : 3.2;
       } else l.intensity = 0;
     }
-    this.mats.update(ctx.orbit.sunDir);
+    this.mats.update(ctx.orbit.local.sunDir);
     // ---- exposure: fixed interior exposure (the automatic one meters the Earth / Sun)
     const post = ctx.app?.renderer?.post;
     if (post?.grade) {

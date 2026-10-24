@@ -14,8 +14,10 @@ export const FALLBACK_CONTROLS = [
   { key: 'V', ru: 'гашение движения' },
   { key: 'E', ru: 'шлюз: выход / вход' },
   { key: 'F', ru: 'камера обзора' },
-  { key: 'T', ru: 'ускорение времени' },
+  { key: 'T', ru: 'ход времени: ×1 / ×10 / ×60 / ×600 / ×3600' },
+  { key: '[ / ]', ru: 'медленнее / быстрее' },
   { key: 'P', ru: 'пауза' },
+  { key: 'C', ru: 'свободная камера' },
   { key: 'H', ru: 'помощь' },
   { key: 'M', ru: 'звук' },
   { key: 'Esc', ru: 'меню' },
@@ -25,6 +27,15 @@ export const FALLBACK_CONTROLS = [
 const UI_ROWS = [
   { key: 'H', ru: 'помощь (эта таблица)' },
   { key: 'Esc', ru: 'меню / пауза' },
+];
+
+/** Free camera rows (FreeCamera.js), appended to every list. */
+const FREECAM_ROWS = [
+  { key: 'СВОБ. КАМЕРА', ru: 'C — включить / выключить · F — камера обзора' },
+  { key: 'W / A / S / D', ru: 'вперёд / влево / назад / вправо' },
+  { key: 'Space / Ctrl', ru: 'вверх / вниз · Q / E — крен' },
+  { key: 'Колесо, + / −', ru: 'скорость (от 0,1 м/с до 30 000 км/с) · Shift — ×10' },
+  { key: 'B', ru: 'вернуться к станции · O — ориентация: инерциальная / местная вертикаль' },
 ];
 
 let cached = null;
@@ -45,6 +56,7 @@ export async function loadControls() {
       if (!has) list.push(row);
     }
   }
+  list = list.concat(FREECAM_ROWS);
   cached = list;
   return list;
 }

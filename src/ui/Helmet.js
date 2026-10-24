@@ -270,7 +270,7 @@ export class Helmet {
     try { const d = typeof o.dateAt === 'function' ? o.dateAt() : null; if (d) utc = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}:${String(d.getUTCSeconds()).padStart(2, '0')} · ${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}`; } catch (_) { /* stub orbit */ }
     setText(this.rUtc.val, utc);
     const scale = num(t.scale, 1);
-    setText(this.rScale.val, ctx.app?.paused ? 'ПАУЗА' : `×${scale}`);
+    setText(this.rScale.val, ctx.app?.paused ? 'ПАУЗА' : `×${scale >= 1000 ? Math.round(scale).toLocaleString('ru-RU') : scale}${st.onRails ? ' · фиксация' : ''}`);
     setClass(this.rScale.v, 'warn', scale !== 1 || !!ctx.app?.paused);
 
     // navigation
@@ -310,6 +310,7 @@ export class Helmet {
     if (pow <= 0.08) list.push(['ПИТАНИЕ КРИТИЧНО', 'alert']); else if (pow <= 0.2) list.push(['НИЗКИЙ ЗАРЯД', 'warn']);
     if (detached) list.push(['ТРОС ОТЦЕПЛЕН', 'alert']); else if (st.tetherTaut) list.push(['ТРОС НАТЯНУТ', 'warn']);
     if (num(st.speedRelative, 0) > 2.5 && st.mode === 'eva') list.push(['ВЫСОКАЯ СКОРОСТЬ', 'warn']);
+    if (st.onRails) list.push(['ФИКСАЦИЯ: ХОД ВРЕМЕНИ ВЫШЕ ×10', 'info']);
     const key = list.map((w) => w[0] + w[1]).join('|');
     if (key === this._warnKey) return;
     this._warnKey = key;

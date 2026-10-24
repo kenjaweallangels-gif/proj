@@ -8,7 +8,11 @@ index.html                 DOM shell (#app canvas container, #ui overlay root)
 src/main.js                bootstraps App
 src/core/App.js            owns everything, update loop, module wiring, env-map, lights, debug views
 src/core/Renderer.js       two-scene rendering (far km scene + near m scene) + post stack
-src/core/Orbit.js          orbital mechanics, Sun/Moon, Earth rotation, frames, eclipse
+src/core/Orbit.js          station orbit, Sun/Moon, Earth rotation, eclipse; frame outputs for the render frame
+src/core/Time.js           SimClock (ctx.time): sim seconds, rate, pause, jumps, rate ladder / presets
+src/core/Universe.js       ctx.universe: render frame (floating origin), station root, bodies, gravity, depth planes
+src/core/Astro.js          gravity model (J2, Moon, Sun), RK4 / adaptive RK45, universal-variable Kepler, elements
+src/core/FreeCamera.js     free camera (App mode 'free'): 6-DOF flight with anchors station / Earth / Moon
 src/core/Materials.js      shared PBR material library (hull, MLI foil, truss, solar, glass, lights…)
 src/core/Textures.js       procedural canvas textures (panel lines, MLI wrinkles, decals, text…)
 src/core/Particles.js      GPU sprite particle pool (RCS puffs, vents, debris glints)
@@ -25,6 +29,7 @@ src/ui/Hud.js              helmet HUD / visor overlay / menus / loading (DOM + c
 src/audio/Audio.js         procedural WebAudio (breathing, suit fans, radio, thrusters, hatch)
 src/fx/Post.js             post-processing passes (bloom, final grade, SMAA) and lens flare
 tools/screenshot.mjs       Playwright headless screenshot of any view (for visual verification)
+tools/astro-test.mjs       plain-Node unit checks of Astro.js / Time.js (also run at the end of npm run smoke)
 tools/interior-stats.mjs   interior build statistics (zones, triangles, atlas use); interior-debug.mjs runs a probe
                            snippet against window.__app (optional --shot=out.png)
 public/textures, public/data   NASA Earth/Moon textures, star catalogue (see CREDITS.md)
@@ -42,6 +47,9 @@ public/textures, public/data   NASA Earth/Moon textures, star catalogue (see CRE
   Earth mesh; `orbit.skyQuat` orients the star field (see Orbit.js header for conventions).
 * The orbital motion is visible as the Earth/sky rotating about the station: one revolution per
   92.6 min, with sunrise/sunset and a 35-minute eclipse each orbit.
+* The LVLH description above is the **default render frame**. Physics truth lives in ECI (km, doubles);
+  the render frame is (origin in ECI, orientation) and can be moved to any observer (`ctx.universe`,
+  see "Universe and render frames" below). In the default frame everything is exactly as described here.
 
 ## Context object (`ctx`) passed to every module
 
@@ -56,12 +64,15 @@ ctx = {
   particles,           // ParticleSystem (near scene)
   input,               // Input state
   quality,             // active quality preset (constants.QUALITY_PRESETS[...]) + {preset}
-  time,                // { sim, dt, scale, elapsed }  sim = seconds since epoch
+  time,                // SimClock (src/core/Time.js): sim, dt, realDt, rate (= scale), paused, elapsed, hitch, utc()
+  universe,            // Universe (src/core/Universe.js): render frame, bodies, gravity, propagation
+  stationRoot,         // near-scene Group holding everything in station coordinates (identity in the default frame)
+  freeCam,             // FreeCamera (src/core/FreeCamera.js)
   sunLight,            // DirectionalLight (near scene, follows orbit.sunDir, casts shadows)
   hemiLight,           // earthshine HemisphereLight
   events,              // tiny emitter: events.on(name, fn), events.emit(name, data)
   earth, sky, station, ships, player, hud, audio,   // module instances (filled as created)
-  mode,                // 'play' | 'observer'
+  mode,                // 'play' | 'observer' | 'free' (free camera)
   isShot,              // true when driven by tools/screenshot.mjs (fixed dt, no pointer lock)
 }
 ```
@@ -150,8 +161,10 @@ npm run dev                             # http://127.0.0.1:5173/
 node tools/screenshot.mjs --view=overview --t=600 --out=/tmp/x.png   # headless screenshot
 npm run smoke                           # real game flow: menu, thrust, airlock, ring contact, observer
 ```
-URL params: `?autostart=1` skip menu · `?observer=1` free camera · `?view=overview|docking|ring|earth|airlock|eva|sunrise`
-· `?t=<sim seconds>` (600 day, 1165 sunset, 2000 night, 3200 sunrise) · `?quality=ultra|high|medium|low` · `?timescale=<n>` · `?shot=1` (fixed dt).
+URL params: `?autostart=1` skip menu · `?observer=1` observer camera · `?view=overview|docking|ring|earth|airlock|eva|sunrise`
+(free camera: `?view=free|free-station|free-earth|free-moon`)
+· `?t=<sim seconds>` (600 day, 1165 sunset, 2000 night, 3200 sunrise) · `?utc=<ISO date>` start date · `?quality=ultra|high|medium|low`
+· `?timescale=<n>` start rate · `?shot=1` (fixed dt).
 `window.__app` exposes the App for console debugging.
 
 ## Stubs and module loading
@@ -328,3 +341,93 @@ built once per variant (k mod 3) and shared by rotated meshes. Ring zones are ch
   URL `?start=inside|airlock` (menu: «НАЧАЛО»). The old `airlock` view = suited in the crew lock, inner hatch closed.
 * Player state additions: `suited`, `inside`, `compartment` (zone name for the HUD), `frame`, `gravity` (g),
   `onLadder`, `autoLevel`, `nearSuit`, `nearInnerHatch`; sequences `don`, `doff`, `innerClose`, `innerOpen`.
+
+## Time (`ctx.time`, src/core/Time.js)
+
+`SimClock`: `sim` (seconds since `EPOCH_UTC_MS`, double), `dt` (scaled step of the frame, 0 while paused), `realDt`
+(wall-clock step, clamped to 1/20 s, also while paused), `rate` (alias `scale`), `paused`, `elapsed` (unpaused real
+seconds), `hitch` (true for a few frames after a rate change / pause / jump / traffic fast-forward: the quality governor
+and the 'lite' dynamic resolution skip those windows), `utc(out?)`, `utcMs()`, `epochMs`.
+Control: `setRate(r)` (0.1 … 10⁶), `faster()` / `slower()` (ladder `TIME_RATES`), `resetRate()`, `setPaused(b)`,
+`togglePause()`, `jump(seconds)`, `setUtc(ms | Date)`. Events: `'time:rate' {rate, prev}`, `'time:pause' {paused}`,
+`'time:jump' {from, to, delta}` (and the legacy `'timescale'`). `app.paused` is `time.paused` (the pause menu uses it).
+Keys: P pause, T presets ×1/×10/×60/×600/×3600, `[` / `]` slower / faster, `\` ×1. UI: `src/ui/TimeControls.js`
+(observer panel, free-camera panel, pause menu): pause, «, ×1, », presets ×1 … ×10⁶, UTC readout, −1 h / +1 h /
++1 day / +30 days, a UTC date field.
+
+Behaviour at any rate:
+* **Astronaut** (Player.js): physics in sim time, sub-steps ≤ 1/60 s up to `PLAYER_MAX_RATE` = ×10 (slow motion
+  works too). Above ×10 the astronaut is **on rails**: position, velocity, sequences and suit consumables freeze
+  relative to the station (or the ring deck, which keeps turning with them); the mouse still turns the view.
+  `player.state.onRails`, event `'player:rails'`, HUD warning «ФИКСАЦИЯ…», notification.
+* **Docking traffic** (Traffic.js): integrated in sub-steps up to 10 s per frame; larger steps and clock jumps
+  `fastForward(dt)`: flights in progress jump to their end (docked / gone), the schedule runs event by event
+  (≤ 64 per call). Ship radio notifications are muted above ×60 (the log keeps them).
+* **Particles**: sim time, but at most ×10 visually; RCS puff look factor follows the same clamp.
+* **Earth**: weather fades fine detail above ×10 (Weather.js), lightning in real time; audio runs in real time.
+* The free camera and the mouse always run in real time (also while paused).
+
+## Universe and render frames (`ctx.universe`, src/core/Universe.js)
+
+Physics truth is ECI (km, km/s, doubles). The **render frame** = `universe.frame`: `{ name, isStation, axes,
+originEci, velocityEci, renderToEci (Matrix4), eciToRender (Matrix4), quat (ECI -> render) }`. The far scene is the
+render frame in km, the near scene the same frame in metres.
+
+* Default (`useStationFrame()`): origin = station, axes = station LVLH — the historic frame, identical output.
+* `setFrame({ originEci, velocityEci?, axes: 'inertial' | 'lvlh' | 'local' | Matrix4, center?, name })` — call
+  every frame (before `universe.update()`; App runs camera controllers first). The orbit outputs are recomputed for
+  that observer by `Orbit.applyFrame` (eclipse by the Earth's umbra / penumbra cones and by the Moon, earthLit,
+  `earthshine` solid-angle scale, sub-point, `observerAltitudeKm`).
+* `orbit.local` = the station's own outputs in station LVLH (sunDir, moonDir, moonPosFar, earthCenterFar, skyQuat,
+  earthQuat, sunVisible, sunReddening, sunColor, earthLit, subLat/Lon). **Modules that work in station coordinates
+  use `orbit.local`** (solar arrays, radiators, antennas, floodlights, interior window masks, ship views, the
+  astronaut's suit temperature / lamp). Far-scene / post modules use the top-level outputs.
+* `stationRoot` (near scene): the station, ships, particles, the astronaut's body and tether (App moves every near
+  scene child except the camera and the lights into it after construction). Its transform maps station LVLH (m)
+  into the render frame; identity by default. Hidden (in non-default frames / the free camera) beyond
+  `STATION_VISIBLE_KM` = 300 km. Helpers: `stationToRender(pM, out)`, `renderToStation(pM, out)`,
+  `cameraInStation(out)` (ship LOD and the lens-flare occlusion use it), `cameraEci(out)`.
+* Transforms: `eciToRender(vKm, out)`, `renderToEci(vKm, out)`, `eciDirToRender(d, out)`, `renderDirToEci(d, out)`.
+* Bodies: `addBody({ name, radius, getStateEci(t, outPos, outVel?), farObject?, nearObject?, nearRange? (km),
+  orientEci? (Quaternion), depthTolerance?, shells? })` → record `{ positionEci, velocityEci, renderKm, distanceKm }`,
+  placed every frame (`farObject` in the far scene in km; `nearObject` in the near scene in m within `nearRange`;
+  add the objects to the scenes yourself). `removeBody(b)`, `body('earth' | 'moon' | name)`.
+* Gravity: `accelerationEci(r, t, out, { j2, moon, sun })` — Earth μ + J2, Moon and Sun third-body terms
+  (`GravityModel` in Astro.js). Ephemeris: `{ sunPositionEci(t, out), moonPositionEci(t, out) }` (sim seconds, km);
+  default `OrbitEphemeris` (Orbit.js formulas); `setEphemeris(e)` swaps it for gravity **and** rendering (Orbit uses
+  `orbit.ephemeris` for the Sun direction and the Moon when set) — the hook for src/core/Ephemeris.js.
+* Propagation (Astro.js, also through the universe): `propagator(accel?)` → `Propagator` with `rk4(state, t, h)`,
+  `rk4Span(state, t, dt, hMax)`, `rk45(state, t, dt, { tol, hMin, hMax, maxSteps })` (adaptive Dormand–Prince 5(4),
+  either direction; `state = { r, v }`); `kepler(r0, v0, dt, outR, outV, mu?)` (universal variables, any dt, for
+  on-rails at high rates); `elements(r, v, out?, mu?, bodyRadius?)` → `{ a, e, i, raan, argp, nu, M, E, p, h,
+  energy, periapsis, apoapsis, periapsisAlt, apoapsisAlt, period }`; `stateFromElements(el, outR, outV, mu?)`;
+  `apsides(r, v)`; `stationStateEci(t, outR, outV)`; constants `MU_EARTH`, `MU_MOON`, `R_EARTH`, `R_MOON`.
+  No per-call allocations; reuse the state objects.
+* Depth: in non-default frames (and with the free camera) `updateCameras()` fits the near camera's planes to the
+  station / ships (near = 0.4 × clearance) and the far camera's near plane to the nearest body surface (0.4 ×
+  clearance to the ground / cloud / aurora shell, ≥ 10 m). When a nearby body would leave a distant multi-shell body
+  (`depthTolerance`, Earth: 2 km) with too little depth precision, `universe.farSplit` asks the far pass to draw two
+  depth slices (fx/Post.js `renderFarSliced`: everything else first, depth cleared, then the near body on a spare
+  layer with its own planes). In the default frame the planes stay 0.05 / 6000 m and 20 / 2.5·10⁶ km.
+* Earth.js reads `earthCenterFar` every frame (positions of all shells), the Sun quads sit 10⁶ km from the camera;
+  the aurora visibility uses the observer's local vertical. Exposure counts the Moon when it is > 1° across and the
+  station cover from the station root; the lens flare tests the colliders in the station frame.
+
+## Free camera (`ctx.freeCam`, src/core/FreeCamera.js; App mode 'free')
+
+C toggles (from the astronaut or the observer camera; menu «СВОБОДНАЯ КАМЕРА», observer button), F → observer.
+6-DOF: mouse look (pointer lock, or drag), Q/E roll, W/S A/D Space/Ctrl, Shift ×10, wheel / + / − change the cruise
+speed logarithmically (`speedExp` = log10 m/s, −1 … 7.5: 0.1 m/s … 30 000 km/s). Anchors: `'station'` (offset in m in
+station LVLH, co-moving; the default frame within 20 km, beyond that the origin follows the camera with LVLH axes;
+left beyond 2000 km), `'earth'` (ECI, km), `'moon'` (km from the Moon centre, within
+60 000 km); in the last two the render frame follows the camera (floating origin, camera at the render origin) with
+inertial axes or the local vertical (O). B returns to the station (overview pose). API: `enter(prevMode)`, `exit()`,
+`jumpTo('station' | 'earth' | 'moon')`, `lookAtBody(name)`, `setAxesMode('inertial' | 'local')`, `info(out)`
+(altitude, distances to the station and the Moon, speed). App: `toggleFreeCamera()`, `leaveFreeCamera(to?)`.
+HUD: `src/ui/FreePanel.js`. The camera never enters the Earth (1 km) or the Moon (200 m).
+Collisions (`src/core/CameraCollision.js`, `CameraCollider.constrain(from, to, radius)`, station frame, m): the free
+camera (radius 0.25 m, within 20 km of the station) and the observer orbit camera (user moves only; authored views
+are placed as they are) stop and slide on the station hull, the airlock and the ships, and inside a compartment stay
+within its volumes and off its equipment. Backend: `ctx.collision.sphereCast / resolveSphere` (exact BVH service,
+src/core/CollisionWorld.js) when present, otherwise the analytic colliders and the interior volumes; fast moves are
+swept in radius-sized steps. Jumps (B, «К …» buttons) teleport without sweeping.
