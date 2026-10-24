@@ -25,8 +25,8 @@ export const COL = {
 
 /** Point in M's frame -> zone coordinates. */
 export function pt(M, x, y, z) { return new THREE.Vector3(x, y, z).applyMatrix4(M); }
-/** Direction in M's frame -> zone coordinates. */
-export function dir(M, x, y, z) { return new THREE.Vector3(x, y, z).transformDirection(M); }
+/** Direction / offset vector in M's frame -> zone coordinates (rotation only, length kept). */
+export function dir(M, x, y, z) { const e = M.elements; return new THREE.Vector3(e[0] * x + e[4] * y + e[8] * z, e[1] * x + e[5] * y + e[9] * z, e[2] * x + e[6] * y + e[10] * z); }
 
 // ------------------------------------------------------------------------------------------------ basics
 

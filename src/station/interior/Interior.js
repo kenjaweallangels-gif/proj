@@ -239,14 +239,11 @@ export class StationInterior {
     this.toRing(p, _q);
     const dist = (z) => unionDistance(z.frame === 'ring' ? _q : p, z.volumes, true);
     let best = null, bd = margin;
-    if (hint) {
-      const d0 = dist(hint);
-      if (d0 <= bd) { best = hint; bd = d0; }
-      for (const n of hint.neighbours) { const d = dist(n); if (d < bd) { bd = d; best = n; } }
-      if (best && bd < -0.15) return best;
-    }
+    // (the hint only breaks ties: a stale hint must not shadow the compartment the point really is in)
+    if (hint) { const d0 = dist(hint); if (d0 <= bd) { best = hint; bd = d0 - 1e-4; } }
     // broad phase: bounding spheres
     for (const z of this.zones) {
+      if (z === hint) continue;
       const c = z.frame === 'ring' ? _q : p;
       if (c.distanceToSquared(z.sphere.center) > (z.sphere.radius + 1) ** 2) continue;
       const d = dist(z);
@@ -425,11 +422,10 @@ export class StationInterior {
         }
         continue;
       }
-      for (const c of z.carve) {
-        if (c.kind === 'window' && zone) continue;   // window holes only matter when looking in from outside
-        push(c);
-      }
+      // window holes: always for the camera's compartment (shield panels over the windows), others only if room
+      for (const c of z.carve) if (c.kind !== 'window' || z === zone || !zone) push(c);
     }
+    if (zone) for (const z of order) if (z !== zone && z.frame !== 'ring') for (const c of z.carve) if (c.kind === 'window') push(c);
     U.uCarveCount.value = n;
   }
 
