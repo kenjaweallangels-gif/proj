@@ -33,7 +33,7 @@ export function buildModules(ctx, station, b, rails) {
   const cupolaGlow = m.get('windowGlow').clone(); cupolaGlow.emissiveIntensity = 0.7; cupolaGlow.name = 'cupolaGlow';
 
   // ---------- generic module ----------
-  function module({ name, label, center, dir, r, len, hull = 'hullWhite', mli = [], shieldRows = 0, shieldFrom = 0, windows = [], railAngles = [0.8, 2.4, 4.0, 5.5], seams = 2.2, capA = 'cone', capB = 'cone', labelSides = true, labelT = 0, labelW = null, labelDirs = null, berth = [true, true], extras = [], vestibule = false }) {
+  function module({ name, label, center, dir, r, len, hull = 'hullWhite', mli = [], shieldRows = 0, shieldFrom = 0, windows = [], railAngles = [0.8, 2.4, 4.0, 5.5], seams = 2.2, capA = 'cone', capB = 'cone', labelSides = true, labelT = 0, labelW = null, labelDirs = null, berth = [true, true], extras = [], vestibule = false, noStep = true }) {
     const H = new HullFrame(center, dir, r, len, name);
     hulls[name] = H;
     // main hull cylinder (open ended, caps added separately)
@@ -100,12 +100,20 @@ export function buildModules(ctx, station, b, rails) {
     for (const w of windows) { addWindow(H, w.t, w.theta, w.r ?? 0.32); windowBolts(D, H, w.t, w.theta, w.r ?? 0.32); }
     // worksite sockets near the rail ends, connector panels / vents (extras: [{ kind, t, dir, dth }])
     if (D) {
+      const thTop = H.thetaFor(Y_AXIS), thBot = H.thetaFor(V(0, -1, 0));
+      if (noStep) for (const s of [-1, 1]) for (const th of (Math.abs(H.dir.y) > 0.9 ? [H.thetaFor(Z_AXIS)] : [thTop, thBot])) {
+        const tt = s * (len / 2 - 0.95), rho = (shieldRows > 0 && tt > shieldFrom && tt < shieldFrom + shieldRows * 1.82) ? r + 0.118 : (mli.some((q) => tt > q.from && tt < q.to) ? r + 0.064 : r + 0.004);
+        b.labelAt('НЕ НАСТУПАТЬ · NO STEP', 0.9, 0.09, H.point(tt, th, rho), H.normal(th), { right: H.dir.clone().multiplyScalar(-s), width: 1024, height: 104, color: '#b01818', font: 'bold 64px "Segoe UI", Arial, sans-serif' });
+      }
       const rho = shieldRows > 0 ? r + 0.115 : r;
       for (const a of railAngles) for (const s of [-1, 1]) hullWif(D, H, s * (len / 2 - 1.25), a + 0.22, s * (len / 2 - 1.25) > shieldFrom && s * (len / 2 - 1.25) < shieldFrom + shieldRows * 1.82 ? rho : r);
       extras.forEach((x, i) => {
         const th = H.thetaFor(x.dir) + (x.dth || 0), rr = x.rho ?? r;
         if (x.kind === 'conn') hullConnectors(D, H, x.t, th, rr, i);
-        else if (x.kind === 'vent') hullVent(D, H, x.t, th, rr, x.w, x.d);
+        if (x.kind === 'vent') {
+          hullVent(D, H, x.t, th, rr, x.w, x.d);
+          b.labelAt('ВЕНТ · VENT', 0.42, 0.06, H.point(x.t + (x.d ?? 0.3) / 2 + 0.07, th, rr + 0.004), H.normal(th), { right: H.dir.clone().negate(), width: 512, height: 72, font: 'bold 52px "Segoe UI", Arial, sans-serif' });
+        } else if (x.kind === 'conn') b.labelAt('ВНИМАНИЕ · 120 В', 0.46, 0.06, H.point(x.t - 0.22, th, rr + 0.004), H.normal(th), { right: H.dir.clone().negate(), width: 512, height: 72, color: '#b01818', font: 'bold 50px "Segoe UI", Arial, sans-serif' });
         else if (x.kind === 'wif') hullWif(D, H, x.t, th, rr);
       });
     }
@@ -134,7 +142,7 @@ export function buildModules(ctx, station, b, rails) {
 
   /** Node: short fat cylinder with four radial port stubs. */
   function node({ name, label, x, r = 2.45, len = 5, stubs = ['+y', '-y', '+z', '-z'], free = [] }) {
-    const H = module({ name, label, center: V(x, CY, 0), dir: X_AXIS, r, len, hull: 'hullWhiteAged', mli: [], capA: 'cone', capB: 'cone', railAngles: [0.6, 2.2, 4.1, 5.7], seams: 10, labelSides: false });
+    const H = module({ name, label, center: V(x, CY, 0), dir: X_AXIS, r, len, hull: 'hullWhiteAged', mli: [], capA: 'cone', capB: 'cone', railAngles: [0.6, 2.2, 4.1, 5.7], seams: 10, labelSides: false, noStep: false });
     const dirs = { '+y': Y_AXIS, '-y': V(0, -1, 0), '+z': Z_AXIS, '-z': V(0, 0, -1) };
     for (const s of stubs) {
       const d = dirs[s];
@@ -195,6 +203,19 @@ export function buildModules(ctx, station, b, rails) {
       const c = center.clone().addScaledVector(mount, 0.15).addScaledVector(dd, 0.55);
       b.add('metalDark', tubeAt(c, dd, 0.07, 0.45, 12, { rTop: 0.18, uv: false }), false);
       b.add('metalDark', tubeAt(center.clone().addScaledVector(mount, 0.15).addScaledVector(dd, 0.3), dd, 0.07, 0.3, 8, { uv: false }), false);
+      if (D) {
+        // nozzle exit lip, mounting flange with bolts, heater / pressure-transducer box
+        b.add('metalBare', latheAt(c.clone().addScaledVector(dd, 0.225), dd, [[0.165, -0.02], [0.2, -0.01], [0.2, 0.0], [0.175, 0.005]], 16), false);
+        const pf = center.clone().addScaledVector(mount, 0.15).addScaledVector(dd, 0.45);
+        b.add('metalBare', tubeAt(pf, dd, 0.12, 0.03, 12, { uv: false }), false);
+        boltCircle(D, new THREE.Matrix4().compose(pf.clone().addScaledVector(dd, 0.015), new THREE.Quaternion().setFromUnitVectors(Y_AXIS, dd), V(1, 1, 1)), 0.1, 6, 0, 0.012, 0.008);
+      }
+    }
+    if (D) {
+      const M = new THREE.Matrix4().compose(center.clone().addScaledVector(mount, 0.33), q, V(1, 1, 1));
+      boltRow(D, M, -0.42, -0.42, 0.42, -0.42, 6, 0, 0.014, 0.01);
+      boltRow(D, M, -0.42, 0.42, 0.42, 0.42, 6, 0, 0.014, 0.01);
+      D.part('mid', 'metal', COL.gold, 'bbox', M, 0.2, 0.05, 0.15, 0.18, 0.1, 0.14);
     }
   }
 

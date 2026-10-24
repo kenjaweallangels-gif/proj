@@ -197,7 +197,8 @@ export class DetailSet {
     const anchor = this.anchor || this.root;
     if (matrix) _c.setFromMatrixPosition(matrix);
     else { if (!geo.boundingSphere) geo.computeBoundingSphere(); _c.copy(geo.boundingSphere.center); }
-    const name = mat === 'metal' ? 'detailMetal' : mat === 'paint' ? 'detailPaint' : mat;
+    // fine parts all share the metal material (painted buttons at 1-3 cm read the same): one draw per fine cell
+    const name = mat === 'metal' || (mat === 'paint' && tier === 'fine') ? 'detailMetal' : mat === 'paint' ? 'detailPaint' : mat;
     this._bucket(tier, name, false, anchor, _c.x, _c.y, _c.z).acc.add(geo, matrix, color);
     this.parts++;
   }

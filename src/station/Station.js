@@ -12,6 +12,7 @@ import { Antennas } from './parts/Antennas.js';
 import { AirlockModule } from './parts/Airlock.js';
 import { StationLights } from './parts/Lights.js';
 import { DetailSet } from './parts/Detail.js';
+import { mergeDecals } from '../core/StaticBatcher.js';
 
 /**
  * Orbital station «Аврора» — near scene, meters, fixed at the origin.
@@ -81,6 +82,9 @@ export class Station extends THREE.Group {
       cupola: { position: [AX + 4, CY - 9, 6], target: [AX, CY - 3.5, 0] },
       aft: { position: [-150, 30, 90], target: [-50, 0, 0] },
     };
+
+    // GPU presets: text decals -> one atlas, merged per parent (the 'lite' path batches them in App.applyLite)
+    if (this.detail) this.decalsMerged = mergeDecals(this);
 
     this.ringPart.update(0);
     this.lights.update(0, ctx);

@@ -182,7 +182,7 @@ function normalise(g, wantColor) {
  * Pack transparent canvas-texture decals (text labels) under `root` into one atlas texture so they can
  * be batched into a single draw. Each decal keeps its mesh; its UVs are remapped into the atlas.
  */
-export function atlasDecals(root, { cellWidth = 512, atlasWidth = 2048 } = {}) {
+export function atlasDecals(root, { cellWidth = 512, atlasWidth = 2048, native = false, pad = 0 } = {}) {
   const list = [];
   root.traverse((o) => {
     const m = o.material;
@@ -199,9 +199,9 @@ export function atlasDecals(root, { cellWidth = 512, atlasWidth = 2048 } = {}) {
   const rects = new Map(); let x = 0, y = 0, rowH = 0;
   const images = [...new Set(list.map((o) => o.material.map.image))];
   for (const img of images) {
-    const w = Math.min(cellWidth, atlasWidth), h = Math.max(8, Math.round(w * img.height / img.width));
-    if (x + w > atlasWidth) { x = 0; y += rowH; rowH = 0; }
-    rects.set(img, { x, y, w, h }); x += w; rowH = Math.max(rowH, h);
+    const w = Math.min(cellWidth, atlasWidth, native ? img.width : cellWidth), h = Math.max(8, Math.round(w * img.height / img.width));
+    if (x + w > atlasWidth) { x = 0; y += rowH + pad; rowH = 0; }
+    rects.set(img, { x, y, w, h }); x += w + pad; rowH = Math.max(rowH, h);
   }
   const H = THREE.MathUtils.ceilPowerOfTwo(y + rowH);
   const canvas = document.createElement('canvas'); canvas.width = atlasWidth; canvas.height = H;
@@ -277,3 +277,35 @@ function splitByIslands(g, keyOf) {
   return out;
 }
 const _p = new THREE.Vector3();
+
+/**
+ * GPU presets: pack the text decals under `root` into one atlas at their native resolution, then merge the
+ * decal meshes per (parent, material, render flags) into one mesh each — tens of label draw calls become
+ * one or two. Decals must not move relative to their parent (Builder output). Returns the number merged.
+ */
+export function mergeDecals(root, { atlasWidth = 4096 } = {}) {
+  if (atlasDecals(root, { cellWidth: 1024, atlasWidth, native: true, pad: 4 }) < 2) return 0;
+  const groups = new Map();
+  root.traverse((o) => {
+    if (!o.isMesh || o.isInstancedMesh || o.material?.name !== 'decalAtlas') return;
+    const k = [o.parent.uuid, o.material.uuid, o.renderOrder, o.layers.mask, o.castShadow, o.receiveShadow].join('|');
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(o);
+  });
+  let merged = 0;
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    const geos = list.map((o) => { o.updateMatrix(); return normalise(o.geometry, false).applyMatrix4(o.matrix); });
+    const geo = mergeGeometries(geos, false);
+    if (!geo) continue;
+    geo.computeBoundingSphere();
+    const s = list[0];
+    const mesh = new THREE.Mesh(geo, s.material);
+    mesh.name = 'decals'; mesh.renderOrder = s.renderOrder; mesh.layers.mask = s.layers.mask;
+    mesh.castShadow = s.castShadow; mesh.receiveShadow = s.receiveShadow;
+    s.parent.add(mesh);
+    for (const o of list) { o.removeFromParent(); o.geometry.dispose(); }
+    merged += list.length;
+  }
+  return merged;
+}
