@@ -122,7 +122,7 @@ float stormCells(vec3 p, out float core) {
     if (B.x <= 0.0) continue;
     float d2 = dot(p - A.xyz, p - A.xyz) * R_GROUND * R_GROUND;
     float ra = A.w * (0.35 + 0.65 * sqrt(B.x));
-    if (d2 > ra * ra * 5.0) continue;
+    if (d2 > ra * ra * 9.0) continue;                          // anvil reach: 0.5 ra downwind + 1.25 ra / 0.6
     vec2 q = tangentOffset(p, A.xyz, R_GROUND);
     vec2 qa = vec2((q.x - B.z * ra * 0.5) * 0.6, q.y);           // anvil plume drifts downwind (east/west)
     float r = length(qa);

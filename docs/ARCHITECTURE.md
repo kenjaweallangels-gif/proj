@@ -225,8 +225,7 @@ locks stepping up for 30 s. GPU samples longer than the wall-clock frame are dro
 if it keeps producing them (software rasterisers report queue latency). The state is shown next to the HUD fps counter.
 
 Detail knobs per preset: `detail` (tessellation factor through three-lod, 1.6 ultra / 1.3 high), `textureScale`
-(procedural texture resolution in `Textures`), Earth texture set and sphere segments (`Earth.js`: 8K day and clouds
-on ultra, 4K night, ocean mask and relief normals on high/ultra, when `maxTextureSize ≥ 8192`).
+(procedural texture resolution in `Textures`), Earth feature set and sphere segments (`Earth.js` `FEATURES`, see below).
 `App.fitShadow` fits the sun's shadow frustum to what the camera sees (38–165 m), snapped to shadow texels.
 
 CPU per frame, all presets: transparent double-sided materials render in one pass (`forceSinglePass`), and
@@ -235,3 +234,22 @@ unifies `receiveShadow` per material and gives instanced shadow casters their ow
 three re-derives the program (`getParameters`, cache key) on every switch between such objects. The PMREM
 environment target is reused on each refresh. `tools/cpuframe.mjs` reports main-thread JS time per frame with a CDP
 profile (`--callers=<fn>` prints the stacks that lead to a hot function).
+
+## Earth (`src/world/`)
+
+* `Earth.js` — ground / cloud / aurora / atmosphere shells, Sun, Moon. `FEATURES[preset]` picks textures and shader
+  detail (8K night, clouds and water on high/ultra when `maxTextureSize ≥ 8192`, cloud-detail octaves, cyclone /
+  storm-cell / flash array sizes, aurora arcs and samples). 'lite' keeps the old cheap path: one ground shader with
+  the cloud layer inlined, no weather, no aurora.
+* `EarthTextures.js` — seasonal day map: the two Blue Marble NG months bracketing the sim date are blended once at
+  load into a mipmapped render target (high/ultra: 8K October base + the 4K seasonal difference; medium/low: two 4K
+  months; lite: the nearest month file). Also the 64³ noise texture of the weather shaders.
+* `SurfaceDetail.js` (ultra) — 500 m Blue Marble tiles (`textures/earth/tiles/`) composited into a 2048² window
+  (34°) around the sub-station point, double-buffered; the ground shader adds its high-pass near nadir.
+* `Weather.js` — CPU weather state in the Earth-fixed frame: October tropical cyclones on deterministic tracks per
+  basin, thunderstorm cells spawned around the visible cap from a convective climatology (ITCZ, afternoon land,
+  night ocean, cyclone bands), lightning flashes in real time, aurora activity. Writes preallocated uniform arrays.
+* `shaders/WeatherChunk.js` — cloud cover = NASA cloud map (slow drift) + growth/decay noise + sub-texel grain +
+  afternoon cumulus + cyclones + storm cells; sea-surface wind for the Cox–Munk glint. `shaders/AuroraShaders.js` —
+  analytic auroral curtains on a proxy shell (R + 335 km).
+* Textures are built by `tools/prepare_earth_textures.py` from the sources fetched by `tools/fetch_earth_sources.sh`.
