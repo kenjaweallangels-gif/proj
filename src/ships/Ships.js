@@ -1,29 +1,36 @@
 import * as THREE from 'three';
-import { SHIP_TYPES, animateCommon } from './ShipTypes.js';
+import { SHIP_TYPES } from './ShipTypes.js';
 import { Traffic, makeRng } from './Traffic.js';
+import { buildTemplate, instantiate, setLevel, detach } from './Kit.js';
+import { makeAnim, animateShip } from './types/Common.js';
 
 /**
  * Ships module (contract: docs/ARCHITECTURE.md) — docked ships and live docking traffic.
  *
  *   ships.ships[]      Ship records (see below); `colliders` are world-frame and updated while moving
- *   ships.update(dt)   traffic + animations
+ *   ships.update(dt)   traffic + part animation + level of detail
  *   ships.getLog()     last 20 events as Russian strings
  *   ctx.events 'ship'  { type: 'undock'|'depart'|'gone'|'arrive'|'final'|'capture'|'dock', ship, port, message }
  *
  * Ship = { id, type, name, typeLabel, group, state: 'docked'|'approach'|'dock'|'undock'|'depart'|'arrive'|'loiter'|'idle',
- *          port, colliders[], velocity, size, noseOffset (0: docking face on the port plane), parts, ... }
+ *          port, colliders[], velocity, size, noseOffset (0: docking face on the port plane), rig, anim, lod, ... }
  *
- * Draw calls: every ship is a handful of merged meshes (see ShipBuilder.js); the whole fleet stays < 120 calls.
+ * Every type is built once as a three-level template (Kit.js) and cloned per ship. The level is picked from the
+ * camera distance each frame: L0 (full detail) only within ~25 m + 5 × bounding radius, L1 to 500 m, L2 beyond;
+ * 'lite' never uses L0: L1 within the L0 range, L2 (one draw call per ship) beyond it.
+ *
+ * Debug: `?shipshow=1` adds a row of one ship of each type 120 m above the station (outside the traffic), with
+ * observer views `ship-<type>`, `ship-<type>-dock`, `ship-<type>-aft`; `?shipanim=1` cycles their mechanisms.
  */
 
-const _d = new THREE.Vector3();
-const STATION_CENTER = new THREE.Vector3(0, -8, 0);
-const NADIR = new THREE.Vector3(0, -1, 0);
+const _cam = new THREE.Vector3();
+const MID_DISTANCE = 500;
 
-/** Initial fleet; ~60 % of the ports are occupied at start, one capsule is on final approach, one freighter inbound. */
+/** Initial fleet; ~60 % of the ports are occupied at start, one ship is on final approach, one inbound. */
 const FLEET = [
-  ['freighter', 1, 'H2'], ['shuttle', 1, 'H3'], ['tanker', 1, 'H4'], ['capsule', 1, 'H5'], ['capsule', 2, 'N1'], ['capsule', 3, 'P2'],
-  ['capsule', 4, 'final:H6'], ['freighter', 2, 'inbound:H1'], ['tanker', 2, null], ['drone', 1, 'loiter'], ['drone', 2, 'loiter'],
+  ['cygnus', 1, 'H2'], ['dreamchaser', 1, 'H3'], ['htvx', 1, 'H4'], ['dragon', 1, 'H5'], ['soyuz', 1, 'N1'], ['progress', 1, 'P2'],
+  ['starliner', 1, 'final:H6'], ['dragon', 2, 'inbound:H1'], ['soyuz', 2, null], ['progress', 2, null], ['cygnus', 2, null],
+  ['drone', 1, 'loiter'], ['drone', 2, 'loiter'],
 ];
 
 export class Ships {
@@ -32,37 +39,70 @@ export class Ships {
     this.ships = [];
     this._log = [];
     this._nextId = 1;
+    this.lite = !!ctx.quality?.lite;
+    this.templates = new Map();
+    this.buildTimes = {};
     const t0 = performance.now();
     this.rng = makeRng(20261022);
     this.traffic = new Traffic(ctx, this, this.rng);
 
-    for (const [type, number, where] of FLEET) this._create(type, number, where);
+    for (const [type, number, where] of FLEET) if (SHIP_TYPES[type]) this._create(type, number, where);
     this._initialPlacement();
+    this.showcase = [];
+    if (ctx.params?.get?.('shipshow')) this._buildShowcase(ctx.params.get('shipanim') === '1');
     this.buildTimeMs = performance.now() - t0;
-    if (this.buildTimeMs > 2000) console.warn(`[Ships] build took ${this.buildTimeMs.toFixed(0)} ms`);
+    const tris = [...this.templates.values()].map((t) => `${t.type} ${t.lodTris.map((n) => Math.round(n / 100) / 10 + 'k').join('/')}`).join(', ');
+    (this.showcase.length ? console.warn : console.info)(`[Ships] templates (L0/L1/L2 triangles): ${tris}; build ${this.buildTimeMs.toFixed(0)} ms (${JSON.stringify(this.buildTimes)})`);
+    if (this.buildTimeMs > 2500) console.warn(`[Ships] build took ${this.buildTimeMs.toFixed(0)} ms`);
   }
 
   async load() {}
 
   // ------------------------------------------------------------------ construction
+  _template(type) {
+    let tpl = this.templates.get(type);
+    if (!tpl) {
+      const tb = performance.now();
+      tpl = buildTemplate(this.ctx.materials, type, SHIP_TYPES[type].def.author);
+      this.buildTimes[type] = Math.round(performance.now() - tb);
+      this.templates.set(type, tpl);
+    }
+    return tpl;
+  }
+
+  _instance(type, number) {
+    const T = SHIP_TYPES[type], D = T.def;
+    const tpl = this._template(type);
+    const rig = instantiate(tpl, { name: D.name.toUpperCase(), num: String(number) });
+    const g = rig.group;
+    g.name = `${type}:${D.name}-${number}`;
+    setLevel(rig, 2);
+    return {
+      type, name: `${D.name}-${number}`, typeLabel: D.label, group: g, rig, lights: rig.lights, lod: 2, tpl,
+      info: { ...tpl.info, hooks: tpl.hookBase || null },
+      def: { shipName: `${D.name}-${number}`, label: D.label, parts: {} },
+      dyn: T.dyn, docks: T.docks, upAxis: D.upAxis.clone(), mainAxis: D.mainAxis.clone(),
+      nozzles: tpl.nozzles, mainNozzles: tpl.mainNozzles.length ? tpl.mainNozzles : tpl.nozzles.filter((n) => n.direction.dot(D.mainAxis) < -0.9),
+      noseOffset: 0, size: D.size, length: D.length, boundRadius: D.boundRadius,
+      nearDistance: 25 + 5 * D.boundRadius,
+      engineGlow: 0, burning: false, dockLightsOn: false, dockLightLevel: 0, petalOpen: 1, petalExtend: 1, panelDeploy: 1, doorOpen: 1,
+      anim: makeAnim(),
+    };
+  }
+
   _create(type, number, where) {
-    const T = SHIP_TYPES[type];
-    const tb = performance.now();
-    const def = T.build(this.ctx, { number });
-    (this.buildTimes || (this.buildTimes = {}))[`${type}-${number}`] = Math.round(performance.now() - tb);
-    const g = def.group;
+    const ship = this._instance(type, number);
+    const g = ship.group;
     g.visible = false;
     g.position.set(0, -20000, 0);
     this.ctx.nearScene.add(g);
-    const ship = {
-      id: this._nextId++, type, name: def.shipName, typeLabel: def.label, group: g, def, dyn: T.dyn, docks: T.docks, upAxis: def.upAxis || new THREE.Vector3(0, 1, 0),
-      state: 'idle', port: null, roll: 0,
-      colliders: def.colliders.map((c) => this._cloneCollider(c)), localColliders: def.colliders,
-      nozzles: def.nozzles, mainNozzles: def.mainNozzles, mainAxis: def.mainAxis, noseOffset: def.noseOffset, size: def.size,
-      velocity: new THREE.Vector3(), parts: def.parts,
-      engineGlow: 0, burning: false, dockLightsOn: false, dockLightLevel: 0, petalOpen: 1, petalExtend: 1, panelDeploy: 1, doorOpen: 1, strobePhase: this.rng(),
-      dishMode: 'earth', dockedSince: -1e9, flight: null, att: null, where,
-    };
+    const localColliders = ship.tpl.colliders;
+    Object.assign(ship, {
+      id: this._nextId++, state: 'idle', port: null, roll: 0,
+      colliders: localColliders.map((c) => this._cloneCollider(c)), localColliders,
+      velocity: new THREE.Vector3(), parts: {}, strobePhase: this.rng(),
+      dockedSince: -1e9, flight: null, att: null, where,
+    });
     this.ships.push(ship);
     return ship;
   }
@@ -90,6 +130,7 @@ export class Ships {
         if (port && !port.occupant && (ship.size === 'small' || port.size === 'large')) {
           const roll = tr.chooseRoll(ship, port);
           if (roll !== null) { tr.placeDocked(ship, port, roll); placed = true; }
+          else (this.ctx.params?.get?.('shipshow') ? console.warn : console.info)(`[Ships] ${ship.name} does not fit ${id}: ${tr.lastFitFail}`);
         }
         if (!placed) pending.push(ship);
       } else pending.push([mode, ship, port]);
@@ -104,25 +145,69 @@ export class Ships {
       if (mode === 'final') { const corr = tr.corridor(port); tr.startFinalApproach(ship, port, roll, Math.max(0, corr.length - 60)); }
       else if (mode === 'inbound') tr.startArrival(ship, port, roll, -1600);   // 1.6 km out: braking burn within minutes
     }
-    const docked = this.ships.filter((s) => s.state === 'docked').length;
-    console.info(`[Ships] ${this.ships.length} ships built, ${docked} docked of ${tr.ports.length} ports, ${this.traffic.flying.length} in flight`);
+    const docked = this.ships.filter((s) => s.state === 'docked');
+    (this.ctx.params?.get?.('shipshow') ? console.warn : console.info)(`[Ships] ${this.ships.length} ships built, ${docked.length} docked of ${tr.ports.length} ports (${docked.map((s) => `${s.name}@${s.port.id}`).join(', ')}), ${this.traffic.flying.length} in flight`);
+  }
+
+  // ------------------------------------------------------------------ debug showcase
+  _buildShowcase(demo) {
+    const types = Object.keys(SHIP_TYPES).filter((t) => SHIP_TYPES[t].docks);
+    const vps = this.ctx.station?.viewpoints;
+    types.forEach((type, i) => {
+      const s = this._instance(type, 9);
+      s.state = 'docked'; s.velocity = new THREE.Vector3(); s.strobePhase = i * 0.37; s.petalExtend = 0; s.petalOpen = 0; s.demo = demo;
+      s.group.position.set(-80 + i * 27, 120, 40);
+      s.group.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);   // docking axis toward +X
+      s.group.visible = true;
+      this.ctx.nearScene.add(s.group);
+      this.showcase.push(s);
+      if (!vps) return;
+      const self = this;
+      const view = (back, side, up) => ({
+        get position() {
+          const sun = self.ctx.orbit?.sunDir || new THREE.Vector3(0, 1, 0);
+          const c = s.group.position;
+          const d = new THREE.Vector3(back, up, side).normalize().multiplyScalar(s.length * 0.8 + 3.5).addScaledVector(sun, 1.5);
+          return [c.x + d.x - s.length * 0.45, c.y + d.y, c.z + d.z];
+        },
+        get target() { const c = s.group.position; return [c.x - s.length * 0.45, c.y, c.z]; },
+      });
+      vps[`ship-${type}`] = view(0.35, 1, 0.35);
+      vps[`ship-${type}-dock`] = { get position() { const c = s.group.position; return [c.x + 4.5, c.y + 1.6, c.z + 2.8]; }, get target() { const c = s.group.position; return [c.x - 0.6, c.y, c.z]; } };
+      vps[`ship-${type}-aft`] = view(-0.9, 0.8, -0.3);
+      vps[`ship-${type}-top`] = view(0.05, 0.35, 1);
+      vps[`ship-${type}-side`] = view(0.0, 1, -0.12);
+    });
+    vps && (vps['ship-row'] = { position: [0, 135, 140], target: [0, 120, 40] });
+    // debug views: no HUD panels over the ships
+    if (typeof document !== 'undefined' && this.ctx.params.get('shipshow') === 'clean') document.getElementById('ui')?.style.setProperty('display', 'none');
   }
 
   // ------------------------------------------------------------------ runtime
   update(dt, ctx) {
     const t = ctx.time.sim;
-    this.traffic.update(dt);
-    for (let i = 0; i < this.ships.length; i++) {
-      const ship = this.ships[i];
-      if (!ship.group.visible) continue;
-      animateCommon(dt, ship, t);
-      if (ship.def.animate) ship.def.animate(dt, ship, ctx);
-      const dish = ship.parts.dish;
-      if (dish) {
-        if (ship.dishMode === 'earth') dish.trackWorld(NADIR, ship.group.quaternion, dt);
-        else dish.trackWorld(_d.copy(STATION_CENTER).sub(ship.group.position).normalize(), ship.group.quaternion, dt);
-      }
+    if (!this._detached) {   // first frame: the App's start-up passes have seen every level; detach the hidden ones now
+      this._detached = true;
+      for (const s of this.ships) detach(s.rig);
+      for (const s of this.showcase) detach(s.rig);
     }
+    this.traffic.update(dt);
+    _cam.setFromMatrixPosition(ctx.camera.matrixWorld);
+    for (let i = 0; i < this.ships.length; i++) this._animate(this.ships[i], dt, t);
+    for (let i = 0; i < this.showcase.length; i++) this._animate(this.showcase[i], dt, t);
+  }
+
+  _animate(ship, dt, t) {
+    if (!ship.group.visible) return;
+    // level of detail with 10 % hysteresis
+    const d = ship.group.position.distanceTo(_cam) - ship.boundRadius;
+    const n0 = ship.lod === 0 ? ship.nearDistance : ship.nearDistance * 0.9;
+    const n1 = ship.lod <= 1 ? MID_DISTANCE : MID_DISTANCE * 0.9;
+    // 'lite' (CPU rasteriser, ~0.3 px per CSS px): L1 only where L0 would be used, silhouettes elsewhere
+    const lvl = this.lite ? (d < n0 * 0.6 ? 1 : 2) : d < n0 ? 0 : d < n1 ? 1 : 2;
+    if (lvl !== ship.lod) { ship.lod = lvl; setLevel(ship.rig, lvl); }
+    if (ship.demo) demoChannels(ship, t);
+    animateShip(dt, ship, t);
   }
 
   /** Transform the ship's local colliders into world space (in place, same objects). */
@@ -168,7 +253,20 @@ export class Ships {
   shipAt(port) { return port && port.occupant && port.occupant.group ? port.occupant : null; }
 
   dispose() {
-    for (const s of this.ships) { s.group.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); s.parts.lights?.dispose(); this.ctx.nearScene.remove(s.group); }
+    for (const s of [...this.ships, ...this.showcase]) { s.lights?.dispose(); this.ctx.nearScene.remove(s.group); }
+    for (const tpl of this.templates.values()) tpl.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
     this.ships.length = 0;
   }
+}
+
+/** ?shipanim=1: cycle the showcase mechanisms (period 80 s): stow / deploy, nose, probe, soft capture. */
+function demoChannels(ship, t) {
+  const ph = (t % 80) / 80;
+  const tri = (x) => (x < 0.5 ? x * 2 : 2 - x * 2);
+  const a = ship.anim;
+  ship.state = 'docked';
+  a.snap = false;
+  ship.petalExtend = tri((ph * 2) % 1); ship.petalOpen = 0;
+  ship.dockLightsOn = ph > 0.5;
+  ship.demoT = { deploy: Math.min(1, tri(ph) * 1.6), antenna: Math.min(1, tri(ph) * 1.6), nose: Math.min(1, tri(ph) * 1.6), probe: tri((ph * 2) % 1) };
 }

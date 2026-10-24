@@ -34,7 +34,7 @@ export const V = (x, y, z) => new THREE.Vector3(x, y, z);
 export const TEX_M = 4.0;
 
 // ------------------------------------------------------------------------------------------ surfaces
-const LUT_N = 32;
+const LUT_N = 64;
 /** Untextured surface classes: name -> { cell, color, rough, metal, emissive, intensity }. */
 export const SURF = {};
 let _cell = 0;
@@ -58,6 +58,18 @@ surf('copper', 0xb87333, 0.35, 1.0);
 surf('camera', 0x0a1020, 0.05, 0.3);
 surf('cable', 0x2a2a2e, 0.8, 0.1);
 surf('tank', 0xd8dadc, 0.3, 0.9);
+surf('paintWhite', 0xeeeeea, 0.55, 0.08);
+surf('paintRed', 0xb3201c, 0.55, 0.1);
+surf('gold', 0xc9a046, 0.35, 0.9);          // anodised handrails / fittings
+surf('blackAnod', 0x18191b, 0.45, 0.5);
+surf('nozzleIn', 0x2a2522, 0.7, 0.6);
+surf('glassDark', 0x0c1218, 0.05, 0.6);
+surf('kapton', 0xc08a2a, 0.32, 0.9);        // gold foil seen from far (flat LOD)
+surf('ceramic', 0xc8c8c4, 0.85, 0.0);
+surf('feltFlat', 0x8f977f, 0.9, 0.0);       // quilted blanket seen from far (tinted)
+surf('solarFlat', 0x1a2550, 0.3, 0.5);
+surf('lens', 0x05070a, 0.03, 0.2);
+surf('beta', 0xe8e6de, 0.85, 0.0);
 // emissive classes: radiance = emissive colour × intensity, intensity may be animated through ShipLights
 surf('navRed', 0x300000, 0.4, 0.0, 0xff2010, 6);
 surf('navGreen', 0x003000, 0.4, 0.0, 0x20ff40, 6);
@@ -66,14 +78,21 @@ surf('strobe', 0x303030, 0.4, 0.0, 0xffffff, 0);
 surf('dockLight', 0x404040, 0.3, 0.0, 0xfff2dc, 0);
 surf('hot', 0x1a1a1a, 0.6, 0.8, 0xff5a1a, 0);
 surf('beacon', 0x302000, 0.4, 0.0, 0xffb020, 0);
+surf('portLight', 0x200808, 0.4, 0.0, 0xff3020, 0);      // flashing red beacon (Soyuz-style)
+surf('ledWhite', 0x303030, 0.3, 0.0, 0xd8e8ff, 0);      // rendezvous / target LEDs
 
 /** Textured surfaces: name -> [bucket, tint]. */
 const TEXTURED = {
   hull: ['hull', 0xffffff], hullAged: ['hull', 0xe0e2e2], hullGray: ['hull', 0xb9bec4], felt: ['hull', 0xdcdedd],
   tiles: ['hull', 0x2c2927], tilesFine: ['hull', 0x1e1d1c], radiator: ['hull', 0xf2f3f4], solarBack: ['hull', 0xc7c2b5], hullDark: ['hull', 0x4a4e54],
+  tilesHS: ['hull', 0x3b3633], tilesWhite: ['hull', 0xe6e6e2], hullSilver: ['hull', 0xc9ccd0], hullCream: ['hull', 0xe9e5da],
   mliGold: ['mli', 0xd9a63a], mliSilver: ['mli', 0xcfd3d8], mliDark: ['mli', 0x3a3a3c],
-  solar: ['solar', 0xffffff],
+  solar: ['solar', 0xffffff], solarDark: ['solar', 0x9aa0b8],
+  // quilted thermal blankets (Soyuz EVTI, beta cloth)
+  blanketGreen: ['blanket', 0x8e957d], blanketWhite: ['blanket', 0xefeee9], blanketGrey: ['blanket', 0xb3b5b0], betaCloth: ['blanket', 0xe6e3d8],
 };
+/** Flat stand-in (far LOD: one material) for every textured bucket. */
+const FLAT_PROXY = { hull: 'paintWhite', mli: 'kapton', solar: 'solarFlat', blanket: 'feltFlat' };
 
 /** Per-ship animated emissive texture (one texel per surface class, linear radiance). */
 export class ShipLights {
@@ -120,8 +139,16 @@ export function shipMaterials(materials) {
   hull.name = 'shipHull';
   const mli = materials.get('mliGold').clone();
   mli.color.set(0xffffff); mli.vertexColors = true; mli.name = 'shipMli';
-  const solar = materials.get('solarCell');
-  s = { lutTex, flatStatic, hull, mli, solar, flatLit(lights) {
+  const solar = materials.get('solarCell').clone();
+  solar.name = 'shipSolar';
+  const q = quiltTextures(materials.textures);
+  const blanket = new THREE.MeshStandardMaterial({ map: q.map, normalMap: q.normalMap, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.88, metalness: 0.0, vertexColors: true });
+  blanket.name = 'shipBlanket';
+  const inst = new Map();
+  s = { lutTex, flatStatic, hull, mli, solar, blanket,
+    /** Separate material instances for InstancedMesh users (see App.splitMaterialVariants). */
+    inst(m) { if (!inst.has(m)) { const c = m.clone(); c.name = `${m.name}Inst`; inst.set(m, c); } return inst.get(m); },
+    flatLit(lights) {
     const m = flatStatic.clone();
     m.emissive.set(0xffffff); m.emissiveIntensity = 1; m.emissiveMap = lights.tex; m.name = 'shipFlatLit';
     return m;
@@ -258,7 +285,7 @@ export const LocalColliders = {
 };
 
 // ------------------------------------------------------------------------------------------ builder
-const BUCKET_ORDER = ['hull', 'mli', 'solar', 'flat'];
+const BUCKET_ORDER = ['hull', 'blanket', 'mli', 'solar', 'flat'];
 
 /** Collects geometries into the four material buckets and merges each into one mesh. */
 export class ShipBuilder {
@@ -278,6 +305,11 @@ export class ShipBuilder {
     if (s) { setCellUV(geo, s.cell); setColor(geo, tint ? toColor(tint) : s.color); this._push('flat', geo, shadow); return geo; }
     const t = TEXTURED[name];
     if (!t) throw new Error(`ShipBuilder: unknown surface "${name}"`);
+    if (this.flatOnly) {
+      const p = SURF[FLAT_PROXY[t[0]]];
+      setCellUV(geo, p.cell); setColor(geo, tint ? toColor(tint) : (t[0] === 'solar' ? p.color : toColor(t[1])));
+      this._push('flat', geo, shadow); return geo;
+    }
     setColor(geo, tint ? toColor(tint) : toColor(t[1]));
     this._push(t[0], geo, shadow);
     return geo;
@@ -301,14 +333,14 @@ export class ShipBuilder {
    * Merge every bucket into meshes under `parent`. `lights` (ShipLights) makes the flat bucket emissive-animated
    * (static sub-assemblies such as dishes pass none and share one material). Returns the meshes.
    */
-  build(parent, name = 'ship', { lights = null, shadows = true, receive = true } = {}) {
+  build(parent, name = 'ship', { lights = null, shadows = true, receive = true, flatMaterial = null } = {}) {
     const meshes = [];
     for (const key of BUCKET_ORDER) {
       const b = this.buckets.get(key);
       if (!b || !b.geos.length) continue;
       const merged = mergeAll(b.geos);
       if (!merged) { console.warn('[Ships] merge failed for', name, key); continue; }
-      const material = key === 'flat' ? (lights ? this.shared.flatLit(lights) : this.shared.flatStatic) : this.shared[key];
+      const material = key === 'flat' ? (flatMaterial || (lights ? this.shared.flatLit(lights) : this.shared.flatStatic)) : this.shared[key];
       const mesh = new THREE.Mesh(merged, material);
       mesh.name = `${name}:${key}`;
       mesh.castShadow = !!shadows && key !== 'flat' && b.shadow;
@@ -394,10 +426,40 @@ export function instancedParts(shared, parts) {
   }
   for (const [bucket, list] of byBucket) {
     geos.push(mergeAll(list));
-    mats.push(bucket === 'flat' ? shared.flatStatic : shared[bucket]);
+    mats.push(shared.inst(bucket === 'flat' ? shared.flatStatic : shared[bucket]));
   }
   const geometry = mergeAll(geos, true);
   return { geometry, materials: mats.length === 1 ? mats[0] : mats };
+}
+
+/**
+ * Quilted blanket texture (Soyuz-style EVTI / beta cloth): stitched pillows with fine wrinkles. The colour map is a
+ * light greyscale (tinted per part by vertex colour) with the stitch lines darkened, so 'lite' (no normal maps) keeps it.
+ */
+function quiltTextures(textures) {
+  return textures._cached('shipQuilt', () => {
+    const size = 512, cells = 8, cs = size / cells;
+    const h = new Float32Array(size * size);
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      const u = (x % cs) / cs, v = (y % cs) / cs;
+      const pillow = Math.pow(Math.sin(Math.PI * u) * Math.sin(Math.PI * v), 0.35);
+      const ci = Math.floor(x / cs), cj = Math.floor(y / cs);
+      const wr = textures.constructor.fbm(x / size * 22, y / size * 22, 3, 5 + ci * 3 + cj * 7);
+      h[y * size + x] = pillow * 0.9 + wr * 0.25 - ((u < 0.025 || u > 0.975 || v < 0.025 || v > 0.975) ? 0.4 : 0);
+    }
+    const normalMap = textures._heightToNormal(h, size, 2.6);
+    const [c, g] = textures._canvas(size, size);
+    const img = g.createImageData(size, size), d = img.data;
+    for (let i = 0; i < size * size; i++) {
+      const x = i % size, y = (i / size) | 0;
+      const ci = Math.floor(x / cs), cj = Math.floor(y / cs);
+      const shade = 0.93 + 0.05 * textures.constructor.noise2(ci, cj, 9);
+      const v = 255 * Math.max(0, Math.min(1, shade * (0.84 + 0.16 * Math.min(1, h[i] + 0.2))));
+      d[i * 4] = v; d[i * 4 + 1] = v; d[i * 4 + 2] = v; d[i * 4 + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    return { map: textures._tex(c), normalMap };
+  });
 }
 
 // ------------------------------------------------------------------------------------------ hinged instanced parts

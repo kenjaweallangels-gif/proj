@@ -1,92 +1,69 @@
 import * as THREE from 'three';
-import { ShipBuilder, ShipLights, V, X_AXIS, Z_AXIS, cyl, box, sphere, tubeZ, torus, quatZ, flipInside, buildPetals, setPetals, setHinged } from '../ShipBuilder.js';
+import { foldWings } from './Russian.js';
 
 /**
- * Shared pieces of a ship type build.
+ * Part animation driven by the traffic state machine.
  *
- * Every type builder returns:
- *   { group, colliders (local), nozzles [{position, direction}], mainNozzles [{position, direction}],
- *     mainAxis (local unit: direction the ship accelerates when the main engine burns), upAxis,
- *     noseOffset (0: the docking face sits on the port plane), size: 'small'|'large', length, boundRadius,
- *     label (Russian type name), shipName,
- *     parts: { lights: ShipLights, petals, panels, dish, doors[], arm… },
- *     animate(dt, ship, ctx)  // type specific extras (optional)
- *   }
- * Local frame: +Z = docking axis (toward the port), docking plane at z = 0, body along -Z.
+ * Every ship carries `anim` = { deploy, antenna, probe, nose, scs, hooks, track } channels (0..1) that move
+ * toward targets derived from `ship.state` / `ship.flight` at realistic rates:
+ *   deploy  – solar wings / UltraFlex fans / folding wings: stowed at spawn (fresh from orbit insertion),
+ *             deployed during the first minute of the arrival, kept deployed afterwards
+ *   antenna – Kurs booms and dipoles: deploy during the arrival
+ *   track   – rendezvous antenna / sensor heads follow the station while arriving or approaching, park when docked
+ *   probe   – probe extension: extended on approach, pushed in by contact during the last ~0.4 m, retracted
+ *             (pulling the ships together) during capture, re-extended after the push-off
+ *   nose    – nose cone / docking-hatch cover: opens at the hold point, closes after the departure push-off
+ *   scs     – soft-capture ring extension (= traffic petalExtend); hooks close when it is retracted
+ * The type's author returns `info` naming the pivots / instanced sets these channels drive (see `applyParts`).
  */
 
-/** Start a ship build: group, builder, animated light channels, nozzle / collider lists. */
-export function shipStart(ctx, type, name, number) {
-  const group = new THREE.Group();
-  group.name = `${type}:${name}-${number}`;
-  return { m: ctx.materials, b: new ShipBuilder(ctx.materials), lights: new ShipLights(), group, nozzles: [], colliders: [] };
+const _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _w = new THREE.Vector3(), _m = new THREE.Matrix4(), _r = new THREE.Matrix4();
+const STATION_CENTER = new THREE.Vector3(0, -8, 0);
+const smooth = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+
+export function makeAnim() {
+  return { deploy: 1, antenna: 1, probe: 0, nose: 1, scs: 0, hooks: 1, tilt: 0, trackOn: 0, applied: {}, snap: true, lastState: null };
 }
 
-/** Main engine: outer bell (nozzle) + inner hot liner at `pos`, exhaust along -Z (or `dir`). Returns the plume origin. */
-export function mainEngine(b, pos, rThroat, rExit, length, dir = null) {
-  const d = dir ? dir.clone().normalize() : V(0, 0, -1);
-  const c = pos.clone().addScaledVector(d, length / 2);
-  // cyl axis +Y mapped to d: radiusTop (at +d side) = exit radius
-  b.add('nozzle', cyl(c, d, rThroat, length, 28, { rTop: rExit, open: true, uv: false }), false);
-  const inner = cyl(c.clone().addScaledVector(d, 0.02), d, rThroat * 0.92, length * 0.98, 28, { rTop: rExit * 0.95, open: true, uv: false });
-  b.add('hot', flipInside(inner), false);
-  b.add('metalDark', cyl(pos.clone().addScaledVector(d, -0.08), d, rThroat * 1.3, 0.18, 16, { uv: false }), false);
-  return { position: pos.clone().addScaledVector(d, length), direction: d };
-}
-
-/**
- * IDSS-style docking nose at z = 0: hard ring tunnel (face 3 cm behind the plane), 12 latch hooks, docking
- * lights, target, and the animated three-petal soft-capture ring. Returns the petal record.
- */
-export function dockingNose(b, R, group) {
-  const F = -0.03;   // mating face
-  b.add('dockRing', tubeZ(F, -0.7, R + 0.3, R + 0.3, 40, { open: true, uv: false }), false);
-  b.add('metalDark', tubeZ(F, -0.7, R + 0.03, R + 0.03, 32, { open: true, uv: false }), false);
-  b.add('metalBare', new THREE.RingGeometry(R + 0.03, R + 0.3, 40).translate(0, 0, F), false);
-  b.add('metalDark', new THREE.RingGeometry(R + 0.03, R + 0.3, 40).rotateY(Math.PI).translate(0, 0, -0.7), false);
-  b.add('metalDark', torus(V(0, 0, -0.68), Z_AXIS, R + 0.3, 0.05, 6, 40), false);
-  // 12 latch hooks on the outer face
-  for (let k = 0; k < 12; k++) {
-    const a = (k / 12) * Math.PI * 2 + Math.PI / 12;
-    b.add('metalDark', box(V(Math.cos(a) * (R + 0.2), Math.sin(a) * (R + 0.2), -0.12), 0.14, 0.1, 0.18, new THREE.Quaternion().setFromAxisAngle(Z_AXIS, a), false), false);
+/** Channel targets (and rates in 1/s) for the current state. */
+function targets(ship, out) {
+  const f = ship.flight, st = ship.state;
+  out.deploy = 1; out.antenna = 1; out.probe = 0; out.nose = 1; out.track = 0;
+  out.rDeploy = 1 / 45; out.rAntenna = 1 / 20; out.rProbe = 1 / 25; out.rNose = 1 / 22;
+  if (st === 'idle') { out.deploy = 0; out.antenna = 0; out.nose = 0; out.probe = 0; return out; }
+  if (st === 'arrive' && f) {
+    // fresh from orbit insertion: wings first, then the rendezvous antennas and the probe
+    out.deploy = f.t > 4 ? 1 : 0; out.antenna = f.t > 30 ? 1 : 0; out.probe = f.t > 50 ? 1 : 0; out.nose = 0; out.track = 1;
+    return out;
   }
-  // alignment guides with docking lights, and the docking target (black disc + white cross) on the ring face
-  for (const sx of [-1, 1]) {
-    b.add('metalDark', box(V(sx * (R + 0.52), 0, -0.35), 0.22, 0.2, 0.5, null, false), false);
-    b.add('dockLight', box(V(sx * (R + 0.52), 0, -0.09), 0.14, 0.12, 0.03, null, false), false);
+  if (st === 'approach' && f) {
+    out.track = 1; out.probe = 1;
+    if (f.phase === 'hold') { out.nose = f.t > 3 ? 1 : 0; }
+    if (f.phase === 'approach' && f.mover) {
+      const dist = f.mover.path.length - f.mover.s;
+      out.probeContact = dist;                 // the port's hatch pushes the probe in during the last few dm
+    }
+    return out;
   }
-  b.add('rubberBlack', new THREE.CircleGeometry(0.16, 16).translate(0, R + 0.16, F + 0.004), false);
-  b.add('antennaWhite', box(V(0, R + 0.16, F + 0.008), 0.24, 0.04, 0.01, null, false), false);
-  b.add('antennaWhite', box(V(0, R + 0.16, F + 0.008), 0.04, 0.24, 0.01, null, false), false);
-  return buildPetals(b.shared, R, group);
-}
-
-/** Red (port, -X) / green (starboard, +X) steady lights and white strobes. */
-export function navLights(b, red, green, strobes) {
-  b.add('navRed', sphere(red, 0.08, 8, 6), false);
-  b.add('navGreen', sphere(green, 0.08, 8, 6), false);
-  for (const p of strobes) b.add('strobe', sphere(p, 0.09, 8, 6), false);
-}
-
-/** Window: dark frame + glossy warm-lit pane, centred at p with outward normal n. */
-export function windowPane(b, p, n, w, h) {
-  const nn = n.clone().normalize(), q = quatZ(nn);
-  b.add('metalDark', box(p.clone().addScaledVector(nn, -0.04), w + 0.1, h + 0.1, 0.12, q, false), false);
-  b.add('window', box(p.clone().addScaledVector(nn, 0.025), w, h, 0.03, q, false), false);
-}
-
-/** MLI-wrapped cylinder along Z with seam rings. */
-export function wrappedCylinder(b, z0, z1, r, matName, rings = 2) {
-  b.add(matName, tubeZ(z0, z1, r, r, 48));
-  for (let i = 0; i <= rings; i++) {
-    const z = z0 + (z1 - z0) * (i / rings);
-    b.add('metalDark', new THREE.TorusGeometry(r + 0.01, 0.03, 5, 48).translate(0, 0, z), false);
+  if (st === 'dock' && f) { out.probe = 0; out.rProbe = 1 / 3.2; out.probeContact = 0; out.track = 1; return out; }
+  if (st === 'undock' && f) {
+    out.probe = f.phase === 'pushoff' && f.mover && f.mover.s > 1.5 ? 1 : 0;
+    out.nose = f.phase === 'pushoff' && f.mover ? clamp01(1 - (f.mover.s - 3) / 20) : 1;
+    out.rNose = 1 / 5;
+    return out;
   }
+  if (st === 'depart') { out.nose = 0; out.probe = 1; return out; }
+  return out;   // docked / loiter
 }
 
-/** Standard glow / strobe / docking-light / petal / panel / door animation shared by all types (called from Ships). */
-export function animateCommon(dt, ship, t) {
-  const p = ship.parts, L = p.lights;
+const T = {};
+const HKEY = [];
+function approach(cur, target, rate, dt) { const d = target - cur, s = rate * dt; return Math.abs(d) <= s ? target : cur + Math.sign(d) * s; }
+
+/** Per-frame update: lights, channels, parts. */
+export function animateShip(dt, ship, t) {
+  const L = ship.lights;
   // engine glow saturates while burning, decays with a ~6 s time constant
   ship.engineGlow = THREE.MathUtils.clamp(ship.engineGlow + (ship.burning ? dt * 0.8 : -dt * 0.16), 0, 1);
   L.set('hot', Math.round(7 * ship.engineGlow * ship.engineGlow * 20) / 20);
@@ -98,15 +75,79 @@ export function animateCommon(dt, ship, t) {
   ship.dockLightLevel += (target - ship.dockLightLevel) * Math.min(1, dt * 2);
   if (Math.abs(ship.dockLightLevel - target) < 0.02) ship.dockLightLevel = target;
   L.set('dockLight', Math.round(ship.dockLightLevel * 10) / 10);
-  // amber beacon (drones): slow blink
-  if (ship.type === 'drone') L.set('beacon', ((t * 0.8 + ship.strobePhase) % 1) < 0.5 ? 6 : 0.4);
+  // rendezvous LED targets blink at 1 Hz while flying near the station; red beacon slow flash
+  const flying = ship.state === 'approach' || ship.state === 'dock' || ship.state === 'undock' || ship.state === 'arrive';
+  L.set('ledWhite', flying && ((t + ship.strobePhase) % 1) < 0.5 ? 5 : 0);
+  L.set('portLight', ((t * 0.5 + ship.strobePhase) % 1) < 0.12 ? 8 : 0);
+  L.set('beacon', ship.type === 'drone' ? (((t * 0.8 + ship.strobePhase) % 1) < 0.5 ? 6 : 0.4) : 0);
   L.commit();
-  // petals: ship.petalOpen 0 (upright) .. 1 (splayed); ship.petalExtend 0 (retracted) .. 1 (extended)
-  if (p.petals) setPetals(p.petals, ship.petalOpen, ship.petalExtend);
-  // solar panels (capsule): ship.panelDeploy 0 (folded along the body) .. 1 (deployed)
-  if (p.panels) setHinged(p.panels, ship.panelDeploy, X_AXIS, -(1 - ship.panelDeploy) * Math.PI / 2);
-  // payload bay doors (shuttle): ship.doorOpen 0..1
-  if (p.doors) for (const d of p.doors) d.group.rotation.z = d.sign * d.openAngle * ship.doorOpen;
+
+  const a = ship.anim;
+  if (a.lastState !== ship.state) { if (a.lastState === null || a.lastState === 'idle' || ship.state === 'docked' && !ship.flight) a.snap = true; a.lastState = ship.state; }
+  targets(ship, T);
+  if (ship.demoT) { const d = ship.demoT; a.deploy = d.deploy; a.antenna = d.antenna; a.nose = d.nose; a.probe = d.probe; a.snap = false; T.track = 1; }
+  else if (a.snap) { a.deploy = T.deploy; a.antenna = T.antenna; a.probe = T.probe; a.nose = T.nose; a.snap = false; }
+  else {
+    a.deploy = approach(a.deploy, T.deploy, T.rDeploy, dt);
+    a.antenna = approach(a.antenna, T.antenna, T.rAntenna, dt);
+    a.probe = approach(a.probe, T.probe, T.rProbe, dt);
+    a.nose = approach(a.nose, T.nose, T.rNose, dt);
+  }
+  a.trackOn = approach(a.trackOn, T.track, 0.5, dt);
+  // probe contact: the hatch pushes the probe in (position-driven, not rate limited)
+  let probe = a.probe;
+  const info = ship.info;
+  if (info.probe && T.probeContact !== undefined) {
+    const p = info.probe, e = clamp01((T.probeContact + 0.1) / p.travel);
+    if (e < probe) { probe = e; a.probe = e; }
+  }
+  a.scs = ship.petalExtend; a.tilt = ship.petalOpen;
+  a.hooks = 1 - clamp01(ship.state === 'docked' ? 0 : Math.max(ship.petalExtend, ship.petalOpen));
+  applyParts(ship, a, probe, dt);
 }
 
-export { ShipBuilder, V, Z_AXIS };
+const _wd = new THREE.Vector3(), _pq = new THREE.Quaternion();
+function changed(a, key, v) { if (Math.abs((a.applied[key] ?? -9) - v) < 1e-4) return false; a.applied[key] = v; return true; }
+
+/** Drive the pivots / instanced sets named by the type's info. */
+function applyParts(ship, a, probe, dt) {
+  const info = ship.info, rig = ship.rig;
+  if (info.wings && changed(a, 'deploy', a.deploy)) foldWings(rig, info.wings, a.deploy);
+  if (info.custom && changed(a, 'custom', a.deploy * 7 + a.nose * 3 + a.antenna)) info.custom(rig, a, ship);
+  if (info.hinges) for (let i = 0; i < info.hinges.length; i++) {
+    const h = info.hinges[i], v = a[h.channel];
+    const k = smooth(clamp01((v - (h.range ? h.range[0] : 0)) / ((h.range ? h.range[1] - h.range[0] : 1))));
+    const p = rig.pivots[h.pivot];
+    if (p && changed(a, HKEY[i] || (HKEY[i] = `h${i}`), k)) p.rotation[h.axis] = h.from + (h.to - h.from) * k;
+  }
+  if (info.probe && changed(a, 'probe', probe)) rig.pivots[info.probe.pivot || 'probe'].position.z = info.probe.travel * probe;
+  if (info.scs && changed(a, 'scs', a.scs + a.tilt * 0.01)) {
+    const p = rig.pivots[info.scs.pivot || 'scs'];
+    p.position.z = info.scs.retracted + (info.scs.travel) * smooth(a.scs);
+    p.rotation.x = 0.035 * a.tilt * Math.sin(ship.strobePhase * 20); p.rotation.y = 0.025 * a.tilt;
+  }
+  if (info.hooks && rig.inst.hooks && changed(a, 'hooks', a.hooks)) {
+    const base = info.hooks, ang = -0.75 * (1 - a.hooks);
+    _r.makeRotationX(ang);
+    for (const m of rig.inst.hooks) { for (let i = 0; i < base.length; i++) m.setMatrixAt(i, _m.multiplyMatrices(base[i], _r)); m.instanceMatrix.needsUpdate = true; }
+  }
+  // tracking heads (yaw / pitch pivots) follow the station, or park
+  if (info.track) for (const tr of info.track) {
+    const yaw = rig.pivots[tr.yaw], pitch = tr.pitch ? rig.pivots[tr.pitch] : null;
+    if (!yaw) continue;
+    let ty = tr.park ? tr.park[0] : 0, tp = tr.park ? tr.park[1] : 0;
+    if (a.trackOn > 0.5 && ship.group.visible) {
+      yaw.parent.getWorldQuaternion(_pq).invert();
+      yaw.parent.getWorldPosition(_wd);
+      _v.copy(STATION_CENTER).sub(_wd).applyQuaternion(_pq).normalize();
+      // pitch frame looks along its local +Z; yaw about local Y
+      ty = Math.atan2(_v.x, _v.z);
+      tp = pitch ? -Math.asin(THREE.MathUtils.clamp(_v.y, -1, 1)) : 0;
+      if (tr.limit) tp = THREE.MathUtils.clamp(tp, -tr.limit, tr.limit);
+    }
+    const s = (tr.rate || 0.35) * dt;
+    let dy = ty - yaw.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    if (Math.abs(dy) > 1e-4) yaw.rotation.y += THREE.MathUtils.clamp(dy, -s, s);
+    if (pitch && Math.abs(tp - pitch.rotation.x) > 1e-4) pitch.rotation.x += THREE.MathUtils.clamp(tp - pitch.rotation.x, -s, s);
+  }
+}
