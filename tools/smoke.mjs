@@ -70,7 +70,7 @@ async function coreChecks() {
   await page.keyboard.press('BracketRight'); await frames(1);
   let t = await T();
   check('] speeds the clock up (x2)', t.rate === 2, JSON.stringify(t));
-  await page.keyboard.press('BracketLeft'); await page.keyboard.press('BracketLeft'); await frames(1);
+  await page.keyboard.press('BracketLeft'); await frames(1); await page.keyboard.press('BracketLeft'); await frames(1);
   t = await T();
   check('[ slows it down (x0.5)', t.rate === 0.5, JSON.stringify(t));
   await page.keyboard.press('Backslash'); await frames(1);
