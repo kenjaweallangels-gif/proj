@@ -22,32 +22,44 @@ export class Textures {
    */
   pbr(name, { repeat = 1, ormHalf = false } = {}) {
     if (!this.pbrBase) return null;
-    return this._cached(`pbr:${name}:${repeat}:${this.pbrHi}`, () => {
+    // one image load / GPU upload per file: variants with another repeat are clones sharing the Source
+    const base = this._cached(`pbr:${name}:${this.pbrHi}`, () => {
       const loader = this._loader || (this._loader = new THREE.TextureLoader());
-      const set = {};
+      const set = { variants: [] };
       for (const [key, file, color] of [['map', 'albedo', true], ['normalMap', 'normal', false], ['ormMap', 'orm', false]]) {
         // VRAM: the 4K hull sets keep their ORM map at 2K even on ultra (ormHalf)
         const suffix = this.pbrHi && !(ormHalf && file === 'orm') ? '' : '_2k';
         const t = new THREE.Texture();
         t.colorSpace = color ? THREE.SRGBColorSpace : THREE.NoColorSpace;
         t.wrapS = t.wrapT = THREE.RepeatWrapping;
-        t.repeat.set(repeat, repeat);
         t.anisotropy = this.anisotropy;
         t.name = `${name}_${file}`;
+        const done = () => { t.needsUpdate = true; for (const v of set.variants) v[key].needsUpdate = true; };
         const p = new Promise((res) => {
-          loader.load(`${this.pbrBase}${name}_${file}${suffix}.jpg`, (tex) => { t.image = tex.image; t.needsUpdate = true; res(true); },
+          loader.load(`${this.pbrBase}${name}_${file}${suffix}.jpg`, (tex) => { t.image = tex.image; done(); res(true); },
             undefined, () => {
               // neutral 1×1 stand-in (white albedo, flat normal, AO 1 / roughness 0.5 / metalness 0)
               console.warn(`[Textures] missing ${name}_${file}${suffix}.jpg`);
               const [c, g] = this._canvas(1, 1);
               g.fillStyle = color ? '#ffffff' : file === 'normal' ? 'rgb(128,128,255)' : 'rgb(255,128,0)'; g.fillRect(0, 0, 1, 1);
-              t.image = c; t.needsUpdate = true; set.failed = true; res(false);
+              t.image = c; done(); set.failed = true; res(false);
             });
         });
         (this.pending || (this.pending = [])).push(p);
         set[key] = t;
       }
       return set;
+    });
+    return this._cached(`pbr:${name}:${this.pbrHi}:${repeat}`, () => {
+      const v = {};
+      for (const key of ['map', 'normalMap', 'ormMap']) {
+        const t = base[key].clone();   // shares base[key].source (one GPU texture)
+        t.repeat.set(repeat, repeat);
+        if (base[key].version > 0) t.needsUpdate = true;
+        v[key] = t;
+      }
+      base.variants.push(v);
+      return v;
     });
   }
 

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { LAYOUT } from './Layout.js';
-import { boxAt, bevelBoxAt, tubeAt, torusAt, latheAt, mat, quatZ, Colliders, X_AXIS, Y_AXIS, Z_AXIS } from './Builder.js';
+import { boxAt, bevelBoxAt, tubeAt, torusAt, latheAt, plate, scaleUV, mat, quatZ, Colliders, X_AXIS, Y_AXIS, Z_AXIS } from './Builder.js';
 import { COL, boltCircle, radialBolts, boltRow, connectorPanel } from './Detail.js';
-import { cameraAssembly } from './Hardware.js';
+import { cameraAssembly, evaLamp } from './Hardware.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const CY = LAYOUT.clusterY;
@@ -29,68 +29,45 @@ export function buildDocking(ctx, station, b, rails, mods) {
     const q = quatZ(axis);
     const position = base.clone().addScaledVector(axis, depth);
     const F = new THREE.Matrix4().compose(position, q, V(1, 1, 1));
-    // base tunnel from the hull to the ring, with an MLI collar and hazard band
-    b.add('hullWhite', P(new THREE.CylinderGeometry(R + 0.28, R + 0.34, depth + 0.3, 32, 1, true).rotateX(Math.PI / 2).translate(0, 0, -depth / 2 - 0.05), F));
-    b.add('mliBlack', P(new THREE.CylinderGeometry(R + 0.4, R + 0.4, Math.min(0.5, depth * 0.5), 32).rotateX(Math.PI / 2).translate(0, 0, -depth + 0.15), F));
-    b.add('hazard', P(new THREE.TorusGeometry(R + 0.33, 0.045, 5, 40).translate(0, 0, -0.55), F), false);
-    // hard-capture ring (docking plane) and the closed hatch face behind it
-    b.add('metalBare', P(new THREE.CylinderGeometry(R + 0.3, R + 0.3, 0.32, 40).rotateX(Math.PI / 2).translate(0, 0, -0.16), F));
-    b.add('metalDark', P(new THREE.CylinderGeometry(R + 0.02, R + 0.02, 0.06, 32).rotateX(Math.PI / 2).translate(0, 0, -0.05), F), false);
-    b.add('hullWhiteAged', P(new THREE.CylinderGeometry(R - 0.1, R - 0.1, 0.05, 32).rotateX(Math.PI / 2).translate(0, 0, -0.06), F), false);
-    b.add('metalBare', P(new THREE.TorusGeometry(R + 0.12, 0.04, 6, 40).translate(0, 0, 0.02), F), false);
-    // 12 latches / hooks around the ring
+    const O = V(0, 0, 0);
+    // Port body as closed lathe solids (profiles counter-clockwise in (radius, axial)): tunnel from inside the
+    // hull with a bolted base flange, slightly tapered wall, machined hard-capture ring (outer lip, docking face,
+    // bore, hatch seat). MLI boot with taped edges over the tunnel, raised hazard band on the ring.
+    b.add('hullWhite', P(latheAt(O, Z_AXIS, [[R - 0.12, -depth - 0.25], [R + 0.36, -depth - 0.25], [R + 0.36, -depth + 0.18], [R + 0.52, -depth + 0.2], [R + 0.52, -depth + 0.31], [R + 0.36, -depth + 0.36], [R + 0.3, -0.36]], 40), F));
+    b.add('metalMachined', P(latheAt(O, Z_AXIS, [[R + 0.3, -0.36], [R + 0.32, -0.34], [R + 0.32, -0.02], [R + 0.29, 0.0], [R + 0.03, 0.0], [R - 0.02, -0.03], [R - 0.02, -0.08], [R - 0.12, -0.08], [R - 0.12, -depth - 0.25]], 48), F));
+    if (depth > 0.75) b.add('mliBlack', P(latheAt(O, Z_AXIS, [[R + 0.33, -depth + 0.37], [R + 0.41, -depth + 0.41], [R + 0.41, -0.49], [R + 0.31, -0.42]], 40), F));
+    b.add('hazard', P(scaleUV(latheAt(O, Z_AXIS, [[R + 0.32, -0.3], [R + 0.335, -0.29], [R + 0.335, -0.21], [R + 0.32, -0.2], [R + 0.32, -0.3]], 48), 14, 14), F), false);
+    b.add('rubberBlack', P(latheAt(O, Z_AXIS, [[R + 0.06, 0.0], [R + 0.06, 0.006], [R + 0.14, 0.006], [R + 0.14, 0.0]].reverse(), 48), F), false);
+    // closed hatch in the seat: slightly domed plug with a handle and an equalisation valve
+    b.add('hullWhiteAged', P(latheAt(O, Z_AXIS, [[R - 0.12, -0.075], [R - 0.2, -0.06], [0.0, -0.045]], 40), F), false);
+    b.add('metalBare', P(tubeAt(V(0, -R * 0.35, -0.0), X_AXIS, 0.018, R * 0.6, 10, { uv: false }), F), false);
+    for (const sx of [-1, 1]) b.add('metalBare', P(tubeAt(V(sx * R * 0.28, -R * 0.35, -0.025), Z_AXIS, 0.014, 0.05, 8, { uv: false }), F), false);
+    b.add('metalDark', P(latheAt(V(R * 0.3, R * 0.3, -0.05), Z_AXIS, [[0.06, 0], [0.06, 0.03], [0.035, 0.05], [0, 0.05]], 16), F), false);
+    // twelve hook housings on the ring's outer wall, each with a hook arm reaching over the docking face
     for (let k = 0; k < 12; k++) {
-      const a = (k / 12) * Math.PI * 2;
-      b.add('metalBare', P(new THREE.BoxGeometry(0.16, 0.12, 0.2).translate(0, R + 0.22, -0.1).applyMatrix4(_m.makeRotationZ(a)), F), false);
+      const a = (k / 12) * Math.PI * 2 + Math.PI / 12;
+      const Mk = new THREE.Matrix4().makeRotationZ(a);
+      b.add('metalDark', P(bevelBoxAt(V(R + 0.38, 0, -0.16), 0.12, 0.17, 0.22, null, 0.02).applyMatrix4(Mk), F), false);
+      b.add('metalBare', P(bevelBoxAt(V(R + 0.3, 0, 0.02), 0.2, 0.07, 0.05, null, 0.012).applyMatrix4(Mk), F), false);
+      b.add('metalDark', P(bevelBoxAt(V(R + 0.38, 0, -0.03), 0.07, 0.08, 0.07, null, 0.012).applyMatrix4(Mk), F), false);
+      b.add('metalBare', P(bevelBoxAt(V(R + 0.22, 0, 0.012), 0.05, 0.07, 0.03, null, 0.01).applyMatrix4(Mk), F), false);
     }
-    // soft-capture ring on three struts (extended), with petals and guide pins
-    const rs = R * 0.86;
-    b.add('metalBare', P(new THREE.TorusGeometry(rs, 0.05, 8, 48).translate(0, 0, 0.42), F), false);
-    for (let k = 0; k < 3; k++) {
-      const a = (k / 3) * Math.PI * 2;
-      b.add('metalDark', P(new THREE.CylinderGeometry(0.035, 0.035, 0.42, 6).rotateX(Math.PI / 2).translate(0, rs, 0.21).applyMatrix4(_m.makeRotationZ(a)), F), false);
-      b.add('metalDark', P(new THREE.CylinderGeometry(0.03, 0.03, 0.22, 6).rotateX(Math.PI / 2).translate(0, rs + 0.02, 0.55).applyMatrix4(_m.makeRotationZ(a)), F), false);
-      const petal = new THREE.BoxGeometry(0.42, 0.14, 0.26).translate(0, rs + 0.1, 0.5).applyMatrix4(_m.makeRotationX(-0.35)).applyMatrix4(_m.makeRotationZ(a + Math.PI / 3));
-      b.add('metalBare', P(petal, F), false);
+    // passive interface: no soft-capture system (the visiting vehicle carries it); two alignment guide pins and
+    // two umbilical connector housings on the docking face
+    for (const k of [0, 1]) {
+      const a = k * Math.PI + Math.PI / 2;
+      b.add('metalBare', P(latheAt(V((R + 0.16) * Math.cos(a), (R + 0.16) * Math.sin(a), 0), Z_AXIS, [[0.035, 0], [0.035, 0.05], [0.02, 0.09], [0, 0.095]], 12), F), false);
+      const ac = a + Math.PI / 2;
+      b.add('metalDark', P(bevelBoxAt(V((R + 0.16) * Math.cos(ac), (R + 0.16) * Math.sin(ac), 0.02), 0.16, 0.16, 0.04, new THREE.Quaternion().setFromAxisAngle(Z_AXIS, ac), 0.01), F), false);
     }
-    if (D) {
-      // hard-capture ring: bolt circles on the face and the rim, hook drives, guide pins, umbilical connectors,
-      // MLI boot tie-downs, tunnel flange at the hull
-      const Fz = F.clone().multiply(ROT_X90);   // local Y = port axis (outward), origin in the docking plane
-      boltCircle(D, Fz, R + 0.2, 36, 0.0, 0.014, 0.01);
-      boltCircle(D, Fz, R + 0.06, 24, -0.02, 0.011, 0.008, COL.bare, 'fine', 0.13);
-      radialBolts(D, Fz, R + 0.3, 40, -0.16, 0.013, 0.01);
-      for (let k = 0; k < 12; k++) {
-        const a = (k / 12) * Math.PI * 2;
-        const Mk = Fz.clone().multiply(new THREE.Matrix4().makeRotationY(-a)).multiply(new THREE.Matrix4().makeTranslation(R + 0.22, -0.26, 0));
-        D.part('mid', 'metal', COL.dark, 'bbox', Mk, 0.05, 0, 0, 0.14, 0.16, 0.12);
-        D.part('fine', 'metal', COL.bare, 'cyl8', Mk.clone().multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2)), 0.05, 0, 0, 0.025, 0.16, 0.025);
-      }
-      for (let k = 0; k < 2; k++) {
-        const a = k * Math.PI + Math.PI / 2;
-        D.part('mid', 'metal', COL.bare, 'cone12', Fz, (R - 0.05) * Math.cos(a), 0.05, (R - 0.05) * Math.sin(a), 0.035, 0.12, 0.035);
-        connectorPanel(D, Fz.clone().multiply(new THREE.Matrix4().makeRotationY(-(a + Math.PI / 2))).multiply(new THREE.Matrix4().makeTranslation(0, 0.0, R - 0.08)), 0.22, 0.12, 3, 1, k);
-      }
-      const nT = Math.max(2, Math.round((depth + 0.1) / 0.3));
-      for (let i = 0; i < nT; i++) for (let k = 0; k < 16; k++) {
-        const a = (k + 0.5 * (i % 2)) / 16 * Math.PI * 2;
-        const tz = -0.75 - i * Math.max(0.15, depth - 0.8) / Math.max(1, nT - 1);
-        if (tz < -depth + 0.4) continue;
-        D.button(Fz.clone().multiply(new THREE.Matrix4().makeRotationY(-a)).multiply(new THREE.Matrix4().makeBasis(Z_AXIS, X_AXIS, Y_AXIS).setPosition(R + 0.31, tz, 0)), 0.014, 0.006, COL.offWhite);
-      }
-      b.add('metalBare', P(new THREE.LatheGeometry([new THREE.Vector2(R + 0.32, -depth + 0.2), new THREE.Vector2(R + 0.5, -depth + 0.22), new THREE.Vector2(R + 0.5, -depth + 0.32), new THREE.Vector2(R + 0.34, -depth + 0.36)], 32).applyMatrix4(ROT_X90), F));
-      radialBolts(D, Fz, R + 0.5, 28, -depth + 0.27, 0.014, 0.01);
-    }
-    // docking target: standoff post + white cross on a black disc (as seen by an approaching ship)
-    b.add('metalDark', P(new THREE.CylinderGeometry(0.03, 0.03, 0.26, 6).rotateX(Math.PI / 2).translate(-R * 0.55, 0, 0.08), F), false);
-    b.add('rubberBlack', P(new THREE.CylinderGeometry(0.19, 0.19, 0.02, 16).rotateX(Math.PI / 2).translate(-R * 0.55, 0, 0.22), F), false);
-    b.add('antennaWhite', P(new THREE.BoxGeometry(0.3, 0.05, 0.015).translate(-R * 0.55, 0, 0.235), F), false);
-    b.add('antennaWhite', P(new THREE.BoxGeometry(0.05, 0.3, 0.015).translate(-R * 0.55, 0, 0.235), F), false);
-    // two docking lights with hoods
-    for (const sx of [-1, 1]) {
-      b.add('metalDark', P(new THREE.BoxGeometry(0.22, 0.22, 0.26).translate(sx * (R + 0.52), 0, -0.3), F), false);
-      b.add('dockLight', P(new THREE.BoxGeometry(0.14, 0.14, 0.03).translate(sx * (R + 0.52), 0, -0.16), F), false);
-    }
+    // docking target on the hatch: bolted foot, standoff post, black disc with a rim, white cross
+    b.add('metalDark', P(latheAt(V(-R * 0.5, 0, -0.05), Z_AXIS, [[0.07, 0], [0.07, 0.015], [0.03, 0.03], [0, 0.03]], 16), F), false);
+    b.add('metalDark', P(tubeAt(V(-R * 0.5, 0, 0.09), Z_AXIS, 0.022, 0.26, 10, { uv: false }), F), false);
+    b.add('rubberBlack', P(latheAt(V(-R * 0.5, 0, 0.215), Z_AXIS, [[0, -0.012], [0.19, -0.012], [0.2, -0.004], [0.2, 0.008], [0.19, 0.012], [0.0, 0.012]], 24), F), false);
+    b.add('antennaWhite', P(bevelBoxAt(V(-R * 0.5, 0, 0.231), 0.28, 0.045, 0.012, null, 0.004), F), false);
+    b.add('antennaWhite', P(bevelBoxAt(V(-R * 0.5, 0, 0.231), 0.045, 0.28, 0.012, null, 0.004), F), false);
+    // two docking lights on the base flange, aimed along the approach axis
+    if (depth >= 0.6) for (const sx of [-1, 1]) evaLamp(b, D, V(sx * (R + 0.44), 0, -depth + 0.31).applyMatrix4(F), sx, { n: axis, up: V(0, 1, 0).applyQuaternion(q) });
     // hand rails around the base for EVA access
     for (let k = 0; k < 4; k++) {
       const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
@@ -112,19 +89,24 @@ export function buildDocking(ctx, station, b, rails, mods) {
 
   // ---------- hexagonal docking hub "Гавань" ----------
   const hubC = V(HX, CY, 0);
-  b.add('hullWhite', tubeAt(hubC, X_AXIS, HR - 0.1, HL, 24));
+  // closed hexagonal prism (apothem 3.2) with raised, chamfered face panels, bevelled edge rails along the six
+  // corners and two hex end flanges; polygons in the YZ plane are extruded along X (plate() + rotation)
+  const hexPts = (ap) => { const rv = ap / Math.cos(Math.PI / 6), p = []; for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; p.push([rv * Math.cos(a), rv * Math.sin(a)]); } return p; };
+  const toHub = (g, x) => g.applyMatrix4(new THREE.Matrix4().makeRotationY(-Math.PI / 2)).translate(HX + x, CY, 0);
+  b.add('hullWhite', toHub(plate(hexPts(3.2), HL - 0.1, 0.04), 0));
   for (let k = 0; k < 6; k++) {
-    // flat hex face panels (apothem HR), rotated about X; angle from +Z towards +Y
-    const a = (k / 6) * Math.PI * 2 + Math.PI / 6;
+    const a = (k / 6) * Math.PI * 2 + Math.PI / 6;           // face normal angle from +Z toward +Y
     const dir = V(0, Math.sin(a), Math.cos(a));
-    const c = hubC.clone().addScaledVector(dir, HR + 0.1);
-    const qf = _q.setFromAxisAngle(X_AXIS, Math.PI / 2 - a);   // box local Y -> dir
-    b.add(k === 1 ? 'hullWhiteAged' : 'hullWhite', boxAt(c, HL - 0.3, 0.22, 2 * (HR + 0.1) * Math.tan(Math.PI / 6) - 0.1, qf));
-    b.add('metalDark', boxAt(c.clone().addScaledVector(dir, -0.02), HL - 0.2, 0.26, 0.18, qf), false);
+    const qf = new THREE.Quaternion().setFromAxisAngle(X_AXIS, Math.PI / 2 - a);   // local Y -> dir
+    const fw = 2 * 3.2 * Math.tan(Math.PI / 6);
+    for (const sx of [-1, 1]) b.add(k === 1 ? 'hullWhiteAged' : 'hullWhite', bevelBoxAt(hubC.clone().addScaledVector(dir, 3.225).add(V(sx * (HL / 4 - 0.02), 0, 0)), HL / 2 - 0.3, 0.05, fw - 0.36, qf, 0.015));
+    // corner rail at the vertex between this face and the next
+    const av = a + Math.PI / 6, dv = V(0, Math.sin(av), Math.cos(av));
+    b.add('metalDark', bevelBoxAt(hubC.clone().addScaledVector(dv, 3.2 / Math.cos(Math.PI / 6) - 0.04), HL - 0.12, 0.14, 0.16, new THREE.Quaternion().setFromAxisAngle(X_AXIS, Math.PI / 2 - av), 0.03), false);
   }
   for (const e of [-1, 1]) {
-    b.add('mliBlack', new THREE.CylinderGeometry(HR + 0.55, HR + 0.55, 0.35, 6).rotateX(0).rotateZ(Math.PI / 2).translate(HX + e * (HL / 2 + 0.1), CY, 0));
-    b.add('hullWhite', new THREE.CylinderGeometry(HR + 0.2, HR + 0.2, 0.2, 6).rotateZ(Math.PI / 2).translate(HX + e * (HL / 2 + 0.36), CY, 0));
+    b.add('mliBlack', toHub(plate(hexPts(3.3), 0.34, 0.05), e * (HL / 2 + 0.12)));
+    b.add('hullWhite', toHub(plate(hexPts(3.1), 0.22, 0.04), e * (HL / 2 + 0.36)));
   }
   // tunnel to the service module
   b.add('mliSilver', tubeAt(V(HX - HL / 2 - 1.0, CY, 0), X_AXIS, 1.45, 2.2, 32));
@@ -135,10 +117,7 @@ export function buildDocking(ctx, station, b, rails, mods) {
   b.labelAt('ГАВАНЬ · HARBOR', 3.2, 0.42, V(HX + HL / 2 + 0.47, CY - 2.5, 0), X_AXIS, { width: 1024 });
   for (const sz of [-1, 1]) {
     // camera booms at the hub ends watching the radial ports
-    const base = V(HX + 2.6, CY + 2.6, sz * 1.0);
-    b.add('metalDark', tubeAt(base.clone().add(V(0, 0.5, 0)), Y_AXIS, 0.05, 1.0, 6, { uv: false }), false);
-    b.add('rubberBlack', boxAt(base.clone().add(V(0, 1.1, 0)), 0.3, 0.24, 0.24, null, false), false);
-    b.add('metalBare', tubeAt(base.clone().add(V(0, 1.1, sz * 0.2)), V(0, 0, sz), 0.07, 0.12, 12, { uv: false }), false);
+    cameraAssembly(b, D, V(HX + 2.6, CY + 3.25, sz * 1.0), Y_AXIS, V(0.25, -0.35, sz), { stand: 0.8 });
   }
   // handrails along the hub edges (between faces)
   for (let k = 0; k < 6; k++) {
@@ -153,7 +132,7 @@ export function buildDocking(ctx, station, b, rails, mods) {
   for (const [deg, size, id] of radial) {
     const a = deg * Math.PI / 180;
     const axis = V(0, Math.sin(a), Math.cos(a));
-    addPort({ id, name: `Гавань-${id[1]}`, base: hubC.clone().addScaledVector(axis, HR + 0.2), axis, depth: 1.0, size });
+    addPort({ id, name: `Гавань-${id[1]}`, base: hubC.clone().addScaledVector(axis, HR), axis, depth: 1.2, size });
   }
   // ports on module ends / node stubs
   const n1 = mods.nodes.n1, n3 = mods.nodes.n3;

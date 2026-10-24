@@ -212,6 +212,28 @@ export function bevelBox(w, h, d, b = Math.min(w, h, d) * 0.12) {
 }
 
 /**
+ * Convex plate: polygon `pts` ([[x, y], ...] in the XY plane, any winding) extruded along Z by `t` (centred), with
+ * the rim chamfered by `c` (0 = square edges). Closed, flat shaded; planar UVs in metres / TEX_M.
+ */
+export function plate(pts, t, c = 0) {
+  const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+  const pl = new Poly(P3(cx, cy, 0));
+  // inset polygon for the chamfered faces (move each vertex toward the centroid by c)
+  const inset = pts.map(([x, y]) => { const dx = x - cx, dy = y - cy, l = Math.hypot(dx, dy) || 1; return [x - dx / l * c, y - dy / l * c]; });
+  const h = t / 2, hc = Math.max(0, h - c);
+  const top = inset.map(([x, y]) => P3(x, y, h)), bot = inset.map(([x, y]) => P3(x, y, -h));
+  const midT = pts.map(([x, y]) => P3(x, y, hc)), midB = pts.map(([x, y]) => P3(x, y, -hc));
+  pl.face(top); pl.face(bot);
+  const n = pts.length;
+  for (let k = 0; k < n; k++) {
+    const k1 = (k + 1) % n;
+    pl.face([midB[k], midB[k1], midT[k1], midT[k]]);
+    if (c > 0) { pl.face([top[k], top[k1], midT[k1], midT[k]]); pl.face([bot[k], bot[k1], midB[k1], midB[k]]); }
+  }
+  return pl.geo();
+}
+
+/**
  * Prism / frustum stack along +Y from rings [[r, y], ...] with `sides` sides (flat shaded), optional top cap.
  * Used for hex bolts, rivets, buttons, bosses.
  */

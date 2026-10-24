@@ -134,8 +134,12 @@ export function shipMaterials(materials) {
   lutTex.colorSpace = THREE.NoColorSpace; lutTex.magFilter = lutTex.minFilter = THREE.NearestFilter; lutTex.generateMipmaps = false; lutTex.needsUpdate = true;
   const flatStatic = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 1, roughnessMap: lutTex, metalnessMap: lutTex });
   flatStatic.name = 'shipFlat';
-  const ht = materials.textures.hullPanels({ size: 512, base: '#eceeef', seam: '#8f969d', grime: 0.2, cells: 8, seed: 71 });
-  const hull = new THREE.MeshStandardMaterial({ map: ht.map, roughnessMap: ht.roughnessMap, normalMap: ht.normalMap, normalScale: new THREE.Vector2(0.6, 0.6), roughness: 0.62, metalness: 0.1, vertexColors: true });
+  // painted panels: the station's baked PBR set (4 m ship tiles vs 6.5 m station tiles), procedural on 'lite'
+  const pb = !materials.lite && materials.textures.pbr ? materials.textures.pbr('hull_white', { repeat: 1.625, ormHalf: true }) : null;
+  const ht = pb ? null : materials.textures.hullPanels({ size: 512, base: '#eceeef', seam: '#8f969d', grime: 0.2, cells: 8, seed: 71 });
+  const hull = pb
+    ? new THREE.MeshStandardMaterial({ map: pb.map, normalMap: pb.normalMap, roughnessMap: pb.ormMap, metalnessMap: pb.ormMap, aoMap: pb.ormMap, aoMapIntensity: 0.8, roughness: 1, metalness: 1, vertexColors: true })
+    : new THREE.MeshStandardMaterial({ map: ht.map, roughnessMap: ht.roughnessMap, normalMap: ht.normalMap, normalScale: new THREE.Vector2(0.6, 0.6), roughness: 0.62, metalness: 0.1, vertexColors: true });
   hull.name = 'shipHull';
   const mli = materials.get('mliGold').clone();
   mli.color.set(0xffffff); mli.vertexColors = true; mli.name = 'shipMli';

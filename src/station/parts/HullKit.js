@@ -148,6 +148,25 @@ export function shieldPanels(b, D, H, rows, from, { ph = 1.7, gapT = 0.12, rOut 
   tplGeo.dispose();
 }
 
+/**
+ * Lathe profile wrapped onto a module's cylinder: profile [[d, h], ...] where d is the distance from the feature
+ * centre along the hull surface and h the height above the hull (h < 0 sinks into it), around the point (t0, th0)
+ * of HullFrame H. Hatch rims, hazard rings and window frames hug the curved hull this way instead of floating
+ * off it like flat discs. Closed counter-clockwise profiles give closed solids (see latheAt).
+ */
+export function conformLatheAt(H, t0, th0, profile, seg = 48) {
+  const g = latheAt(new THREE.Vector3(), new THREE.Vector3(0, 1, 0), profile, seg);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    H.point(t0 + z, th0 + x / H.r, H.r + y, _v);
+    p.setXYZ(i, _v.x, _v.y, _v.z);
+  }
+  g.computeVertexNormals();
+  g.computeBoundingSphere();
+  return g;
+}
+
 /** Bolted window frame ring (fasteners on the frame torus). */
 export function windowBolts(D, H, t, theta, wr) {
   if (!D) return;

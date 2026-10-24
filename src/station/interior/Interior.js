@@ -87,6 +87,7 @@ export class StationInterior {
     await yieldNow();
     atlas.textures(Math.min(8, ctx.renderer.capabilities.getMaxAnisotropy()));
     this.mats = new InteriorMaterials(ctx, atlas, this.lite);
+    await ctx.textures?.ready?.();   // interior detail sets requested by the materials
     const setCache = new Map();
     let tris = 0;
     for (const rec of records) {

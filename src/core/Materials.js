@@ -78,7 +78,7 @@ export class Materials {
       // optically clear window pane: reflection only (Fresnel), background attenuated a few per cent (see clearGlass)
       glass: () => this.lite
         ? new THREE.MeshStandardMaterial({ color: 0x9fb8cc, metalness: 0.0, roughness: 0.05, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false })
-        : clearGlass({ roughnessMap: this.textures.glassScratches(), absorb: 0.035, tint: 0x0b1310 }),
+        : clearGlass({ roughnessMap: this.textures.glassScratches(), absorb: 0.025, tint: 0x0b1310 }),
       visorGold: () => new THREE.MeshPhysicalMaterial({ color: 0xe0b040, metalness: 1.0, roughness: 0.04, envMapIntensity: 2.0, clearcoat: 1.0, transparent: true, opacity: 0.85 }),
       windowGlow: () => new THREE.MeshStandardMaterial({ color: 0x202428, emissive: 0xffd9a0, emissiveIntensity: 2.5, roughness: 0.3, metalness: 0.0 }),
       navRed: () => new THREE.MeshStandardMaterial({ color: 0x300000, emissive: 0xff2010, emissiveIntensity: 6, roughness: 0.4 }),

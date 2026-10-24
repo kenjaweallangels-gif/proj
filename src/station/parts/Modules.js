@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { LAYOUT } from './Layout.js';
-import { HullFrame, Instancer, boxAt, bevelBoxAt, tubeAt, torusAt, latheAt, sphereAt, mat, scaleUV, Colliders, X_AXIS, Y_AXIS, Z_AXIS, TEX_M } from './Builder.js';
+import { HullFrame, Instancer, boxAt, bevelBoxAt, tubeAt, torusAt, latheAt, plate, sphereAt, mat, scaleUV, Colliders, X_AXIS, Y_AXIS, Z_AXIS, TEX_M } from './Builder.js';
 import { COL, boltCircle, radialBolts, boltRow, wif, latch, connectorPanel, vent, pClamp } from './Detail.js';
 import { endProfile, endFlange, weldLand, mliBand, shieldPanels, windowBolts, hullWif, hullConnectors, hullVent } from './HullKit.js';
 import { cameraAssembly, frameYZ } from './Hardware.js';
@@ -135,9 +135,12 @@ export function buildModules(ctx, station, b, rails) {
 
   function addWindow(H, t, theta, wr = 0.32) {
     const s = H.surface(t, theta, H.r, new THREE.Matrix4());
-    b.add('metalDark', at(torusAt(V(0, 0.02, 0), Y_AXIS, wr + 0.06, 0.05, 6, 24), s), false);
-    b.add('windowGlow', at(new THREE.CylinderGeometry(wr, wr, 0.04, 24).translate(0, -0.1, 0), s), false);
-    b.add('glass', at(new THREE.CylinderGeometry(wr, wr, 0.02, 24).translate(0, 0.01, 0), s), false);
+    // solid frame ring (lip, sealing land, bore into the hull), two panes recessed 3 cm / 8 cm below the lip with
+    // their edges buried in the frame, interior stand-in glow behind (hidden while the cabin is drawn)
+    b.add('metalDark', at(latheAt(V(0, 0, 0), Y_AXIS, [[wr - 0.02, -0.12], [wr + 0.1, -0.12], [wr + 0.1, 0.03], [wr + 0.08, 0.055], [wr + 0.01, 0.055], [wr - 0.02, 0.035], [wr - 0.02, -0.12]], 32), s), false);
+    b.add('windowGlow', at(new THREE.CylinderGeometry(wr, wr, 0.04, 24).translate(0, -0.12, 0), s), false);
+    b.add('glass', at(new THREE.CylinderGeometry(wr + 0.005, wr + 0.005, 0.016, 32).translate(0, 0.025, 0), s), false);
+    b.add('glass', at(new THREE.CylinderGeometry(wr + 0.005, wr + 0.005, 0.012, 32).translate(0, -0.03, 0), s), false);
   }
 
   /** Node: short fat cylinder with four radial port stubs. */
@@ -255,45 +258,73 @@ export function buildModules(ctx, station, b, rails) {
     for (let t = -4.0; t <= 4.0; t += 1.0) b.add('metalDark', at(new THREE.BoxGeometry(0.9, 0.1, 0.08).translate(0, 0.03, t), s), false);
   }
 
-  // cupola on node-1 nadir: base, hexagonal frustum of 7 windows, frame beams, inner glow
+  // cupola on node-1 nadir: base drum (reaching up into the node hull), hexagonal frustum of six trapezoid
+  // windows and a round nadir window — every window a frame with two panes whose edges sit in the frame, bevelled
+  // mullions, hex frame rings, open shutters on hinge arms; inner glow (hidden from inside)
   {
     const cx = n1.center.x, top = CY - 2.45;
-    b.add('hullWhite', tubeAt(V(cx, top - 0.5, 0), Y_AXIS, 1.55, 1.0, 32));
-    b.add('metalDark', torusAt(V(cx, top - 1.0, 0), Y_AXIS, 1.55, 0.08, 8, 32), false);
-    const frust = (rt, rb, h, y, open) => new THREE.CylinderGeometry(rt, rb, h, 6, 1, open).translate(cx, y, 0);
-    b.add('windowGlow', frust(0.78, 1.42, 0.95, top - 1.5, false), false, cupolaGlow);
-    b.add('glass', frust(0.86, 1.5, 0.95, top - 1.5, true), false);
-    b.add('glass', new THREE.CylinderGeometry(0.8, 0.8, 0.03, 6).translate(cx, top - 1.99, 0), false);
-    b.add('metalDark', torusAt(V(cx, top - 1.98, 0), Y_AXIS, 0.84, 0.07, 6, 6), false);
-    b.add('metalDark', torusAt(V(cx, top - 1.02, 0), Y_AXIS, 1.52, 0.08, 6, 6), false);
-    for (let k = 0; k < 6; k++) {
-      const a = (k / 6) * Math.PI * 2 + Math.PI / 6;
-      const p0 = V(cx + 1.5 * Math.cos(a), top - 1.02, 1.5 * Math.sin(a)), p1 = V(cx + 0.86 * Math.cos(a), top - 1.98, 0.86 * Math.sin(a));
-      const mid = p0.clone().lerp(p1, 0.5), d = p1.clone().sub(p0);
-      b.add('metalDark', boxAt(mid, 0.12, d.length(), 0.12, _q.setFromUnitVectors(Y_AXIS, d.normalize()), false), false);
-    }
-    // window shutters (open) around the cupola
-    for (let k = 0; k < 6; k++) {
-      const a = (k / 6) * Math.PI * 2;
-      b.add('hullWhiteAged', boxAt(V(cx + 1.75 * Math.cos(a), top - 1.45, 1.75 * Math.sin(a)), 0.9, 1.0, 0.06, _q.setFromAxisAngle(Y_AXIS, -a + Math.PI / 2), false), false);
-    }
-    if (D) {
-      // bolted frames: base ring, window mullions, top window, shutter hinges
-      const Mb = new THREE.Matrix4().makeRotationX(Math.PI).setPosition(cx, top - 1.06, 0);
-      radialBolts(D, new THREE.Matrix4().setPosition(cx, top - 0.3, 0), 1.55, 40, 0, 0.013, 0.01);
-      boltCircle(D, Mb, 1.38, 30, 0, 0.012, 0.009);
-      boltCircle(D, new THREE.Matrix4().makeRotationX(Math.PI).setPosition(cx, top - 2.01, 0), 0.72, 18, 0, 0.011, 0.008);
-      b.add('metalBare', latheAt(V(cx, top - 0.05, 0), V(0, -1, 0), [[1.5, -0.05], [1.66, -0.03], [1.66, 0.06], [1.55, 0.09]], 48));
-      for (let k = 0; k < 6; k++) {
-        const a = (k / 6) * Math.PI * 2 + Math.PI / 6;
-        const p0 = V(cx + 1.5 * Math.cos(a), top - 1.02, 1.5 * Math.sin(a)), p1 = V(cx + 0.86 * Math.cos(a), top - 1.98, 0.86 * Math.sin(a));
-        const dd = p1.clone().sub(p0).normalize(), out = V(Math.cos(a), 0, Math.sin(a)).addScaledVector(dd, -V(Math.cos(a), 0, Math.sin(a)).dot(dd)).normalize();
-        const Mf = frameYZ(p0, out, dd);
-        for (let i = 1; i < 6; i++) { const T = new THREE.Matrix4().makeTranslation(0, 0.06, i * 0.19); D.bolt(Mf.clone().multiply(T), 0.011, 0.008); }
-        const a2 = (k / 6) * Math.PI * 2, hp = V(cx + 1.62 * Math.cos(a2), top - 1.0, 1.62 * Math.sin(a2));
-        D.rod('mid', 'metal', COL.steel, hp.clone().add(V(-0.3 * Math.sin(a2), 0, 0.3 * Math.cos(a2))), hp.clone().add(V(0.3 * Math.sin(a2), 0, -0.3 * Math.cos(a2))), 0.025, 'cyl8');
-        D.part('mid', 'metal', COL.dark, 'bbox', frameYZ(hp, V(Math.cos(a2), 0, Math.sin(a2)), Y_AXIS), 0, 0, -0.05, 0.12, 0.06, 0.12);
+    const C = V(cx, top, 0), DOWN = V(0, -1, 0);
+    // drum wall whose upper edge follows the node's cylinder (embedded 3 cm), so it meets the hull everywhere
+    {
+      const n = 64, rD = 1.55, pos = [], nor = [], uv = [], idx = [];
+      for (let i = 0; i <= n; i++) {
+        const ph = (i / n) * Math.PI * 2, x = rD * Math.cos(ph), z = rD * Math.sin(ph);
+        const yTop = CY - Math.sqrt(n1.r * n1.r - z * z) + 0.03, yBot = top - 0.84;
+        pos.push(cx + x, yTop, z, cx + x, yBot, z);
+        nor.push(Math.cos(ph), 0, Math.sin(ph), Math.cos(ph), 0, Math.sin(ph));
+        uv.push(ph * rD / TEX_M, yTop / TEX_M, ph * rD / TEX_M, yBot / TEX_M);
+        if (i < n) { const a0 = i * 2; idx.push(a0, a0 + 2, a0 + 1, a0 + 1, a0 + 2, a0 + 3); }
       }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx);
+      b.add('hullWhite', g);
+    }
+    b.add('hullWhite', latheAt(C, DOWN, [[1.2, 0.84], [1.55, 0.84], [1.66, 0.87], [1.66, 0.97], [1.58, 1.0], [1.2, 1.0]], 48));
+    const frust = (rt, rb, h, y, open) => new THREE.CylinderGeometry(rt, rb, h, 6, 1, open).translate(cx, y, 0);
+    b.add('windowGlow', frust(0.68, 1.2, 0.9, top - 1.5, false), false, cupolaGlow);
+    // hex frame rings (lathe with six segments: flats line up with the window faces)
+    b.add('metalDark', latheAt(C, DOWN, [[1.36, 0.98], [1.58, 0.98], [1.58, 1.1], [1.36, 1.1], [1.36, 0.98]], 6));
+    b.add('metalDark', latheAt(C, DOWN, [[0.62, 1.92], [0.95, 1.92], [0.95, 2.02], [0.62, 2.02], [0.62, 1.92]], 6));
+    const vtx = (k, d, r) => { const a = (k / 6) * Math.PI * 2 + Math.PI / 6; return V(cx + r * Math.cos(a), top - d, r * Math.sin(a)); };
+    for (let k = 0; k < 6; k++) {
+      const p0 = vtx(k, 1.06, 1.5), p1 = vtx(k, 1.96, 0.88);
+      const d = p1.clone().sub(p0);
+      b.add('metalDark', bevelBoxAt(p0.clone().lerp(p1, 0.5), 0.13, d.length() + 0.06, 0.13, _q.setFromUnitVectors(Y_AXIS, d.normalize()), 0.025), false);
+      // panes: trapezoid between this mullion and the next, inset 6 cm, outer pane in the face plane, inner 5 cm in
+      const A0 = vtx(k, 1.06, 1.5), B0 = vtx(k + 1, 1.06, 1.5), A1 = vtx(k, 1.96, 0.88), B1 = vtx(k + 1, 1.96, 0.88);
+      const cen = A0.clone().add(B0).add(A1).add(B1).multiplyScalar(0.25);
+      const ex = B0.clone().sub(A0).normalize(), ey = A1.clone().add(B1).multiplyScalar(0.5).sub(A0.clone().add(B0).multiplyScalar(0.5));
+      const hh = ey.length(); ey.normalize();
+      const ez = new THREE.Vector3().crossVectors(ex, ey).normalize();
+      if (ez.dot(cen.clone().sub(V(cx, cen.y, 0))) < 0) ez.negate();
+      const wTop = A0.distanceTo(B0) - 0.16, wBot = A1.distanceTo(B1) - 0.16, hp = hh - 0.14;
+      const trap = [[-wTop / 2, -hp / 2], [wTop / 2, -hp / 2], [wBot / 2, hp / 2], [-wBot / 2, hp / 2]];
+      const M = new THREE.Matrix4().makeBasis(ex, ey, ez).setPosition(cen);
+      b.add('glass', plate(trap, 0.018, 0.004).applyMatrix4(M.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0, 0.0))), false);
+      b.add('glass', plate(trap, 0.014, 0.004).applyMatrix4(M.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0, -0.05))), false);
+      // pane retainer (frame lip around the pane on the outside)
+      const lip = (x0, y0, x1, y1) => { const p = V(0, 0, 0).set((x0 + x1) / 2, (y0 + y1) / 2, 0.02), L = Math.hypot(x1 - x0, y1 - y0), ang = Math.atan2(y1 - y0, x1 - x0); b.add('metalDark', bevelBoxAt(p, L + 0.05, 0.05, 0.03, new THREE.Quaternion().setFromAxisAngle(Z_AXIS, ang), 0.008).applyMatrix4(M), false); };
+      lip(-wTop / 2 - 0.01, -hp / 2 - 0.01, wTop / 2 + 0.01, -hp / 2 - 0.01);
+      lip(-wBot / 2 - 0.01, hp / 2 + 0.01, wBot / 2 + 0.01, hp / 2 + 0.01);
+      // open shutter on two hinge arms from the drum flange, hanging outside the window
+      const a2 = (k / 6) * Math.PI * 2, nrm = V(Math.cos(a2), 0, Math.sin(a2)), tan = V(-Math.sin(a2), 0, Math.cos(a2));
+      const sc = V(cx, top - 1.45, 0).addScaledVector(nrm, 1.8);
+      const Ms = new THREE.Matrix4().makeBasis(tan, Y_AXIS, nrm).setPosition(sc);
+      b.add('hullWhiteAged', plate([[-0.44, -0.48], [0.44, -0.48], [0.44, 0.48], [-0.44, 0.48]], 0.04, 0.012).applyMatrix4(Ms));
+      for (const sx of [-1, 1]) {
+        const h0 = V(cx, top - 0.93, 0).addScaledVector(nrm, 1.64).addScaledVector(tan, sx * 0.3), h1 = sc.clone().addScaledVector(tan, sx * 0.3).addScaledVector(Y_AXIS, 0.4).addScaledVector(nrm, -0.03);
+        const dd = h1.clone().sub(h0);
+        b.add('metalDark', bevelBoxAt(h0.clone().lerp(h1, 0.5), 0.05, dd.length() + 0.04, 0.035, _q.setFromUnitVectors(Y_AXIS, dd.normalize()), 0.01), false);
+        b.add('metalBare', tubeAt(h0, tan, 0.03, 0.08, 10, { uv: false }), false);
+      }
+    }
+    // nadir window: round frame, two panes
+    b.add('metalDark', latheAt(C, DOWN, [[0.6, 1.97], [0.74, 1.97], [0.74, 2.07], [0.72, 2.09], [0.62, 2.09], [0.6, 2.07], [0.6, 1.97]], 48), false);
+    b.add('glass', new THREE.CylinderGeometry(0.615, 0.615, 0.016, 48).translate(cx, top - 2.045, 0), false);
+    b.add('glass', new THREE.CylinderGeometry(0.615, 0.615, 0.012, 48).translate(cx, top - 1.995, 0), false);
+    if (D) {
+      radialBolts(D, new THREE.Matrix4().setPosition(cx, top - 0.92, 0), 1.66, 40, 0, 0.013, 0.01);
+      boltCircle(D, new THREE.Matrix4().makeRotationX(Math.PI).setPosition(cx, top - 2.09, 0), 0.67, 18, 0, 0.011, 0.008);
     }
     colliders.push(Colliders.sphere(V(cx, top - 1.3, 0), 1.9, 'cupola'));
   }

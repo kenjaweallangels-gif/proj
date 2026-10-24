@@ -285,6 +285,23 @@ def bake_metal(src, size, name, aid, seed, tint=(0.70, 0.71, 0.73), rough_base=0
     save_set(name, np.clip(alb, 0, 1), n, np.ones((S, S), np.float32), rough, np.ones((S, S), np.float32), S)
 
 
+def bake_int_plastic(src, size, name, seed):
+    """
+    Interior micro detail (tri-planar, ~0.45 m tiles): orange-peel moulded / painted panel normal (Plastic013A) with
+    faint hairline scratches; roughness variation from handling smudges and wipes (G channel ~0.5 = no change).
+    """
+    S = size
+    n = decode_normal(tile_to(load(src, 'Plastic013A', 'NormalGL', 2048, 'RGB'), S, 2))
+    scr = tile_to(mask(src, 'Scratches003', 2048), S, 2)
+    h = -0.6 * blur(scr, 0.6)
+    n = blend_normals(n, height_to_normal(h, 1.5), 1.0)
+    sm = np.clip((noise(S, 6, seed, 4) - 0.5) * 2.0, -1, 1)
+    sm2 = np.clip((noise(S, 30, seed + 1, 3) - 0.62) * 4, 0, 1)
+    rough = np.clip(0.5 + 0.12 * sm - 0.1 * sm2 + 0.12 * scr, 0.2, 0.85)
+    alb = np.ones((S, S, 3), np.float32) * 0.8
+    save_set(name, alb, n, np.ones((S, S), np.float32), rough, np.zeros((S, S), np.float32), S)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--src', default=os.path.expanduser('~/.cache/station-texture-sources'))
@@ -305,6 +322,7 @@ def main():
     if want('metal'):
         bake_metal(a.src, S // 2, 'metal_brushed', 'Metal009', 3)
         bake_metal(a.src, S // 2, 'metal_machined', 'Metal032', 7, (0.62, 0.63, 0.65), 0.38)
+    if want('interior'): bake_int_plastic(a.src, S // 2, 'int_plastic', 13)
     return 0
 
 

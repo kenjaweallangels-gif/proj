@@ -103,13 +103,57 @@ export function setWindows(U, windows) {
   U.uWinCount.value = i;
 }
 
-function patchInterior(mat, U) {
+/**
+ * Micro surface detail for the atlas-mapped interior parts: a tiling detail normal / roughness set (baked
+ * scans: orange-peel plastic, brushed metal) applied tri-planar in object space (zone-local, so it stays put on
+ * the rotating ring), ~0.45 m tiles. The perturbation is mapped to view space through the object axes.
+ */
+const DETAIL_VERT = `
+varying vec3 vIntL;
+varying vec3 vIntN;
+varying vec3 vIntAx;
+varying vec3 vIntAy;
+varying vec3 vIntAz;
+`;
+const DETAIL_FRAG = `
+uniform sampler2D uDetN;
+uniform sampler2D uDetR;
+uniform vec3 uDetS;
+varying vec3 vIntL;
+varying vec3 vIntN;
+varying vec3 vIntAx;
+varying vec3 vIntAy;
+varying vec3 vIntAz;
+`;
+const DETAIL_APPLY = `
+{
+  vec3 on = normalize( vIntN );
+  vec3 bw = pow( abs( on ), vec3( 4.0 ) ); bw /= ( bw.x + bw.y + bw.z + 1e-5 );
+  vec3 p = vIntL * uDetS.x;
+  vec2 tx = texture2D( uDetN, p.zy ).xy * 2.0 - 1.0;
+  vec2 ty = texture2D( uDetN, p.xz ).xy * 2.0 - 1.0;
+  vec2 tz = texture2D( uDetN, p.xy ).xy * 2.0 - 1.0;
+  vec3 d = vec3( 0.0, tx.y, tx.x ) * bw.x + vec3( ty.x, 0.0, ty.y ) * bw.y + vec3( tz.x, tz.y, 0.0 ) * bw.z;
+  d -= on * dot( d, on );
+  normal = normalize( normal + ( vIntAx * d.x + vIntAy * d.y + vIntAz * d.z ) * uDetS.y );
+  float rr = texture2D( uDetR, p.zy ).g * bw.x + texture2D( uDetR, p.xz ).g * bw.y + texture2D( uDetR, p.xy ).g * bw.z;
+  roughnessFactor = clamp( roughnessFactor * mix( 1.0, 0.45 + 1.1 * rr, uDetS.z ), 0.04, 1.0 );
+}
+`;
+
+function patchInterior(mat, U, detail = null) {
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, U);
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vIntW;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>' + WORLD_VARYING);
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + SUN_GLSL).replace('#include <lights_fragment_begin>', patchedLightsBegin());
+    let vs = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vIntW;' + (detail ? DETAIL_VERT : '')).replace('#include <worldpos_vertex>', '#include <worldpos_vertex>' + WORLD_VARYING);
+    let fs = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + SUN_GLSL + (detail ? DETAIL_FRAG : '')).replace('#include <lights_fragment_begin>', patchedLightsBegin());
+    if (detail) {
+      sh.uniforms.uDetN = { value: detail.n }; sh.uniforms.uDetR = { value: detail.r }; sh.uniforms.uDetS = { value: detail.s };
+      vs = vs.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvIntL = transformed; vIntN = objectNormal; vIntAx = normalize( normalMatrix * vec3( 1.0, 0.0, 0.0 ) ); vIntAy = normalize( normalMatrix * vec3( 0.0, 1.0, 0.0 ) ); vIntAz = normalize( normalMatrix * vec3( 0.0, 0.0, 1.0 ) );');
+      fs = fs.replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + DETAIL_APPLY);
+    }
+    sh.vertexShader = vs; sh.fragmentShader = fs;
   };
-  mat.customProgramCacheKey = () => 'interiorLit2';
+  mat.customProgramCacheKey = () => (detail ? 'interiorLit2d' : 'interiorLit2');
   mat.userData.interior = true;
   return mat;
 }
@@ -153,6 +197,9 @@ export class InteriorMaterials {
     this.atlas = atlas;
     this.sunW = new THREE.Vector3(0, 1, 0);
     this.env = lite ? null : makeInteriorEnv(ctx.renderer);
+    // tiling micro-detail sets (baked scans, see tools/bake_station_textures.py); null on 'lite' / without sets
+    this.detailPlastic = lite ? null : ctx.textures?.pbr?.('int_plastic', { repeat: 1 }) || null;
+    this.detailMetal = lite ? null : ctx.textures?.pbr?.('metal_brushed', { repeat: 1 }) || null;
     this.glow = new THREE.MeshBasicMaterial({ vertexColors: true, name: 'int:glow' });
     this.glow.userData.interior = true;
     this.glassLite = null;
@@ -166,15 +213,16 @@ export class InteriorMaterials {
     const U = windowUniforms(this.sunW);
     setWindows(U, windows);
     const env = this.env, A = this.atlas;
-    const std = (name, o) => patchInterior(new THREE.MeshStandardMaterial({ name: `int:${name}`, vertexColors: true, envMap: env, envMapIntensity: 1.0, ...o }), U);
+    const std = (name, o, det = null) => patchInterior(new THREE.MeshStandardMaterial({ name: `int:${name}`, vertexColors: true, envMap: env, envMapIntensity: 1.0, ...o }), U, det);
+    const dp = this.detailPlastic, dm = this.detailMetal;
     const set = {
       U,
-      equip: std('equip', { map: A.map, emissiveMap: A.emissiveMap, emissive: 0xffffff, emissiveIntensity: 1.6, roughness: 0.72, metalness: 0.04 }),
-      paint: std('paint', { roughness: 0.62, metalness: 0.05 }),
-      metal: std('metal', { roughness: 0.34, metalness: 0.85, envMapIntensity: 1.3 }),
+      equip: std('equip', { map: A.map, emissiveMap: A.emissiveMap, emissive: 0xffffff, emissiveIntensity: 1.6, roughness: 0.72, metalness: 0.04 }, dp && { n: dp.normalMap, r: dp.ormMap, s: new THREE.Vector3(2.2, 0.35, 0.8) }),
+      paint: std('paint', { roughness: 0.62, metalness: 0.05 }, dp && { n: dp.normalMap, r: dp.ormMap, s: new THREE.Vector3(2.2, 0.45, 1.0) }),
+      metal: std('metal', { roughness: 0.34, metalness: 0.85, envMapIntensity: 1.3 }, dm && { n: dm.normalMap, r: dm.ormMap, s: new THREE.Vector3(1.6, 0.5, 1.0) }),
       plant: std('plant', { roughness: 0.7, metalness: 0.0, side: THREE.DoubleSide }),
       // optically clear panes (reflection + Fresnel only, no haze): see core/Materials.js clearGlass
-      glass: clearGlass({ name: 'int:glass', roughnessMap: ctxTex(this.ctx), absorb: 0.03, tint: 0x0a110f, envMap: env, envMapIntensity: 1.0 }),
+      glass: clearGlass({ name: 'int:glass', roughnessMap: ctxTex(this.ctx), absorb: 0.02, tint: 0x0a110f, envMap: env, envMapIntensity: 1.0 }),
       glow: this.glow,
     };
     set.glass.forceSinglePass = true;
