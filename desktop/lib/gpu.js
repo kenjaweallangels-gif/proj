@@ -163,8 +163,9 @@ export function formatGpuReport(r) {
   L.push(`WebGPU: ${w == null ? 'выключен (включить: --webgpu=on)' : w.error ? 'недоступен — ' + w.error : [w.vendor, w.architecture, w.description].filter(Boolean).join(' / ') + (w.fallback ? ' (fallback-адаптер)' : '')}`);
   const c = r.chromium || {};
   for (const d of c.devices || []) L.push(`GPU ${d.active ? '[АКТИВНЫЙ]' : '[ ]'} ${d.vendor} ${d.deviceString || ('0x' + Number(d.deviceId).toString(16))}  драйвер ${d.driverVendor || ''} ${d.driverVersion || ''}`.trim());
-  if (c.glImplementationParts) L.push(`ANGLE/GL: ${c.glImplementationParts}`);
-  if (c.featureStatus) L.push(`webgl2: ${c.featureStatus.webgl2}, webgpu: ${c.featureStatus.webgpu}, растеризация: ${c.featureStatus.rasterization}, композитинг: ${c.featureStatus.gpu_compositing}`);
+  if (c.glImplementationParts && !/gl=none/.test(c.glImplementationParts)) L.push(`ANGLE/GL: ${c.glImplementationParts}`);
+  const f = c.featureStatus;
+  if (f) L.push(`Chromium: webgl ${f.webgl}, webgpu ${f.webgpu}, vulkan ${f.vulkan}, растеризация ${f.rasterization}, композитинг ${f.gpu_compositing}`);
   const s = r.system || {};
   if (s.linux) {
     const l = s.linux;

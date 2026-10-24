@@ -1,0 +1,101 @@
+# electron-builder configuration for the desktop app «Орбитальная станция Аврора».
+#   npm run dist:linux   -> release/*.AppImage, release/*.deb, release/linux-unpacked/   (primary target: Ubuntu)
+#   npm run dist:win     -> release/*-portable.exe, release/*-setup.exe, release/win-unpacked/   (build on Windows)
+#   npm run dist:mac     -> release/mac*/…app, release/*.dmg (unsigned; dmg needs macOS)
+# The scene (vite build -> dist/) is copied next to the asar as resources/app-dist (not packed): the
+# app:// protocol reads textures and data straight from disk; the asar holds only the small main process.
+
+appId: org.aurora.orbitalstation
+productName: Орбитальная станция Аврора
+executableName: orbital-station-aurora
+copyright: Орбитальная станция Аврора
+artifactName: orbital-station-aurora-${version}-${arch}.${ext}
+
+directories:
+  output: release
+  buildResources: desktop/build
+
+files:
+  - package.json
+  - desktop/main.js
+  - desktop/preload.cjs
+  - desktop/lib/**
+  - desktop/build/icon.png
+  - "!node_modules/**"            # the scene is pre-bundled by Vite; no runtime node modules are needed
+
+extraResources:
+  - from: dist
+    to: app-dist
+    filter: ["**/*"]
+
+asar: true
+compression: normal
+npmRebuild: false
+nodeGypRebuild: false
+buildDependenciesFromSource: false
+electronLanguages: [ru, en-US]    # drop the other ~50 Chromium locales (about 40 MB)
+
+linux:
+  target: [AppImage, deb, dir]
+  category: Game
+  icon: desktop/build/icons
+  synopsis: Орбитальная станция — выход в открытый космос (3D)
+  description: >-
+    Интерактивная 3D-сцена: многомодульная орбитальная станция, кольцо искусственной гравитации,
+    стыковки кораблей, вид на Землю и выход в скафандре в открытый космос.
+  maintainer: Orbital Station Aurora <noreply@localhost>
+  vendor: Orbital Station Aurora
+  desktop:
+    entry:
+      Name: Орбитальная станция Аврора
+      GenericName: Космический симулятор
+      Comment: 3D-сцена орбитальной станции с выходом в открытый космос
+      Categories: Game;Simulation;
+      Keywords: space;station;orbit;EVA;космос;станция;
+      PrefersNonDefaultGPU: "true"        # GNOME / KDE: start on the discrete GPU of hybrid laptops
+      X-KDE-RunOnDiscreteGpu: "true"
+      StartupNotify: "true"
+
+appImage:
+  executableArgs: []              # no forced --no-sandbox: AppRun adds it only when user namespaces are unavailable
+
+deb:
+  priority: optional
+  depends:
+    - libgtk-3-0 | libgtk-3-0t64
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0 | libatspi2.0-0t64
+    - libuuid1
+    - libsecret-1-0
+    - libgbm1
+    - libasound2 | libasound2t64
+  recommends:
+    - libvulkan1
+    - mesa-vulkan-drivers
+
+win:
+  target: [portable, nsis, dir]
+  icon: desktop/build/icon.png
+  signAndEditExecutable: true
+
+portable:
+  artifactName: orbital-station-aurora-${version}-portable.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Орбитальная станция Аврора
+  artifactName: orbital-station-aurora-${version}-setup.${ext}
+
+mac:
+  target: [dir, dmg]
+  category: public.app-category.simulation-games
+  icon: desktop/build/icon.png
+  identity: null                  # unsigned
+  hardenedRuntime: false

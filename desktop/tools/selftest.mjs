@@ -32,7 +32,6 @@ flags.push('--disable-dev-shm-usage');
 let cmd, args;
 if (own.exe) { cmd = path.resolve(own.exe); args = [...flags, ...pass]; }
 else { cmd = electronPath; args = [root, ...flags, ...pass]; }
-if (own.exe && /\.AppImage$/i.test(cmd)) { args.unshift('--appimage-extract-and-run'); }   // no FUSE in containers
 
 const needXvfb = process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
 if (needXvfb) {
@@ -40,14 +39,14 @@ if (needXvfb) {
   args = ['-a', '-s', '-screen 0 1920x1080x24', cmd, ...args];
   cmd = 'xvfb-run';
 }
-if (own.exe && /\.AppImage$/i.test(own.exe)) process.env.APPIMAGE_EXTRACT_AND_RUN = '1';
+if (own.exe && /\.AppImage$/i.test(own.exe)) process.env.APPIMAGE_EXTRACT_AND_RUN = '1';   // works without FUSE / libfuse2 (containers, CI)
 console.log(`> ${cmd} ${args.join(' ')}`);
 const child = spawn(cmd, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], env: Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_ENABLE_LOGGING')) });
 let stdout = '';
 child.stdout.on('data', (d) => { stdout += d; process.stdout.write(d); });
 child.stderr.on('data', (d) => { const s = String(d); if (!/dbus|Fontconfig|libva|DevTools listening|ALSA|pulse/i.test(s)) process.stderr.write(s); });
 child.on('exit', (code) => {
-  const m = /SELFTEST (\{[\s\S]*\})\s*$/.exec(stdout);
+  const m = /SELFTEST (\{[\s\S]*?\n\})/.exec(stdout);
   if (!m) { console.error(`self-test produced no report (exit ${code})`); process.exit(code || 1); }
   const r = JSON.parse(m[1]);
   console.log('\n' + (r.checks || []).map((c) => `${c.ok ? 'PASS' : 'FAIL'}  ${c.name}`).join('\n'));

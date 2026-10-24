@@ -264,9 +264,14 @@ async function startupChecks(wc) {
       detail: 'Chromium не смог создать контекст WebGL 2 на этой видеокарте.\n\n' +
         (process.platform === 'linux' ? 'Проверьте драйвер NVIDIA: в терминале «nvidia-smi» должен показать видеокарту (нужен проприетарный драйвер, не nouveau).\n' : 'Обновите драйвер видеокарты.\n') +
         'Попробуйте другой графический бэкенд: F10 → «Графический бэкенд» (OpenGL / Vulkan) или флаг --angle=gl.\n\n' + formatGpuReport(report),
-      buttons: ['Открыть chrome://gpu', 'Выход'], defaultId: 0, cancelId: 1,
+      buttons: ['Стандартный бэкенд и перезапуск', 'Открыть chrome://gpu', 'Выход'], defaultId: 0, cancelId: 2,
     });
-    if (r.response === 0) openChromeGpu(); else app.quit();
+    if (r.response === 0) {
+      // back to Chromium's default (ANGLE on OpenGL / D3D11 / Metal) without Vulkan features
+      saveSettings(USER_DATA, { angle: 'default', webgpu: false, platform: 'auto' });
+      app.relaunch({ args: process.argv.slice(1).filter((a) => !isOwnFlag(a)), execPath: process.env.APPIMAGE || process.execPath });
+      app.exit(0);
+    } else if (r.response === 1) openChromeGpu(); else app.quit();
     return;
   }
   if (p.software && opt.gpuWarning && opt.angle !== 'swiftshader') {

@@ -16,9 +16,9 @@
     "desktop:gpu-info": "electron . --gpu-info",
     "desktop:selftest": "vite build && node desktop/tools/selftest.mjs",
     "desktop:icon": "node desktop/tools/make-icon.mjs",
-    "dist:linux": "vite build && node desktop/tools/make-icon.mjs && electron-builder --config desktop/electron-builder.yml --linux AppImage deb dir --x64 --publish never",
-    "dist:win": "vite build && node desktop/tools/make-icon.mjs && electron-builder --config desktop/electron-builder.yml --win portable nsis dir --x64 --publish never",
-    "dist:mac": "vite build && node desktop/tools/make-icon.mjs && electron-builder --config desktop/electron-builder.yml --mac dir dmg --publish never"
+    "dist:linux": "vite build && node desktop/tools/make-icon.mjs --if-missing && electron-builder --config desktop/electron-builder.yml --linux AppImage deb dir --x64 --publish never",
+    "dist:win": "vite build && node desktop/tools/make-icon.mjs --if-missing && electron-builder --config desktop/electron-builder.yml --win portable nsis dir --x64 --publish never",
+    "dist:mac": "vite build && node desktop/tools/make-icon.mjs --if-missing && electron-builder --config desktop/electron-builder.yml --mac dir dmg --publish never"
   },
   "repository": {
     "type": "git",
