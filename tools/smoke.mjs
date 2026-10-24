@@ -393,10 +393,14 @@ try {
   check('eye height above the ring deck ~1.68 m (1.8 m body)', eye !== null && Math.abs(eye - 1.68) < 0.05, `${eye?.toFixed(3)} m`);
   check('spin gravity ~0.37 g at the deck', g.g > 0.3 && g.g < 0.45, `${g.g.toFixed(3)} g`);
   const phi0 = await ev(() => { const iv = window.__app.player.iva; return Math.atan2(iv.pL.z, iv.pL.y); });
+  await bodyEvents();
   await step(2.5, ['KeyW']);
   const walk = await ev(() => { const iv = window.__app.player.iva; return { phi: Math.atan2(iv.pL.z, iv.pL.y), rho: Math.hypot(iv.pL.y, iv.pL.z), grounded: iv.grounded, cor: iv.coriolis }; });
   const walked = (walk.phi - phi0) * 42;
   check('walking along the corridor (spinward)', walked > 2 && walk.grounded, `${walked.toFixed(2)} m, rho ${walk.rho.toFixed(2)}`);
+  const wev = await bodyEvents();
+  const feet = await ev(() => Object.values(window.__app.player.body.footTargets).map((f) => f.phase));
+  check('walking: step events, feet planted / swinging', wev.filter((e) => e === 'step').length >= 4 && feet.some((f) => f === 'plant'), `${wev.filter((e) => e === 'step').length} steps, feet ${feet.join('/')}`);
   // Coriolis: a dropped (released) body drifts anti-spinward relative to the deck
   const drop = await ev(() => {
     const a = window.__app, iv = a.player.iva, h = 1 / 60;
@@ -424,11 +428,15 @@ try {
   await step(0.1);
   const ladState = () => ev(() => { const p = window.__app.player, iv = p.iva; return { ladder: p.state.onLadder, g: p.state.gravity, rho: Math.hypot(iv.pL.y, iv.pL.z) }; });
   const lad0 = await ladState();
+  await bodyEvents();
   await step(3.0, ['KeyW']);
   const lad1 = await ladState();
   await step(3.0, ['KeyS']);
   const lad2 = await ladState();
   const dg = lad1.g - lad0.g, dr = lad1.rho - lad0.rho;
+  const lev = await bodyEvents();
+  const ladHands = await ev(() => Object.values(window.__app.player.body.handTargets).map((t) => `${t.phase}:${t.weight.toFixed(1)}`));
+  check('ladder: hands and feet on the rungs (grab / step events)', lev.includes('grab') && lev.includes('step') && ladHands.every((t) => t.startsWith('ladder')), `${[...new Set(lev)].join(',')} hands ${ladHands.join('/')}`);
   check('spoke ladder: climbing moves along the spoke, gravity follows the radius', lad0.ladder && lad2.ladder && Math.abs(dr) > 1 && Math.abs(dg) > 0.01 && dg * dr > 0 && (lad2.g - lad1.g) * dg < 0,
     `${lad0.g.toFixed(3)} g (rho ${lad0.rho.toFixed(1)}) -> ${lad1.g.toFixed(3)} g (rho ${lad1.rho.toFixed(1)}) -> ${lad2.g.toFixed(3)} g`);
 

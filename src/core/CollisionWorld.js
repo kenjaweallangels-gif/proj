@@ -347,6 +347,8 @@ export class CollisionWorld {
       if (!(b.layer & q.mask)) continue;
       if (q.ignore && q.ignore === b.visibleRoot) continue;
       if (b.visibleRoot && !b.visibleRoot.visible) continue;
+      // hatches move on events, also between rendered frames (sequences stepped without rendering): fresh matrix
+      if (b.layer === COLLIDE.DOORS) b.anchor.updateWorldMatrix(true, false);
       const M = b.anchor.matrixWorld.elements;
       const x = b.center.x, y = b.center.y, z = b.center.z;
       const wx = M[0] * x + M[4] * y + M[8] * z + M[12] - c.x, wy = M[1] * x + M[5] * y + M[9] * z + M[13] - c.y, wz = M[2] * x + M[6] * y + M[10] * z + M[14] - c.z;

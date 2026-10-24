@@ -35,7 +35,7 @@ import { closestOnSegment } from './Collision.js';
 const PARAMS = {
   // grip: muscle acceleration through a gripping hand (m/s^2); vmax / vboost: glide speed with WASD / Shift
   unsuited: { grip: 2.4, surfaceGrip: 1.5, vmax: 1.6, vboost: 3.0, swim: 0.25, stop: 3.5, brake: 7.0, reach: 0.72, stretch: 1.0, shoulderDown: 0.22, shoulderSide: 0.2, reachTime: 0.16, restitution: 0.05, friction: 0.25, wobble: 1.0, walkAcc: 4.5, axisRate: 3.0 },
-  suited: { grip: 1.0, surfaceGrip: 0.6, vmax: 1.0, vboost: 1.5, swim: 0.1, stop: 1.6, brake: 3.5, reach: 0.6, stretch: 0.85, shoulderDown: 0.3, shoulderSide: 0.26, reachTime: 0.3, restitution: 0.08, friction: 0.25, wobble: 0.5, walkAcc: 2.5, axisRate: 1.6 },
+  suited: { grip: 1.0, surfaceGrip: 0.6, vmax: 1.0, vboost: 1.5, swim: 0.1, stop: 1.6, brake: 3.5, reach: 0.6, stretch: 0.85, shoulderDown: 0.3, shoulderSide: 0.26, reachTime: 0.3, restitution: 0.08, friction: 0.25, wobble: 0.5, walkAcc: 2.5, axisRate: 2.5 },
 };
 export function mechParams(suited) { return suited ? PARAMS.suited : PARAMS.unsuited; }
 
@@ -379,11 +379,12 @@ export class BodyMechanics {
       // the body swings away from what it touches (the feet end moves the most) ...
       _v.copy(_neck).addScaledVector(this.axis, L).addScaledVector(P, 1.6);
       this.axis.subVectors(_v, _neck).normalize();
-      // ... and only when it cannot swing free it shifts the head a little
+      // ... when it cannot swing free it folds in behind the head (the way it is going) and shifts the head a little
       if (it === 2 && P.lengthSq() > 4e-4) {
-        _v.copy(P).multiplyScalar(0.4);
+        if (vel.lengthSq() > 0.01) { _v.copy(vel).normalize().negate(); this.axis.lerp(_v, 1 - Math.exp(-h * 6)).normalize(); }
+        _v.copy(P).multiplyScalar(0.15);
         pos.add(_v);
-        this._respond(W, vel, e, f, s.surfaceMotion, 0.3);
+        this._respond(W, vel, e, f, s.surfaceMotion, 0.15);
       }
     }
     this.body.bodyAxis.copy(this._dirToWorld(this.axis, _v));
