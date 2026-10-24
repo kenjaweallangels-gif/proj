@@ -3,9 +3,16 @@ import { EvaPhysics, BODY_RADIUS, NOZZLES } from './EvaPhysics.js';
 import { CollisionWorld, closestOnSegment } from './Collision.js';
 import { SuitModel } from './SuitModel.js';
 import { Tether } from './Tether.js';
+import { IvaController } from './Iva.js';
 
 /**
- * First-person EVA astronaut (see docs/ARCHITECTURE.md, "Player contract").
+ * First-person astronaut (see docs/ARCHITECTURE.md, "Player contract").
+ * Modes: 'iva' (inside the station, no suit), 'airlock' (inside, in the spacesuit), 'eva' (outside), 'observer'.
+ *  - inside: IvaController (zero-g glide / handrails in the modules, walking under spin gravity in the ring,
+ *    ladders in the spokes), interior compartment volumes as colliders
+ *  - airlock flow: don the suit in the equipment lock (E at a suit mount), float into the crew lock, E closes the
+ *    inner hatch and starts the depress; the outer hatch opens and the EVA begins. Back: E at the crew lock closes
+ *    the outer hatch, repress, the inner hatch opens, E at the empty mount doffs the suit.
  *  - zero-g 6-DOF rigid body with SAFER thrusters (EvaPhysics)
  *  - sphere-vs-collider collision with station, airlock interior and ships (Collision)
  *  - handrail grabbing / crawling / push-off, safety tether with reel, airlock exit/entry sequence
@@ -23,6 +30,8 @@ const TETHER_MAX = 25;
 const TETHER_REEL_SPEED = 1.0;
 const DEPRESS_TIME = 8;
 const REPRESS_TIME = 6;
+const DON_TIME = 3.5;
+const DOFF_TIME = 3.0;
 const O2_DURATION = 6 * 3600;
 const POWER_DURATION = 8 * 3600;
 const HIP_OFFSET = new THREE.Vector3(0.16, -0.72, 0.12);
@@ -40,6 +49,14 @@ const UP = new THREE.Vector3(0, 1, 0);
 export class Player {
   /** Controls summary for the HUD. */
   static CONTROLS = [
+    { key: 'ВНУТРИ', ru: 'на станции' },
+    { key: 'W / A / S / D', ru: 'плыть (оттолкнуться руками) · в кольце — идти' },
+    { key: 'Space / Ctrl', ru: 'вверх / вниз · в кольце Space — прыжок' },
+    { key: 'G / Space', ru: 'схватить поручень / оттолкнуться' },
+    { key: 'E', ru: 'люк, скафандр, лестница, шлюзование' },
+    { key: 'X', ru: 'внутри: выравнивание по «потолку» модуля' },
+    { key: 'V', ru: 'внутри: остановиться (затормозить руками)' },
+    { key: 'СНАРУЖИ', ru: 'в скафандре с ранцем SAFER' },
     { key: 'W / S', ru: 'тяга вперёд / назад' },
     { key: 'A / D', ru: 'тяга влево / вправо' },
     { key: 'Space / Ctrl', ru: 'тяга вверх / вниз' },
@@ -81,6 +98,8 @@ export class Player {
       speedRelative: 0, angularSpeed: 0, distanceToStation: 0, distanceToAirlock: 0,
       rotationMode: 'aah', stabilization: true, rotationModeLabel: 'стабилизация', thrusting: false, boost: false, killing: false, lampOn: false, tetherStowed: true,
       sequence: null, prompt: '', canEnterAirlock: false, impact: 0, contact: false,
+      suited: true, inside: true, compartment: '', frame: 'station', gravity: 0, onLadder: false, autoLevel: true,
+      cabinPressure: 101.3, nearSuit: false, nearInnerHatch: false,
     };
 
     // hatch / airlock refs (station exists before the player)
@@ -106,8 +125,15 @@ export class Player {
     this._hrTarget = 64;
     this._reattachBlock = 0;
     this.lampAuto = true;
+    this.iva = new IvaController(this, ctx);
+    this._wornSuit = null;
 
-    this.setView('airlock');
+    // start pose: inside the station (default) or suited in the airlock (?start=airlock)
+    const start = ctx.params?.get?.('start');
+    this.startView = start === 'airlock' ? 'airlock' : 'inside';
+    this.setView(this.startView);
+    // the interiors are built in Station.load(): re-apply the pose once everything is ready
+    ctx.events?.on?.('ready', () => { if (this._lastView) this.setView(this._lastView); });
     ctx.renderer.domElement.addEventListener('mousedown', () => { if (this.active && !ctx.isShot && ctx.mode === 'play') ctx.input.requestPointerLock(); });
     ctx.events?.on?.('mode', (m) => { if (m === 'play' && this.state.mode === 'observer') this.state.mode = this._modeBeforeObserver || 'eva'; });
   }
@@ -118,49 +144,98 @@ export class Player {
   setActive(a) {
     if (a === this.active) return;
     this.active = a;
-    this.suit.setVisible(a);
+    this.suit.setVisible(a && this.state.suited);
     if (!a) { this._modeBeforeObserver = this.state.mode; this.state.mode = 'observer'; }
     else { if (this.state.mode === 'observer') this.state.mode = this._modeBeforeObserver || 'eva'; this.camQuat.copy(this.quaternion); this.applyCamera(0); }
   }
 
-  /** Poses for screenshots and the menu: 'airlock' | 'eva' | 'eva-far'. */
+  /** Pose names this player understands (App routes them here). */
+  hasView(name) { return ['airlock', 'eva', 'eva-far', 'inside', 'crewlock'].includes(name) || !!this.ctx.station?.interior?.view(name); }
+
+  /**
+   * Poses for screenshots and the menu: 'inside' (start), 'interior-*' / 'cupola-inside' / 'airlock-inside'
+   * (inside, no suit), 'airlock' (suited in the crew lock, inner hatch closed), 'eva', 'eva-far'.
+   */
   setView(name) {
     const al = this.airlock;
     const st = this.state;
+    const interior = this.ctx.station?.interior;
     const stand = al?.standPosition || new THREE.Vector3(0, 0, 10);
+    this._lastView = name;
     this.body.velocity.set(0, 0, 0); this.body.omega.set(0, 0, 0);
     this._release();
     this._endSequence();
     this._killRequested = false;
-    if (name === 'airlock') {
+    const iv = name === 'airlock' || name === 'crewlock' ? null : interior?.view(name);
+    if (iv) {
+      // inside the station without the suit
+      this._setSuited(false);
+      st.mode = 'iva'; st.airlockPressure = 1; st.inside = true;
+      this._setHatch(false); this._setInner(true);
+      this._stowTether();
+      if (iv.ring) this.iva.placeRing(iv.x, iv.rho, iv.phi, iv.yaw, iv.pitch, !!iv.ladder);
+      else this.iva.placeStation(iv.pos, iv.look);
+      this.camQuat.copy(this.quaternion);
+      this.applyCamera(0);
+      this._updateTether(0);
+      return;
+    }
+    if (name === 'airlock' || name === 'crewlock') {
       _v.copy(stand);
       this.lookAlong(_v, al?.lookDirection || new THREE.Vector3(0, 0, 1));
-      this._setHatch(false);
-      st.mode = 'airlock'; st.airlockPressure = 1;
+      this._setHatch(false); this._setInner(false);
+      st.mode = 'airlock'; st.airlockPressure = 1; st.inside = true;
+      this._setSuited(true);
       this._stowTether();
+      this.iva.frame = 'station';
+      this.iva.zone = interior?.byId?.get('airlockC') || null;
     } else if (name === 'eva-far') {
       // ~60 m above/beside the station core, looking down at the hub and the ring
       _v.set(-16, 54, 36);
       this.lookAt(_v, _v2.set(-4, -2, 2));
-      st.mode = 'eva'; st.airlockPressure = 0;
+      st.mode = 'eva'; st.airlockPressure = 0; st.inside = false;
+      this._setSuited(true);
       // 60 m out is beyond the 25 m tether: this pose is an untethered free flight
       st.tetherAttached = false; st.tetherStowed = false; st.reeling = false; this._reattachBlock = 2;
-      this._setHatch(true);
+      this._setHatch(true); this._setInner(false);
     } else {
       // 'eva' (default): 12 m outside the hatch, looking back at the open hatch
       const exit = al?.exitDirection || new THREE.Vector3(0, 0, 1);
       _v.copy(this.hatchCenter).addScaledVector(exit, 12).add(_v2.set(1.8, 1.1, 0));
       this.lookAt(_v, _v2.copy(this.hatchCenter).add(_v3.set(0.3, 0.2, 0)));
-      st.mode = 'eva'; st.airlockPressure = 0;
+      st.mode = 'eva'; st.airlockPressure = 0; st.inside = false;
+      this._setSuited(true);
       this._attachTether(false);
-      this._setHatch(true);
+      this._setHatch(true); this._setInner(false);
     }
     this.body.reset(_v, _q);
     this.camQuat.copy(this.quaternion);
     this._refreshColliders(true);
-    this.collision.resolve(this.position, this.velocity, this.radius, 0, 0);
+    if (st.mode === 'eva') this.collision.resolve(this.position, this.velocity, this.radius, 0, 0);
     this.applyCamera(0);
     this._updateTether(0);
+  }
+
+  /** Suit on / off: first-person suit model, body radius, the suit on its mount in the equipment lock. */
+  _setSuited(on) {
+    const st = this.state;
+    st.suited = on;
+    this.radius = on ? BODY_RADIUS : 0.3;
+    this.suit?.setVisible(on && this.active);
+    const interior = this.ctx.station?.interior;
+    const suits = interior?.byId?.get('airlockE')?.suitObjects;
+    if (suits) {
+      if (on) { if (!this._wornSuit) this._wornSuit = suits[0]; for (const s of suits) s.group.visible = s !== this._wornSuit; }
+      else { this._wornSuit = null; for (const s of suits) s.group.visible = true; }
+    }
+  }
+
+  /** Inner airlock hatch (equipment lock <-> crew lock); fast-forwarded in shot mode and before the first frame. */
+  _setInner(open) {
+    const h = this.airlock?.innerHatch;
+    if (!h) return;
+    open ? h.open() : h.close();
+    if (this.ctx.isShot || !this.ctx.app?.ready) { try { this.ctx.station.airlockPart?.update?.(10); } catch (_) { /* optional */ } }
   }
 
   /** Command the hatch; screenshots cannot wait 4 s for the motor, so the animation is fast-forwarded in shot mode. */
@@ -209,7 +284,8 @@ export class Player {
     if (this._colliderTimer > 0.5) { this._colliderTimer = 0; this._refreshColliders(false); }
 
     // ----- hotkeys -----
-    if (inp.wasPressed('KeyX')) {
+    if (inp.wasPressed('KeyX') && st.mode !== 'eva') { st.autoLevel = !st.autoLevel; ctx.audio?.play?.('click'); }
+    else if (inp.wasPressed('KeyX')) {
       body.rotationMode = body.rotationMode === 'aah' ? 'free' : 'aah';
       st.rotationMode = body.rotationMode; st.stabilization = body.rotationMode === 'aah';
       st.rotationModeLabel = st.stabilization ? 'стабилизация' : 'свободный';
@@ -222,64 +298,73 @@ export class Player {
         if (st.tetherAttached && st.mode === 'eva') { st.tetherAttached = false; st.reeling = false; this._reattachBlock = 2; ctx.audio?.play?.('detach'); }
       } else if (st.tetherAttached) { st.reeling = !st.reeling; ctx.audio?.play?.('click'); }
     }
-    if (inp.wasPressed('KeyV') && !st.holding) { this._killRequested = !this._killRequested; }
+    if (inp.wasPressed('KeyV') && !st.holding && st.mode === 'eva') { this._killRequested = !this._killRequested; }
 
     const allowMouse = inp.pointerLocked || ctx.isShot || !inp.wantPointerLock;
     const mdx = allowMouse ? inp.mouse.dx : 0, mdy = allowMouse ? inp.mouse.dy : 0;
     // Q/E roll; E doubles as the airlock interaction key when an airlock action is available
-    const interactAvailable = st.mode === 'airlock' || st.canEnterAirlock || !!st.sequence;
+    const interactAvailable = st.mode === 'airlock' || st.canEnterAirlock || !!st.sequence || st.mode === 'iva';
     const rollAxis = -(inp.isDown('KeyQ') ? 1 : 0) + (inp.isDown('KeyE') && !interactAvailable ? 1 : 0);
 
     // ----- sequence (airlock) -----
     this._updateSequence(h);
 
-    // ----- handrail proximity -----
-    this._findHandrail();
+    // ----- handrail proximity (outside; the IVA controller searches the interior rails) -----
+    if (st.mode === 'eva') this._findHandrail();
+    this._updateInsideTargets();
 
     body.thrusting = false; body.rotThrust = 0; body.killing = false;
-    if (st.holding) {
-      this._updateHolding(h, inp, mdx, mdy, rollAxis, allowMouse);
+    if (st.mode !== 'eva') {
+      // ----- inside the station: IVA movement (zero-g / spin gravity / ladders), interior colliders
+      this.iva.update(h, inp, mdx, mdy, rollAxis, allowMouse);
+      st.contact = this.iva.contact;
+      st.distanceToStation = 0;
+      st.colliderDistance = 0;
     } else {
-      // translation thrusters in the body frame: W/S -> -Z/+Z, A/D -> -X/+X, Space/Ctrl -> +Y/-Y
-      _local.set(inp.axis('KeyA', 'KeyD'), (inp.isDown('Space') ? 1 : 0) - (inp.isDown('ControlLeft') || inp.isDown('ControlRight') ? 1 : 0), -inp.axis('KeyS', 'KeyW'));
-      const boost = inp.isDown('ShiftLeft') || inp.isDown('ShiftRight');
-      const thrustInput = _local.lengthSq() > 0;
-      if (thrustInput) this._killRequested = false;
-      body.thrust(_local, boost, h, ctx.particles);
-      body.rotate(mdx, mdy, rollAxis, h, allowMouse);
-      if (this._killRequested) { if (!body.kill(h, ctx.particles)) this._killRequested = false; }
-      // grab
-      if (inp.wasPressed('KeyG') && st.nearHandrail) this._grab(st.nearHandrail);
-      // tether
-      this._tetherPhysics(h);
-      if (st.sequence) this._holdInChamber(h);
-      body.integrate(h);
-    }
+      if (st.holding) {
+        this._updateHolding(h, inp, mdx, mdy, rollAxis, allowMouse);
+      } else {
+        // translation thrusters in the body frame: W/S -> -Z/+Z, A/D -> -X/+X, Space/Ctrl -> +Y/-Y
+        _local.set(inp.axis('KeyA', 'KeyD'), (inp.isDown('Space') ? 1 : 0) - (inp.isDown('ControlLeft') || inp.isDown('ControlRight') ? 1 : 0), -inp.axis('KeyS', 'KeyW'));
+        const boost = inp.isDown('ShiftLeft') || inp.isDown('ShiftRight');
+        const thrustInput = _local.lengthSq() > 0;
+        if (thrustInput) this._killRequested = false;
+        body.thrust(_local, boost, h, ctx.particles);
+        body.rotate(mdx, mdy, rollAxis, h, allowMouse);
+        if (this._killRequested) { if (!body.kill(h, ctx.particles)) this._killRequested = false; }
+        // grab
+        if (inp.wasPressed('KeyG') && st.nearHandrail) this._grab(st.nearHandrail);
+        // tether
+        this._tetherPhysics(h);
+        if (st.sequence) this._holdInChamber(h);
+        body.integrate(h);
+      }
 
-    // ----- collision -----
-    const c = this.collision.resolve(this.position, this.velocity, this.radius, RESTITUTION, FRICTION);
-    st.contact = c.count > 0;
-    st.distanceToStation = Math.max(0, c.minDistance);          // suit surface -> nearest collider surface
-    st.colliderDistance = c.minDistance + this.radius;          // body centre -> nearest collider surface
-    st.nearestCollider = c.nearest ? c.nearest.name || c.nearest.type : '';
-    if (c.impact > 0.05) {
-      // angular kick from an off-centre hit: tangential velocity x normal
-      _v.crossVectors(c.normal, c.tangent).applyQuaternion(_q.copy(this.quaternion).invert());
-      body.omega.addScaledVector(_v, 0.35);
-      body.omega.x += (Math.random() - 0.5) * 0.1 * c.impact; body.omega.y += (Math.random() - 0.5) * 0.1 * c.impact;
-      this._impactFlash = Math.min(1, c.impact * 0.6);
-      ctx.audio?.play?.('impact', { strength: Math.min(1, c.impact / 2.5) });
-      this._exertion = Math.min(1, this._exertion + c.impact * 0.2);
-      if (st.holding && c.impact > 1.0) this._release();
-    }
-    if (st.contact && body.omega.lengthSq() > 1e-4) body.omega.multiplyScalar(Math.exp(-h * 2.5)); // scraping along the hull bleeds spin
-    // while gripping a rail the hull may push the body: let the grip offset follow instead of fighting it
-    if (st.holding && c.count > 0) {
-      this.holdOffset.subVectors(this.position, this.handrailPoint);
-      const d = this.holdOffset.length();
-      if (d > 0.95) this.holdOffset.multiplyScalar(0.95 / d);
-    }
+      // ----- collision -----
+      const c = this.collision.resolve(this.position, this.velocity, this.radius, RESTITUTION, FRICTION);
+      st.contact = c.count > 0;
+      st.distanceToStation = Math.max(0, c.minDistance);          // suit surface -> nearest collider surface
+      st.colliderDistance = c.minDistance + this.radius;          // body centre -> nearest collider surface
+      st.nearestCollider = c.nearest ? c.nearest.name || c.nearest.type : '';
+      if (c.impact > 0.05) {
+        // angular kick from an off-centre hit: tangential velocity x normal
+        _v.crossVectors(c.normal, c.tangent).applyQuaternion(_q.copy(this.quaternion).invert());
+        body.omega.addScaledVector(_v, 0.35);
+        body.omega.x += (Math.random() - 0.5) * 0.1 * c.impact; body.omega.y += (Math.random() - 0.5) * 0.1 * c.impact;
+        this._impactFlash = Math.min(1, c.impact * 0.6);
+        ctx.audio?.play?.('impact', { strength: Math.min(1, c.impact / 2.5) });
+        this._exertion = Math.min(1, this._exertion + c.impact * 0.2);
+        if (st.holding && c.impact > 1.0) this._release();
+      }
+      if (st.contact && body.omega.lengthSq() > 1e-4) body.omega.multiplyScalar(Math.exp(-h * 2.5)); // scraping along the hull bleeds spin
+      // while gripping a rail the hull may push the body: let the grip offset follow instead of fighting it
+      if (st.holding && c.count > 0) {
+        this.holdOffset.subVectors(this.position, this.handrailPoint);
+        const d = this.holdOffset.length();
+        if (d > 0.95) this.holdOffset.multiplyScalar(0.95 / d);
+      }
 
+    }
     // ----- telemetry -----
     st.propellant = body.propellant;
     st.thrusting = body.thrusting; st.boost = body.boost && body.thrusting; st.killing = body.killing;
@@ -307,7 +392,8 @@ export class Player {
   // ---------------------------------------------------------------- camera
   applyCamera(h) {
     // slight inertia lag of the view (~0.07 s) + tiny thruster vibration; no head bob
-    if (h > 0) this.camQuat.slerp(this.quaternion, 1 - Math.exp(-h / 0.07)); else this.camQuat.copy(this.quaternion);
+    // (no lag in the spinning ring: the view turns with the ring, a lag would read as a constant tilt)
+    if (h > 0 && this.iva?.frame !== 'ring') this.camQuat.slerp(this.quaternion, 1 - Math.exp(-h / 0.07)); else this.camQuat.copy(this.quaternion);
     this.camera.position.copy(this.position);
     const vib = this.body.thrusting ? (this.body.boost ? 0.0022 : 0.0012) : (this.body.rotThrust > 0.3 ? 0.0006 : 0);
     if (vib > 0) {
@@ -341,10 +427,12 @@ export class Player {
   }
 
   // ---------------------------------------------------------------- handrails
-  _findHandrail() {
+  _findHandrail() { this._findHandrailIn(this.ctx.station?.handrails); }
+
+  /** Nearest grabbable rail of `rails` within reach (sets nearHandrail / handrailDistance / handrailPoint). */
+  _findHandrailIn(rails) {
     const st = this.state;
     if (st.holding) { st.nearHandrail = st.holding; st.handrailDistance = 0; return; }
-    const rails = this.ctx.station?.handrails;
     st.nearHandrail = null; st.handrailDistance = Infinity;
     if (!rails) return;
     let best = HANDRAIL_RANGE + this.radius, bestRail = null;
@@ -452,22 +540,50 @@ export class Player {
   }
 
   // ---------------------------------------------------------------- airlock sequence
+  /** Where the astronaut is relative to the airlock: 'crew' (crew lock), 'equip' (equipment lock) or ''. */
+  _airlockSection() {
+    const z = this.iva?.zone?.id;
+    return z === 'airlockC' ? 'crew' : z === 'airlockE' ? 'equip' : '';
+  }
+
   _onInteract() {
     const st = this.state, al = this.airlock;
     if (!al || st.sequence) return;
-    if (st.mode === 'airlock') this._startSequence('depress');
-    else if (st.mode === 'eva' && st.distanceToAirlock < 1.5) this._startSequence('close');
+    const sec = this._airlockSection();
+    if (st.mode === 'iva') {
+      if (st.nearSuit) this._startSequence('don');
+      else if (st.nearInnerHatch) this._startSequence(al.innerHatch?.isOpen ? 'innerClose' : 'innerOpen');
+    } else if (st.mode === 'airlock') {
+      if (sec === 'crew' || (!this.ctx.station?.interior?.ready)) {
+        // inner hatch first, then the depress and the outer hatch
+        if (al.innerHatch && al.innerHatch.progress > 0.001) this._startSequence('innerClose', 'depress');
+        else this._startSequence('depress');
+      } else if (st.nearSuit) this._startSequence('doff');
+      else if (st.nearInnerHatch) this._startSequence(al.innerHatch?.isOpen ? 'innerClose' : 'innerOpen');
+    } else if (st.mode === 'eva' && st.distanceToAirlock < 1.5) this._startSequence('close');
   }
 
-  _startSequence(name) {
+  _startSequence(name, next = null) {
     const st = this.state, al = this.airlock;
     this._seqTimer = 0;
     st.sequence = { name, progress: 0 };
+    this._seqNext = next;
     const audio = this.ctx.audio;
     if (name === 'depress') { audio?.play?.('depress', { duration: DEPRESS_TIME }); }
     else if (name === 'hatchOpen') { audio?.play?.('hatchMotor', { duration: 4 }); this._seqPromise = al.hatch.open().then(() => { if (st.sequence?.name === 'hatchOpen') this._finishExit(); }); }
     else if (name === 'close') { audio?.play?.('hatchMotor', { duration: 4 }); this._release(); this._stowTether(); this._seqPromise = al.hatch.close().then(() => { if (st.sequence?.name === 'close') { audio?.play?.('clunk'); this._startSequence('repress'); } }); }
     else if (name === 'repress') { audio?.play?.('repress', { duration: REPRESS_TIME }); }
+    else if (name === 'innerClose' || name === 'innerOpen') {
+      audio?.play?.('hatchMotor', { duration: 2.5 });
+      const open = name === 'innerOpen';
+      this._seqPromise = (open ? al.innerHatch.open() : al.innerHatch.close()).then(() => {
+        if (st.sequence?.name !== name) return;
+        audio?.play?.('clunk');
+        const nx = this._seqNext;
+        this._endSequence();
+        if (nx) this._startSequence(nx);
+      });
+    } else if (name === 'don' || name === 'doff') { audio?.play?.('suit', { duration: name === 'don' ? DON_TIME : DOFF_TIME }); this._release(); }
   }
 
   _endSequence() { this.state.sequence = null; this._seqPromise = null; }
@@ -476,9 +592,10 @@ export class Player {
   _finishExit() {
     const st = this.state;
     this.ctx.audio?.play?.('clunk');
-    st.mode = 'eva';
+    st.mode = 'eva'; st.inside = false;
     this._attachTether(true);
     this._endSequence();
+    this._refreshColliders(true);
   }
 
   /** While the hatch cycles the astronaut keeps a hand on the chamber handhold: drift is damped and the body is drawn back to the stand point. */
@@ -508,11 +625,33 @@ export class Player {
       seq.progress = Math.min(1, this._seqTimer / REPRESS_TIME);
       st.airlockPressure = seq.progress;
       if (seq.progress >= 1) {
-        st.airlockPressure = 1; st.mode = 'airlock';
+        st.airlockPressure = 1; st.mode = 'airlock'; st.inside = true;
         st.propellant = this.body.propellant = 1; st.o2 = 1; st.power = Math.max(st.power, 0.95);
         this._stowTether();
+        this.iva.frame = 'station';
+        this.iva.zone = this.ctx.station?.interior?.byId?.get('airlockC') || this.iva.zone;
         this._endSequence();
         this.ctx.audio?.play?.('click');
+        // the crew lock is pressurised again: open the inner hatch to the equipment lock
+        if (al?.innerHatch) this._startSequence('innerOpen');
+      }
+    } else if (seq.name === 'innerClose' || seq.name === 'innerOpen') {
+      const p = al?.innerHatch?.progress ?? 0;
+      seq.progress = seq.name === 'innerOpen' ? p : 1 - p;
+      if (this._seqTimer > 8) { const nx = this._seqNext; this._endSequence(); if (nx) this._startSequence(nx); }
+    } else if (seq.name === 'don' || seq.name === 'doff') {
+      const T = seq.name === 'don' ? DON_TIME : DOFF_TIME;
+      seq.progress = Math.min(1, this._seqTimer / T);
+      this.velocity.multiplyScalar(Math.exp(-4 * h));
+      if (seq.progress >= 1) {
+        const don = seq.name === 'don';
+        this._endSequence();
+        if (don) this._wornSuit = this.ctx.station?.interior?.nearestSuit(this.position)?.suit || null;
+        this._setSuited(don);
+        st.mode = don ? 'airlock' : 'iva';
+        st.o2 = 1; st.power = Math.max(st.power, 0.95); st.propellant = this.body.propellant = 1;
+        this.ctx.audio?.play?.('clunk');
+        this.ctx.hud?.notify?.(don ? 'Скафандр надет. Проверка герметичности: норма.' : 'Скафандр снят и поставлен на зарядку.', { kind: 'info' });
       }
     }
   }
@@ -523,10 +662,12 @@ export class Player {
     const simDt = Math.min(Math.max(dt, 0), 30);
     const body = this.body;
     const effort = this._exertion;
-    st.o2 = Math.max(0, st.o2 - (simDt / O2_DURATION) * (1 + 1.5 * effort));
-    st.power = Math.max(0, st.power - (simDt / POWER_DURATION) * (this.suit.lampOn ? 1.6 : 1));
+    if (st.suited) {
+      st.o2 = Math.max(0, st.o2 - (simDt / O2_DURATION) * (1 + 1.5 * effort));
+      st.power = Math.max(0, st.power - (simDt / POWER_DURATION) * (this.suit.lampOn ? 1.6 : 1));
+    }
     // heart rate: exertion from thrust use, speed, taut tether, contacts
-    const hrTarget = 62 + 35 * effort + 8 * Math.min(st.speedRelative, 3) + (st.tetherTaut ? 22 : 0) + (st.killing ? 6 : 0) + (st.o2 < 0.1 ? 25 : 0);
+    const hrTarget = 62 + 35 * effort + 8 * Math.min(st.speedRelative, 3) + (st.tetherTaut ? 22 : 0) + (st.killing ? 6 : 0) + (st.o2 < 0.1 && st.suited ? 25 : 0);
     const k = 1 - Math.exp(-Math.min(simDt, 1) / 6);
     st.heartRate = THREE.MathUtils.clamp(st.heartRate + (hrTarget - st.heartRate) * k, 60, 140);
     if (active) {
@@ -535,7 +676,7 @@ export class Player {
     } else this._exertion = Math.max(0, this._exertion - 0.05 * Math.min(simDt, 1));
     // suit skin temperature follows sun exposure slowly; the cooling loop keeps the inside near 21 C
     const sun = this.ctx.orbit?.sunVisible ?? 1;
-    const tTarget = st.mode === 'airlock' ? 21.5 : 20.5 + 4.5 * sun - 1.5 * (1 - sun);
+    const tTarget = st.mode !== 'eva' ? 21.5 : 20.5 + 4.5 * sun - 1.5 * (1 - sun);
     st.suitTemp += (tTarget - st.suitTemp) * (1 - Math.exp(-Math.min(simDt, 5) / 90));
     st.suitPressure = 1;
   }
@@ -547,14 +688,38 @@ export class Player {
     if (want !== this.suit.lampOn) this.suit.setLamp(want);
   }
 
+  /** Interaction targets inside: spacesuit mounts and the inner airlock hatch. */
+  _updateInsideTargets() {
+    const st = this.state, interior = this.ctx.station?.interior, al = this.airlock;
+    st.nearSuit = false; st.nearInnerHatch = false;
+    if (st.mode === 'eva' || !interior?.ready) return;
+    const sec = this._airlockSection();
+    if (sec === 'equip') {
+      if (st.suited) st.nearSuit = !!this._wornSuit && this._wornSuit.position.distanceTo(this.position) < 1.5;
+      else { const n = interior.nearestSuit(this.position); st.nearSuit = !!n && n.distance < 1.4 && n.suit.group.visible; }
+    }
+    if (al?.innerHatchCenter && (sec === 'equip' || sec === 'crew')) st.nearInnerHatch = al.innerHatchCenter.distanceTo(this.position) < 1.5;
+  }
+
   _updatePrompt() {
     const st = this.state;
     let p = '';
+    const sec = this._airlockSection();
     if (st.sequence) {
       const n = st.sequence.name, pct = Math.round(st.sequence.progress * 100);
-      p = n === 'depress' ? `Сброс давления шлюза… ${pct}%` : n === 'hatchOpen' ? `Открытие люка… ${pct}%` : n === 'close' ? `Закрытие люка… ${pct}%` : `Наддув шлюза… ${pct}%`;
-    } else if (st.mode === 'airlock') p = 'E — начать выход в открытый космос';
-    else if (st.holding) p = 'A/D — вдоль поручня · Space — оттолкнуться · G — отпустить';
+      p = ({ depress: 'Сброс давления шлюза…', hatchOpen: 'Открытие наружного люка…', close: 'Закрытие наружного люка…', repress: 'Наддув шлюза…',
+        innerClose: 'Закрытие внутреннего люка…', innerOpen: 'Открытие внутреннего люка…', don: 'Надевание скафандра…', doff: 'Снятие скафандра…' }[n] || 'Шлюз…') + ` ${pct}%`;
+    } else if (st.mode === 'iva' || st.mode === 'airlock') {
+      const ip = this.iva.prompt();
+      if (st.holding) p = 'W/S, A/D — вдоль поручня · Space — оттолкнуться · G — отпустить';
+      else if (ip) p = ip;
+      else if (st.nearSuit) p = st.suited ? 'E — снять скафандр' : 'E — надеть скафандр';
+      else if (st.mode === 'airlock' && sec === 'crew') p = 'E — закрыть внутренний люк и начать выход';
+      else if (st.nearInnerHatch) p = this.airlock?.innerHatch?.isOpen ? 'E — закрыть внутренний люк' : 'E — открыть внутренний люк';
+      else if (st.mode === 'airlock') p = 'В скафандре: переплывите в шлюзовую камеру (к наружному люку)';
+      else if (sec === 'equip') p = 'Скафандры у стен: подплывите и нажмите E';
+      else if (st.nearHandrail) p = 'G — схватить поручень';
+    } else if (st.holding) p = 'A/D — вдоль поручня · Space — оттолкнуться · G — отпустить';
     else if (st.canEnterAirlock) p = 'E — войти в шлюз и закрыть люк';
     else if (st.nearHandrail) p = 'G — схватить поручень';
     else if (!st.tetherAttached && !st.tetherStowed) p = 'ТРОС ОТЦЕПЛЕН — вернитесь к шлюзу (3 м) для зацепа';

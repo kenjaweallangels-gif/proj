@@ -173,6 +173,7 @@ export class App {
       for (const m of [].concat(o.material || [])) if (m.transparent && m.side === THREE.DoubleSide) m.forceSinglePass = true;
     });
     this.splitMaterialVariants();
+    this.station.interior?.afterMaterials?.();   // exterior carving patch for the interiors
     this.renderer.setup({ farScene: this.farScene, farCamera: this.farCamera, nearScene: this.nearScene, camera: this.camera });
 
     // Observer camera controls
@@ -473,7 +474,7 @@ export class App {
       this.camera.lookAt(this.orbitControls.target);
       this.orbitControls.update();
       this.setMode('observer');
-    } else if (playerViews.includes(name) || name.startsWith('player')) {
+    } else if (playerViews.includes(name) || name.startsWith('player') || this.player.hasView?.(name)) {
       this.setMode('play');
       this.player.setView?.(name);
     } else {

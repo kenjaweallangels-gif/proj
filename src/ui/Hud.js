@@ -92,7 +92,12 @@ export class Hud {
 
   /** «НАЧАТЬ» / «ПРОДОЛЖИТЬ» */
   startFromMenu() {
+    const first = this.menu.visible && !this.menu.paused;
+    const choice = this.menu.startChoice;
     this.hideMenu();
+    // start location chosen in the menu (inside the station / suited in the airlock)
+    const pl = this.ctx.player;
+    if (first && choice && pl && choice !== pl.startView) { pl.startView = choice; try { this.ctx.app?.setView?.(choice); } catch (e) { console.warn(e); } }
     if (this.ctx.mode === 'play' && !this.ctx.isShot) { try { this.ctx.input?.requestPointerLock?.(); } catch (_) { /* ignore */ } }
   }
 

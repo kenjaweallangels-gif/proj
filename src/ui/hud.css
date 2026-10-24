@@ -174,3 +174,8 @@ table.ctl td.key { font-family: var(--mono); font-size: 11px; color: var(--cyan)
   .menu h1 { font-size: 20px; }
   .menu-scroll { max-height: 34vh; }
 }
+
+/* ---------------------------------------------------------------- inside the station */
+.zone-name { position: absolute; left: 50%; top: calc(var(--inset-y) + 2px); transform: translateX(-50%); text-align: center; padding: 5px 16px 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; text-shadow: 0 0 3px #000; white-space: nowrap; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
+.zone-title { font-size: 14px; letter-spacing: 0.06em; color: #eaf6ff; }
+.zone-sub { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; color: var(--dim); margin-top: 1px; }

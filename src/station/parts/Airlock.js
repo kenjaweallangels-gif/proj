@@ -7,11 +7,14 @@ const CY = LAYOUT.clusterY;
 const _q = new THREE.Quaternion();
 const HATCH_TIME = 4.0;
 const HATCH_SWING = 1.95;   // rad, outward
+const INNER_TIME = 2.5;
+const INNER_SWING = 1.75;   // rad, into the equipment lock
 
 /**
- * EVA airlock module on node-1 (+Z): exterior hull, an interior chamber with handholds, panels,
- * suit rack and lights, and an outer round hatch that swings outward on a hinge (4 s).
- * Exposes the Airlock contract object via `info` and the dynamic hatch collider.
+ * EVA airlock module on node-1 (+Z): exterior hull, the outer round hatch that swings outward on a hinge (4 s)
+ * and the inner hatch between the equipment lock and the crew lock (2.5 s). The two interiors are built by
+ * src/station/interior/AirlockInterior.js. Exposes the Airlock contract object via `info` (+ innerHatch,
+ * suitPosition, equipmentLockCenter) and the EVA colliders of the crew lock.
  */
 export class AirlockModule {
   constructor(ctx, station, b, rails) {
@@ -57,53 +60,14 @@ export class AirlockModule {
     rails.addRail(V(AX - 0.5, CY - 1.1, zEnd), V(AX + 0.5, CY - 1.1, zEnd), Z_AXIS);
 
     // ---------- interior ----------
-    const ri = 1.85, zi0 = z0 + 0.2, zi1 = zEnd - 0.15;
-    const bi = new Builder(m);
-    const wall = new THREE.CylinderGeometry(ri, ri, zi1 - zi0, 32, 1, true);
-    scaleUV(wall, (2 * Math.PI * ri) / 3.2, (zi1 - zi0) / 3.2);
-    bi.add('hullWhiteAged', flipInside(wall).rotateX(Math.PI / 2).translate(AX, CY, (zi0 + zi1) / 2));
-    bi.add('hullWhiteAged', new THREE.CylinderGeometry(ri, ri, 0.05, 32).rotateX(Math.PI / 2).translate(AX, CY, zi0));
-    bi.add('hullWhiteAged', new THREE.RingGeometry(0.76, ri, 32, 1).rotateY(Math.PI).translate(AX, CY, zi1));
-    bi.add('hazard', new THREE.RingGeometry(0.78, 0.95, 32, 1).rotateY(Math.PI).translate(AX, CY, zi1 - 0.01), false);
-    // inner hatch (closed) with wheel
-    bi.add('metalDark', new THREE.CylinderGeometry(0.72, 0.72, 0.1, 32).rotateX(Math.PI / 2).translate(AX, CY, zi0 + 0.08), false);
-    bi.add('metalBare', torusAt(V(AX, CY, zi0 + 0.1), Z_AXIS, 0.76, 0.05, 6, 32), false);
-    bi.add('metalBare', torusAt(V(AX, CY, zi0 + 0.25), Z_AXIS, 0.28, 0.03, 6, 20), false);
-    for (let k = 0; k < 4; k++) bi.add('metalBare', boxAt(V(AX, CY, zi0 + 0.25), 0.56, 0.03, 0.03, _q.setFromAxisAngle(Z_AXIS, (k / 4) * Math.PI), false), false);
-    // wall frames, light strips, handholds
-    for (const z of [zi0 + 1.6, zi0 + 3.4, zi0 + 5.2]) bi.add('metalDark', torusAt(V(AX, CY, z), Z_AXIS, ri - 0.04, 0.05, 5, 32), false);
-    const lightMat = m.get('floodLight').clone(); lightMat.emissiveIntensity = 2.2; lightMat.name = 'airlockStrip';
-    for (let k = 0; k < 4; k++) {
-      const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
-      const q = _q.setFromAxisAngle(Z_AXIS, a + Math.PI / 2);
-      bi.add('floodLight', boxAt(V(AX + (ri - 0.08) * Math.cos(a), CY + (ri - 0.08) * Math.sin(a), (zi0 + zi1) / 2), 0.1, 0.05, zi1 - zi0 - 1.2, q, false), false, lightMat);
-      bi.add('metalDark', boxAt(V(AX + (ri - 0.05) * Math.cos(a), CY + (ri - 0.05) * Math.sin(a), (zi0 + zi1) / 2), 0.16, 0.05, zi1 - zi0 - 1.1, q, false), false);
-    }
-    for (let k = 0; k < 4; k++) {
-      const a = (k / 4) * Math.PI * 2;
-      const n = V(-Math.cos(a), -Math.sin(a), 0);
-      const pa = V(AX + ri * Math.cos(a), CY + ri * Math.sin(a), zi0 + 1.0), pb = V(AX + ri * Math.cos(a), CY + ri * Math.sin(a), zi1 - 0.8);
-      rails.addLine(pa, pb, n, 1.0, 0.3);
-    }
-    // control panel (+X wall), suit rack (-X wall), O2 tanks (floor), tether reel near the hatch
-    const pm = mat(AX + ri - 0.12, CY + 0.3, zi0 + 2.6, _q.setFromAxisAngle(Y_AXIS, -Math.PI / 2));
-    bi.add('paintGray', boxAt(V(0, 0, 0), 0.7, 0.55, 0.12, null, false).applyMatrix4(pm), false);
-    bi.add('windowGlow', boxAt(V(0.08, 0.08, 0.07), 0.4, 0.26, 0.01, null, false).applyMatrix4(pm), false);
-    bi.add('navGreen', boxAt(V(-0.22, -0.15, 0.07), 0.05, 0.05, 0.01, null, false).applyMatrix4(pm), false);
-    bi.add('navRed', boxAt(V(-0.12, -0.15, 0.07), 0.05, 0.05, 0.01, null, false).applyMatrix4(pm), false);
-    bi.add('navWhite', boxAt(V(0.2, -0.18, 0.07), 0.1, 0.04, 0.01, null, false).applyMatrix4(pm), false);
-    for (const dz of [-0.6, 0.6]) {
-      const c = V(AX - ri + 0.45, CY + 0.1, zi0 + 2.4 + dz);
-      bi.add('hullWhite', boxAt(c, 0.42, 0.75, 0.5), false);
-      bi.add('hullWhite', boxAt(V(c.x, c.y - 0.75, c.z), 0.36, 0.7, 0.42), false);
-      bi.add('hullWhite', new THREE.SphereGeometry(0.19, 14, 10).translate(c.x, c.y + 0.58, c.z), false);
-      bi.add('visorGold', new THREE.SphereGeometry(0.15, 12, 8, 0, Math.PI).rotateY(Math.PI / 2).translate(c.x + 0.07, c.y + 0.58, c.z), false);
-      bi.add('metalDark', boxAt(V(AX - ri + 0.1, c.y + 0.9, c.z), 0.2, 0.06, 0.6, null, false), false);
-    }
-    for (const dx of [-0.5, 0.5]) bi.add('metalBare', tubeAt(V(AX + dx, CY - ri + 0.3, zi0 + 4.2), Z_AXIS, 0.2, 1.3, 14, { uv: false }), false);
-    bi.add('metalDark', tubeAt(V(AX + 1.2, CY - 1.1, zi1 - 0.5), X_AXIS, 0.18, 0.3, 14, { uv: false }), false);
-    bi.add('hazard', tubeAt(V(AX + 1.2, CY - 1.1, zi1 - 0.5), X_AXIS, 0.19, 0.08, 14, { uv: false }), false);
-    bi.build(station, { name: 'airlockInterior' });
+    // The equipment lock / crew lock interiors are built by src/station/interior (AirlockInterior.js); this part
+    // owns the hatches. Inner hatch between the two sections: hinged round door, animated like the outer one.
+    this.innerPivot = new THREE.Group();
+    this.innerPivot.name = 'innerHatch';
+    this.innerPivot.userData.animated = true;
+    this.innerPivot.position.set(AX - 0.66, CY, 6.30);
+    station.add(this.innerPivot);
+    this.innerDoorGeos = null;      // filled by the interior builder
 
     // ---------- outer hatch (hinged at the top, swings outward) ----------
     this.pivot = new THREE.Group();
@@ -130,25 +94,37 @@ export class AirlockModule {
     this.anchor = new THREE.Object3D(); this.anchor.position.copy(d); this.pivot.add(this.anchor);
     this.hatchCollider = Colliders.box(V(AX, CY, zEnd + 0.13), V(0.73, 0.73, 0.07), null, 'hatch', true);
 
-    // ---------- colliders: wall slabs (shared by interior and exterior), cap ring, bulkhead ----------
+    // ---------- colliders (EVA physics): crew-lock wall slabs, cap ring around the hatch, inner bulkhead ----------
+    const rc = 1.15, zc0 = 6.45, zc1 = zEnd - 0.12;
+    // solid wall between the crew-lock liner (r 1.15) and the hull (r 2.0), and the equipment-lock section as a capsule
     for (let k = 0; k < 8; k++) {
-      const phi = (k / 8) * Math.PI * 2;
-      colliders.push(Colliders.box(V(AX + 2.0 * Math.cos(phi), CY + 2.0 * Math.sin(phi), z0 + len / 2), V(0.9, 0.17, len / 2), _q.setFromAxisAngle(Z_AXIS, phi + Math.PI / 2), 'airlockWall'));
+      const phi = (k / 8) * Math.PI * 2, rm = (rc + r + 0.05) / 2, ht = (r + 0.05 - rc) / 2;
+      colliders.push(Colliders.box(V(AX + rm * Math.cos(phi), CY + rm * Math.sin(phi), (zc0 + zc1) / 2), V(0.85, ht, (zc1 - zc0) / 2), _q.setFromAxisAngle(Z_AXIS, phi + Math.PI / 2), 'airlockWall'));
     }
+    const zh0 = z0 + 0.1, zh1 = zc0 - 0.06;
+    for (const a of [0, Math.PI / 4]) colliders.push(Colliders.box(V(AX, CY, (zh0 + zh1) / 2), V(r * 0.93, r * 0.93, (zh1 - zh0) / 2), _q.setFromAxisAngle(Z_AXIS, a), 'airlockHull'));
     const hh = 0.76, capZ = zEnd - 0.05;
     colliders.push(Colliders.box(V(AX, CY + hh + 0.62, capZ), V(2.0, 0.62, 0.12), null, 'airlockCap'));
     colliders.push(Colliders.box(V(AX, CY - hh - 0.62, capZ), V(2.0, 0.62, 0.12), null, 'airlockCap'));
     colliders.push(Colliders.box(V(AX - hh - 0.62, CY, capZ), V(0.62, hh, 0.12), null, 'airlockCap'));
     colliders.push(Colliders.box(V(AX + hh + 0.62, CY, capZ), V(0.62, hh, 0.12), null, 'airlockCap'));
-    colliders.push(Colliders.box(V(AX, CY, zi0 - 0.05), V(2.0, 2.0, 0.12), null, 'airlockBulkhead'));
+    colliders.push(Colliders.box(V(AX, CY, zc0 - 0.06), V(2.0, 2.0, 0.08), null, 'airlockBulkhead'));
     colliders.push(this.hatchCollider);
     this.colliders = colliders;
 
     // ---------- contract object ----------
     const self = this;
     this.progress = 0; this.target = 0; this._waiters = [];
+    this.innerProgress = 0; this.innerTarget = 0; this._innerWaiters = [];
+    this.innerHatch = {
+      get isOpen() { return self.innerProgress >= 0.999; },
+      get progress() { return self.innerProgress; },
+      get isMoving() { return self.innerProgress !== self.innerTarget; },
+      open() { return self._goInner(1); },
+      close() { return self._goInner(0); },
+    };
     this.info = {
-      standPosition: V(AX, CY, z0 + len / 2 + 0.3),
+      standPosition: V(AX, CY, 8.05),
       exitDirection: V(0, 0, 1),
       lookDirection: V(0, 0, 1),
       tetherAnchor: this.tetherAnchor,
@@ -160,8 +136,13 @@ export class AirlockModule {
         open() { return self._go(1); },
         close() { return self._go(0); },
       },
+      // inner hatch between the equipment lock and the crew lock (see docs/ARCHITECTURE.md, Airlock contract)
+      innerHatch: this.innerHatch,
+      innerHatchCenter: V(AX, CY, 6.4),
+      equipmentLockCenter: V(AX, CY, 4.5),
+      suitPosition: V(AX, CY + 0.1, 4.45),
       // extra info for other modules
-      x: AX, hatchZ: zEnd, hatchCenter: V(AX, CY, zEnd), interiorLight: V(AX, CY + 1.3, z0 + 3.4), radius: r,
+      x: AX, hatchZ: zEnd, hatchCenter: V(AX, CY, zEnd), interiorLight: V(AX, CY + 0.6, 8.0), radius: r,
     };
     this._applyHatch();
   }
@@ -174,6 +155,24 @@ export class AirlockModule {
     return new Promise((res) => this._waiters.push(res));
   }
 
+  _goInner(target) {
+    if (this.innerTarget !== target) { for (const w of this._innerWaiters) w(); this._innerWaiters.length = 0; }
+    this.innerTarget = target;
+    if (this.innerProgress === target) return Promise.resolve();
+    return new Promise((res) => this._innerWaiters.push(res));
+  }
+
+  /** Attach the inner door meshes (built by the interior with the interior materials). */
+  setInnerDoor(meshes) {
+    for (const m of meshes) this.innerPivot.add(m);
+    this._applyInner();
+  }
+
+  _applyInner() {
+    const p = this.innerProgress, e = p * p * (3 - 2 * p);
+    this.innerPivot.rotation.y = INNER_SWING * e;
+  }
+
   _applyHatch() {
     const p = this.progress, e = p * p * (3 - 2 * p);
     this.pivot.rotation.x = -HATCH_SWING * e;
@@ -183,6 +182,12 @@ export class AirlockModule {
   }
 
   update(dt) {
+    if (this.innerProgress !== this.innerTarget) {
+      const step = dt / INNER_TIME;
+      this.innerProgress = this.innerTarget > this.innerProgress ? Math.min(this.innerTarget, this.innerProgress + step) : Math.max(this.innerTarget, this.innerProgress - step);
+      this._applyInner();
+      if (this.innerProgress === this.innerTarget) { for (const w of this._innerWaiters) w(); this._innerWaiters.length = 0; }
+    }
     if (this.progress !== this.target) {
       const step = dt / HATCH_TIME;
       this.progress = this.target > this.progress ? Math.min(this.target, this.progress + step) : Math.max(this.target, this.progress - step);

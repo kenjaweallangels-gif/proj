@@ -11,7 +11,7 @@ const _v = new THREE.Vector3();
 const _m = new THREE.Matrix4();
 const SUIT_KPA = 29.6;      // nominal suit pressure (4.3 psi)
 const CABIN_KPA = 101.3;
-const SEQ_NAMES = { depress: 'Сброс давления шлюза', hatchOpen: 'Открытие люка', close: 'Закрытие люка', repress: 'Наддув шлюза' };
+const SEQ_NAMES = { depress: 'Сброс давления шлюза', hatchOpen: 'Открытие люка', close: 'Закрытие люка', repress: 'Наддув шлюза', innerClose: 'Закрытие внутреннего люка', innerOpen: 'Открытие внутреннего люка', don: 'Надевание скафандра', doff: 'Снятие скафандра' };
 
 function row(parent, label, { unit = '', bar = false, cls = '' } = {}) {
   const r = el('div', `hp-row ${cls}`);
@@ -45,7 +45,8 @@ export class Helmet {
     this.ctx = ctx;
     this.el = el('div', 'helmet');
     root.append(this.el);
-    this.el.append(this._visor());
+    this.visorEl = this._visor();
+    this.el.append(this.visorEl);
     this._buildPanels();
     this.reticle = el('div', 'reticle'); this.reticle.append(el('i'));
     this.el.append(this.reticle);
@@ -139,6 +140,31 @@ export class Helmet {
     this.tetherTag = el('span', 'tag', ''); this.rTether.v.append(this.tetherTag);
     this.rStab = row(nav, 'Стабилизация', {});
     add(this.el, suit, vit, orb, nav);
+    this.pSuit = suit; this.pVit = vit; this.pOrb = orb; this.pNav = nav;
+    // inside the station (no suit): cabin status panel + compartment name banner
+    const cab = el('div', 'hp hp-suit hidden');
+    const ct = el('div', 'hp-title'); ct.append(el('span', '', 'БОРТ · CABIN')); this.cabFrame = el('small', '', '0 g'); ct.append(this.cabFrame); cab.append(ct);
+    this.rCabP = row(cab, 'Давление', { unit: 'kPa' });
+    this.rCabO2 = row(cab, 'Кислород O₂', { unit: '%' });
+    this.rCabCO2 = row(cab, 'CO₂', { unit: 'mmHg' });
+    this.rCabT = row(cab, 'Температура', { unit: '°C' });
+    this.rCabRH = row(cab, 'Влажность', { unit: '%', cls: 'sec' });
+    cab.append(el('div', 'hp-sep'));
+    this.rCabG = row(cab, 'Гравитация', { unit: 'g' });
+    this.rCabV = row(cab, 'Скорость', { unit: 'm/s' });
+    this.rCabCor = row(cab, 'Кориолис', { unit: 'm/s²', cls: 'sec' });
+    const ind = el('div', 'ind');
+    this.tagLevel = el('span', 'tag', 'ВЫРАВНИВАНИЕ'); this.tagLadder = el('span', 'tag', 'ЛЕСТНИЦА'); this.tagHold = el('span', 'tag', 'ПОРУЧЕНЬ');
+    add(ind, this.tagLevel, this.tagHold, this.tagLadder);
+    cab.append(ind);
+    this.pCab = cab;
+    this.zoneEl = el('div', 'zone-name hidden');
+    this.zoneTitle = el('div', 'zone-title', '');
+    this.zoneSub = el('div', 'zone-sub', '');
+    add(this.zoneEl, this.zoneTitle, this.zoneSub);
+    add(this.el, cab, this.zoneEl);
+    this._inside = null;
+    this._zoneKey = '';
   }
 
   _buildCenter() {
@@ -161,8 +187,42 @@ export class Helmet {
   }
 
   // ------------------------------------------------------------------ slow (10 Hz) text refresh
+  /** Layout for the astronaut's situation: 'iva' (no suit: cabin panel), suited inside or outside (helmet). */
+  _applyInside(st) {
+    const iva = st.mode === 'iva';
+    if (iva === this._inside) return;
+    this._inside = iva;
+    show(this.visorEl, !iva);
+    show(this.pSuit, !iva); show(this.pVit, !iva); show(this.pNav, !iva);
+    show(this.pCab, iva);
+  }
+
   updateText(ctx, rdt) {
     const st = ctx.player?.state || {};
+    this._applyInside(st);
+    // compartment banner (inside, suited or not)
+    const zname = st.mode !== 'eva' && st.compartment ? st.compartment : '';
+    const g = num(st.gravity, 0);
+    const zkey = zname + (zname ? (g > 0.01 ? ` ${g.toFixed(2)}` : ' 0') : '');
+    if (zkey !== this._zoneKey) {
+      this._zoneKey = zkey;
+      show(this.zoneEl, !!zname);
+      setText(this.zoneTitle, zname);
+      setText(this.zoneSub, g > 0.01 ? `искусственная тяжесть ${g.toFixed(2)} g` : 'невесомость');
+    }
+    if (st.mode === 'iva') {
+      const t = num(ctx.time?.sim, 0);
+      setText(this.rCabP.val, (101.3 + 0.2 * Math.sin(t * 0.01)).toFixed(1));
+      setText(this.rCabO2.val, (21.2 + 0.1 * Math.sin(t * 0.013)).toFixed(1));
+      setText(this.rCabCO2.val, (2.3 + 0.2 * Math.sin(t * 0.007)).toFixed(1));
+      setText(this.rCabT.val, (22.4 + 0.3 * Math.sin(t * 0.004)).toFixed(1));
+      setText(this.rCabRH.val, (41 + 2 * Math.sin(t * 0.003)).toFixed(0));
+      setText(this.rCabG.val, g.toFixed(2));
+      setText(this.rCabV.val, num(st.speedRelative, 0).toFixed(2));
+      setText(this.rCabCor.val, num(ctx.player?.iva?.coriolis, 0).toFixed(2));
+      setText(this.cabFrame, st.frame === 'ring' ? 'КОЛЬЦО' : '0 g');
+      setClass(this.tagLevel, 'on', !!st.autoLevel && st.frame !== 'ring'); setClass(this.tagLadder, 'on', !!st.onLadder); setClass(this.tagHold, 'on', !!st.holding);
+    }
     const o = ctx.orbit || {};
     const t = ctx.time || {};
     const eva = st.mode === 'eva';
@@ -260,7 +320,7 @@ export class Helmet {
     let text = '';
     const seq = st.sequence;
     if (seq && seq.name) text = `${SEQ_NAMES[seq.name] || 'Шлюз'}…`;
-    else if (st.mode === 'airlock') text = 'Начать выход в открытый космос (E)';
+    else if (st.mode === 'iva' || st.mode === 'airlock') text = typeof st.prompt === 'string' ? st.prompt : '';
     else if (st.holding) text = 'Вдоль поручня (A/D) · Оттолкнуться (Space) · Отпустить (G)';
     else if (st.canEnterAirlock) text = 'Войти в шлюз и закрыть люк (E)';
     else if (st.nearHandrail) text = 'Схватить (G)';

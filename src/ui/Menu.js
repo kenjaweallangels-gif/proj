@@ -1,4 +1,4 @@
-import { el, add, setText, show } from './dom.js';
+import { el, add, setText, show, setClass } from './dom.js';
 import { loadControls, controlsTable, FALLBACK_CONTROLS } from './Controls.js';
 
 const QUALITIES = [['ultra', 'Ультра'], ['high', 'Высокое'], ['medium', 'Среднее'], ['low', 'Низкое']];
@@ -28,7 +28,7 @@ export class Menu {
 
     // left column
     const left = el('div', 'menu-left');
-    this.desc = el('p', 'menu-desc', 'Вы — бортинженер в скафандре. Сбросьте давление в шлюзе, откройте люк и выйдите в открытый космос: страховочный трос, поручни и ранец SAFER — ваши единственные средства передвижения. Внизу — Земля, за 92 минуты станция делает полный виток.');
+    this.desc = el('p', 'menu-desc', 'Вы — бортинженер станции. Проплывите по модулям — лаборатории, узлам, жилым отсекам, оранжерее, куполу — или поднимитесь по спице во вращающееся кольцо с искусственной тяжестью. Чтобы выйти наружу, наденьте скафандр в шлюзе, закройте внутренний люк, сбросьте давление и откройте наружный люк: страховочный трос, поручни и ранец SAFER — ваши единственные средства передвижения. Внизу — Земля, за 92 минуты станция делает полный виток.');
     left.append(this.desc);
     const actions = el('div', 'menu-actions');
     this.startBtn = el('button', 'btn primary', 'НАЧАТЬ'); this.startBtn.type = 'button';
@@ -50,6 +50,22 @@ export class Menu {
     }
     add(qf, ql, seg);
     left.append(qf);
+
+    // start location (applies to НАЧАТЬ; ?start=airlock|inside in the URL)
+    const sf = el('div', 'menu-field');
+    const sl = el('label'); sl.append(el('span', '', 'НАЧАЛО'), el('span', '', '?start=inside | airlock'));
+    const sseg = el('div', 'seg');
+    this.startChoice = ctx.player?.startView === 'airlock' ? 'airlock' : 'inside';
+    this.startButtons = [];
+    for (const [id, label] of [['inside', 'Внутри станции'], ['airlock', 'В шлюзе, в скафандре']]) {
+      const b = el('button', id === this.startChoice ? 'on' : '', label); b.type = 'button';
+      b.addEventListener('click', () => { this.startChoice = id; for (const [bid, bb] of this.startButtons) setClass(bb, 'on', bid === id); });
+      this.startButtons.push([id, b]);
+      sseg.append(b);
+    }
+    add(sf, sl, sseg);
+    this.startField = sf;
+    left.append(sf);
 
     // volume
     const vf = el('div', 'menu-field');
@@ -110,6 +126,7 @@ export class Menu {
     this.h1Text.nodeValue = pause ? 'ПАУЗА' : this.title;
     setText(this.kicker, pause ? this.title.toUpperCase() : 'НИЗКАЯ ОКОЛОЗЕМНАЯ ОРБИТА · 410 KM · 51.6°');
     show(this.desc, !pause);
+    show(this.startField, !pause);
     this._renderMute();
     show(this.el, true);
     this.visible = true;

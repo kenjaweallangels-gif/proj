@@ -10,6 +10,8 @@
  *   radio      quindar tones + faint filtered chatter, occasionally
  *   warn       beeps: tether taut, low propellant, low O2
  *   grab / release / impact / click / detach
+ *   cabin      inside the station: ventilation hum of the modules (fans, pumps), louder in the service module
+ *   step / rung / suit   footsteps in the gravity ring, ladder rungs, donning / doffing the spacesuit
  * The AudioContext is created lazily on the first user gesture; every method is safe to call
  * when no context exists (screenshot mode, autoplay policy).
  *
@@ -57,7 +59,7 @@ export class Audio {
       // gentle compressor keeps thruster bursts from clipping the quiet suit ambience
       N.comp = ac.createDynamicsCompressor(); N.comp.threshold.value = -18; N.comp.ratio.value = 4; N.comp.connect(N.master);
       this.noiseBuf = this._noiseBuffer(2.0);
-      this._buildFan(); this._buildBreath(); this._buildRcs(); this._buildAir(); this._buildRadio(); this._buildCrawl();
+      this._buildFan(); this._buildBreath(); this._buildRcs(); this._buildAir(); this._buildRadio(); this._buildCrawl(); this._buildCabin();
       this.ready = true;
       for (const [name, opts] of this._pending) this.play(name, opts);
       this._pending.length = 0;
@@ -135,6 +137,20 @@ export class Audio {
     const src = this._noiseSource(); src.connect(bp); src.start();
   }
 
+  _buildCabin() {
+    const N = this.nodes, ac = this.ac;
+    N.cabinGain = this._gain(0.0);
+    // broadband fan noise (low-passed), a 50/100 Hz pump hum and a faint high whine of avionics fans
+    const lp = this._filter('lowpass', 520, 0.7, N.cabinGain);
+    const src = this._noiseSource(); src.playbackRate.value = 0.7; src.connect(lp); src.start();
+    const hum = ac.createOscillator(); hum.type = 'sine'; hum.frequency.value = 50;
+    const hum2 = ac.createOscillator(); hum2.type = 'triangle'; hum2.frequency.value = 100.4;
+    const whine = ac.createOscillator(); whine.type = 'sine'; whine.frequency.value = 1830;
+    const hg = this._gain(0.22, N.cabinGain); hum.connect(hg); const hg2 = this._gain(0.06, N.cabinGain); hum2.connect(hg2);
+    const wg = this._gain(0.004, N.cabinGain); whine.connect(wg);
+    hum.start(); hum2.start(); whine.start();
+  }
+
   // ---------------------------------------------------------------- one-shots
   /** play(name, opts). Unknown names are ignored. Safe without an AudioContext. */
   play(name, opts = {}) {
@@ -181,6 +197,20 @@ export class Audio {
         break;
       }
       case 'warn': this._beep(opts.freq || 880, opts.dur || 0.12, opts.gain || 0.12, t); break;
+      case 'step': this._clunk(t, 0.18 + Math.random() * 0.06, 70 + Math.random() * 20); break;
+      case 'rung': this._clunk(t, 0.16, 420 + Math.random() * 60); break;
+      case 'suit': {
+        // donning / doffing: fabric rustle, a zipper, the helmet latching, a short pressure-check hiss
+        const d = opts.duration || 3;
+        for (let k = 0; k < 5; k++) this._clunk(t + 0.2 + k * d * 0.15, 0.12, 200 + k * 30);
+        const zs = this._noiseSource(false); const zf = this._filter('bandpass', 2600, 3); const zg = this._gain(0.0); zf.connect(zg); zs.connect(zf);
+        zg.gain.setValueAtTime(0, t + d * 0.3); zg.gain.linearRampToValueAtTime(0.08, t + d * 0.32); zg.gain.linearRampToValueAtTime(0.0, t + d * 0.5);
+        zs.start(t + d * 0.3); zs.stop(t + d * 0.52);
+        this._clunk(t + d * 0.85, 0.7, 160);
+        const hs = this._noiseSource(false); const hf = this._filter('highpass', 2000, 0.7); const hgn = this._gain(0.0); hf.connect(hgn); hs.connect(hf);
+        hgn.gain.setValueAtTime(0.07, t + d * 0.9); hgn.gain.exponentialRampToValueAtTime(0.001, t + d * 1.1); hs.start(t + d * 0.9); hs.stop(t + d * 1.12);
+        break;
+      }
       case 'radio': this._radioBurst(t); break;
       default: break;
     }
@@ -269,6 +299,11 @@ export class Audio {
     this.time += dtr;
     const active = ctx.mode !== 'observer';
 
+    // inside the station: cabin ventilation; without the suit no suit fan and a quieter, open-air breath
+    const unsuited = p.suited === false;
+    const insideCabin = p.mode === 'iva' || p.mode === 'airlock';
+    const loud = typeof p.compartment === 'string' && p.compartment.includes('ВЕКТОР') ? 1.6 : p.frame === 'ring' ? 0.7 : 1;
+    N.cabinGain.gain.setTargetAtTime(active && insideCabin && p.airlockPressure > 0.3 ? 0.075 * loud * (unsuited ? 1 : 0.45) : 0, t, 0.6);
     // breathing: rate follows heart rate; inhale brighter, exhale darker
     const bpm = 11 + (p.heartRate - 60) * 0.22;
     this.breathPhase = (this.breathPhase + dtr * bpm / 60) % 1;
@@ -276,7 +311,7 @@ export class Audio {
     const inhale = ph < 0.42 ? Math.sin((ph / 0.42) * Math.PI) : 0;
     const exhale = ph >= 0.48 && ph < 0.95 ? Math.sin(((ph - 0.48) / 0.47) * Math.PI) : 0;
     const effort = 0.5 + (p.heartRate - 60) / 80;
-    N.breathGain.gain.setTargetAtTime((inhale * 0.045 + exhale * 0.07) * effort * (active ? 1 : 0.3), t, 0.03);
+    N.breathGain.gain.setTargetAtTime((inhale * 0.045 + exhale * 0.07) * effort * (active ? 1 : 0.3) * (unsuited ? 0.25 : 1), t, 0.03);
     N.breathFilter.frequency.setTargetAtTime(inhale > 0 ? 900 : 520, t, 0.05);
 
     // heartbeat (lub-dub) when the pulse is high
@@ -300,7 +335,7 @@ export class Audio {
     N.crawlGain.gain.setTargetAtTime(active && this.params.crawl > 0 ? 0.12 : 0, t, 0.08);
 
     // fan slows down (power saving) with low power; 'fan' param scales it
-    N.fanGain.gain.setTargetAtTime(0.11 * (this.params.fan ?? 1) * (0.6 + 0.4 * Math.min(1, (p.power ?? 1) * 4)), t, 0.5);
+    N.fanGain.gain.setTargetAtTime(unsuited ? 0 : 0.11 * (this.params.fan ?? 1) * (0.6 + 0.4 * Math.min(1, (p.power ?? 1) * 4)), t, 0.5);
 
     // warnings
     this.warnTimer -= dtr;

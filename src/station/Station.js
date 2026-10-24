@@ -13,6 +13,7 @@ import { AirlockModule } from './parts/Airlock.js';
 import { StationLights } from './parts/Lights.js';
 import { DetailSet } from './parts/Detail.js';
 import { mergeDecals } from '../core/StaticBatcher.js';
+import { StationInterior } from './interior/Interior.js';
 
 /**
  * Orbital station «Аврора» — near scene, meters, fixed at the origin.
@@ -66,6 +67,7 @@ export class Station extends THREE.Group {
     this.colliders.push(...truss.colliders, ...mods.colliders, ...dock.colliders, ...greebles.colliders, ...this.ringPart.staticColliders, ...this.ringPart.colliders,
       ...this.arrays.colliders, ...this.radiators.colliders, ...this.antennas.colliders, ...this.airlockPart.colliders);
     this.modules = mods;
+    this.interior = new StationInterior(ctx, this);   // compartment interiors (built in load())
     /** Text decals in the station frame: { text, position, width } (HUD / debugging). */
     this.labels = LABELS.splice(0, LABELS.length);
 
@@ -93,7 +95,7 @@ export class Station extends THREE.Group {
     if (ms > 2000) console.warn(`[Station] build took ${ms.toFixed(0)} ms`);
   }
 
-  async load() {}
+  async load() { await this.interior?.load(); }
 
   update(dt, ctx) {
     this.ringPart.update(dt);
@@ -103,6 +105,7 @@ export class Station extends THREE.Group {
     this.antennas.update(dt, ctx);
     this.airlockPart.update(dt);
     this.lights.update(dt, ctx);
+    this.interior?.update(dt, ctx);
   }
 
   dispose() {

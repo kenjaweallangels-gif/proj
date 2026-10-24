@@ -18,7 +18,9 @@ src/world/Earth.js         FAR scene: Earth (day/night/clouds/ocean/atmosphere),
 src/world/Sky.js           FAR scene: star catalogue + Milky Way
 src/station/Station.js     NEAR scene: the station (composes src/station/parts/*)
 src/ships/Ships.js         NEAR scene: ship types + docking traffic controller
-src/player/Player.js       first-person EVA: physics, controls, airlock sequence, suit model
+src/station/interior/*     pressurised compartment interiors (zones), visibility, carving, interior lights / materials
+src/player/Player.js       first-person astronaut: IVA (inside) + EVA physics, controls, airlock sequence, suit model
+src/player/Iva.js          inside the station: zero-g glide, handrails, spin-gravity walking (Coriolis), ladders
 src/ui/Hud.js              helmet HUD / visor overlay / menus / loading (DOM + canvas)
 src/audio/Audio.js         procedural WebAudio (breathing, suit fans, radio, thrusters, hatch)
 src/fx/Post.js             post-processing passes (bloom, final grade, SMAA) and lens flare
@@ -88,9 +90,10 @@ DockingPort = { id, name, position: Vector3, quaternion: Quaternion, size:'small
                 occupant: null | object, approachAxis: Vector3 /* unit, outward */ }
   // Port frame: local +Z points OUTWARD. A docked ship's nose sits at `position`, its
   // nose axis = -approachAxis. Ships read/write `occupant`.
-Airlock = { standPosition: Vector3, exitDirection: Vector3 /* unit */, lookDirection: Vector3,
-            hatch: { open(): Promise<void>, close(): Promise<void>, isOpen, progress /*0..1*/ },
-            interiorColliders: Collider[] /* walls of the airlock chamber */ }
+Airlock = { standPosition: Vector3 /* crew lock */, exitDirection: Vector3 /* unit */, lookDirection: Vector3,
+            hatch: { open(): Promise<void>, close(): Promise<void>, isOpen, progress /*0..1*/ },   // outer EVA hatch
+            innerHatch: { same API } /* equipment lock <-> crew lock */, innerHatchCenter, equipmentLockCenter,
+            suitPosition, interiorColliders: Collider[] /* EVA colliders: crew-lock walls, cap ring, bulkhead */ }
 ```
 Artificial gravity: the habitat ring (`ring.group`) rotates about its axis at ~0.3 rad/s
 (radius ~40 m gives ~0.37 g). Its colliders are marked dynamic and rotate with it.
@@ -109,7 +112,7 @@ Emit RCS puffs with `ctx.particles.emitCone(...)`. Docked ships occupy `port.occ
 ```js
 class Player {
   position, velocity (Vector3, m, m/s), quaternion   // camera follows
-  state: { mode: 'airlock'|'eva'|'observer', tetherLength, tetherAttached, propellant /*0..1*/,
+  state: { mode: 'iva'|'airlock'|'eva'|'observer', tetherLength, tetherAttached, propellant /*0..1*/,
            o2 /*0..1*/, power, suitPressure, heartRate, holding: handrail|null,
            speedRelative, distanceToStation }
   update(dt, ctx)
@@ -117,6 +120,11 @@ class Player {
 ```
 Zero-g 6-DOF with momentum; SAFER thrusters (translation + rotation), tether to the airlock
 with elastic limit, sphere-vs-collider collision (radius ~0.45 m), handrail grabbing/push-off.
+Modes: 'iva' — inside without the suit (radius 0.3 m), 'airlock' — inside in the suit (0.42 m), 'eva' — outside.
+Inside, `player.iva` (src/player/Iva.js) moves the body: zero-g glide in the station frame; in the ring zones (and the
+hub's rotating collar) the state lives in ring-local coordinates (`iva.pL`, `iva.vL`, rotating frame with centrifugal
+and Coriolis accelerations), walking on the deck, ladders in the spokes. `player.position/quaternion/velocity` are
+always the world (inertial) values.
 
 ## Materials (`ctx.materials.get(name)`) — reuse these, do not invent per-module duplicates
 
@@ -154,7 +162,7 @@ with other people transforms files on demand.
 
 ## Player extras
 
-`player.setView('airlock' | 'eva' | 'eva-far')` poses the player for screenshots;
+`player.setView('inside' | 'airlock' | 'eva' | 'eva-far' | <interior view>)` poses the player for screenshots;
 `player.setActive(bool)` is called when switching between play and observer modes.
 `station.viewpoints = { name: { position: [x,y,z], target: [x,y,z] } }` adds observer views.
 `station.airlock.tetherAnchor` (Vector3) is where the EVA tether attaches.
@@ -281,3 +289,33 @@ profile (`--callers=<fn>` prints the stacks that lead to a hot function).
   pixels and faded out beyond 160–320 m. Runtime: `post.grade.ao / aoStrength / aoRadius`.
 * **QualityGovernor** gained two levels: detail distance × 0.6 (after the shadow-map steps) and AO off (before
   bloom off).
+## Interiors (src/station/interior)
+
+`station.interior` (StationInterior, created in the Station constructor, built in `Station.load()`): every pressurised
+compartment is a zone `{ id, name (Russian), frame: 'station'|'ring', group, volumes, solids, rails, portals, lights,
+windows, carve, up }` — logistics, lab, hab1/hab2, service, medical, greenhouse, stowage, the three nodes, cupola,
+docking hub, service tunnel, the truss tunnel to the ring hub (spine), the airlock (airlockE equipment lock, airlockC
+crew lock), the ring hub, six spokes, six sector halls (pod0..5) and six curved corridors (cor0..5). Sector geometry is
+built once per variant (k mod 3) and shared by rotated meshes. Ring zones are children of `ring.group`.
+
+* Geometry: `Mesh.js` writes raw vertex arrays per material bucket (fast for ~10^5 small parts); `Kit.js` equipment
+  (ISPR racks, CBM / round hatches + vestibules, handrails, lights, cables, ducts, CTB bags, laptops, extinguishers,
+  PBA, suits, plants, exercise devices…); `Atlas.js` one procedural canvas atlas (+ emissive) for all textured parts.
+* Materials (`Materials.js`): GPU — MeshStandard with vertex colours (baked AO / light falloff), an interior PMREM
+  environment, two interior point lights; the Sun lights a fragment only if the ray toward it leaves through one of
+  the compartment's windows (analytic mask; hemisphere / ambient / spot lights removed, no sun shadow map). 'lite' —
+  unlit MeshBasic with all lighting baked into the vertex colours. Interior meshes are on layer 4 (`INTERIOR_LAYER`).
+* Visibility: the zone holding the camera + zones reached through open portals (frustum-tested, depth 4); from outside
+  only zones with a window within 9 m (and the crew lock behind the open EVA hatch). Inside a windowless zone the
+  camera drops the exterior layers, the far camera draws nothing and the sun shadow map is not re-rendered; window
+  glow discs of the hull are hidden while inside. App calls `station.interior.afterMaterials()` after
+  `splitMaterialVariants()`: exterior materials get a carve patch that discards fragments inside up to 12 active
+  volumes (cones / boxes / the ring torus), so hull parts that poke into the cabins vanish (GPU presets only).
+* Exposure: inside, `renderer.post.grade.autoExposure` is switched off and a fixed interior exposure is used.
+* Physics queries: `locate(worldPos, hint)`, `frameFor(zone, pos)`, `volumesFor(zone, frame)` (containment union,
+  `Volumes.js`), `solidsFor(zone, frame)`, `handrails` (station frame), `ringRails`, `ladders` (ring-local).
+* Views: `interior.views` — `inside` (start), `interior-lab|logistics|node1|node2|node3|hab1|hab2|greenhouse|medical|
+  service|dock|stowage|tunnel|ringhub|spoke|ring|pod|cabin`, `cupola-inside`, `airlock-inside`; `player.hasView(name)`.
+  URL `?start=inside|airlock` (menu: «НАЧАЛО»). The old `airlock` view = suited in the crew lock, inner hatch closed.
+* Player state additions: `suited`, `inside`, `compartment` (zone name for the HUD), `frame`, `gravity` (g),
+  `onLadder`, `autoLevel`, `nearSuit`, `nearInnerHatch`; sequences `don`, `doff`, `innerClose`, `innerOpen`.
