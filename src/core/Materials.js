@@ -66,7 +66,7 @@ export class Materials {
         return new THREE.MeshStandardMaterial({ color: 0x1c1d20, metalness: 0.6, roughness: 0.55, normalMap: t.normalMap, normalScale: new THREE.Vector2(0.8, 0.8) });
       },
       truss: () => new THREE.MeshStandardMaterial({ color: 0xe8e8e6, roughness: 0.55, metalness: 0.35, map: this.textures.hullPanels({ base: '#e8e8e6', seam: '#b4b4b0', grime: 0.25, cells: 12, rivets: false, seed: 17 }).map }),
-      metalBare: () => new THREE.MeshStandardMaterial({ color: 0xb8bcc2, roughness: 0.42, metalness: 0.95, roughnessMap: this.textures.noise({ scale: 8, seed: 5 }) }),
+      metalBare: () => this._pbr('metal_brushed', 4, { color: 0xf2f4f6 }) || new THREE.MeshStandardMaterial({ color: 0xb8bcc2, roughness: 0.42, metalness: 0.95, roughnessMap: this.textures.noise({ scale: 8, seed: 5 }) }),
       metalDark: () => new THREE.MeshStandardMaterial({ color: 0x3a3d42, roughness: 0.5, metalness: 0.85 }),
       metalTitanium: () => new THREE.MeshStandardMaterial({ color: 0x8e9196, roughness: 0.45, metalness: 0.9 }),
       solarCell: () => {

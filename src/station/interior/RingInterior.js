@@ -271,10 +271,12 @@ function buildPod(I, v) {
       surf(W, 'equip', (u, w) => D(u, w), (u, w) => Dn(w), xa, xb2, 1, ba, bb, 1, 0xffffff, T.rect(j % 3 === 1 ? 'panelB' : 'wallRing'));
     }
   }
-  // doorway jambs (tunnel from the drum wall to the corridor start) both sides
+  // doorway jambs (short tunnel from the cut in the drum wall to the corridor's door frame) both sides: side
+  // walls, lintel, so the cut edge of the drum never shows open space
   for (const s of [-1, 1]) {
-    const pa = s * (FLOOR * Math.sin(PHI_A) > 0 ? PHI_A : PHI_A);
-    void pa;
+    const pIn = s * 3.85 / FLOOR, pOut = s * (PHI_A + 0.0015);
+    for (const sx of [-1, 1]) surf(W, 'equip', (p, rho) => P(sx * 1.05, rho, p), () => V(-sx, 0, 0), Math.min(pIn, pOut), Math.max(pIn, pOut), 1, doorTop - 0.02, FLOOR + 0.02, 2, 0xffffff, T.rect('wallRing'));
+    surf(W, 'equip', (x, p) => P(x, doorTop, p), (x, p) => radial(p), -1.06, 1.06, 2, Math.min(pIn, pOut), Math.max(pIn, pOut), 1, 0xffffff, T.rect('ceilRing'));
   }
   // spoke opening collar at the top
   W.torus('metal', ff(P(0, PC - POD_R + 0.02, phi), radial(phi), X), 0.8, 0.05, 6, 32, COL.dark);
@@ -291,7 +293,7 @@ function buildPod(I, v) {
   }
   // floor: curved deck (rho = FLOOR) over the hall width
   const zFloor = Math.sqrt(POD_R * POD_R - (FLOOR - PC) ** 2);
-  const pf = zFloor / FLOOR;
+  const pf = Math.max(zFloor / FLOOR, PHI_A - 0.0004);   // meets the corridor floor at the doorway (no gap)
   surf(W, 'equip', (x, p) => P(x, FLOOR, p), (x, p) => radial(p).negate(), -POD_HX, POD_HX, 8, -pf, pf, 8, 0xffffff, T.rect(v === 1 ? 'mat' : v === 2 ? 'carpet' : 'floorGrate'));
   // skirting along the floor edges
   for (const s of [-1, 1]) W.tube('paint', [P(-POD_HX, FLOOR - 0.05, s * pf * 0.99), P(POD_HX, FLOOR - 0.05, s * pf * 0.99)], 0.05, 4, 0x5b6470);
@@ -416,6 +418,7 @@ function buildCorridor(I, v) {
   const p0 = PHI_A, p1 = SECT - PHI_A;
   const tubeX = (rho) => Math.sqrt(Math.max(0, TUBE * TUBE - (rho - R) ** 2));
   const xf = tubeX(FLOOR) - 0.02, xc = tubeX(CEIL) - 0.02;
+  const xfS = tubeX(FLOOR) + 0.04, xcS = tubeX(CEIL) + 0.04;   // floor / ceiling run 4 cm into the tube wall (no crack at the edge)
   const aisle = 1.0;
   // layout along phi (arc length at the partition radius ~ 40.3)
   const rp = 40.3, arc = (p1 - p0) * rp;
@@ -431,8 +434,8 @@ function buildCorridor(I, v) {
   // ---------- floor (aisle grating, carpet elsewhere), ceiling, lights
   const np = Math.max(8, Math.round(arc / 1.0));
   surf(W, 'equip', (x, p) => P(x, FLOOR, p), (x, p) => radial(p).negate(), -aisle, aisle, 2, p0 - 0.01, p1 + 0.01, np, 0xffffff, T.rect('floorGrate'));
-  for (const s of [-1, 1]) surf(W, 'c:equip', (x, p) => P(x, FLOOR, p), (x, p) => radial(p).negate(), s > 0 ? aisle : -xf, s > 0 ? xf : -aisle, 2, p0, p1, np, 0xffffff, T.rect('carpet'));
-  surf(W, 'equip', (x, p) => P(x, CEIL, p), (x, p) => radial(p), -xc, xc, 4, p0 - 0.01, p1 + 0.01, np, 0xffffff, T.rect('ceilRing'));
+  for (const s of [-1, 1]) surf(W, 'c:equip', (x, p) => P(x, FLOOR, p), (x, p) => radial(p).negate(), s > 0 ? aisle : -xfS, s > 0 ? xfS : -aisle, 2, p0, p1, np, 0xffffff, T.rect('carpet'));
+  surf(W, 'equip', (x, p) => P(x, CEIL, p), (x, p) => radial(p), -xcS, xcS, 4, p0 - 0.01, p1 + 0.01, np, 0xffffff, T.rect('ceilRing'));
   for (let k = 0; k <= np; k += 2) {
     const p = lerp(p0, p1, k / np);
     lightPanel(K, ff(P(0, CEIL + 0.01, p), radial(p), tangent(p)), 1.1, 0.22);

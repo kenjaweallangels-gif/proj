@@ -30,6 +30,7 @@ src/audio/Audio.js         procedural WebAudio (breathing, suit fans, radio, thr
 src/fx/Post.js             post-processing passes (bloom, final grade, SMAA) and lens flare
 tools/screenshot.mjs       Playwright headless screenshot of any view (for visual verification)
 tools/astro-test.mjs       plain-Node unit checks of Astro.js / Time.js (also run at the end of npm run smoke)
+tools/gapcheck.mjs         geometry gap / back-face / z-fight checker (see "Geometry quality")
 tools/interior-stats.mjs   interior build statistics (zones, triangles, atlas use); interior-debug.mjs runs a probe
                            snippet against window.__app (optional --shot=out.png)
 public/textures, public/data   NASA Earth/Moon textures, star catalogue (see CREDITS.md)
@@ -141,9 +142,10 @@ always the world (inertial) values.
 
 ## Materials (`ctx.materials.get(name)`) — reuse these, do not invent per-module duplicates
 
-hullWhite, hullWhiteAged, mliGold, mliSilver, mliBlack, truss, metalBare, metalDark,
-solarCell, solarBack, radiator, glass, windowGlow, navRed, navGreen, navWhite, floodLight,
-nozzle, rubberBlack, paintOrange, paintGray, antennaWhite, label(text) (decal material).
+hullWhite, hullWhiteAged, hullGray, mliGold, mliSilver, mliBlack, betaCloth, truss, metalBare, metalBrushed,
+metalMachined, metalDark, solarCell, solarBack, radiator, glass (clear, see "Geometry quality"), windowGlow, navRed,
+navGreen, navWhite, floodLight, nozzle, rubberBlack, paintOrange, paintGray, paintYellow, antennaWhite,
+label(text) (decal material).
 All are MeshStandard/MeshPhysical; `scene.environment` provides reflections automatically.
 
 ## Performance rules
@@ -341,6 +343,63 @@ built once per variant (k mod 3) and shared by rotated meshes. Ring zones are ch
   URL `?start=inside|airlock` (menu: «НАЧАЛО»). The old `airlock` view = suited in the crew lock, inner hatch closed.
 * Player state additions: `suited`, `inside`, `compartment` (zone name for the HUD), `frame`, `gravity` (g),
   `onLadder`, `autoLevel`, `nearSuit`, `nearInnerHatch`; sequences `don`, `doff`, `innerClose`, `innerOpen`.
+
+## Geometry quality: closed solids, surfaces, gap checking (station + ships)
+
+* **Conventions.** Everything visible is a closed solid with real thickness: lathe profiles are closed and walked
+  counter-clockwise in (radius, axial) (`latheAt`, ships `lathe`: aft → fore on the outside), boxes are chamfered
+  (`bevelBoxAt`, `plate(pts, t, chamfer)` for convex plates — window panes, petals, shutters, hex prisms), tubes
+  have end caps (interior `MeshWriter.tube` caps by default, `frame2D` always builds back / inner / outer walls on GPU
+  presets). Nothing floats: parts that sit on a curved module hull are wrapped onto it (`HullKit.conformLatheAt` —
+  hatches, hazard rings, round frames; `HullKit.conformSlab` — rails, window strips, covers) or reach it with legs
+  / saddles / brackets; supports end on structure (truss clamps span longeron to longeron, equipment hangs from
+  cross beams). Decals and raised bands sit 3–6 mm proud of the surface (never coplanar), panes sit 3–8 cm below
+  their frame lips. Matrices given to Builder geometry must be right-handed (a mirrored basis turns a solid inside
+  out; the DetailSet flips mirrored parts itself).
+* **Interiors** get a dark pressure-shell liner behind every wall (`Kit.shellTube`, `Core.shellX`; rack modules,
+  nodes with holes for the radial vestibules, airlock sections, ring hub incl. the rotating collar with its spoke
+  openings): any seam between panels or racks shows the shell, never open space or the carved hull. Ring corridor
+  floors / ceilings run into the tube wall; pod doorways have jambs and a lintel.
+* **Reusable kit parts** (station, ships and future vehicles): `Hardware.evaLamp` (bracket, finned housing, hooded
+  lens), `Hardware.toolBox`, `Hardware.cameraAssembly`, `Hardware.grappleFixture`, `Builder.plate`,
+  `HullKit.conformLatheAt / conformSlab`, `Docking.addPort` (IDSS-style passive port body: bolted base flange,
+  tapered tunnel, machined hard-capture ring with hook housings, MLI boot, seated hatch, docking target, lamps).
+  Ships: `src/ships/Kit.js` (`lathe`, `flange`, `block`, `porthole`, `thruster`, `handrail`, `patch`, …).
+* **Glass** (`Materials.clearGlass`, used for the exterior `glass` and the interior `int:glass`): optically clear —
+  the pane adds only its specular reflection (Schlick Fresnel: ~4 % head-on, strong at grazing angles) and attenuates
+  the background by 2–3 % (blending ONE / ONE_MINUS_SRC_ALPHA, near-black diffuse), so there is no grey haze over
+  the Earth; a scratch / dust roughness map (`Textures.glassScratches`) only shows inside the Sun's highlight.
+  Windows are two panes (the cupola: two exterior + two interior) seated in solid frames. 'lite' keeps the old cheap
+  transparent glass (and its interior haze outside the cupola).
+* **Surfaces (PBR sets).** `tools/fetch_station_textures.py` downloads CC0 scans from ambientCG (foil, fabric,
+  scratches, plastic, brushed / machined metal; ~220 MB, not in the repo) and `tools/bake_station_textures.py`
+  bakes tileable sets into `public/textures/station/<set>_{albedo,normal,orm}[_2k].jpg` (ORM = AO / roughness /
+  metalness): `hull_white`, `hull_aged`, `hull_gray` (6.5 m tiles: per-panel tint, recessed seams, rivet rows,
+  inspection panels, stencils, paint wear exposing metal, grime streaks, orange-peel micro normal; ~0.73 albedo
+  white paint), `mli_gold`, `mli_silver` (scanned crinkle + quilting, 1.6 m), `beta_cloth`, `metal_brushed`,
+  `metal_machined`, `int_plastic` (interior micro detail). `Textures.pbr(name, {repeat})` returns the three textures
+  at once and fills them when the JPEGs arrive (`Textures.ready()`, awaited by `Station.load`); variants with
+  another repeat share the image (one GPU upload). Ultra loads the 4K files (hull ORM stays 2K), the other GPU
+  presets the `_2k` files, 'lite' keeps the procedural canvas textures. VRAM (RGBA8 + mips): ultra ≈ 0.6 GB for
+  these sets, high ≈ 0.2 GB. Materials on sets: `hullWhite`, `hullWhiteAged`, `hullGray`, `mliGold`, `mliSilver`,
+  `betaCloth`, `metalBrushed`, `metalMachined` (+ the ships' `shipHull`, `shipMli`). Interior materials add a
+  tri-planar micro normal / roughness detail in object space (`interior/Materials.js` `DETAIL_*`: orange-peel
+  plastic on `equip` / `paint`, brushed metal on `metal`), so atlas-mapped parts get real surface response.
+* **`tools/gapcheck.mjs`** (+ `tools/gapcheck/probe.js`, imported by the page): loads the scene headless, stops the
+  App's rendering, and renders the NEAR scene only with id / depth / facing materials (glass counts as solid;
+  additive glows, depth-write-free decals and meshes flagged `userData.noCollide` are ignored) from automatic
+  cameras: exterior (colliders split into ≤ 5 m pieces, clustered, ten cameras each on a Fibonacci sphere at two
+  distances), ships (`?shipshow=clean` row, L0 and L1 distances), interior (inside every compartment volume along its
+  axes and towards every portal). It reports **holes** (background enclosed by surfaces facing the camera and
+  narrower than 5 cm), **cracks** (≤ 3 px slits between surfaces at equal depth), **back faces** of single-sided
+  materials nearest to the camera (open shells, one-sided planes seen from behind) and **z-fighting** (visible
+  surface changes when only the depth mapping changes). Views that see mostly back faces (camera inside a solid)
+  are skipped. Output: `report.json`, `summary.txt` (per area), review PNGs (left: real render on magenta,
+  right: false colour per mesh; red hole, yellow crack, orange back face, cyan z-fight, blue intended opening).
+  `node tools/gapcheck.mjs --set=exterior|interior|ships [--areas=node,lab | --zones=lab,cupola] [--sample=40]
+  [--w=512 --h=288] [--out=dir]` — about 10–40 s per view on SwiftShader.
+* **`userData.noCollide = true`** marks non-solid meshes (glows, light cones, beams): the collision world and
+  gapcheck skip them. Render meshes are otherwise the solid truth for collisions.
 
 ## Time (`ctx.time`, src/core/Time.js)
 

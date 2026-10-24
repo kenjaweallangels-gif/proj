@@ -58,7 +58,7 @@ export function buildModules(ctx, station, b, rails) {
           const c = H.axisPoint(end * len / 2);
           b.add('hullWhiteAged', latheAt(c, H.dir, endProfile(end, [[r - 0.06, 0.0], [r + 0.03, 0.025], [r + 0.03, 0.56], [r - 0.12, 0.62]]), 64));
           b.add('metalDark', latheAt(H.axisPoint(end * (len / 2 + 0.3)), H.dir, [[r + 0.025, -0.03], [r + 0.045, -0.02], [r + 0.045, 0.02], [r + 0.025, 0.03]], 64), false);
-          if (vestibule) b.add('mliSilver', tubeAt(H.axisPoint(end * (len / 2 + 1.35)), H.dir, r * 0.86, 1.5, 40));
+          if (vestibule) b.add('betaCloth', tubeAt(H.axisPoint(end * (len / 2 + 1.35)), H.dir, r * 0.86, 1.5, 40));
           const n = Math.round((2 * Math.PI * r) / 0.2);
           for (let k = 0; k < n; k++) for (const dt of [0.2, 0.42]) D.bolt(H.surface(end * (len / 2 + dt), (k + (dt > 0.3 ? 0.5 : 0)) / n * Math.PI * 2, r + 0.03, _m), 0.014, 0.01);
         }
@@ -298,7 +298,7 @@ export function buildModules(ctx, station, b, rails) {
       const ex = B0.clone().sub(A0).normalize(), ey = A1.clone().add(B1).multiplyScalar(0.5).sub(A0.clone().add(B0).multiplyScalar(0.5));
       const hh = ey.length(); ey.normalize();
       const ez = new THREE.Vector3().crossVectors(ex, ey).normalize();
-      if (ez.dot(cen.clone().sub(V(cx, cen.y, 0))) < 0) ez.negate();
+      if (ez.dot(cen.clone().sub(V(cx, cen.y, 0))) < 0) { ez.negate(); ex.negate(); }   // keep the basis right-handed
       const wTop = A0.distanceTo(B0) - 0.16, wBot = A1.distanceTo(B1) - 0.16, hp = hh - 0.14;
       const trap = [[-wTop / 2, -hp / 2], [wTop / 2, -hp / 2], [wBot / 2, hp / 2], [-wBot / 2, hp / 2]];
       const M = new THREE.Matrix4().makeBasis(ex, ey, ez).setPosition(cen);
@@ -311,7 +311,7 @@ export function buildModules(ctx, station, b, rails) {
       // open shutter on two hinge arms from the drum flange, hanging outside the window
       const a2 = (k / 6) * Math.PI * 2, nrm = V(Math.cos(a2), 0, Math.sin(a2)), tan = V(-Math.sin(a2), 0, Math.cos(a2));
       const sc = V(cx, top - 1.45, 0).addScaledVector(nrm, 1.8);
-      const Ms = new THREE.Matrix4().makeBasis(tan, Y_AXIS, nrm).setPosition(sc);
+      const Ms = new THREE.Matrix4().makeBasis(tan, Y_AXIS, tan.clone().cross(Y_AXIS)).setPosition(sc);   // right-handed
       b.add('hullWhiteAged', plate([[-0.44, -0.48], [0.44, -0.48], [0.44, 0.48], [-0.44, 0.48]], 0.04, 0.012).applyMatrix4(Ms));
       for (const sx of [-1, 1]) {
         const h0 = V(cx, top - 0.93, 0).addScaledVector(nrm, 1.64).addScaledVector(tan, sx * 0.3), h1 = sc.clone().addScaledVector(tan, sx * 0.3).addScaledVector(Y_AXIS, 0.4).addScaledVector(nrm, -0.03);
