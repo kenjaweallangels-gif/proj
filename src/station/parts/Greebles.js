@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { LAYOUT } from './Layout.js';
-import { boxAt, bevelBoxAt, tubeAt, torusAt, latheAt, sphereAt, mat, Colliders, X_AXIS, Y_AXIS, Z_AXIS } from './Builder.js';
+import { boxAt, bevelBoxAt, bevelBox, tubeAt, torusAt, latheAt, sphereAt, mat, Colliders, X_AXIS, Y_AXIS, Z_AXIS } from './Builder.js';
 import { COL, boltCircle, radialBolts, boltRow, connectorPanel, standoffFoot } from './Detail.js';
 import { grappleFixture } from './Hardware.js';
 
@@ -28,14 +28,16 @@ export function buildGreebles(ctx, station, b, rails, mods) {
   function pallet(H, t, dir, seed) {
     const th = H.thetaFor(dir);
     const s = H.surface(t, th, H.r + 0.55, new THREE.Matrix4());
-    b.add('truss', at(new THREE.BoxGeometry(2.4, 0.12, 1.7), s), false);
+    // chamfered boxes on GPU presets (plain boxes on 'lite')
+    const BX = (w, hh, d) => (D ? bevelBox(w, hh, d, Math.min(w, hh, d) * 0.12) : new THREE.BoxGeometry(w, hh, d));
+    b.add('truss', at(BX(2.4, 0.12, 1.7), s), false);
     for (const [dx, dz] of [[-1.05, -0.7], [1.05, -0.7], [-1.05, 0.7], [1.05, 0.7]]) {
       b.add('metalDark', at(new THREE.CylinderGeometry(0.05, 0.05, 0.55, 6).translate(dx, -0.3, dz), s), false);
-      b.add('metalDark', at(new THREE.BoxGeometry(0.16, 0.08, 0.16).translate(dx, 0.1, dz), s), false);
+      b.add('metalDark', at(BX(0.16, 0.08, 0.16).translate(dx, 0.1, dz), s), false);
     }
     // frame rails
-    for (const dz of [-0.8, 0.8]) b.add('metalDark', at(new THREE.BoxGeometry(2.4, 0.08, 0.08).translate(0, 0.1, dz), s), false);
-    for (const dx of [-1.15, 1.15]) b.add('metalDark', at(new THREE.BoxGeometry(0.08, 0.08, 1.7).translate(dx, 0.1, 0), s), false);
+    for (const dz of [-0.8, 0.8]) b.add('metalDark', at(BX(2.4, 0.08, 0.08).translate(0, 0.1, dz), s), false);
+    for (const dx of [-1.15, 1.15]) b.add('metalDark', at(BX(0.08, 0.08, 1.7).translate(dx, 0.1, 0), s), false);
     // instruments (vary with seed)
     const kit = [
       ['mliGold', 0.7, 0.5, 0.6, -0.7, 0.35, 0.3], ['paintGray', 0.5, 0.35, 0.5, 0.25, 0.28, -0.4], ['mliBlack', 0.4, 0.6, 0.4, 0.85, 0.4, 0.35],
@@ -43,7 +45,7 @@ export function buildGreebles(ctx, station, b, rails, mods) {
     ];
     for (let i = 0; i < kit.length; i++) {
       const [mn, w, hh, d, x, y, z] = kit[(i + seed) % kit.length];
-      b.add(mn, at(new THREE.BoxGeometry(w, hh, d).translate(x + 0.08 * seed, y, z), s), false);
+      b.add(mn, at(BX(w, hh, d).translate(x + 0.08 * seed, y, z), s), false);
     }
     // a small aperture / sensor on the gold box and a cable to the hull
     b.add('metalDark', at(new THREE.CylinderGeometry(0.12, 0.12, 0.12, 12).translate(-0.7, 0.66, 0.3), s), false);
