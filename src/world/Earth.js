@@ -374,15 +374,21 @@ export class Earth {
         this.uCamObj.value.copy(_camKm).sub(o.earthCenterFar).applyQuaternion(_qInv);
       }
       if (this.textures) {
-        // ground-track direction (deg/frame, longitude wrapped) for the window lead
+        // tiles follow the camera's own sub-point (any render frame: station, free camera, ...): Earth-object frame
+        // direction of the camera -> lat / lon; plus its ground-track direction for the window lead
+        _v.copy(_camKm).sub(C).applyQuaternion(_qInv);
+        const camAlt = _v.length() - EARTH_RADIUS_KM;
+        _v.normalize();
+        const lat = Math.asin(Math.max(-1, Math.min(1, _v.y))) * 180 / Math.PI, lon = Math.atan2(-_v.z, _v.x) * 180 / Math.PI;
         const p = this._prevSub;
-        let dLon = o.subLonDeg - p.lon; if (dLon > 180) dLon -= 360; if (dLon < -180) dLon += 360;
-        const dLat = o.subLatDeg - p.lat;
-        if (Math.abs(dLat) + Math.abs(dLon) > 1e-6) { p.dLat = dLat; p.dLon = dLon; }
-        p.lat = o.subLatDeg; p.lon = o.subLonDeg;
-        // tiles follow up to x60 (one 5-degree tile per ~1.2 s); faster, the ground races by and the layers fade out
-        const active = scale <= 60;
-        for (const k of ['relief', 'day', 'night']) this.tiles[k]?.update(o.subLatDeg, o.subLonDeg, p.dLat, p.dLon, dtReal, active);
+        let dLon = lon - p.lon; if (dLon > 180) dLon -= 360; if (dLon < -180) dLon += 360;
+        const dLat = lat - p.lat;
+        if (Math.abs(dLat) + Math.abs(dLon) > 1e-6 && Math.abs(dLat) + Math.abs(dLon) < 2) { p.dLat = dLat; p.dLon = dLon; }
+        p.lat = lat; p.lon = lon;
+        // tiles follow up to x60 (one 5-degree tile per ~1.2 s) and below ~2500 km; faster or higher, the detail
+        // is not resolved and the layers fade out
+        const active = scale <= 60 && camAlt < 2500;
+        for (const k of ['relief', 'day', 'night']) this.tiles[k]?.update(lat, lon, p.dLat, p.dLon, dtReal, active);
       }
     }
     // horizon culling from the viewpoint (km; the near camera sits within metres of the station)

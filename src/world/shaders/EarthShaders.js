@@ -99,8 +99,6 @@ float nightBSpline(sampler2D tex, vec2 uv, int lod) {
   float l = float(lod);
   return g0.y * (g0.x * textureLod(tex, h0, l).r + g1.x * textureLod(tex, vec2(h1.x, h0.y), l).r)
        + g1.y * (g0.x * textureLod(tex, vec2(h0.x, h1.y), l).r + g1.x * textureLod(tex, h1, l).r);
-}
-
 }`;
 
 /**
