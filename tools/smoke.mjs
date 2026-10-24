@@ -80,22 +80,22 @@ async function coreChecks() {
   await page.keyboard.press('KeyF');
   check('observer mode for the time panel', await until(() => window.__app.mode === 'observer'));
   const obs = page.locator('.obs:not(.free)');
-  await obs.locator('.tc-presets button', { hasText: /^×600$/ }).click({ timeout });
+  await obs.locator('.tc-presets button', { hasText: /^×600$/ }).click({ timeout: 60000 });
   await frames(1);
   check('preset button sets x600', (await T()).rate === 600, JSON.stringify(await T()));
-  await obs.locator('.tc-pause').click({ timeout });
+  await obs.locator('.tc-pause').click({ timeout: 60000 });
   const p0 = await T(); await frames(3); const p1 = await T();
   check('pause button stops the clock (frames keep rendering)', p0.paused && p1.paused && p1.sim === p0.sim && p1.frames > p0.frames, `${p0.sim} -> ${p1.sim}`);
-  await obs.locator('.tc-pause').click({ timeout });
+  await obs.locator('.tc-pause').click({ timeout: 60000 });
   check('pause button resumes', (await T()).paused === false);
-  await obs.locator('.tc-row button', { hasText: /^»$/ }).click({ timeout });
+  await obs.locator('.tc-row button', { hasText: /^»$/ }).click({ timeout: 60000 });
   check('» button: next rate on the ladder', (await T()).rate === 1800);
-  await obs.locator('.tc-row button', { hasText: /^×1$/ }).click({ timeout });
+  await obs.locator('.tc-row button', { hasText: /^×1$/ }).click({ timeout: 60000 });
   check('×1 button resets the rate', (await T()).rate === 1);
 
   // x3600 for a few real seconds: everything advances and stays finite
   const before = await ev(() => { const a = window.__app; return { sim: a.time.sim, traffic: a.ships.traffic.t, log: a.ships.getLog().length, frames: a.frameCount }; });
-  await obs.locator('.tc-presets button', { hasText: /^×3600$/ }).click({ timeout });
+  await obs.locator('.tc-presets button', { hasText: /^×3600$/ }).click({ timeout: 60000 });
   await page.waitForTimeout(4000);
   const after = await ev(() => {
     const a = window.__app, o = a.orbit;
@@ -107,16 +107,16 @@ async function coreChecks() {
   check('x3600: sim time advanced by hours in a few seconds', after.sim - before.sim > 3600, `${((after.sim - before.sim) / 3600).toFixed(2)} h in ${after.frames - before.frames} frames`);
   check('x3600: docking traffic kept pace (fast-forward)', after.traffic - before.traffic > 0.9 * (after.sim - before.sim), `traffic +${(after.traffic - before.traffic).toFixed(0)} s`);
   check('x3600: ships / orbit / player stay finite, ships docked', after.shipsOk && after.orbitOk && after.playerOk && after.docked > 0, after.states);
-  await obs.locator('.tc-row button', { hasText: /^×1$/ }).click({ timeout });
+  await obs.locator('.tc-row button', { hasText: /^×1$/ }).click({ timeout: 60000 });
   // jumps
   const j0 = await ev(() => ({ sim: window.__app.time.sim, traffic: window.__app.ships.traffic.t }));
-  await obs.locator('.tc-jumps button', { hasText: '+1 сут' }).click({ timeout });
+  await obs.locator('.tc-jumps button', { hasText: '+1 сут' }).click({ timeout: 60000 });
   await frames(1);
   const j1 = await ev(() => ({ sim: window.__app.time.sim, traffic: window.__app.ships.traffic.t, sub: window.__app.orbit.subLatDeg }));
   check('+1 сут jumps the clock by a day, traffic catches up', j1.sim - j0.sim >= 86400 && j1.traffic - j0.traffic >= 86400 && Number.isFinite(j1.sub), `${(j1.sim - j0.sim).toFixed(0)} s`);
   // date field
   await obs.locator('.tc-date').fill('2026-12-31T23:00');
-  await obs.locator('.tc-goto button').click({ timeout });
+  await obs.locator('.tc-goto button').click({ timeout: 60000 });
   const d = await ev(() => window.__app.time.utc().toISOString());
   check('date field jumps to the UTC date', d.startsWith('2026-12-31T23:00'), d);
   await ev(() => window.__app.time.setUtc(Date.UTC(2026, 9, 22, 9, 40)));

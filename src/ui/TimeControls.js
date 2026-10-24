@@ -36,7 +36,7 @@ export class TimeControls {
     const presets = el('div', 'tc-presets');
     this.presetBtns = new Map();
     for (const r of TIME_PRESETS) {
-      const b = this._btn(rateLabel(r).replace(' тыс.', 'k'), `${rateLabel(r)} — ${PRESET_TIPS[r] || rateMeaning(r)}`, () => { this.time.setRate(r); this.time.setPaused(false); });
+      const b = this._btn(r === 1e6 ? '×10⁶' : `×${r}`, `${rateLabel(r)} — ${PRESET_TIPS[r] || rateMeaning(r)}`, () => { this.time.setRate(r); this.time.setPaused(false); });
       this.presetBtns.set(r, b);
       presets.append(b);
     }

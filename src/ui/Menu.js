@@ -35,7 +35,7 @@ export class Menu {
     this.startBtn = el('button', 'btn primary', 'НАЧАТЬ'); this.startBtn.type = 'button';
     this.startBtn.addEventListener('click', () => this.hud.startFromMenu());
     this.observerBtn = el('button', 'btn', 'КАМЕРА ОБЗОРА'); this.observerBtn.type = 'button';
-    this.observerBtn.addEventListener('click', () => { this.hud.hideMenu(); try { ctx.app?.setMode?.('observer'); } catch (e) { console.warn(e); } });
+    this.observerBtn.addEventListener('click', () => { this.hud.hideMenu(); try { if (ctx.mode === 'free') ctx.app?.leaveFreeCamera?.('observer'); else ctx.app?.setMode?.('observer'); } catch (e) { console.warn(e); } });
     this.freeBtn = el('button', 'btn', 'СВОБОДНАЯ КАМЕРА'); this.freeBtn.type = 'button';
     this.freeBtn.title = 'Полёт куда угодно: вокруг станции, над Землёй, к Луне (C)';
     this.freeBtn.addEventListener('click', () => { this.hud.hideMenu(); try { if (ctx.mode !== 'free') ctx.app?.toggleFreeCamera?.(); } catch (e) { console.warn(e); } });

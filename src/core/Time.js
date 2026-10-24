@@ -24,12 +24,12 @@ export const TIME_RATES = [0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600, 1
 export const TIME_PRESETS = [1, 10, 60, 600, 3600, 86400, 1e6];
 export const MIN_RATE = 0.1, MAX_RATE = 1e6;
 
-/** Short Russian label of a rate: ×1, ×600, ×1 ч/с … */
+/** Short label of a rate: ×0.5, ×1, ×600, ×86 400, ×10⁶. */
 export function rateLabel(r) {
   if (!(r > 0)) return '×0';
-  if (r >= 1e6) return `×${(r / 1e6).toFixed(r % 1e6 ? 1 : 0)}·10⁶`;
-  if (r >= 1000) return `×${(r / 1000).toFixed(r % 1000 ? 1 : 0)} тыс.`;
-  return `×${r < 1 ? String(r) : Math.round(r)}`;
+  if (r >= 1e6) return r === 1e6 ? '×10⁶' : `×${+(r / 1e6).toFixed(2)}·10⁶`;
+  if (r < 1) return `×${r}`;
+  return `×${Math.round(r).toLocaleString('ru-RU')}`;
 }
 
 /** "1 с = 1 ч" style explanation of a rate (tooltips). */
