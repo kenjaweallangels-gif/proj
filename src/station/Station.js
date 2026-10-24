@@ -11,6 +11,7 @@ import { SolarArrays, Radiators } from './parts/Arrays.js';
 import { Antennas } from './parts/Antennas.js';
 import { AirlockModule } from './parts/Airlock.js';
 import { StationLights } from './parts/Lights.js';
+import { DetailSet } from './parts/Detail.js';
 
 /**
  * Orbital station «Аврора» — near scene, meters, fixed at the origin.
@@ -34,7 +35,10 @@ export class Station extends THREE.Group {
     // docking / EVA work lights share one material so Lights can dim them in daylight
     if (!ctx.materials.factories.dockLight) ctx.materials.register('dockLight', () => { const m = ctx.materials.get('floodLight').clone(); m.emissiveIntensity = 2; return m; });
     const b = new Builder(ctx.materials);
-    const rails = new Handrails(ctx.materials, this.handrails);
+    // close-range hardware (bolts, latches, sockets…), distance culled; not on CPU rasterisers ('lite')
+    this.detail = ctx.quality?.lite ? null : new DetailSet(ctx, this);
+    b.detail = this.detail;
+    const rails = new Handrails(ctx.materials, this.handrails, this.detail);
 
     const truss = buildTruss(ctx, this, b, rails);
     const mods = buildModules(ctx, this, b, rails);
@@ -49,6 +53,10 @@ export class Station extends THREE.Group {
 
     this.staticMeshes = b.build(this, { name: 'station' });
     rails.build(this);
+    if (this.detail) {
+      this.detail.build();
+      console.info(`[Station] detail: ${this.detail.parts} parts, ${this.detail.entries.length} cells, ${(this.detail.triangles / 1e6).toFixed(2)} M triangles (merge ${this.detail.buildMs.toFixed(0)} ms)`);
+    }
 
     // contract fields
     this.dockingPorts = dock.ports;
@@ -85,6 +93,7 @@ export class Station extends THREE.Group {
 
   update(dt, ctx) {
     this.ringPart.update(dt);
+    this.detail?.update(ctx.camera);   // uses last frame's world matrices: fine for culling
     this.arrays.update(dt, ctx);
     this.radiators.update(dt, ctx);
     this.antennas.update(dt, ctx);

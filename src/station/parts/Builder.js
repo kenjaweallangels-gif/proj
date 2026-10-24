@@ -111,11 +111,127 @@ export function torusAt(c, dir, R, r, rs = 8, ts = 32, arc = Math.PI * 2) {
   return g;
 }
 
+/**
+ * Ring with a cross-section `profile` [[radius, axialOffset], ...] around the axis `dir` through c: flanges,
+ * weld lands, gaskets, berthing rings. Each profile segment is its own lathe strip, so corners stay crisp
+ * (flat normals per segment). Walk the profile counter-clockwise in (r, y) — outward wall upward, top face
+ * inward — for outward-facing surfaces.
+ */
+export function latheAt(c, dir, profile, seg = 48) {
+  const parts = [];
+  for (let i = 0; i < profile.length - 1; i++) {
+    const [r0, y0] = profile[i], [r1, y1] = profile[i + 1];
+    if (Math.abs(r0 - r1) < 1e-6 && Math.abs(y0 - y1) < 1e-6) continue;
+    const g = new THREE.LatheGeometry([new THREE.Vector2(r0, y0), new THREE.Vector2(r1, y1)], seg);
+    const uv = g.attributes.uv, circ = 2 * Math.PI * Math.max(r0, r1) / TEX_M, l = Math.hypot(r1 - r0, y1 - y0) / TEX_M;
+    for (let k = 0; k < uv.count; k++) uv.setXY(k, uv.getX(k) * circ, uv.getY(k) * l);
+    parts.push(g);
+  }
+  const g = parts.length === 1 ? parts[0] : mergeGeometries(parts, false);
+  if (parts.length > 1) for (const p of parts) p.dispose();
+  g.applyMatrix4(_m.compose(c, quatY(dir), _v.set(1, 1, 1)));
+  return g;
+}
+
+/** Box w×h×d with chamfered edges (bevel b) centred at c, optional quaternion; planar UVs in TEX_M. */
+export function bevelBoxAt(c, w, h, d, quat = null, bevel = Math.min(w, h, d) * 0.12) {
+  const g = bevelBox(w, h, d, bevel);
+  g.applyMatrix4(_m.compose(c, quat || _q.identity(), _v.set(1, 1, 1)));
+  return g;
+}
+
 /** Thin plane (PlaneGeometry, normal +Z) placed by matrix. */
 export function planeAt(w, h, matrix) {
   const g = new THREE.PlaneGeometry(w, h);
   g.applyMatrix4(matrix);
   return g;
+}
+
+/* ---------------------------------------------------------------- flat-shaded convex primitives */
+
+
+/** Small polygon mesh builder: convex faces, flat normals (outward from `center`), planar UVs in metres / TEX_M. */
+export class Poly {
+  constructor(center = new THREE.Vector3()) { this.center = center; this.p = []; this.n = []; this.uv = []; this.i = []; }
+  face(pts) {
+    // Newell normal
+    let nx = 0, ny = 0, nz = 0, cx = 0, cy = 0, cz = 0;
+    for (let k = 0; k < pts.length; k++) {
+      const a = pts[k], b = pts[(k + 1) % pts.length];
+      nx += (a.y - b.y) * (a.z + b.z); ny += (a.z - b.z) * (a.x + b.x); nz += (a.x - b.x) * (a.y + b.y);
+      cx += a.x; cy += a.y; cz += a.z;
+    }
+    cx /= pts.length; cy /= pts.length; cz /= pts.length;
+    let l = Math.hypot(nx, ny, nz) || 1; nx /= l; ny /= l; nz /= l;
+    let order = pts;
+    if (nx * (cx - this.center.x) + ny * (cy - this.center.y) + nz * (cz - this.center.z) < 0) { nx = -nx; ny = -ny; nz = -nz; order = pts.slice().reverse(); }
+    const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
+    const base = this.p.length / 3;
+    for (const q of order) {
+      this.p.push(q.x, q.y, q.z); this.n.push(nx, ny, nz);
+      if (ax >= ay && ax >= az) this.uv.push(q.z / TEX_M, q.y / TEX_M); else if (ay >= az) this.uv.push(q.x / TEX_M, q.z / TEX_M); else this.uv.push(q.x / TEX_M, q.y / TEX_M);
+    }
+    for (let k = 1; k < order.length - 1; k++) this.i.push(base, base + k, base + k + 1);
+    return this;
+  }
+  geo() {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(this.n, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
+    g.setIndex(this.i);
+    g.computeBoundingSphere();
+    return g;
+  }
+}
+
+const P3 = (x, y, z) => new THREE.Vector3(x, y, z);
+
+/** Box w×h×d centred at the origin with chamfered edges (bevel b): 44 triangles, flat shaded. */
+export function bevelBox(w, h, d, b = Math.min(w, h, d) * 0.12) {
+  const X = w / 2, Yh = h / 2, Z = d / 2;
+  b = Math.min(b, X * 0.9, Yh * 0.9, Z * 0.9);
+  const pl = new Poly();
+  const pt = (sx, sy, sz, k) => k === 0 ? P3(sx * X, sy * (Yh - b), sz * (Z - b)) : k === 1 ? P3(sx * (X - b), sy * Yh, sz * (Z - b)) : P3(sx * (X - b), sy * (Yh - b), sz * Z);
+  const S = [-1, 1];
+  // main faces
+  for (const s of S) {
+    pl.face([pt(s, -1, -1, 0), pt(s, 1, -1, 0), pt(s, 1, 1, 0), pt(s, -1, 1, 0)]);
+    pl.face([pt(-1, s, -1, 1), pt(1, s, -1, 1), pt(1, s, 1, 1), pt(-1, s, 1, 1)]);
+    pl.face([pt(-1, -1, s, 2), pt(1, -1, s, 2), pt(1, 1, s, 2), pt(-1, 1, s, 2)]);
+  }
+  // edge chamfers
+  for (const sa of S) for (const sb of S) {
+    pl.face([pt(sa, sb, -1, 0), pt(sa, sb, 1, 0), pt(sa, sb, 1, 1), pt(sa, sb, -1, 1)]);   // along Z
+    pl.face([pt(-1, sa, sb, 1), pt(1, sa, sb, 1), pt(1, sa, sb, 2), pt(-1, sa, sb, 2)]);   // along X
+    pl.face([pt(sa, -1, sb, 0), pt(sa, 1, sb, 0), pt(sa, 1, sb, 2), pt(sa, -1, sb, 2)]);   // along Y
+  }
+  // corners
+  for (const sx of S) for (const sy of S) for (const sz of S) pl.face([pt(sx, sy, sz, 0), pt(sx, sy, sz, 1), pt(sx, sy, sz, 2)]);
+  return pl.geo();
+}
+
+/**
+ * Prism / frustum stack along +Y from rings [[r, y], ...] with `sides` sides (flat shaded), optional top cap.
+ * Used for hex bolts, rivets, buttons, bosses.
+ */
+export function ringStack(sides, rings, { top = true, bottom = false, phase = Math.PI / sides } = {}) {
+  const pl = new Poly(P3(0, (rings[0][1] + rings[rings.length - 1][1]) / 2, 0));
+  const ring = (r, y) => { const a = []; for (let k = 0; k < sides; k++) { const t = phase + (k / sides) * Math.PI * 2; a.push(P3(r * Math.cos(t), y, r * Math.sin(t))); } return a; };
+  const R = rings.map(([r, y]) => ring(r, y));
+  for (let j = 0; j < R.length - 1; j++) {
+    const a = R[j], b = R[j + 1];
+    for (let k = 0; k < sides; k++) {
+      const k1 = (k + 1) % sides;
+      if (rings[j + 1][0] < 1e-6) pl.face([a[k], a[k1], b[k]]);
+      else if (rings[j][0] < 1e-6) pl.face([a[k], b[k1], b[k]]);
+      else pl.face([a[k], a[k1], b[k1], b[k]]);
+    }
+  }
+  const last = R[R.length - 1];
+  if (top && rings[rings.length - 1][0] > 1e-6) pl.face(last);
+  if (bottom && rings[0][0] > 1e-6) pl.face(R[0]);
+  return pl.geo();
 }
 
 /** Every text decal built by any Builder (static station frame only): { text, position }. Station copies it into `station.labels`. */
@@ -126,6 +242,7 @@ export class Builder {
     this.materials = materials;
     this.buckets = new Map();   // key -> { material, geos, shadow }
     this.labelsDynamic = false; // set true on builders whose parent moves (ring): their labels are not registered
+    this.detail = null;         // DetailSet for close-range hardware (Detail.js); null on 'lite'
   }
 
   /** Add a geometry (already positioned) to the bucket of material `name`. `shadow` false = tiny emissive/detail part. */

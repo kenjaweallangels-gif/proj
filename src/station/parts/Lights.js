@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { LAYOUT } from './Layout.js';
 import { LAYERS } from '../../core/constants.js';
-import { Builder, boxAt, tubeAt } from './Builder.js';
+import { Builder, boxAt, bevelBoxAt, tubeAt } from './Builder.js';
+import { COL } from './Detail.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const CY = LAYOUT.clusterY;
@@ -97,6 +98,17 @@ export class StationLights {
       bf.add('metalDark', boxAt(f.pos.clone().addScaledVector(dir, -0.12), 0.5, 0.42, 0.34, q, false), false);
       bf.add('floodLight', boxAt(f.pos.clone().addScaledVector(dir, 0.06), 0.4, 0.32, 0.03, q, false), false, this.floodMat);
       bf.add('metalDark', tubeAt(f.pos.clone().addScaledVector(dir, -0.45), dir, 0.05, 0.4, 6, { uv: false }), false);
+      const D = station.detail;
+      if (D) {
+        // heat-sink fins on the back, yoke with pivot pins, bezel bolts
+        const M = new THREE.Matrix4().compose(f.pos, q, V(1, 1, 1));
+        for (let i = 0; i < 6; i++) D.part('mid', 'metal', COL.dark, 'box', M, -0.2 + i * 0.08, 0, -0.33, 0.012, 0.36, 0.12);
+        for (const sx of [-1, 1]) {
+          D.part('mid', 'metal', COL.steel, 'bbox', M, sx * 0.28, 0, -0.12, 0.03, 0.12, 0.3);
+          D.part('mid', 'metal', COL.bare, 'cyl8', M.clone().multiply(new THREE.Matrix4().makeRotationZ(Math.PI / 2)), 0, -sx * 0.3, -0.12, 0.03, 0.06, 0.03);
+        }
+        for (const [x, y] of [[-0.21, -0.17], [0.21, -0.17], [-0.21, 0.17], [0.21, 0.17]]) D.bolt(M.clone().multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2).setPosition(x, y, 0.05)), 0.012, 0.008);
+      }
       floodPositions.push(f.pos.clone().addScaledVector(dir, 0.15));
     }
     bf.build(station, { name: 'floodHeads' });

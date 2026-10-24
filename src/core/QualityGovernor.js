@@ -1,7 +1,8 @@
 /**
  * Keeps a GPU preset at its frame-rate target (default 60 fps) without ever rendering below the
  * resolution floor (default 1080 lines): when frames run long it gives up, in order,
- *   supersampling above the floor -> MSAA samples -> shadow-map size -> env-map refresh rate -> bloom,
+ *   supersampling above the floor -> MSAA samples -> shadow-map size -> station detail distance ->
+ *   env-map refresh rate -> ambient occlusion -> bloom,
  * and restores them (in reverse) when there is sustained headroom. Headroom is judged from GPU time
  * (EXT_disjoint_timer_query_webgl2) when the browser exposes it; otherwise a step up is tried after a
  * long stable period and reverted (and that level locked for a while) if it causes drops.
@@ -28,7 +29,8 @@ export class QualityGovernor {
   /** Quality levels from best to cheapest; each is a full set of knob values. */
   _buildLevels() {
     const q = this.app.quality;
-    const base = { pr: this.app.renderer.basePixelRatio(), msaa: q.msaa || 0, shadow: q.shadowMapSize || 2048, env: q.envUpdateInterval || 2, bloom: !!q.bloom };
+    const base = { pr: this.app.renderer.basePixelRatio(), msaa: q.msaa || 0, shadow: q.shadowMapSize || 2048, env: q.envUpdateInterval || 2, bloom: !!q.bloom,
+      detail: 1, ao: !!this.app.renderer.post?.aoPass };
     const floor = this.app.renderer.floorPixelRatio();
     const L = [{ ...base }];
     const push = (patch) => L.push({ ...L[L.length - 1], ...patch });
@@ -40,8 +42,11 @@ export class QualityGovernor {
     if (base.msaa > 0) push({ msaa: 0 });
     // 3. shadow map
     for (let s = base.shadow / 2; s >= 1024; s /= 2) push({ shadow: s });
-    // 4. environment reflections refresh, 5. bloom
+    // 4. close-range station hardware drawn to 60 % of its distance (Detail.js), 5. environment reflections
+    // refresh, 6. ambient occlusion, 7. bloom
+    if (this.app.station?.detail) push({ detail: 0.6 });
     push({ env: Math.max(base.env, 6) });
+    if (base.ao) push({ ao: false });
     if (base.bloom) push({ bloom: false });
     return L;
   }
@@ -137,6 +142,8 @@ export class QualityGovernor {
     }
     if (prev.env !== next.env) app.quality.envUpdateInterval = next.env;
     if (prev.bloom !== next.bloom && post?.grade) post.grade.bloom = next.bloom;
+    if (prev.detail !== next.detail) app.quality.detailScale = next.detail;
+    if (prev.ao !== next.ao && post?.grade) post.grade.ao = next.ao;
     app.events?.emit('quality-level', { level, of: this.levels.length - 1, knobs: next });
   }
 
@@ -144,6 +151,6 @@ export class QualityGovernor {
   describe() {
     const k = this.levels[this.level];
     const gl = this.app.renderer.renderer.getContext();
-    return `${gl.drawingBufferWidth}×${gl.drawingBufferHeight} · MSAA ${k.msaa}× · тени ${k.shadow} · ${k.bloom ? 'bloom' : 'без bloom'} · ур. ${this.level}/${this.levels.length - 1}${this.gpuMs != null ? ` · GPU ${this.gpuMs.toFixed(1)} мс` : ''}`;
+    return `${gl.drawingBufferWidth}×${gl.drawingBufferHeight} · MSAA ${k.msaa}× · тени ${k.shadow}${k.detail < 1 ? ' · детали ×' + k.detail : ''}${k.ao ? ' · AO' : ''} · ${k.bloom ? 'bloom' : 'без bloom'} · ур. ${this.level}/${this.levels.length - 1}${this.gpuMs != null ? ` · GPU ${this.gpuMs.toFixed(1)} мс` : ''}`;
   }
 }

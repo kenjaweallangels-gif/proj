@@ -253,3 +253,31 @@ profile (`--callers=<fn>` prints the stacks that lead to a hot function).
   afternoon cumulus + cyclones + storm cells; sea-surface wind for the Cox–Munk glint. `shaders/AuroraShaders.js` —
   analytic auroral curtains on a proxy shell (R + 335 km).
 * Textures are built by `tools/prepare_earth_textures.py` from the sources fetched by `tools/fetch_earth_sources.sh`.
+
+## Station exterior detail, LOD and ambient occlusion (GPU presets)
+
+* **Two levels of geometry.** Structural joints that read from any distance — bolted module end flanges,
+  berthing (CBM-style) skirts with rubber seals and MLI vestibules, weld lands, MLI blanket edges, curved MMOD
+  (Whipple) shield panels with folded edges, truss node blocks with gusset plates, spoke/pylon/SARJ flanges,
+  grapple fixtures, camera/light units, bevelled ORUs — are merged into each part's `Builder` buckets (no extra
+  draw calls, shadow casting). Generators: `latheAt` (profile rings with crisp corners), `bevelBoxAt` /
+  `bevelBox` (chamfered boxes), `ringStack`, `Poly` in `parts/Builder.js`; hull kits in `parts/HullKit.js`;
+  assemblies in `parts/Hardware.js`.
+* **`parts/Detail.js` — `DetailSet` (`station.detail`, also `builder.detail`).** Small hardware (bolts, rivets,
+  MLI tie-down buttons, latches, WIF sockets, P-clamps, QD couplings, connector panels, vents, handrail feet and
+  stanchions, sleeves, hinge knuckles…) is appended into growable typed arrays and merged per
+  (anchor Object3D, material, tier, spatial cell). Two vertex-coloured materials (`detailMetal`, `detailPaint`)
+  carry all finishes, so a cell costs 1–2 draws. Cells are slices along the spine (fine: 16 m, mid: 64 m).
+  `station.update` calls `detail.update(camera)`, which hides cells beyond their tier distance
+  (ultra fine 30 m / mid 110 m, high 26/95, medium 18/65, low 12/45; × `quality.detailScale`, × `?detaildist=`).
+  Rotating parts pass their group as `detail.anchor` while adding. Detail never casts sun shadows.
+* **'lite' builds none of it** (`station.detail === null`, every part keeps its old geometry path), so the
+  CPU-rasteriser preset and `StaticBatcher` are unchanged.
+* **AO (`src/fx/AO.js`, `AOPass`)** runs after the near pass (ultra 12 samples, high 10, medium 6; half
+  resolution, `?ao=0` disables). The composer targets carry a float `DepthTexture` (resolved from MSAA by three);
+  the far scene is drawn first and depth is cleared, so pixels without station geometry stay at depth 1 and are
+  passed through: Earth and sky are never darkened. View-space position and normal are reconstructed from depth,
+  SAO on a spiral, depth-aware separable blur, joint-bilateral upsampling, colour × AO damped on brightly lit
+  pixels and faded out beyond 160–320 m. Runtime: `post.grade.ao / aoStrength / aoRadius`.
+* **QualityGovernor** gained two levels: detail distance × 0.6 (after the shadow-map steps) and AO off (before
+  bloom off).

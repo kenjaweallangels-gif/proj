@@ -133,10 +133,16 @@ export class Textures {
         // creases: ridged multi-fractal
         let r = 0, a = 1, f = scale;
         for (let o = 0; o < 5; o++) { const n = Textures.fbm(u * f, v * f, 1, seed + o); r += a * (1 - Math.abs(n * 2 - 1)); a *= 0.55; f *= 2.1; }
-        // quilted stitching lines every 1/4
-        const sx = Math.abs(((u * 4) % 1) - 0.5), sy = Math.abs(((v * 4) % 1) - 0.5);
-        const stitch = (sx > 0.47 || sy > 0.47) ? -0.6 : 0;
-        h[y * size + x] = r * 0.5 + stitch;
+        // quilted stitching lines every 1/4 (dashed thread), puffed quilt cells, tie-down buttons at the corners
+        const fu = (u * 4) % 1, fv = (v * 4) % 1;
+        const sx = Math.abs(fu - 0.5), sy = Math.abs(fv - 0.5);
+        const dashU = ((v * 96) % 1) < 0.62, dashV = ((u * 96) % 1) < 0.62;
+        let stitch = (sx > 0.47 || sy > 0.47) ? -0.6 : 0;
+        if ((sx > 0.465 && sx <= 0.47 && dashU) || (sy > 0.465 && sy <= 0.47 && dashV)) stitch += 0.25;
+        const puff = 0.18 * Math.sin(Math.PI * fu) * Math.sin(Math.PI * fv);
+        const cu = Math.min(fu, 1 - fu), cv = Math.min(fv, 1 - fv), bd = Math.hypot(cu, cv);
+        const button = bd < 0.035 ? 0.9 * (1 - (bd / 0.035) ** 2) : 0;
+        h[y * size + x] = r * 0.5 + stitch + puff + button;
       }
       const normalMap = this._heightToNormal(h, size, strength);
       const [rc, rg] = this._canvas(size, size);

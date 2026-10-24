@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { LAYOUT } from './Layout.js';
-import { Builder, Instancer, unitCylinder, boxAt, tubeAt, torusAt, domeAt, scaleUV, Colliders, X_AXIS, Y_AXIS, TEX_M } from './Builder.js';
+import { Builder, Instancer, unitCylinder, boxAt, bevelBoxAt, tubeAt, torusAt, domeAt, latheAt, scaleUV, Colliders, X_AXIS, Y_AXIS, TEX_M } from './Builder.js';
+import { COL, boltCircle, radialBolts, vent } from './Detail.js';
+import { grappleFixture } from './Hardware.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const _q = new THREE.Quaternion();
@@ -28,6 +30,16 @@ export class HabitatRing {
     station.add(this.group);
     const b = new Builder(m);
     b.labelsDynamic = true;
+    const D = bStatic.detail;           // close-range hardware (null on 'lite'); anchored to the rotating group
+    if (D) D.anchor = this.group;
+    const _M = new THREE.Matrix4();
+    /** Frame on the rim tube at angle phi around the ring, angle psi around the tube (0 = outward), tube radius rho. */
+    const tubeFrame = (phi, psi, rho, out = _M) => {
+      const rad = radial(phi), tan = tangent(phi);
+      const n = rad.clone().multiplyScalar(Math.cos(psi)).addScaledVector(X_AXIS, Math.sin(psi));
+      const p = rad.clone().multiplyScalar(R).addScaledVector(n, rho);
+      return out.makeBasis(tan, n, tan.clone().cross(n)).setPosition(p);
+    };
     this.dynamic = [];
     const spokes = 6;
     const radial = (phi) => V(0, Math.cos(phi), Math.sin(phi));
@@ -44,6 +56,11 @@ export class HabitatRing {
       const phi = (k / 48) * Math.PI * 2;
       if (nearPod(phi)) continue;
       b.add('metalDark', torusAt(radial(phi).multiplyScalar(R), tangent(phi), r + 0.06, k % 4 === 0 ? 0.11 : 0.07, 6, 40), false);
+      if (D) for (let j = 0; j < 40; j++) {
+        const psi = (j / 40) * Math.PI * 2;
+        if (Math.abs(Math.sin(psi)) > 0.93) continue;   // window strips on the side faces
+        D.bolt(tubeFrame(phi, psi, r + 0.06 + (k % 4 === 0 ? 0.11 : 0.07)), 0.016, 0.012, COL.bare, k % 4 === 0 ? 'mid' : 'fine');
+      }
     }
     // outer maintenance rails (two continuous tracks on the outer face) and a central keel strip
     for (const sx of [-1, 1]) b.add('metalBare', torusAt(V(sx * 2.0, 0, 0), X_AXIS, R + 2.99, 0.07, 6, 192), false);
@@ -141,6 +158,28 @@ export class HabitatRing {
         b.add('hazard', boxAt(cc.clone().addScaledVector(dir, 1.32), 1.32, 0.05, 1.82, _q.setFromAxisAngle(X_AXIS, phi), false), false);
       }
       this.dynamic.push({ col: Colliders.capsule(a, c, latR + 0.15, 'spoke', true) });
+      if (D) {
+        // spoke joints: bolted flanges at the hub collar and the rim, gussets, bolt rings on the end flanges
+        for (const [t, sg] of [[spokeIn + 1.2, 1], [spokeOut - 1.2, -1]]) {
+          const c0 = dir.clone().multiplyScalar(t);
+          b.add('metalBare', latheAt(c0, dir.clone().multiplyScalar(sg), [[spokeR, -0.05], [spokeR + 0.68, -0.03], [spokeR + 0.68, 0.06], [spokeR + 0.5, 0.12], [spokeR, 0.14]], 32));
+          const Mf = new THREE.Matrix4().compose(c0, new THREE.Quaternion().setFromUnitVectors(Y_AXIS, dir.clone().multiplyScalar(sg)), V(1, 1, 1));
+          boltCircle(D, Mf, spokeR + 0.58, 24, 0.12, 0.018, 0.013, COL.bare, 'mid');
+          radialBolts(D, Mf, spokeR + 0.68, 32, 0.0, 0.014, 0.01);
+          for (let j = 0; j < 4; j++) {
+            const a2 = (j / 4) * Math.PI * 2 + Math.PI / 4;
+            const g = s1.clone().multiplyScalar(Math.cos(a2)).addScaledVector(s2, Math.sin(a2));
+            const qg = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(g.clone().cross(dir), dir, g.clone().cross(dir).cross(dir)));
+            b.add('metalBare', bevelBoxAt(c0.clone().addScaledVector(dir, sg * 0.35).addScaledVector(g, spokeR + 0.12), 0.04, 0.5, 0.26, qg, 0.01), false);
+          }
+        }
+        // ring frames along the pressurised spoke tube
+        for (let t = spokeIn + 2.4; t < spokeOut - 2.0; t += 2.0) {
+          if (Math.abs(t - R * 0.62) < 2.2 || Math.abs(t - R * 0.3) < 1.5) continue;
+          b.add('hullWhiteAged', latheAt(dir.clone().multiplyScalar(t), dir, [[spokeR, -0.06], [spokeR + 0.03, -0.045], [spokeR + 0.03, 0.045], [spokeR, 0.06]], 24), false);
+          radialBolts(D, new THREE.Matrix4().compose(dir.clone().multiplyScalar(t), new THREE.Quaternion().setFromUnitVectors(Y_AXIS, dir), V(1, 1, 1)), spokeR + 0.03, 18, 0, 0.01, 0.007);
+        }
+      }
 
       // ----- sector pod at the rim junction: drum with axis X wrapping the torus -----
       const pc = dir.clone().multiplyScalar(R), PR = 4.7, PL = 8.4;
@@ -165,8 +204,21 @@ export class HabitatRing {
       const top = pc.clone().addScaledVector(dir, PR);
       b.add('antennaWhite', tubeAt(top.clone().addScaledVector(dir, 0.6).addScaledVector(s2, 2.6), dir, 0.03, 1.2, 6, { uv: false }), false);
       b.add('metalDark', boxAt(top.clone().addScaledVector(dir, 0.15).addScaledVector(s2, -2.6), 0.6, 0.3, 0.6, _q.setFromAxisAngle(X_AXIS, phi)), false);
-      b.add('metalBare', tubeAt(top.clone().addScaledVector(dir, 0.35).addScaledVector(s1, 2.0), dir, 0.07, 0.5, 8, { uv: false }), false);
-      b.add('metalDark', torusAt(top.clone().addScaledVector(dir, 0.55).addScaledVector(s1, 2.0), dir, 0.16, 0.035, 6, 16), false);
+      if (D) {
+        grappleFixture(b, D, new THREE.Matrix4().makeBasis(s2, dir, s2.clone().cross(dir)).setPosition(top.clone().addScaledVector(dir, 0.0).addScaledVector(s1, 2.0)));
+        // pod end flanges: bolt circles, weld lands with fastener rows, vents on the outer face
+        for (const sx of [-1, 1]) {
+          const Me = new THREE.Matrix4().compose(V(sx * PL / 2, pc.y, pc.z), new THREE.Quaternion().setFromUnitVectors(Y_AXIS, V(sx, 0, 0)), V(1, 1, 1));
+          boltCircle(D, Me, PR - 0.45, 56, 0.0, 0.016, 0.012);
+          boltCircle(D, Me, 1.25, 20, 0.02, 0.012, 0.009);
+          radialBolts(D, Me, PR, 80, -0.12, 0.014, 0.01);
+        }
+        for (const x of [-2.4, -0.8, 0.8, 2.4]) radialBolts(D, new THREE.Matrix4().compose(V(x, pc.y, pc.z), new THREE.Quaternion().setFromUnitVectors(Y_AXIS, X_AXIS), V(1, 1, 1)), PR + 0.04, 72, 0, 0.011, 0.008, COL.bare, 'fine', 0.02);
+        for (const off of [-1.2, 1.2]) vent(D, new THREE.Matrix4().makeBasis(s2, dir, s2.clone().cross(dir)).setPosition(top.clone().addScaledVector(s1, off * 2.6).addScaledVector(s2, 1.2)), 0.6, 0.4, 7);
+      } else {
+        b.add('metalBare', tubeAt(top.clone().addScaledVector(dir, 0.35).addScaledVector(s1, 2.0), dir, 0.07, 0.5, 8, { uv: false }), false);
+        b.add('metalDark', torusAt(top.clone().addScaledVector(dir, 0.55).addScaledVector(s1, 2.0), dir, 0.16, 0.035, 6, 16), false);
+      }
       // sector label on the outer face
       b.labelAt(`СЕКТОР ${k + 1}`, 2.6, 0.4, top.clone().addScaledVector(dir, 0.04), dir, { right: s2, width: 1024 });
       this.dynamic.push({ col: Colliders.capsule(V(-PL / 2, pc.y, pc.z), V(PL / 2, pc.y, pc.z), PR + 0.2, 'sectorPod', true) });
@@ -184,6 +236,17 @@ export class HabitatRing {
       b.add('metalBare', boxAt(dir.clone().multiplyScalar(R + r + 0.05), 1.0, 0.12, 3.2, q), false);
       for (const sx of [-1, 1]) b.add('metalDark', boxAt(c.clone().addScaledVector(X_AXIS, sx * 1.4), 0.2, 1.0, 2.0, q), false);
       this.dynamic.push({ col: Colliders.sphere(c, 1.9, 'counterweight', true) });
+    }
+    if (D) {
+      // counterweight fasteners
+      for (let k = 0; k < spokes; k++) {
+        const phi = ((k + 0.5) / spokes) * Math.PI * 2, dir = radial(phi);
+        const Mc = new THREE.Matrix4().makeBasis(X_AXIS, dir, X_AXIS.clone().cross(dir)).setPosition(dir.clone().multiplyScalar(R + r + 1.41));
+        for (const a of [-1.15, -0.4, 0.4, 1.15]) for (const z of [-1.15, 1.15]) { D.bolt(Mc.clone().multiply(new THREE.Matrix4().makeTranslation(a, 0, z)), 0.03, 0.02, COL.bare, 'mid'); D.bolt(Mc.clone().multiply(new THREE.Matrix4().makeTranslation(z, 0, a)), 0.03, 0.02, COL.bare, 'mid'); }
+      }
+      // collar races: bolt rings
+      for (const sx of [-2.05, 2.05]) radialBolts(D, new THREE.Matrix4().compose(V(sx, 0, 0), new THREE.Quaternion().setFromUnitVectors(Y_AXIS, X_AXIS), V(1, 1, 1)), hubR + 0.82, 96, 0, 0.016, 0.012);
+      D.anchor = null;
     }
     // ----- rotating collar on the hub (bearing) -----
     b.add('mliSilver', tubeAt(V(0, 0, 0), X_AXIS, hubR + 0.8, 4.0, 48));
@@ -238,6 +301,15 @@ export class HabitatRing {
     bStatic.add('metalDark', tubeAt(V(X0 + 6.5, 0, 0), X_AXIS, 3.3, 0.6, 48));
     bStatic.add('hazard', torusAt(V(X0 - 2.2, 0, 0), X_AXIS, hubR + 0.05, 0.12, 6, 48), false);
     bStatic.add('hazard', torusAt(V(X0 + 2.2, 0, 0), X_AXIS, hubR + 0.05, 0.12, 6, 48), false);
+    if (D) {
+      // static drum: flange bolt rings at the bosses and around the bearing gap, motor mounting bolts
+      for (const sx of [-1, 1]) {
+        const Mb = new THREE.Matrix4().compose(V(X0 + sx * 6.8, 0, 0), new THREE.Quaternion().setFromUnitVectors(Y_AXIS, V(sx, 0, 0)), V(1, 1, 1));
+        boltCircle(D, Mb, 3.05, 64, 0, 0.018, 0.013);
+        radialBolts(D, new THREE.Matrix4().compose(V(X0 + sx * 2.1, 0, 0), new THREE.Quaternion().setFromUnitVectors(Y_AXIS, X_AXIS), V(1, 1, 1)), hubR, 96, 0, 0.016, 0.012);
+        radialBolts(D, new THREE.Matrix4().compose(V(X0 + sx * 5.1, 0, 0), new THREE.Quaternion().setFromUnitVectors(Y_AXIS, X_AXIS), V(1, 1, 1)), hubR, 96, 0, 0.016, 0.012);
+      }
+    }
     // drive motors / bearing housings around the drum
     for (let k = 0; k < 8; k++) {
       const phi = (k / 8) * Math.PI * 2 + Math.PI / 8;

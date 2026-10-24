@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { LAYOUT } from './Layout.js';
-import { boxAt, tubeAt, torusAt, mat, quatZ, Colliders, X_AXIS, Y_AXIS, Z_AXIS } from './Builder.js';
+import { boxAt, bevelBoxAt, tubeAt, torusAt, latheAt, mat, quatZ, Colliders, X_AXIS, Y_AXIS, Z_AXIS } from './Builder.js';
+import { COL, boltCircle, radialBolts, boltRow, connectorPanel } from './Detail.js';
+import { cameraAssembly } from './Hardware.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const CY = LAYOUT.clusterY;
@@ -17,6 +19,8 @@ function P(geo, frame) { return geo.applyMatrix4(frame); }
 export function buildDocking(ctx, station, b, rails, mods) {
   const ports = [];
   const colliders = [];
+  const D = b.detail;     // close-range hardware (null on 'lite')
+  const ROT_X90 = new THREE.Matrix4().makeRotationX(Math.PI / 2);   // local Y -> port +Z
   const HX = LAYOUT.hubX, HR = 3.1, HL = 6;
 
   /** One docking port. base = point on the hull; axis = outward unit; depth = tunnel length to the docking plane. */
@@ -48,6 +52,34 @@ export function buildDocking(ctx, station, b, rails, mods) {
       b.add('metalDark', P(new THREE.CylinderGeometry(0.03, 0.03, 0.22, 6).rotateX(Math.PI / 2).translate(0, rs + 0.02, 0.55).applyMatrix4(_m.makeRotationZ(a)), F), false);
       const petal = new THREE.BoxGeometry(0.42, 0.14, 0.26).translate(0, rs + 0.1, 0.5).applyMatrix4(_m.makeRotationX(-0.35)).applyMatrix4(_m.makeRotationZ(a + Math.PI / 3));
       b.add('metalBare', P(petal, F), false);
+    }
+    if (D) {
+      // hard-capture ring: bolt circles on the face and the rim, hook drives, guide pins, umbilical connectors,
+      // MLI boot tie-downs, tunnel flange at the hull
+      const Fz = F.clone().multiply(ROT_X90);   // local Y = port axis (outward), origin in the docking plane
+      boltCircle(D, Fz, R + 0.2, 36, 0.0, 0.014, 0.01);
+      boltCircle(D, Fz, R + 0.06, 24, -0.02, 0.011, 0.008, COL.bare, 'fine', 0.13);
+      radialBolts(D, Fz, R + 0.3, 40, -0.16, 0.013, 0.01);
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * Math.PI * 2;
+        const Mk = Fz.clone().multiply(new THREE.Matrix4().makeRotationY(-a)).multiply(new THREE.Matrix4().makeTranslation(R + 0.22, -0.26, 0));
+        D.part('mid', 'metal', COL.dark, 'bbox', Mk, 0.05, 0, 0, 0.14, 0.16, 0.12);
+        D.part('fine', 'metal', COL.bare, 'cyl8', Mk.clone().multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2)), 0.05, 0, 0, 0.025, 0.16, 0.025);
+      }
+      for (let k = 0; k < 2; k++) {
+        const a = k * Math.PI + Math.PI / 2;
+        D.part('mid', 'metal', COL.bare, 'cone12', Fz, (R - 0.05) * Math.cos(a), 0.05, (R - 0.05) * Math.sin(a), 0.035, 0.12, 0.035);
+        connectorPanel(D, Fz.clone().multiply(new THREE.Matrix4().makeRotationY(-(a + Math.PI / 2))).multiply(new THREE.Matrix4().makeTranslation(0, 0.0, R - 0.08)), 0.22, 0.12, 3, 1, k);
+      }
+      const nT = Math.max(2, Math.round((depth + 0.1) / 0.3));
+      for (let i = 0; i < nT; i++) for (let k = 0; k < 16; k++) {
+        const a = (k + 0.5 * (i % 2)) / 16 * Math.PI * 2;
+        const tz = -0.75 - i * Math.max(0.15, depth - 0.8) / Math.max(1, nT - 1);
+        if (tz < -depth + 0.4) continue;
+        D.button(Fz.clone().multiply(new THREE.Matrix4().makeRotationY(-a)).multiply(new THREE.Matrix4().makeBasis(Z_AXIS, X_AXIS, Y_AXIS).setPosition(R + 0.31, tz, 0)), 0.014, 0.006, COL.offWhite);
+      }
+      b.add('metalBare', P(new THREE.LatheGeometry([new THREE.Vector2(R + 0.32, -depth + 0.2), new THREE.Vector2(R + 0.5, -depth + 0.22), new THREE.Vector2(R + 0.5, -depth + 0.32), new THREE.Vector2(R + 0.34, -depth + 0.36)], 32).applyMatrix4(ROT_X90), F));
+      radialBolts(D, Fz, R + 0.5, 28, -depth + 0.27, 0.014, 0.01);
     }
     // docking target: standoff post + white cross on a black disc (as seen by an approaching ship)
     b.add('metalDark', P(new THREE.CylinderGeometry(0.03, 0.03, 0.26, 6).rotateX(Math.PI / 2).translate(-R * 0.55, 0, 0.08), F), false);

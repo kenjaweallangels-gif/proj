@@ -7,10 +7,19 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { AutoExposure } from './Exposure.js';
 import { LensFlarePass } from './LensFlare.js';
+import { AOPass } from './AO.js';
+
+/** Screen-space AO per GPU preset (src/fx/AO.js); ?ao=0 disables it, `quality.ao` (object or false) overrides. */
+const AO_PRESETS = {
+  ultra: { samples: 12, scale: 0.5 },
+  high: { samples: 10, scale: 0.5 },
+  medium: { samples: 6, scale: 0.5, radius: 0.8 },
+};
 
 /**
  * Post-processing chain (all passes in linear HDR until the OutputPass):
- *   far scene -> near scene (depth cleared) -> bloom (soft-knee threshold) -> lens flare (additive overlay)
+ *   far scene -> near scene (depth cleared) -> ambient occlusion (near-scene depth only, GPU presets)
+ *   -> bloom (soft-knee threshold) -> lens flare (additive overlay)
  *   -> final grade (vignette / edge aberration / grain / lens dirt / glare veil) -> ACES + sRGB -> SMAA
  *
  * Settings live in `post.grade` (editable at runtime: window.__app.renderer.post.grade). The auto-exposure
@@ -133,6 +142,9 @@ export class PostStack {
       bloomKnee: 0.5,
       flare: 1.0,
       skyExposure: 1.0,        // multiplier on the automatic star / Milky Way exposure
+      ao: true,                // screen-space ambient occlusion (when the preset has it; the quality governor may turn it off)
+      aoStrength: 0.9,
+      aoRadius: 0.9,           // metres
     };
 
     const size = renderer.getSize(new THREE.Vector2());
@@ -172,8 +184,13 @@ export class PostStack {
       this._time = 0;
       return;
     }
-    const rt = new THREE.WebGLRenderTarget(Math.max(1, Math.round(size.x * pr)), Math.max(1, Math.round(size.y * pr)), {
+    const pa = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
+    const aoCfg = quality.ao === false || pa.get('ao') === '0' ? null : (quality.ao || AO_PRESETS[quality.preset] || null);
+    const w0 = Math.max(1, Math.round(size.x * pr)), h0 = Math.max(1, Math.round(size.y * pr));
+    const rt = new THREE.WebGLRenderTarget(w0, h0, {
       type: THREE.HalfFloatType, samples: quality.msaa || 0, depthBuffer: true, stencilBuffer: false,
+      // AO reads the near scene's depth (resolved from MSAA); 32-bit float keeps precision out to the far hull
+      depthTexture: aoCfg ? new THREE.DepthTexture(w0, h0, THREE.FloatType) : null,
     });
     this.composer = new EffectComposer(renderer, rt);
 
@@ -182,6 +199,9 @@ export class PostStack {
     this.nearPass = new RenderPass(nearScene, camera);
     this.nearPass.clear = false;
     this.nearPass.clearDepth = true;
+
+    this.aoPass = aoCfg ? new AOPass(camera, { radius: this.grade.aoRadius, strength: this.grade.aoStrength, ...aoCfg }) : null;
+    if (aoCfg?.radius) this.grade.aoRadius = aoCfg.radius;
 
     this.bloomPass = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), this.grade.bloomStrength, this.grade.bloomRadius, this.grade.bloomThreshold);
     this.bloomPass.enabled = this.grade.bloom;
@@ -206,6 +226,7 @@ export class PostStack {
       // CPU rasteriser: only tone mapping + sRGB (exposure, sky exposure and occlusion still run in update())
       this.composer.addPass(this.outputPass);
     } else {
+      if (this.aoPass) this.composer.addPass(this.aoPass);
       this.composer.addPass(this.bloomPass);
       this.composer.addPass(this.flarePass);
       this.composer.addPass(this.finalPass);
@@ -282,6 +303,10 @@ export class PostStack {
 
     // 4. bloom threshold is defined in exposed units
     this.bloomPass.threshold = g.bloomThreshold / E;
+    if (this.aoPass) {
+      this.aoPass.enabled = !!g.ao;
+      this.aoPass.strength = g.aoStrength; this.aoPass.radius = g.aoRadius; this.aoPass.exposure = E;
+    }
 
     // 5. grade: Sun glare veil, lens dirt lit by the Sun (display-calibrated -> divide by the exposure)
     const glare = g.glareMax * ex.glare;
@@ -318,6 +343,7 @@ export class PostStack {
     if (this.direct) return;
     this.composer.dispose?.();
     this.flarePass.dispose();
+    this.aoPass?.dispose();
   }
 }
 

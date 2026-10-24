@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Instancer, unitCylinder, Y_AXIS } from './Builder.js';
+import { COL, standoffFoot } from './Detail.js';
 
 const _v = new THREE.Vector3();
 const _a = new THREE.Vector3();
@@ -8,13 +9,17 @@ const _q = new THREE.Quaternion();
 const _m = new THREE.Matrix4();
 const _s = new THREE.Vector3();
 const _dir = new THREE.Vector3();
+const _x = new THREE.Vector3();
+const _z = new THREE.Vector3();
+const _F = new THREE.Matrix4();
 
 /**
  * EVA handrails: yellow bars on short stanchions. Every bar is pushed to `station.handrails`
  * as a world-frame segment {a, b, radius} so the player can grab it.
  */
 export class Handrails {
-  constructor(materials, list) {
+  constructor(materials, list, detail = null) {
+    this.detail = detail;                   // DetailSet: bolted feet and stanchion blocks (GPU presets)
     this.list = list;                       // station.handrails
     if (!materials.factories.handrailYellow) materials.register('handrailYellow', () => new THREE.MeshStandardMaterial({ color: 0xf2c21a, roughness: 0.55, metalness: 0.25 }));
     this.bars = new Instancer(unitCylinder(8), materials.get('handrailYellow'), { name: 'handrails' });
@@ -35,6 +40,18 @@ export class Handrails {
       this.posts.add(_m.compose(_v, _q, _s.set(0.022, this.stand, 0.022)));
     }
     this.list.push({ a: _a.clone(), b: _b.clone(), radius: this.radius });
+    const D = this.detail;
+    if (D) {
+      // ISS-style stanchions: tapered yellow blocks on bolted foot pads, end caps on the bar
+      _z.subVectors(b, a).normalize();
+      _x.crossVectors(normal, _z).normalize();
+      for (const [p, sg] of [[a, 1], [b, -1]]) {
+        _F.makeBasis(_x, normal, _z).setPosition(p);
+        standoffFoot(D, _F, 0.075, 0.02, 'mid', COL.steel);
+        D.part('mid', 'paint', COL.yellow, 'bboxSoft', _F, 0, this.stand * 0.5, sg * 0.012, 0.03, this.stand * 0.9, 0.05);
+        D.part('mid', 'paint', COL.yellow, 'cyl8', _F, 0, this.stand, 0, 0.034, 0.03, 0.034);
+      }
+    }
   }
 
   /** Line of rails from a to b (on the hull, straight), segment ~1.2 m with gaps. */

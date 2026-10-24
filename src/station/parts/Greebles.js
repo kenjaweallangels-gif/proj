@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { LAYOUT } from './Layout.js';
-import { boxAt, tubeAt, torusAt, sphereAt, mat, Colliders, X_AXIS, Y_AXIS, Z_AXIS } from './Builder.js';
+import { boxAt, bevelBoxAt, tubeAt, torusAt, latheAt, sphereAt, mat, Colliders, X_AXIS, Y_AXIS, Z_AXIS } from './Builder.js';
+import { COL, boltCircle, radialBolts, boltRow, connectorPanel, standoffFoot } from './Detail.js';
+import { grappleFixture } from './Hardware.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const _q = new THREE.Quaternion();
@@ -18,6 +20,7 @@ function at(geo, surface, local = null) { if (local) geo.applyMatrix4(local); re
  */
 export function buildGreebles(ctx, station, b, rails, mods) {
   const colliders = [];
+  const D = b.detail;     // close-range hardware (null on 'lite')
   const { lab, hab2, power, logi, hab1, med, green } = { lab: mods.hulls.lab, hab2: mods.hulls.hab2, power: mods.power, logi: mods.logi, hab1: mods.hab1, med: mods.med, green: mods.green };
   const h = LAYOUT.spineSize / 2;
 
@@ -45,6 +48,15 @@ export function buildGreebles(ctx, station, b, rails, mods) {
     // a small aperture / sensor on the gold box and a cable to the hull
     b.add('metalDark', at(new THREE.CylinderGeometry(0.12, 0.12, 0.12, 12).translate(-0.7, 0.66, 0.3), s), false);
     b.add('cable', at(new THREE.CylinderGeometry(0.025, 0.025, 1.2, 5).rotateX(Math.PI / 2).translate(1.0, -0.1, -0.2).applyMatrix4(_m.makeRotationZ(0.6)), s), false);
+    if (D) {
+      for (const [dx, dz] of [[-1.05, -0.7], [1.05, -0.7], [-1.05, 0.7], [1.05, 0.7]]) {
+        standoffFoot(D, s.clone().multiply(new THREE.Matrix4().makeTranslation(dx, -0.55, dz)), 0.16, 0.05, 'mid');
+        boltRow(D, s, dx - 0.05, dz - 0.05, dx + 0.05, dz + 0.05, 2, 0.14, 0.012, 0.009);
+      }
+      for (const dz of [-0.8, 0.8]) boltRow(D, s, -1.1, dz, 1.1, dz, 8, 0.14, 0.01, 0.007);
+      connectorPanel(D, s.clone().multiply(new THREE.Matrix4().makeTranslation(0.6, 0.06, 0.55)), 0.4, 0.22, 3, 1, seed);
+      D.rod('mid', 'paint', COL.black, H.point(t - 0.6, th, H.r + 0.6), H.point(t - 0.6, th, H.r + 0.02), 0.025, 'cyl6');
+    }
     colliders.push(Colliders.box(H.point(t, th, H.r + 0.75), V(1.3, 0.75, 0.95), _q.setFromRotationMatrix(s), 'pallet'));
   }
   pallet(lab, -3.6, NEG_Z, 0);
@@ -62,6 +74,13 @@ export function buildGreebles(ctx, station, b, rails, mods) {
       b.add('metalDark', at(new THREE.TorusGeometry(0.6, 0.035, 5, 24), s), false);
       b.add('metalDark', at(new THREE.CylinderGeometry(0.1, 0.1, 0.7, 8).translate(0, -0.45, 0), s), false);
       b.add('copper', at(new THREE.CylinderGeometry(0.03, 0.03, 1.45, 5).rotateX(Math.PI / 2).translate(0.3, 0.1, 0), s), false);
+      if (D) {
+        // strap buckles, boss + valve on top, pipe clamps
+        for (const a of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) D.part('mid', 'metal', COL.bare, 'bbox', s, 0.6 * Math.cos(a), 0, 0.6 * Math.sin(a), 0.06, 0.1, 0.06);
+        D.part('mid', 'metal', COL.bare, 'cyl12', s, 0, 0.6, 0, 0.09, 0.08, 0.09);
+        D.part('mid', 'metal', COL.dark, 'bbox', s, 0.08, 0.68, 0, 0.1, 0.08, 0.06);
+        boltCircle(D, s.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0.64, 0)), 0.065, 6, 0, 0.01, 0.007);
+      }
     }
     const sc = H.surface(t, th, H.r + 0.3, new THREE.Matrix4());
     b.add('metalDark', at(new THREE.BoxGeometry(n * 1.45 + 0.4, 0.12, 1.5), sc), false);
@@ -95,6 +114,11 @@ export function buildGreebles(ctx, station, b, rails, mods) {
     b.add('hazard', at(new THREE.RingGeometry(0.66, 0.84, 28, 1).rotateX(-Math.PI / 2).translate(0, 0.02, 0), s), false);
     b.add('metalBare', at(new THREE.TorusGeometry(0.2, 0.03, 5, 16).rotateX(Math.PI / 2).translate(0, 0.1, 0), s), false);
     b.add('windowGlow', at(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 14).translate(0.3, 0.07, 0.25), s), false);
+    if (D) {
+      boltCircle(D, s, 0.56, 24, 0.07, 0.012, 0.009);
+      boltCircle(D, s, 0.74, 28, 0.03, 0.011, 0.008, COL.bare, 'fine', 0.05);
+      for (const a of [0, Math.PI]) D.part('mid', 'metal', COL.dark, 'bbox', s, 0.66 * Math.cos(a), 0.07, 0.66 * Math.sin(a), 0.12, 0.08, 0.22);
+    }
     for (const a of [0, 1, 2, 3]) rails.addRail(H.point(t + (a < 2 ? -1.1 : 1.1), th + (a % 2 ? 0.28 : -0.28), H.r), H.point(t + (a < 2 ? -1.1 : 1.1), th + (a % 2 ? 0.28 : -0.28) + (a % 2 ? -0.12 : 0.12), H.r), H.normal(th));
   }
 
@@ -118,6 +142,7 @@ export function buildGreebles(ctx, station, b, rails, mods) {
   for (const [H, t, dir] of [[hab2, -4.2, Y_AXIS], [power, -4.0, Z_AXIS]]) {
     const th = H.thetaFor(dir);
     const s = H.surface(t, th, H.r + 0.1, new THREE.Matrix4());
+    if (D) { grappleFixture(b, D, H.surface(t, th, H.r + 0.06, new THREE.Matrix4())); continue; }
     b.add('metalBare', at(new THREE.BoxGeometry(0.8, 0.08, 0.8), s), false);
     b.add('hazard', at(new THREE.BoxGeometry(0.95, 0.07, 0.95).translate(0, -0.03, 0), s), false);
     b.add('metalBare', at(new THREE.CylinderGeometry(0.07, 0.07, 0.45, 8).translate(0, 0.26, 0), s), false);
@@ -137,13 +162,27 @@ export function buildGreebles(ctx, station, b, rails, mods) {
   {
     const bx = 26, bz = -1.0, y0 = h + 0.78;
     const armMat = 'hullWhite', jointMat = 'metalDark';
-    const joint = (p, axis, rr = 0.36, len = 0.7) => { b.add(jointMat, tubeAt(p, axis, rr, len, 16, { uv: false })); b.add('mliGold', torusAt(p, axis, rr + 0.02, 0.08, 6, 24), false); };
+    const joint = (p, axis, rr = 0.36, len = 0.7) => {
+      b.add(jointMat, tubeAt(p, axis, rr, len, 16, { uv: false })); b.add('mliGold', torusAt(p, axis, rr + 0.02, 0.08, 6, 24), false);
+      if (D) {
+        const q = new THREE.Quaternion().setFromUnitVectors(Y_AXIS, axis);
+        for (const e of [-1, 1]) {
+          b.add('metalBare', latheAt(p.clone().addScaledVector(axis, e * len / 2), axis.clone().multiplyScalar(e), [[rr * 0.5, -0.02], [rr + 0.03, -0.01], [rr + 0.03, 0.03], [rr * 0.5, 0.04]], 24), false);
+          boltCircle(D, new THREE.Matrix4().compose(p.clone().addScaledVector(axis, e * (len / 2 + 0.04)), new THREE.Quaternion().setFromUnitVectors(Y_AXIS, axis.clone().multiplyScalar(e)), V(1, 1, 1)), rr * 0.78, 16, 0, 0.014, 0.01);
+        }
+        radialBolts(D, new THREE.Matrix4().compose(p, q, V(1, 1, 1)), rr, 20, len * 0.3, 0.012, 0.009);
+      }
+    };
     const boom = (p0, p1, rr = 0.2) => {
       const d = p1.clone().sub(p0), len = d.length(); d.normalize();
       b.add(armMat, tubeAt(p0.clone().lerp(p1, 0.5), d, rr, len, 14));
       b.add('mliSilver', tubeAt(p0.clone().lerp(p1, 0.5), d, rr + 0.04, len * 0.42, 14));
       for (const e of [0.12, 0.88]) b.add(jointMat, torusAt(p0.clone().lerp(p1, e), d, rr + 0.03, 0.04, 5, 14), false);
       b.add('cable', tubeAt(p0.clone().lerp(p1, 0.5).add(V(0, rr + 0.05, 0)), d, 0.03, len, 5, { uv: false }), false);
+      if (D) {
+        for (let i = 1; i < 8; i++) D.part('mid', 'metal', COL.bare, 'box', new THREE.Matrix4().compose(p0.clone().lerp(p1, i / 8).add(V(0, rr + 0.045, 0)), new THREE.Quaternion().setFromUnitVectors(Y_AXIS, d), V(1, 1, 1)), 0, 0, 0, 0.08, 0.03, 0.08);
+        for (const e of [0.12, 0.88]) radialBolts(D, new THREE.Matrix4().compose(p0.clone().lerp(p1, e), new THREE.Quaternion().setFromUnitVectors(Y_AXIS, d), V(1, 1, 1)), rr + 0.03, 16, 0, 0.01, 0.008);
+      }
     };
     const S = V(bx, y0 + 0.5, bz), E = V(bx + 8.0, y0 + 1.2, bz), W = V(bx - 0.5, y0 + 2.0, bz);
     b.add('metalBare', boxAt(V(bx, y0 + 0.1, bz), 0.9, 0.2, 0.9), false);
@@ -175,6 +214,12 @@ export function buildGreebles(ctx, station, b, rails, mods) {
     for (const dx of [-1.1, 1.1]) for (const dz of [-1.35, 1.35]) b.add('rubberBlack', tubeAt(V(cx + dx, y0 + 0.1, dz), Z_AXIS, 0.22, 0.2, 12, { uv: false }), false);
     for (const dz of [-1.0, 1.0]) b.add('windowGlow', boxAt(V(cx + 1.52, y0 + 0.45, dz), 0.02, 0.1, 0.3, null, false), false);
     b.labelAt('ТРАНСПОРТЁР', 2.2, 0.3, V(cx, y0 + 0.5, 1.62), Z_AXIS, { width: 1024 });
+    if (D) {
+      const Mt = new THREE.Matrix4().makeTranslation(cx, y0 + 0.91, 0);
+      for (const z of [-1.3, 1.3]) boltRow(D, Mt, -1.2, z, 1.2, z, 10, 0, 0.014, 0.01);
+      for (const x of [-1.2, 1.2]) boltRow(D, Mt, x, -1.1, x, 1.1, 8, 0, 0.014, 0.01);
+      connectorPanel(D, new THREE.Matrix4().makeTranslation(cx + 0.5, y0 + 0.91, 0.7), 0.5, 0.3, 3, 2, 4);
+    }
     colliders.push(Colliders.box(V(cx, y0 + 0.7, 0), V(1.6, 0.9, 1.7), null, 'transporter'));
   }
 
