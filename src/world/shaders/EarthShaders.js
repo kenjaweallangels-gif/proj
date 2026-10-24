@@ -111,17 +111,17 @@ float streetLines(vec2 r, float w) {
   return max(1.0 - smoothstep(0.0, w, d.x), 1.0 - smoothstep(0.0, w, d.y));
 }
 float cityTexture(vec2 s, float fpKm, float district) {
-  float w = max(fpKm * 0.6, 0.12);
+  float w = max(fpKm * 0.9, 0.2);
   float grid;
   if (district < 0.45) grid = streetLines(s, w);
   else if (district < 0.6) grid = streetLines(mat2(0.891, 0.454, -0.454, 0.891) * s, w);
   else grid = streetLines(mat2(0.629, 0.777, -0.777, 0.629) * s, w);
   // only some arterials stand out (lit strips, highways), in patches; the rest of the grid is faint
   float lit = smoothstep(0.4, 0.75, fbm2Km(vec3(s, 5.0), 3.0));
-  grid *= min(1.0, 0.35 / w) * (0.25 + 0.75 * lit);
-  float pts = smoothstep(0.7, 0.86, fbmKm(vec3(s, 11.0), 2.2));
+  grid *= min(1.0, 0.3 / w) * (0.2 + 0.8 * lit);
+  float pts = smoothstep(0.62, 0.9, fbmKm(vec3(s, 11.0), 2.2));
   float blocks = fbm2Km(vec3(s, 37.0), 4.0);
-  return (0.55 + 1.1 * grid + 1.4 * pts) * (0.35 + 1.3 * blocks);
+  return (0.6 + 0.7 * grid + 1.2 * pts) * (0.35 + 1.3 * blocks);
 }`;
 
 const LIGHT_COMMON_UNIFORMS = /* glsl */`
@@ -307,7 +307,7 @@ void main() {
     vec2 nsz = vec2(textureSize(tNight, 0));
     float nl = log2(max(max(length(duvx * nsz), length(duvy * nsz)), 1.0e-4));
     float Ln = nl < 0.0 ? nightCatmullRom(tNight, vUv) : textureGrad(tNight, vUv, duvx, duvy).r;
-    float fpKm = length(fwidth(vObjPos));
+    float fpKm = max(length(dFdx(vObjPos)), length(dFdy(vObjPos)));    // km per pixel (longer axis)
     float dFade = 1.0 - smoothstep(0.8, 3.0, fpKm);
     // the Black Marble values are display-encoded: ~linear radiance = Ln^2.2, scaled so the brightest cores stay
     // below white at the night exposure (warm, not blown-out blobs)
@@ -360,7 +360,7 @@ ${NIGHT_GLSL}
 void main() {
   vec3 p = normalize(vObjPos);
   vec2 duvx = dFdx(vUv), duvy = dFdy(vUv);
-  float fpKm = length(fwidth(vObjPos));
+  float fpKm = max(length(dFdx(vObjPos)), length(dFdy(vObjPos)));      // km per pixel (longer axis)
   float proc, storm, wall, core, mean;
   vec2 g;
   float c = cloudCover(p, vUv, duvx, duvy, fpKm, g, proc, storm, wall, core, mean);

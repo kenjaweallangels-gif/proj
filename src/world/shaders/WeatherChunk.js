@@ -10,7 +10,7 @@
  */
 export const WEATHER_GLSL = /* glsl */`
 uniform sampler2D tClouds;
-uniform highp sampler3D tNoise;      // 64^3, R: tileable gradient noise (8 cells per period); G (Worley) unused here
+uniform highp sampler3D tNoise;      // 64^3, R: tileable gradient noise, G: inverted Worley F1 (8 cells per period)
 uniform sampler2D tAux;              // R land fraction, G sqrt(depth/8000 m), B sqrt(elevation/6400 m)
 uniform vec4 uFlow;                  // x: cloud-map drift (texture u); y, z: unused; w: weather time (s, wrapped)
 uniform vec4 uWx;                    // x: growth/decay amount, y: detail erosion, z: tropical cumulus amount, w: local-time offset (unused)
@@ -37,6 +37,15 @@ float fbmKm(vec3 xKm, float cellKm) {
   float l = log2(max(8.0 * gFpKm / cellKm, 1.0e-3));
   float n = 0.5 * nzl(x, l) + 0.3 * nzl(ROT_A * x * 2.31 + 0.41, l + 1.21) + 0.2 * nzl(ROT_B * x * 4.73 + 0.83, l + 2.24);
   return clamp((n - 0.5) * 1.6 + 0.5, 0.0, 1.0);
+}
+// Rounded puffs: max of two Worley (inverted F1) octaves in rotated, non-commensurate frames (each alone repeats
+// every 8 cells); 0 between puffs, ~1 at their centres. cellKm = puff spacing.
+float puffsKm(vec3 xKm, float cellKm) {
+  vec3 x = xKm / (8.0 * cellKm);
+  float l = log2(max(8.0 * gFpKm / cellKm, 1.0e-3));
+  float a = textureLod(tNoise, x, l).g;
+  float b = textureLod(tNoise, ROT_B * x * 1.37 + 0.29, l + 0.45).g;
+  return max(a, b * 0.92);
 }
 float fbm2Km(vec3 xKm, float cellKm) {
   vec3 x = xKm / (8.0 * cellKm);
@@ -223,7 +232,7 @@ float cloudCover(vec3 p, vec2 uv, vec2 dx, vec2 dy, float fpKm, out vec2 grad, o
 #if DETAIL > 0
   // texture below the 5 km texels where the screen resolves it: thin and broken cloud gets a soft fBm modulation
   // (multiplicative, so the real structure of the map is kept); thick cores stay smooth
-  float f1 = 1.0 - smoothstep(1.5, 4.0, fpKm);
+  float f1 = 1.0 - smoothstep(0.8, 2.5, fpKm);
   float edge = 4.0 * c * (1.0 - c);
   if (f1 * edge > 0.0) {
     vec3 xd = pKm + vec3(0.0, 0.0, uFlow.w * 2.0e-4);
@@ -238,11 +247,17 @@ float cloudCover(vec3 p, vec2 uv, vec2 dx, vec2 dy, float fpKm, out vec2 grad, o
   // in clusters and streets whose extent grows with the potential
   float cuP = cumulusPotential(p, uv, mean);
   if (cuP > 0.01) {
-    float cuFade = 1.0 - smoothstep(0.8, 2.5, fpKm);
+    // puffs only where resolved (>= ~4 pixels apart); farther out their mean cover (thresholding a blurred
+    // noise would turn into speckle)
+    float cuFade = 1.0 - smoothstep(0.5, 1.0, fpKm);
     float cluster = smoothstep(0.45, 0.65, fbm2Km(pKm, 40.0) + 0.55 * (cuP - 0.6));
-    float puff = fbm2Km(pKm + 71.0, 3.5);
-    float cu = smoothstep(0.5, 0.78, puff) * cluster;
-    c = max(c, mix(0.2 * cluster * cuP, cu * cu * (3.0 - 2.0 * cu) * 0.8, cuFade));
+    // round puffs, their size varied by a slow fBm; soft edges at least ~2 pixels wide
+    float sizeVar = fbm2Km(pKm + 71.0, 12.0);
+    float puff = puffsKm(pKm + 13.0, 4.0) * (0.85 + 0.3 * fbm2Km(pKm + 3.0, 1.5));   // lumpy outlines
+    float thr = 0.7 - 0.25 * sizeVar - 0.08 * cuP;
+    float soft = 0.15 + 0.6 * gFpKm / 4.0;
+    float cu = smoothstep(thr, thr + soft, puff) * cluster;
+    c = max(c, mix(0.2 * cluster * cuP, cu * 0.8, cuFade));
   }
 #endif
   float wind;
