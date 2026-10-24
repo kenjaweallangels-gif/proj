@@ -27,6 +27,7 @@ export class Textures {
       const loader = this._loader || (this._loader = new THREE.TextureLoader());
       const set = { variants: [] };
       for (const [key, file, color] of [['map', 'albedo', true], ['normalMap', 'normal', false], ['ormMap', 'orm', false]]) {
+        if (key === 'map' && name.startsWith('int_')) continue;   // interior micro-detail sets: normal + ORM only
         // VRAM: the 4K hull sets keep their ORM map at 2K even on ultra (ormHalf)
         const suffix = this.pbrHi && !(ormHalf && file === 'orm') ? '' : '_2k';
         const t = new THREE.Texture();
@@ -34,7 +35,7 @@ export class Textures {
         t.wrapS = t.wrapT = THREE.RepeatWrapping;
         t.anisotropy = this.anisotropy;
         t.name = `${name}_${file}`;
-        const done = () => { t.needsUpdate = true; for (const v of set.variants) v[key].needsUpdate = true; };
+        const done = () => { t.needsUpdate = true; for (const v of set.variants) if (v[key]) v[key].needsUpdate = true; };
         const p = new Promise((res) => {
           loader.load(`${this.pbrBase}${name}_${file}${suffix}.jpg`, (tex) => { t.image = tex.image; done(); res(true); },
             undefined, () => {
@@ -53,6 +54,7 @@ export class Textures {
     return this._cached(`pbr:${name}:${this.pbrHi}:${repeat}`, () => {
       const v = {};
       for (const key of ['map', 'normalMap', 'ormMap']) {
+        if (!base[key]) continue;
         const t = base[key].clone();   // shares base[key].source (one GPU texture)
         t.repeat.set(repeat, repeat);
         if (base[key].version > 0) t.needsUpdate = true;

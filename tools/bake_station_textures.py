@@ -331,8 +331,10 @@ def bake_int_plastic(src, size, name, seed):
     sm = np.clip((noise(S, 6, seed, 4) - 0.5) * 2.0, -1, 1)
     sm2 = np.clip((noise(S, 30, seed + 1, 3) - 0.62) * 4, 0, 1)
     rough = np.clip(0.5 + 0.12 * sm - 0.1 * sm2 + 0.12 * scr, 0.2, 0.85)
-    alb = np.ones((S, S, 3), np.float32) * 0.8
-    save_set(name, alb, n, np.ones((S, S), np.float32), rough, np.zeros((S, S), np.float32), S)
+    # normal + ORM only (the colour comes from the interior atlas)
+    save(f'{name}_normal', n * 0.5 + 0.5, S, False, 95)
+    save(f'{name}_orm', np.stack([np.ones((S, S), np.float32), rough, np.zeros((S, S), np.float32)], -1), S, False, 94)
+    print('  wrote', name, flush=True)
 
 
 def main():

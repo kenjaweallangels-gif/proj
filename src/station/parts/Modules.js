@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { LAYOUT } from './Layout.js';
-import { HullFrame, Instancer, boxAt, bevelBoxAt, tubeAt, torusAt, latheAt, plate, exact, sphereAt, mat, scaleUV, Colliders, X_AXIS, Y_AXIS, Z_AXIS, TEX_M } from './Builder.js';
+import { HullFrame, Instancer, boxAt, bevelBoxAt, bevelBox, tubeAt, torusAt, latheAt, plate, exact, sphereAt, mat, scaleUV, Colliders, X_AXIS, Y_AXIS, Z_AXIS, TEX_M } from './Builder.js';
 import { COL, boltCircle, radialBolts, boltRow, wif, latch, connectorPanel, vent, pClamp } from './Detail.js';
 import { endProfile, endFlange, weldLand, mliBand, shieldPanels, windowBolts, hullWif, hullConnectors, hullVent, conformSlab } from './HullKit.js';
 import { cameraAssembly, frameYZ } from './Hardware.js';
@@ -398,7 +398,7 @@ export function buildModules(ctx, station, b, rails) {
       for (const e of [-1, 1]) b.add(matName, at(new THREE.SphereGeometry(0.07, 8, 6).translate(0, 0, e * len / 2), s), false);
     }
     for (let t = -len / 2 + 0.6; t < len / 2; t += 1.6) {
-      b.add('metalDark', at(new THREE.BoxGeometry(1.2, 0.3, 0.14).translate(0, 0.05, t), H.surface(0, th, H.r + 0.05, new THREE.Matrix4())), false);
+      b.add('metalDark', at(bevelBox(1.2, 0.42, 0.14, 0.02).translate(0, -0.01, t), H.surface(0, th, H.r + 0.05, new THREE.Matrix4())), false);   // reaches into the curved hull
       if (D) {
         const Ms = H.surface(t, th, H.r + 0.2, new THREE.Matrix4());
         for (const k of [-0.45, -0.15, 0.15, 0.45]) pClamp(D, H.surface(t + 0.12, th + k / H.r, H.r + 0.16, new THREE.Matrix4()), 0.05, COL.bare, 'mid');
@@ -447,7 +447,7 @@ export function buildModules(ctx, station, b, rails) {
   }
   for (const H of [hab2, hab1]) {
     const th = H.thetaFor(Y_AXIS);
-    b.add('paintGray', at(new THREE.BoxGeometry(0.5, 0.08, 0.5).translate(0, 0.04, 0), H.surface(-2.5, th, H.r, new THREE.Matrix4())), false);
+    b.add('paintGray', conformSlab(H, -2.5, th, 0.5, 0.5, -0.02, 0.07), false);
     b.add('metalBare', at(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 6).translate(0, 0.45, 0), H.surface(3.0, th, H.r, new THREE.Matrix4())), false);
     b.add('antennaWhite', at(new THREE.SphereGeometry(0.12, 8, 6).translate(0, 0.95, 0), H.surface(3.0, th, H.r, new THREE.Matrix4())), false);
   }
