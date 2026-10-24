@@ -12,6 +12,7 @@
  *   node tools/smoke.mjs [--quality=low] [--timeout=600000] [--only=core]   (core: time controls + free camera only)
  */
 import { chromium } from 'playwright';
+import { launchOptions } from './browser.mjs';
 import { createServer } from 'vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,7 +24,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const server = await createServer({ root, configFile: path.join(root, 'vite.config.js'), server: { port: 0, host: '127.0.0.1', hmr: false, watch: null }, logLevel: 'error' });
 await server.listen();
 const url = `${server.resolvedUrls.local[0]}?quality=${args.quality || 'low'}&t=600&minh=0&pr=${args.pr || '0.5'}`;
-const browser = await chromium.launch({ headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--disable-dev-shm-usage'] });
+const browser = await chromium.launch(launchOptions());
 const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));

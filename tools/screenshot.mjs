@@ -12,6 +12,7 @@
  * Prints browser console errors/warnings. Exit code 1 on page errors.
  */
 import { chromium } from 'playwright';
+import { launchOptions } from './browser.mjs';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -35,7 +36,7 @@ if (!baseUrl) {
 }
 const url = `${baseUrl.replace(/\/$/, '')}/?shot=1&autostart=1&t=${encodeURIComponent(t)}&quality=${quality}&timescale=${args.timescale || '1'}&view=${encodeURIComponent(views[0])}${args.params ? '&' + args.params : ''}`;
 
-const browser = await chromium.launch({ headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl', '--disable-dev-shm-usage'] });
+const browser = await chromium.launch(launchOptions(['--enable-webgl']));
 const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
 const errors = [];
 page.on('console', (msg) => { const ty = msg.type(); if (ty === 'error' || ty === 'warning') { console.log(`[browser ${ty}] ${msg.text()}`); if (ty === 'error') errors.push(msg.text()); } });

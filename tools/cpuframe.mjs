@@ -6,6 +6,7 @@
  *   node tools/cpuframe.mjs --quality=ultra --w=1920 --h=1080 --view=eva --seconds=20
  */
 import { chromium } from 'playwright';
+import { launchOptions } from './browser.mjs';
 import { createServer } from 'vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,7 +14,7 @@ const args = Object.fromEntries(process.argv.slice(2).map((a) => { const m = a.m
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const server = await createServer({ root, configFile: path.join(root, 'vite.config.js'), server: { port: 0, host: '127.0.0.1', hmr: false, watch: null }, logLevel: 'error' });
 await server.listen();
-const browser = await chromium.launch({ headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--disable-gpu-compositing'] });
+const browser = await chromium.launch(launchOptions(process.env.GPU === '1' ? [] : ['--disable-gpu-compositing']));
 const page = await browser.newPage({ viewport: { width: +(args.w || 1920), height: +(args.h || 1080) } });
 await page.goto(`${server.resolvedUrls.local[0]}?autostart=1&nolock=1&governor=0&quality=${args.quality || 'ultra'}&t=${args.t || 600}&view=${args.view || 'eva'}${args.params ? '&' + args.params : ''}`, { waitUntil: 'load', timeout: 900000 });
 await page.waitForFunction(() => window.__APP_READY__ === true, null, { timeout: 900000 });

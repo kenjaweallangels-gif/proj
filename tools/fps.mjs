@@ -4,6 +4,7 @@
  *   node tools/fps.mjs --quality=low --w=640 --h=360 --views=eva,overview --seconds=8 [--params=...]
  */
 import { chromium } from 'playwright';
+import { launchOptions } from './browser.mjs';
 import { createServer } from 'vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +18,7 @@ if (!base) {
   server = await createServer({ root, configFile: path.join(root, 'vite.config.js'), server: { port: 0, host: '127.0.0.1', hmr: false, watch: null }, logLevel: 'error' });
   await server.listen(); base = server.resolvedUrls.local[0];
 }
-const browser = await chromium.launch({ headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--disable-dev-shm-usage', '--disable-frame-rate-limit', '--disable-gpu-vsync', ...(process.env.FLAGS ? process.env.FLAGS.split(' ') : [])] });
+const browser = await chromium.launch(launchOptions(['--disable-frame-rate-limit', '--disable-gpu-vsync']));
 const page = await browser.newPage({ viewport: { width: w, height: h } });
 page.on('pageerror', (e) => console.log('pageerror', e.message));
 const url = `${base.replace(/\/$/, '')}/?autostart=1&quality=${args.quality || 'low'}&t=${args.t || 600}&view=${views[0]}${args.params ? '&' + args.params : ''}`;
