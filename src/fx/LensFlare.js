@@ -244,8 +244,12 @@ export class LensFlarePass extends Pass {
   computeOcclusion(ctx) {
     const camera = ctx.camera, o = ctx.orbit;
     if (!camera || !o) return 1;
-    camera.getWorldPosition(_o);
-    const sun = o.sunDir;
+    // colliders live in the station frame: test from the camera position / Sun direction in that frame
+    const u = ctx.universe;
+    if (u && !u.station.visible) { this.sunUnoccluded = 1; return 1; }
+    let sun = o.sunDir;
+    if (u && !u.isStationFrame) { u.cameraInStation(_o, camera); sun = o.local.sunDir; }
+    else camera.getWorldPosition(_o);
     // basis perpendicular to the Sun direction for the ray spread
     _tmp.set(0, 1, 0);
     if (Math.abs(sun.dot(_tmp)) > 0.9) _tmp.set(1, 0, 0);

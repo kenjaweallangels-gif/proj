@@ -45,6 +45,8 @@ export class Ships {
     const t0 = performance.now();
     this.rng = makeRng(20261022);
     this.traffic = new Traffic(ctx, this, this.rng);
+    // clock jumps (time controls): the traffic catches up without integrating
+    ctx.events?.on?.('time:jump', (e) => { if (e && e.delta > 0) this.traffic.fastForward(e.delta); });
 
     for (const [type, number, where] of FLEET) if (SHIP_TYPES[type]) this._create(type, number, where);
     this._initialPlacement();
@@ -165,7 +167,7 @@ export class Ships {
       const self = this;
       const view = (back, side, up) => ({
         get position() {
-          const sun = self.ctx.orbit?.sunDir || new THREE.Vector3(0, 1, 0);
+          const sun = self.ctx.orbit?.local?.sunDir || new THREE.Vector3(0, 1, 0);
           const c = s.group.position;
           const d = new THREE.Vector3(back, up, side).normalize().multiplyScalar(s.length * 0.8 + 3.5).addScaledVector(sun, 1.5);
           return [c.x + d.x - s.length * 0.45, c.y + d.y, c.z + d.z];
@@ -214,7 +216,9 @@ export class Ships {
       if (ff) console.warn(`[Ships] after ${ff} s: ${this.ships.map((s) => `${s.name}:${s.state}${s.flight ? '/' + s.flight.phase : ''}`).join(' ')}`);
     }
     this.traffic.update(dt);
-    _cam.setFromMatrixPosition(ctx.camera.matrixWorld);
+    // level of detail from the camera position in the station frame (the render frame may be elsewhere)
+    if (ctx.universe && !ctx.universe.isStationFrame) ctx.universe.cameraInStation(_cam);
+    else _cam.setFromMatrixPosition(ctx.camera.matrixWorld);
     for (let i = 0; i < this.ships.length; i++) this._animate(this.ships[i], dt, t);
     for (let i = 0; i < this.showcase.length; i++) this._animate(this.showcase[i], dt, t);
     // debug: ?shipsoff=1 hides every ship (to measure their share of draw calls / triangles)

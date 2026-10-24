@@ -18,7 +18,7 @@ import { IvaController } from './Iva.js';
  *  - handrail grabbing / crawling / push-off, safety tether with reel, airlock exit/entry sequence
  *  - suit telemetry in `state` (read by the HUD and the audio module)
  *  - first-person suit model, shadow proxy, tether rope (SuitModel, Tether)
- * Physics runs in real time (dt / timescale) so time-lapse does not fling the astronaut.
+ * Physics runs in sim time, sub-stepped up to x10; faster time rates put the astronaut "on rails" (see update()).
  */
 
 const RESTITUTION = 0.25;
@@ -35,6 +35,10 @@ const DOFF_TIME = 3.0;
 const O2_DURATION = 6 * 3600;
 const POWER_DURATION = 8 * 3600;
 const HIP_OFFSET = new THREE.Vector3(0.16, -0.72, 0.12);
+/** Above this time rate the astronaut goes on rails (frozen relative to the station). */
+export const PLAYER_MAX_RATE = 10;
+const RAILS_LOOK = 0.0022;          // rad per mouse pixel while on rails
+const NO_KEYS = Object.freeze(Object.create(null));
 const _fwd = new THREE.Vector3();
 
 const _v = new THREE.Vector3();
@@ -74,8 +78,10 @@ export class Player {
     { key: 'L', ru: 'фонари шлема' },
     { key: 'M', ru: 'звук вкл/выкл' },
     { key: 'F', ru: 'режим наблюдателя' },
-    { key: 'T', ru: 'ускорение времени' },
+    { key: 'T', ru: 'ход времени: ×1 / ×10 / ×60 / ×600 / ×3600' },
+    { key: '[ / ]', ru: 'медленнее / быстрее · \\ — ×1' },
     { key: 'P', ru: 'пауза' },
+    { key: 'C', ru: 'свободная камера' },
   ];
 
   constructor(ctx) {
@@ -95,7 +101,7 @@ export class Player {
       mode: 'airlock', tetherLength: TETHER_MAX, tetherMax: TETHER_MAX, tetherAttached: true, tetherTaut: false, tetherDistance: 0, reeling: false,
       propellant: 1, o2: 1, power: 1, suitPressure: 1, airlockPressure: 1, heartRate: 64, suitTemp: 21.5,
       holding: null, nearHandrail: null, handrailDistance: Infinity,
-      speedRelative: 0, angularSpeed: 0, distanceToStation: 0, distanceToAirlock: 0,
+      speedRelative: 0, angularSpeed: 0, distanceToStation: 0, distanceToAirlock: 0, onRails: false,
       rotationMode: 'aah', stabilization: true, rotationModeLabel: 'стабилизация', thrusting: false, boost: false, killing: false, lampOn: false, tetherStowed: true,
       sequence: null, prompt: '', canEnterAirlock: false, impact: 0, contact: false,
       suited: true, inside: true, compartment: '', frame: 'station', gravity: 0, onLadder: false, autoLevel: true,
@@ -269,18 +275,26 @@ export class Player {
   lookAt(pos, target) { return this.lookAlong(pos, _v3.subVectors(target, pos)); }
 
   // ---------------------------------------------------------------- main loop
+  /**
+   * Physics runs in sim time: up to x10 (PLAYER_MAX_RATE) in sub-steps of <= 1/60 s; above that the astronaut
+   * is "on rails" — position, velocity and the suit consumables freeze relative to the station (or the ring
+   * deck), only the view can turn — until the rate comes back down (state.onRails, HUD tag, 'player:rails').
+   */
   update(dt, ctx) {
-    if (!this.active) { this._updateSuitConsumables(dt, false); return; }
-    const inp = ctx.input;
     const st = this.state;
+    const rate = ctx.time?.rate ?? ctx.time?.scale ?? 1;
+    const rails = rate > PLAYER_MAX_RATE;
+    if (rails !== !!st.onRails) { st.onRails = rails; ctx.events?.emit?.('player:rails', rails); }
+    if (!this.active) { if (!rails) this._updateSuitConsumables(dt, false); return; }
+    const inp = ctx.input;
     const body = this.body;
-    // real-time physics step (time-lapse must not fling the astronaut); clamp for robustness
-    const scale = ctx.time?.scale || 1;
-    let h = dt / scale;
+    // sub-steps of <= 1/60 s of sim time (at most 12 per frame; each <= 1/20 s)
+    const total = rails ? 0 : Math.max(0, dt || 0);
+    const n = total > 0 ? Math.min(12, Math.max(1, Math.ceil(total * 60 - 1e-6))) : 1;
+    let h = Math.min(total / n, 1 / 20);
     if (!(h > 0)) h = 0;
-    h = Math.min(h, 1 / 20);
 
-    this._colliderTimer += h;
+    this._colliderTimer += h * n;
     if (this._colliderTimer > 0.5) { this._colliderTimer = 0; this._refreshColliders(false); }
 
     // ----- hotkeys -----
@@ -292,13 +306,15 @@ export class Player {
       ctx.audio?.play?.('click');
     }
     if (inp.wasPressed('KeyL')) { this.lampAuto = false; this.suit.setLamp(!this.suit.lampOn); st.lampOn = this.suit.lampOn; ctx.audio?.play?.('click'); }
-    if (inp.wasPressed('KeyE')) this._onInteract();
-    if (inp.wasPressed('KeyR')) {
-      if (inp.isDown('ShiftLeft') || inp.isDown('ShiftRight')) {
-        if (st.tetherAttached && st.mode === 'eva') { st.tetherAttached = false; st.reeling = false; this._reattachBlock = 2; ctx.audio?.play?.('detach'); }
-      } else if (st.tetherAttached) { st.reeling = !st.reeling; ctx.audio?.play?.('click'); }
+    if (!rails) {
+      if (inp.wasPressed('KeyE')) this._onInteract();
+      if (inp.wasPressed('KeyR')) {
+        if (inp.isDown('ShiftLeft') || inp.isDown('ShiftRight')) {
+          if (st.tetherAttached && st.mode === 'eva') { st.tetherAttached = false; st.reeling = false; this._reattachBlock = 2; ctx.audio?.play?.('detach'); }
+        } else if (st.tetherAttached) { st.reeling = !st.reeling; ctx.audio?.play?.('click'); }
+      }
+      if (inp.wasPressed('KeyV') && !st.holding && st.mode === 'eva') { this._killRequested = !this._killRequested; }
     }
-    if (inp.wasPressed('KeyV') && !st.holding && st.mode === 'eva') { this._killRequested = !this._killRequested; }
 
     const allowMouse = inp.pointerLocked || ctx.isShot || !inp.wantPointerLock;
     const mdx = allowMouse ? inp.mouse.dx : 0, mdy = allowMouse ? inp.mouse.dy : 0;
@@ -306,6 +322,41 @@ export class Player {
     const interactAvailable = st.mode === 'airlock' || st.canEnterAirlock || !!st.sequence || st.mode === 'iva';
     const rollAxis = -(inp.isDown('KeyQ') ? 1 : 0) + (inp.isDown('KeyE') && !interactAvailable ? 1 : 0);
 
+    // ----- physics sub-steps (key presses count in the first one only; the mouse travel is split evenly)
+    const pressed = inp.pressed;
+    for (let k = 0; k < n; k++) {
+      if (k > 0 || rails) inp.pressed = NO_KEYS;
+      try { this._physicsStep(h, ctx, mdx / n, mdy / n, rails ? 0 : rollAxis, allowMouse, rails); }
+      finally { inp.pressed = pressed; }
+    }
+
+    // ----- telemetry -----
+    st.propellant = body.propellant;
+    st.thrusting = body.thrusting; st.boost = body.boost && body.thrusting; st.killing = body.killing;
+    st.rotationThrust = body.rotThrust;
+    st.speedRelative = this.iva?.frame === 'ring' && st.mode !== 'eva' ? this.iva.vL.length() : this.velocity.length();   // ring: relative to the deck
+    st.angularSpeed = body.omega.length();
+    st.distanceToAirlock = this.position.distanceTo(this.airlock?.standPosition || this.hatchCenter);
+    st.canEnterAirlock = st.mode === 'eva' && !st.sequence && st.distanceToAirlock < 1.5;
+    st.impact = this._impactFlash; this._impactFlash *= Math.exp(-h * n * 4);
+    if (!rails) this._updateSuitConsumables(dt, true);
+    this._updatePrompt();
+    this._autoLamp();
+    st.lampOn = this.suit.lampOn;
+
+    // ----- visuals -----
+    this.applyCamera(h);
+    this.suit.update(h * n, {
+      thrustLocal: body.thrustLocal, thrusting: body.thrusting, boost: body.boost, rotThrust: body.rotThrust,
+      reach: st.holding || st.nearHandrail ? this.handrailPoint : null, grabbing: !!st.holding,
+      speed: st.speedRelative, position: this.position, quaternion: this.quaternion,
+    });
+    this._updateTether(h * n);
+  }
+
+  /** One physics step of h sim seconds (h = 0 on rails: the body stays put, the view still turns). */
+  _physicsStep(h, ctx, mdx, mdy, rollAxis, allowMouse, rails) {
+    const inp = ctx.input, st = this.state, body = this.body;
     // ----- sequence (airlock) -----
     this._updateSequence(h);
 
@@ -320,73 +371,58 @@ export class Player {
       st.contact = this.iva.contact;
       st.distanceToStation = 0;
       st.colliderDistance = 0;
-    } else {
-      if (st.holding) {
-        this._updateHolding(h, inp, mdx, mdy, rollAxis, allowMouse);
-      } else {
-        // translation thrusters in the body frame: W/S -> -Z/+Z, A/D -> -X/+X, Space/Ctrl -> +Y/-Y
-        _local.set(inp.axis('KeyA', 'KeyD'), (inp.isDown('Space') ? 1 : 0) - (inp.isDown('ControlLeft') || inp.isDown('ControlRight') ? 1 : 0), -inp.axis('KeyS', 'KeyW'));
-        const boost = inp.isDown('ShiftLeft') || inp.isDown('ShiftRight');
-        const thrustInput = _local.lengthSq() > 0;
-        if (thrustInput) this._killRequested = false;
-        body.thrust(_local, boost, h, ctx.particles);
-        body.rotate(mdx, mdy, rollAxis, h, allowMouse);
-        if (this._killRequested) { if (!body.kill(h, ctx.particles)) this._killRequested = false; }
-        // grab
-        if (inp.wasPressed('KeyG') && st.nearHandrail) this._grab(st.nearHandrail);
-        // tether
-        this._tetherPhysics(h);
-        if (st.sequence) this._holdInChamber(h);
-        body.integrate(h);
-      }
-
-      // ----- collision -----
-      const c = this.collision.resolve(this.position, this.velocity, this.radius, RESTITUTION, FRICTION);
-      st.contact = c.count > 0;
-      st.distanceToStation = Math.max(0, c.minDistance);          // suit surface -> nearest collider surface
-      st.colliderDistance = c.minDistance + this.radius;          // body centre -> nearest collider surface
-      st.nearestCollider = c.nearest ? c.nearest.name || c.nearest.type : '';
-      if (c.impact > 0.05) {
-        // angular kick from an off-centre hit: tangential velocity x normal
-        _v.crossVectors(c.normal, c.tangent).applyQuaternion(_q.copy(this.quaternion).invert());
-        body.omega.addScaledVector(_v, 0.35);
-        body.omega.x += (Math.random() - 0.5) * 0.1 * c.impact; body.omega.y += (Math.random() - 0.5) * 0.1 * c.impact;
-        this._impactFlash = Math.min(1, c.impact * 0.6);
-        ctx.audio?.play?.('impact', { strength: Math.min(1, c.impact / 2.5) });
-        this._exertion = Math.min(1, this._exertion + c.impact * 0.2);
-        if (st.holding && c.impact > 1.0) this._release();
-      }
-      if (st.contact && body.omega.lengthSq() > 1e-4) body.omega.multiplyScalar(Math.exp(-h * 2.5)); // scraping along the hull bleeds spin
-      // while gripping a rail the hull may push the body: let the grip offset follow instead of fighting it
-      if (st.holding && c.count > 0) {
-        this.holdOffset.subVectors(this.position, this.handrailPoint);
-        const d = this.holdOffset.length();
-        if (d > 0.95) this.holdOffset.multiplyScalar(0.95 / d);
-      }
-
+      return;
     }
-    // ----- telemetry -----
-    st.propellant = body.propellant;
-    st.thrusting = body.thrusting; st.boost = body.boost && body.thrusting; st.killing = body.killing;
-    st.rotationThrust = body.rotThrust;
-    st.speedRelative = this.iva?.frame === 'ring' && st.mode !== 'eva' ? this.iva.vL.length() : this.velocity.length();   // ring: relative to the deck
-    st.angularSpeed = body.omega.length();
-    st.distanceToAirlock = this.position.distanceTo(this.airlock?.standPosition || this.hatchCenter);
-    st.canEnterAirlock = st.mode === 'eva' && !st.sequence && st.distanceToAirlock < 1.5;
-    st.impact = this._impactFlash; this._impactFlash *= Math.exp(-h * 4);
-    this._updateSuitConsumables(dt, true);
-    this._updatePrompt();
-    this._autoLamp();
-    st.lampOn = this.suit.lampOn;
+    if (rails) {
+      // frozen relative to the station: look around only (yaw / pitch about the body axes)
+      if (allowMouse && (mdx || mdy)) {
+        this.quaternion.multiply(_q.setFromAxisAngle(_v.set(0, 1, 0), -mdx * RAILS_LOOK));
+        this.quaternion.multiply(_q.setFromAxisAngle(_v.set(1, 0, 0), -mdy * RAILS_LOOK)).normalize();
+      }
+      return;
+    }
+    if (st.holding) {
+      this._updateHolding(h, inp, mdx, mdy, rollAxis, allowMouse);
+    } else {
+      // translation thrusters in the body frame: W/S -> -Z/+Z, A/D -> -X/+X, Space/Ctrl -> +Y/-Y
+      _local.set(inp.axis('KeyA', 'KeyD'), (inp.isDown('Space') ? 1 : 0) - (inp.isDown('ControlLeft') || inp.isDown('ControlRight') ? 1 : 0), -inp.axis('KeyS', 'KeyW'));
+      const boost = inp.isDown('ShiftLeft') || inp.isDown('ShiftRight');
+      const thrustInput = _local.lengthSq() > 0;
+      if (thrustInput) this._killRequested = false;
+      body.thrust(_local, boost, h, ctx.particles);
+      body.rotate(mdx, mdy, rollAxis, h, allowMouse);
+      if (this._killRequested) { if (!body.kill(h, ctx.particles)) this._killRequested = false; }
+      // grab
+      if (inp.wasPressed('KeyG') && st.nearHandrail) this._grab(st.nearHandrail);
+      // tether
+      this._tetherPhysics(h);
+      if (st.sequence) this._holdInChamber(h);
+      body.integrate(h);
+    }
 
-    // ----- visuals -----
-    this.applyCamera(h);
-    this.suit.update(h, {
-      thrustLocal: body.thrustLocal, thrusting: body.thrusting, boost: body.boost, rotThrust: body.rotThrust,
-      reach: st.holding || st.nearHandrail ? this.handrailPoint : null, grabbing: !!st.holding,
-      speed: st.speedRelative, position: this.position, quaternion: this.quaternion,
-    });
-    this._updateTether(h);
+    // ----- collision -----
+    const c = this.collision.resolve(this.position, this.velocity, this.radius, RESTITUTION, FRICTION);
+    st.contact = c.count > 0;
+    st.distanceToStation = Math.max(0, c.minDistance);          // suit surface -> nearest collider surface
+    st.colliderDistance = c.minDistance + this.radius;          // body centre -> nearest collider surface
+    st.nearestCollider = c.nearest ? c.nearest.name || c.nearest.type : '';
+    if (c.impact > 0.05) {
+      // angular kick from an off-centre hit: tangential velocity x normal
+      _v.crossVectors(c.normal, c.tangent).applyQuaternion(_q.copy(this.quaternion).invert());
+      body.omega.addScaledVector(_v, 0.35);
+      body.omega.x += (Math.random() - 0.5) * 0.1 * c.impact; body.omega.y += (Math.random() - 0.5) * 0.1 * c.impact;
+      this._impactFlash = Math.min(1, c.impact * 0.6);
+      ctx.audio?.play?.('impact', { strength: Math.min(1, c.impact / 2.5) });
+      this._exertion = Math.min(1, this._exertion + c.impact * 0.2);
+      if (st.holding && c.impact > 1.0) this._release();
+    }
+    if (st.contact && body.omega.lengthSq() > 1e-4) body.omega.multiplyScalar(Math.exp(-h * 2.5)); // scraping along the hull bleeds spin
+    // while gripping a rail the hull may push the body: let the grip offset follow instead of fighting it
+    if (st.holding && c.count > 0) {
+      this.holdOffset.subVectors(this.position, this.handrailPoint);
+      const d = this.holdOffset.length();
+      if (d > 0.95) this.holdOffset.multiplyScalar(0.95 / d);
+    }
   }
 
   // ---------------------------------------------------------------- camera
@@ -675,7 +711,7 @@ export class Player {
       this._exertion = THREE.MathUtils.clamp(this._exertion + (use * 0.25 - 0.08) * Math.min(dt / (this.ctx.time?.scale || 1), 0.1), 0, 1);
     } else this._exertion = Math.max(0, this._exertion - 0.05 * Math.min(simDt, 1));
     // suit skin temperature follows sun exposure slowly; the cooling loop keeps the inside near 21 C
-    const sun = this.ctx.orbit?.sunVisible ?? 1;
+    const sun = this.ctx.orbit?.local?.sunVisible ?? 1;
     const tTarget = st.mode !== 'eva' ? 21.5 : 20.5 + 4.5 * sun - 1.5 * (1 - sun);
     st.suitTemp += (tTarget - st.suitTemp) * (1 - Math.exp(-Math.min(simDt, 5) / 90));
     st.suitPressure = 1;
@@ -683,7 +719,7 @@ export class Player {
 
   _autoLamp() {
     if (!this.lampAuto) return;
-    const sun = this.ctx.orbit?.sunVisible ?? 1;
+    const sun = this.ctx.orbit?.local?.sunVisible ?? 1;
     const want = this.state.mode === 'eva' && sun < 0.25;
     if (want !== this.suit.lampOn) this.suit.setLamp(want);
   }

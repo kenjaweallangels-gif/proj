@@ -147,7 +147,7 @@ export class StationLights {
     this.ringMat.emissiveIntensity = 2 + 8 * anyRing;
     this.ringHalos.commit();
     // floodlights: dim in daylight, full in eclipse (smooth)
-    const sv = ctx.orbit.sunVisible;
+    const sv = ctx.orbit.local.sunVisible;
     const want = 0.08 + 0.92 * THREE.MathUtils.smoothstep(1 - sv, 0.7, 0.95);
     this.floodLevel += (want - this.floodLevel) * Math.min(1, dt * 1.5);
     for (const s of this.spots) s.intensity = 900 * this.floodLevel;
