@@ -64,7 +64,7 @@ export class AutoExposure {
     /** Scene radiance guesses (HDR units before exposure; a white Lambert surface in full sun is ~1.0-1.45). */
     this.earthRadiance = 0.85;      // average sunlit Earth (ocean + land + clouds)
     this.earthNightRadiance = 0.02; // night side (city lights, airglow)
-    this.moonRadiance = 0.35;       // sunlit lunar surface (albedo ~0.12), counted when the Moon is large in view
+    this.moonRadiance = 1.0;        // sunlit lunar surface as the Moon shader draws it, counted when the Moon is large in view
     this.stationRadiance = 0.30;    // average sunlit station (white hull, MLI, shadowed parts)
     this.stationNightRadiance = 0.03;
     this.moonLum = 0; this.earthSpot = 0;
@@ -178,7 +178,7 @@ export class AutoExposure {
     this.earthLum = wsum > 0 ? sum / wsum : 0;
     // a large Moon / a distant whole Earth in the frame (free camera) meter like a spot: the grid average of a
     // small bright disc on black would blow it out
-    this.moonLum = moonOn ? this._spot(M, MOON_RADIUS_KM, this.moonRadiance * 0.9 / 0.35, o.sunDir, th, aspect) : 0;
+    this.moonLum = moonOn ? this._spot(M, MOON_RADIUS_KM, this.moonRadiance, o.sunDir, th, aspect) : 0;
     this.earthSpot = _oc.length() > EARTH_RADIUS_KM + 3000 ? this._spot(C, EARTH_RADIUS_KM, this.earthRadiance, o.sunDir, th, aspect) : 0;
 
     // ---- station cover (crude: distance to the station origin and whether we look at it) ----

@@ -425,3 +425,9 @@ inertial axes or the local vertical (O). B returns to the station (overview pose
 `jumpTo('station' | 'earth' | 'moon')`, `lookAtBody(name)`, `setAxesMode('inertial' | 'local')`, `info(out)`
 (altitude, distances to the station and the Moon, speed). App: `toggleFreeCamera()`, `leaveFreeCamera(to?)`.
 HUD: `src/ui/FreePanel.js`. The camera never enters the Earth (1 km) or the Moon (200 m).
+Collisions (`src/core/CameraCollision.js`, `CameraCollider.constrain(from, to, radius)`, station frame, m): the free
+camera (radius 0.25 m, within 20 km of the station) and the observer orbit camera (user moves only; authored views
+are placed as they are) stop and slide on the station hull, the airlock and the ships, and inside a compartment stay
+within its volumes and off its equipment. Backend: `ctx.collision.sphereCast / resolveSphere` (exact BVH service,
+src/core/CollisionWorld.js) when present, otherwise the analytic colliders and the interior volumes; fast moves are
+swept in radius-sized steps. Jumps (B, «К …» buttons) teleport without sweeping.

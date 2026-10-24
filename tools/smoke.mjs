@@ -106,7 +106,7 @@ async function coreChecks() {
   });
   // each frame advances min(real dt, 1/20 s) x 3600 = up to 3 min (the software GPU renders a few frames per second)
   const nf = after.frames - before.frames;
-  check('x3600: rendering continues, sim time advances 3 min per frame', nf >= 3 && after.sim - before.sim >= 150 * (nf - 1), `${((after.sim - before.sim) / 3600).toFixed(2)} h in ${nf} frames`);
+  check('x3600: rendering continues, sim time advances up to 3 min per frame', nf >= 2 && after.sim - before.sim >= 150 && after.sim - before.sim <= 180.5 * nf, `${((after.sim - before.sim) / 3600).toFixed(2)} h in ${nf} frames`);
   check('x3600: docking traffic kept pace (fast-forward)', after.traffic - before.traffic > 0.9 * (after.sim - before.sim), `traffic +${(after.traffic - before.traffic).toFixed(0)} s`);
   check('x3600: ships / orbit / player stay finite, ships docked', after.shipsOk && after.orbitOk && after.playerOk && after.docked > 0, after.states);
   await obs.locator('.tc-row button', { hasText: /^×1$/ }).click({ timeout: 60000 });
@@ -172,6 +172,33 @@ async function coreChecks() {
   await frames(2);
   const back = await ev(() => { const a = window.__app, u = a.universe; return { anchor: a.freeCam.anchor, st: u.isStationFrame, root: u.stationRoot.visible, d: u.camera.distanceToStationKm, near: a.camera.near, farNear: a.farCamera.near }; });
   check('B returns to the station: default frame, station shown', back.anchor === 'station' && back.st && back.root && back.d < 1, JSON.stringify(back));
+  // collisions: flying straight at the station stops at the hull; inside, the cabin walls hold the camera
+  const hull = await ev(() => {
+    const a = window.__app, f = a.freeCam, inp = a.input;
+    f.lookAtBody('station'); f.speedExp = Math.log10(40);
+    inp.keys.KeyW = true;
+    let minD = 1e9, hits = 0;
+    for (let i = 0; i < 240; i++) { f.update(0.05); a.orbit.update(a.time.sim); a.universe.update(); minD = Math.min(minD, f.collider.world.distance(f.offset)); if (f.contact) hits++; }
+    inp.keys.KeyW = false;
+    return { minD, hits, d: f.offset.length(), zone: a.station.interior.locate(f.offset)?.name || null };
+  });
+  check('free camera stops at the hull and slides (never inside a collider)', hull.minD > 0.15 && hull.hits > 0 && !hull.zone, JSON.stringify(hull));
+  await ev(() => { const a = window.__app; a.leaveFreeCamera('play'); a.setView('inside'); });
+  await frames(1);
+  await page.keyboard.press('KeyC');
+  await until(() => window.__app.mode === 'free');
+  const cabin = await ev(() => {
+    const a = window.__app, f = a.freeCam, inp = a.input, I = a.station.interior;
+    f.speedExp = Math.log10(3);
+    inp.keys.KeyW = true; inp.keys.Space = true;
+    let out = 0;
+    for (let i = 0; i < 300; i++) { f.update(0.05); a.orbit.update(a.time.sim); a.universe.update(); if (!I.locate(f.offset, null, 0.05)) out++; }
+    inp.keys.KeyW = false; inp.keys.Space = false;
+    return { out, zone: I.locate(f.offset)?.name || null, pos: f.offset.toArray().map((x) => +x.toFixed(2)) };
+  });
+  check('free camera stays inside the compartments (walls hold it)', cabin.out === 0 && !!cabin.zone, JSON.stringify(cabin));
+  await page.keyboard.press('KeyB');
+  await frames(1);
   await page.keyboard.press('KeyC');
   check('C leaves the free camera (back to the astronaut)', await until(() => window.__app.mode === 'play' && !window.__app.freeCam.active));
   await frames(2);

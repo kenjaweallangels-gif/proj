@@ -11,6 +11,7 @@ import { QualityGovernor } from './QualityGovernor.js';
 import { SimClock } from './Time.js';
 import { Universe } from './Universe.js';
 import { FreeCamera } from './FreeCamera.js';
+import { CameraCollider } from './CameraCollision.js';
 import { QUALITY_PRESETS, LAYERS, SUN_LIGHT_INTENSITY, SUN_COLOR, NEAR_TO_FAR } from './constants.js';
 
 /**
@@ -458,6 +459,7 @@ export class App {
     if (this.mode === 'free' && mode !== 'free' && this.freeCam?.active) this.freeCam.exit();
     this.mode = mode;
     const observer = mode === 'observer';
+    if (observer) this._obsPrev?.copy(this.camera.position);   // no collision sweep across a mode switch
     this.orbitControls.enabled = observer;
     if (observer) { this.input.exitPointerLock(); }
     this.player.setActive?.(mode === 'play');
@@ -500,6 +502,18 @@ export class App {
     } else this.setMode('play');
   }
 
+  /** The orbit camera stays out of the hull / ships / compartment walls (user moves only; views are placed as authored). */
+  _constrainObserver() {
+    const cam = this.camera;
+    if (this.isShot) return;
+    if (!this._obsPrev) { this._obsPrev = cam.position.clone(); this._obsCollider = new CameraCollider(this); return; }
+    if (this._obsPrev.distanceToSquared(cam.position) > 1e-10 && this._obsCollider.constrain(this._obsPrev, cam.position, 0.25)) {
+      cam.lookAt(this.orbitControls.target);
+      cam.updateMatrixWorld();
+    }
+    this._obsPrev.copy(cam.position);
+  }
+
   /** Named camera views (observer) or player poses (play). Used by tools/screenshot.mjs and the menu. */
   setView(name) {
     // free camera poses: 'free' (from the current view), 'free-station' | 'free-earth' | 'free-moon' (jumps)
@@ -534,6 +548,7 @@ export class App {
       this.orbitControls.target.fromArray(v.target instanceof THREE.Vector3 ? v.target.toArray() : v.target);
       this.camera.lookAt(this.orbitControls.target);
       this.orbitControls.update();
+      this._obsPrev?.copy(this.camera.position);
       this.setMode('observer');
     } else if (playerViews.includes(name) || name.startsWith('player') || this.player.hasView?.(name)) {
       this.setMode('play');
@@ -621,7 +636,7 @@ export class App {
     }
 
     for (const m of this.modules) { try { m.update?.(t.dt, this.ctx); } catch (e) { if (!m._errored) { console.error(`update failed in ${m.constructor.name}`, e); m._errored = true; } } }
-    if (this.mode === 'observer') this.orbitControls.update();
+    if (this.mode === 'observer') { this.orbitControls.update(); this._constrainObserver(); }
     // particles live in sim time, but at most x10 visually (RCS puffs stay visible at high rates)
     this.particles.update(Math.min(t.dt, frameDt * 10), this.renderer.renderer, this.camera);
 

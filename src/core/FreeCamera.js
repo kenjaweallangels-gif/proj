@@ -18,6 +18,7 @@
  */
 import * as THREE from 'three';
 import { localBasis } from './Universe.js';
+import { CameraCollider } from './CameraCollision.js';
 import { EARTH_RADIUS_KM } from './constants.js';
 
 const STATION_LEAVE_KM = 2000, STATION_ENTER_KM = 1500;
@@ -29,6 +30,7 @@ export const SPEED_MIN_EXP = -1, SPEED_MAX_EXP = 7.5;   // log10(m/s)
 const MOUSE = 0.0022;          // rad per pixel
 const ROLL_RATE = 1.1;         // rad/s
 const SMOOTH = 0.18;           // s, velocity response
+const CAMERA_RADIUS = 0.25;    // m, collision sphere around the eye
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _c = new THREE.Vector3();
 const _q = new THREE.Quaternion(), _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion();
@@ -49,6 +51,9 @@ export class FreeCamera {
     this.eci = new THREE.Vector3();             // camera position, ECI km
     this.axes = new THREE.Matrix4();            // anchor axes in ECI (columns)
     this.prevMode = 'play';
+    this.collider = new CameraCollider(app);
+    this.contact = false;
+    this._prev = new THREE.Vector3();
   }
 
   get cruiseSpeed() { return Math.pow(10, this.speedExp); }
@@ -236,7 +241,13 @@ export class FreeCamera {
     if (this.speed > 0) {
       // camera-local metres -> anchor axes (in 'local' mode the axes turn as the position changes: the view follows)
       _v.copy(this.vel).multiplyScalar(dt).applyQuaternion(this.q);
-      if (this.anchor === 'station') this.offset.add(_v);
+      if (this.anchor === 'station') {
+        // near the station: never into the hull, the ships or the compartment walls (stop / slide)
+        this._prev.copy(this.offset);
+        this.offset.add(_v);
+        this.contact = this.offset.lengthSq() < STATION_FRAME_M * STATION_FRAME_M && this.collider.constrain(this._prev, this.offset, CAMERA_RADIUS);
+        if (this.contact) { this._prev.sub(this.offset).negate(); if (dt > 0) this.vel.copy(this._prev).multiplyScalar(1 / dt).applyQuaternion(_qb.copy(this.q).invert()); }
+      }
       else {
         this._anchorAxes(this.anchor, this.offset, _m);
         this.offset.addScaledVector(_v.applyMatrix4(_m), 0.001);
