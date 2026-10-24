@@ -74,6 +74,12 @@ export class AutoExposure {
     this.target = 1.0;
     this.logValue = 0;
     this.skyExposure = 1.0;
+    /** Sky (star / Milky Way) adaptation: skyExposure = skyKnee / (sky brightness + skyKnee), eased in log space. */
+    this.skyKnee = 0.0025;
+    this.skyTauBrighten = 0.35;
+    this.skyTauDarken = 5.0;
+    this.skyBrightness = 0;      // diagnostics: what the sky adaptation meters
+    this._logSky = 0;
     // diagnostics (read-only)
     this.earthFrac = 0;        // fraction of the frame covered by the Earth
     this.earthLum = 0;         // weighted Earth radiance over the frame
@@ -148,6 +154,9 @@ export class AutoExposure {
     const facing = d < 40 ? 1 : smoothstep(-0.1, 0.5, _fwd.dot(_toStation));
     this.stationCover = Math.min(1, 45 / Math.max(d, 5)) * facing;
     const stationLum = this.stationCover * (this.stationRadiance * sv + this.stationNightRadiance);
+    // the sky adaptation counts the station only where the view actually faces it (also close to the hull)
+    const facingSky = smoothstep(-0.15, 0.55, _fwd.dot(_toStation)) * (d < 12 ? 0.6 : 1);
+    const stationLumSky = Math.min(1, 45 / Math.max(d, 5)) * facingSky * (this.stationRadiance * sv + this.stationNightRadiance);
 
     // ---- Sun in the frustum ----
     this.sunAhead = projectDirection(o.sunDir, camera, this.sunNdc);
@@ -163,6 +172,8 @@ export class AutoExposure {
 
     // ---- combine ----
     let B = this.earthLum + stationLum + sunLum;
+    let Bsky = this.earthLum + stationLumSky + sunLum;
+    if (ctx.mode !== 'observer' && ctx.player?.state?.inside) Bsky += 0.06;             // cabin lighting (the eye is not dark adapted inside)
     if (ctx.player?.state?.mode === 'airlock') B = Math.max(B, this.airlockBrightness);
     this.brightness = B;
     let target = this.key / (B + this.key / this.max);
@@ -183,9 +194,13 @@ export class AutoExposure {
     this.value = Math.exp(this.logValue);
     this._first = false;
 
-    // Sky (stars / Milky Way) exposure: nearly invisible when the camera is stopped down for daylight, full at night.
-    const nightness = Math.min(1, Math.max(0, (this.value - this.min) / (this.max - this.min)));
-    this.skyExposure = 0.05 + 0.95 * Math.pow(nightness, 1.6);
+    // Sky (stars / Milky Way) adaptation, eye-like: the dark-adapted sky (1) is dimmed in proportion to the light in
+    // view (sunlit Earth / station, the Sun: ~6 magnitudes), slow to dark-adapt, fast to stop down.
+    this.skyBrightness = Bsky;
+    const logS = Math.log(this.skyKnee / (Bsky + this.skyKnee));
+    if (this.cut) this._logSky = logS;
+    else this._logSky += (logS - this._logSky) * (1 - Math.exp(-Math.max(dt, 0) / (logS < this._logSky ? this.skyTauBrighten : this.skyTauDarken)));
+    this.skyExposure = Math.exp(this._logSky);
     return this.value;
   }
 }

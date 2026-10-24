@@ -3,14 +3,14 @@ import { HorizonCull } from './HorizonCull.js';
 import { EARTH_RADIUS_KM } from '../core/constants.js';
 import { SPHERE_VERTEX, groundFragment, CLOUD_FRAGMENT, SHELL_FRAGMENT } from './shaders/EarthShaders.js';
 import { AURORA_FRAGMENT } from './shaders/AuroraShaders.js';
-import { QUAD_VERTEX, SUN_DISC_FRAGMENT, SUN_CORONA_FRAGMENT, MOON_VERTEX, MOON_FRAGMENT } from './shaders/SunMoonShaders.js';
+import { QUAD_VERTEX, SUN_DISC_FRAGMENT, SUN_CORONA_FRAGMENT } from './shaders/SunMoonShaders.js';
 import { loadSeasonalDay, createNoiseTexture, imageChannel, BASE_MONTH } from './EarthTextures.js';
 import { SurfaceDetail } from './SurfaceDetail.js';
 import { Weather, latLonToObj } from './Weather.js';
 
 /**
- * FAR scene (kilometres): the Earth (ground / clouds / aurora / atmosphere shells with custom GLSL),
- * the Sun (HDR disc + corona, occluded by the Earth through depth) and the Moon.
+ * FAR scene (kilometres): the Earth (ground / clouds / aurora / atmosphere shells with custom GLSL) and
+ * the Sun (HDR disc + corona, occluded by the Earth through depth). The Moon is world/Moon.js (created by Sky).
  * Orientation comes from ctx.orbit every frame; the Earth centre is ctx.orbit.earthCenterFar.
  *
  * Surface: Blue Marble NG monthly imagery blended for the sim date (EarthTextures), NSIDC sea ice, water fraction
@@ -22,7 +22,6 @@ import { Weather, latLonToObj } from './Weather.js';
 
 const SUN_DISTANCE_KM = 1.0e6;
 const SUN_ANGULAR_RADIUS = (0.53 / 2) * Math.PI / 180;
-const MOON_RADIUS_KM = 1737.4;
 const CLOUD_ALTITUDE_KM = 6;
 const ATMO_ALTITUDE_KM = 100;
 const AURORA_SHELL_KM = 335;
@@ -53,11 +52,6 @@ const FEATURES = {
 const _qInv = new THREE.Quaternion();
 const _v = new THREE.Vector3();
 const _camKm = new THREE.Vector3();
-const _x = new THREE.Vector3();
-const _y = new THREE.Vector3();
-const _z = new THREE.Vector3();
-const _m = new THREE.Matrix4();
-const Z_AXIS = new THREE.Vector3(0, 0, 1);
 
 export class Earth {
   constructor(ctx) {
@@ -237,17 +231,6 @@ export class Earth {
     this.corona.frustumCulled = false;
     this.group.add(this.sun, this.corona);
 
-    // --- Moon ---
-    this.moonMaterial = new THREE.ShaderMaterial({
-      name: 'Moon',
-      uniforms: { tMoon: { value: null }, uSunDir: this.uSunDir, uSunColor: this.uSunColor, uIntensity: { value: 2.2 } },
-      vertexShader: MOON_VERTEX, fragmentShader: MOON_FRAGMENT, toneMapped: false,
-    });
-    this.moon = new THREE.Mesh(new THREE.SphereGeometry(MOON_RADIUS_KM, 64, 32), this.moonMaterial);
-    this.moon.name = 'Moon';
-    this.moon.visible = false;
-    this.group.add(this.moon);
-
     ctx.farScene.add(this.group);
     this.update(0, ctx);
   }
@@ -260,7 +243,7 @@ export class Earth {
     const maxAniso = ctx.renderer.capabilities.getMaxAnisotropy();
     const aniso = Math.max(1, Math.min(ctx.quality.anisotropy || 4, maxAniso));
     const E = 'textures/earth/';
-    let total = 6 + (f.day === 'nearest' ? 1 : f.day === 'blend' ? 2 : 4) + (this.lite ? 0 : 1), done = 0;
+    let total = 5 + (f.day === 'nearest' ? 1 : f.day === 'blend' ? 2 : 4) + (this.lite ? 0 : 1), done = 0;
     ctx.hud?.setProgress?.(0);
     // format: 'rgb' | 'r' (grey, one byte per texel) | 'rg' (normal map xy); noMips: bake sources sampled once
     const load = async (path, srgb, noMips = false, format = 'rgb') => {
@@ -275,22 +258,20 @@ export class Earth {
       return t;
     };
     const date = ctx.orbit.dateAt(ctx.time.sim);
-    const [dayRes, night, clouds, water, normal, moon, aux] = await Promise.all([
+    const [dayRes, night, clouds, water, normal, aux] = await Promise.all([
       loadSeasonalDay(ctx.renderer, load, date, f.day, aniso, `${E}earth_base_m${BASE_MONTH}_8192.jpg`),
       load(`${E}earth_night_${f.night}.jpg`, false, false, 'r'),
       load(`${E}earth_clouds_${f.clouds}.jpg`, false, false, 'r'),
       load(`${E}earth_water_${f.water}.png`, false, false, 'r'),
       load(`${E}earth_normal_${f.normal}.jpg`, false, false, 'rg'),
-      load('textures/sky/moon_1024.jpg', true),
       this.lite ? Promise.resolve(null) : load(`${E}earth_aux_2048.png`, false, false, 'rgb'),
     ]);
     this.season = dayRes.season;
     const gu = this.groundMaterial.uniforms;
     gu.tDay.value = dayRes.texture; gu.tNight.value = night; gu.tWater.value = water; gu.tNormal.value = normal;
     this.tClouds.value = clouds;
-    this.moonMaterial.uniforms.tMoon.value = moon;
     this.dayTarget = dayRes.target;
-    this.textures = { night, clouds, water, normal, moon };
+    this.textures = { night, clouds, water, normal };
     if (!dayRes.target) this.textures.day = dayRes.texture;
     if (!this.lite) {
       this.textures.aux = aux;
@@ -301,7 +282,6 @@ export class Earth {
       this.weather.setClimate(imageChannel(aux.image, 360, 180, 0), imageChannel(clouds.image, 360, 180, 0), 360, 180);
     }
     this.earth.visible = true; if (this.clouds) this.clouds.visible = true; if (this.aurora) this.aurora.visible = true;
-    this.moon.visible = true;
     this.group.remove(this.placeholder);
     this.placeholder.geometry.dispose(); this.placeholder.material.dispose();
     this.placeholder = null;
@@ -364,14 +344,6 @@ export class Earth {
     if (cam) _v.copy(cam.position); else _v.set(0, 0, 0);
     this.sun.lookAt(_v);
     this.corona.quaternion.copy(this.sun.quaternion);
-    // Moon: position from the ephemeris; near side (texture centre) faces the Earth, north pole toward celestial north
-    this.moon.position.copy(o.moonPosFar);
-    _x.copy(o.earthCenterFar).sub(o.moonPosFar).normalize();
-    _y.copy(Z_AXIS).applyQuaternion(o.skyQuat);
-    _z.crossVectors(_x, _y).normalize();
-    _y.crossVectors(_z, _x);
-    _m.makeBasis(_x, _y, _z);
-    this.moon.quaternion.setFromRotationMatrix(_m);
   }
 
   dispose() {
