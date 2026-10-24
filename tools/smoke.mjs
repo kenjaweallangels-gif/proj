@@ -19,7 +19,7 @@ const timeout = parseInt(args.timeout || '600000', 10);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const server = await createServer({ root, configFile: path.join(root, 'vite.config.js'), server: { port: 0, host: '127.0.0.1', hmr: false, watch: null }, logLevel: 'error' });
 await server.listen();
-const url = `${server.resolvedUrls.local[0]}?quality=${args.quality || 'low'}&t=600&minh=0`;
+const url = `${server.resolvedUrls.local[0]}?quality=${args.quality || 'low'}&t=600&minh=0&pr=${args.pr || '0.5'}`;
 const browser = await chromium.launch({ headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--disable-dev-shm-usage'] });
 const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
 const errors = [];
@@ -30,7 +30,7 @@ let failed = 0;
 const check = (name, ok, info = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${info ? '  — ' + info : ''}`); if (!ok) failed++; };
 const ev = (fn, arg) => page.evaluate(fn, arg);
 /** Wait until fn() is truthy in the page (the software GPU renders only a few frames per second). */
-const until = (fn, ms = 30000) => page.waitForFunction(fn, null, { timeout: ms, polling: 100 }).then(() => true, () => false);
+const until = (fn, ms = 120000) => page.waitForFunction(fn, null, { timeout: ms, polling: 100 }).then(() => true, () => false);
 const frames = (n) => ev((k) => window.__app.renderFrames(k), n);
 /** Advance the simulation deterministically by stepping modules directly (keys held in `keys` are pressed). */
 const step = (seconds, keys = []) => ev(([s, k]) => {
@@ -68,7 +68,7 @@ try {
   // menu
   check('start menu shown', await ev(() => window.__app.hud.menu.visible === true));
   check('input disabled behind the menu', await ev(() => window.__app.input.enabled === false));
-  await page.getByRole('button', { name: 'НАЧАТЬ' }).click();
+  await page.getByRole('button', { name: 'НАЧАТЬ' }).click({ noWaitAfter: true, timeout });
   await page.waitForTimeout(500);
   check('menu hidden after НАЧАТЬ', await ev(() => window.__app.hud.menu.visible === false));
   check('input enabled', await ev(() => window.__app.input.enabled !== false));

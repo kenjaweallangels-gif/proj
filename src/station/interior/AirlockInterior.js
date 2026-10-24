@@ -129,10 +129,10 @@ export function buildAirlock(I, airlockPart) {
       handrail(K, V(-0.9, y * 1.05, z * 1.05), V(-0.2, y * 1.05, z * 1.05), n, COL.rail, 0.05);
     }
     Z.cyl(V(x0 + 0.02, 0, 0), V(x1 - 0.02, 0, 0), r - 0.1);
-    Z.box(x0 - 0.3, 0, 0, 0.35, CBM.w / 2, CBM.w / 2);
+    Z.box(x0, 0, 0, 1.0, CBM.w / 2, CBM.w / 2);
     Z.portal('node1', V(x0 - 0.05, 0, 0), 0.75);
     Z.portal('airlockC', V(x1 + 0.05, 0, 0), 0.6, airlockPart.innerHatch);
-    Z.cyl(V(x1 - 0.3, 0, 0), V(x1 + 0.45, 0, 0), 0.55, airlockPart.innerHatch);
+    Z.cyl(V(x1 - 1.0, 0, 0), V(x1 + 1.15, 0, 0), 0.55, airlockPart.innerHatch);
     Z.light(-1.6, 0.6, 0);
     Z.carveCone(V(x0 - 0.3, 0, 0), V(x1 + 0.1, 0, 0), 1.96);
     Z.bake = (x, y, z, nx, ny, nz, name) => (name === 'glow' ? 1 : (I.lite ? 0.9 : 1) * (1 - 0.35 * sstep(1.4, 1.9, Math.hypot(y, z))));
@@ -187,7 +187,7 @@ export function buildAirlock(I, airlockPart) {
       cables(K, [V(x0, -0.9, 0.5), V(x1, -0.9, 0.5)], 3, 0.012);
     }
     Z.cyl(V(x0 + 0.02, 0, 0), V(x1 - 0.02, 0, 0), r - 0.05);
-    Z.cyl(V(x0 - 0.45, 0, 0), V(x0 + 0.3, 0, 0), 0.55, airlockPart.innerHatch);
+    Z.cyl(V(x0 - 1.15, 0, 0), V(x0 + 1.0, 0, 0), 0.55, airlockPart.innerHatch);
     Z.portal('airlockE', V(x0 - 0.05, 0, 0), 0.6, airlockPart.innerHatch);
     Z.light((x0 + x1) / 2, 0.5, 0);
     Z.carveCone(V(x0 - 0.1, 0, 0), V(xh - 0.2, 0, 0), 1.96);

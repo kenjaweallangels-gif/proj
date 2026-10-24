@@ -133,7 +133,7 @@ function buildHub(I) {
       hatchDoorRound(K, offset(rot(hinge, 'y', 1.9), -hr - 0.06, 0, 0), hr - 0.03);
       if (!I.lite) { sign(K, offset(F, 0, 1.4, 0), 'СТУПИЦА КОЛЬЦА · RING HUB', 1.2, 0.12, { ph: 48, border: '#2a2d32' }); display(K, offset(F, -1.9, 0.6, 0.02), 0.7, 0.44, 'scrGraph'); rack(K, offset(F, 2.0, 0.6, 0), 'locker', 1.0, 1.4); }
       lightPanel(K, offset(F, 0, 3.0, 0), 1.0, 0.25);
-      Z.cyl(V(xb - 0.3, hy, 0), V(xb + 0.6, hy, 0), hr - 0.05);
+      Z.cyl(V(xb - 1.0, hy, 0), V(xb + 1.0, hy, 0), hr - 0.05);
       Z.portal('spine', V(xb + 0.05, hy, 0), 0.6);
     }
   }
@@ -223,7 +223,7 @@ function buildSpoke(I) {
   }
   if (!I.lite) cables(K, [P(-0.55, r0 + 0.2, phi).addScaledVector(t, 0.3), P(-0.55, r1, phi).addScaledVector(t, 0.3)], 3, 0.012);
   // volumes, ladder, portals
-  Z.cyl(P(0, r0 - 0.4, phi), P(0, r1 + 0.6, phi), rr - 0.07);
+  Z.cyl(P(0, r0 - 1.2, phi), P(0, r1 + 1.0, phi), rr - 0.07);
   Z.ladders.push({ a: P(0, r0 + 0.1, phi).addScaledVector(t, lad), b: P(0, FLOOR, phi).addScaledVector(t, lad), up: up.clone(), side: t.clone() });
   Z.portal('ringHub', P(0, r0, phi), 0.7);
   Z.portal('pod', P(0, r1, phi), 0.7);
@@ -560,7 +560,9 @@ function cabin(Z, sx, a, b, aisle, xf, xc, dA, dB, seed) {
     lightPanel(K, ff(P(sx * 1.9, CEIL + 0.01, pm), radial(pm), tangent(pm)), 0.6, 0.2, [2.6, 2.4, 2.0]);
   }
   // volume: cabin floor space + the doorway
-  Z.polar(sx > 0 ? aisle - 0.1 : -xf + 0.3, sx > 0 ? xf - 0.3 : -aisle + 0.1, CEIL + 0.3, FLOOR, a + 0.02, b - 0.02);
+  Z.polar(sx > 0 ? aisle + 0.05 : -xf + 0.3, sx > 0 ? xf - 0.3 : -aisle - 0.05, CEIL + 0.3, FLOOR, a + 0.02, b - 0.02);
+  // doorway: from the corridor centre line through the door into the cabin
+  Z.polar(sx > 0 ? 0 : -1.7, sx > 0 ? 1.7 : 0, FLOOR - 2.1, FLOOR, dA + 0.005, dB - 0.005);
   K.set = prev;
   void seed; void dA; void dB;
 }

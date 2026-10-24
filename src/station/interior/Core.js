@@ -250,7 +250,7 @@ function endBulkhead(Z, e, s, ue, h, c, ru, spec) {
     }
     if (e.door !== 'closed') {
       const L = e.vest + 0.6;
-      Z.box(s * (ue + L / 2 - 0.25), 0, 0, L / 2 + 0.05, CBM.w / 2, CBM.w / 2);
+      Z.box(s * (ue + e.vest / 2), 0, 0, e.vest / 2 + 1.0, CBM.w / 2, CBM.w / 2);   // reaches 1 m into both compartments
       Z.portal(e.to, V(s * (ue + 0.05), 0, 0), 0.75);
     }
   } else if (e.kind === 'round') {
@@ -269,7 +269,7 @@ function endBulkhead(Z, e, s, ue, h, c, ru, spec) {
     }
     if (e.door !== 'closed') {
       const L = (e.vest || 0) + 0.6;
-      Z.cyl(V(s * (ue - 0.25), 0, 0), V(s * (ue + L), 0, 0), rr);
+      Z.cyl(V(s * (ue - 1.0), 0, 0), V(s * (ue + (e.vest || 0) + 1.0), 0, 0), rr);
       Z.portal(e.to, V(s * (ue + 0.05), 0, 0), rr + 0.1);
     }
   } else {
@@ -322,7 +322,7 @@ function nodeModule(I, spec) {
       if (rs.end === 'ids') idsEnd(Z, ff(pt(F, 0, 0, -rs.len), dir(F, 0, 0, 1), dir(F, 1, 0, 0)), rs.port);
       if (rs.door !== 'closed' && rs.pass !== false) {
         const L = rs.len + 0.5;
-        Z.boxM(offset(F, 0, 0, -L / 2 + 0.25), CBM.w / 2, CBM.w / 2, L / 2);
+        Z.boxM(offset(F, 0, 0, -rs.len / 2), CBM.w / 2, CBM.w / 2, rs.len / 2 + 1.0);
         if (rs.to) Z.portal(rs.to, pt(F, 0, 0, -0.05), 0.75);
       }
     } else if (rs.kind === 'round') {
@@ -335,7 +335,7 @@ function nodeModule(I, spec) {
       else if (rs.door === 'closed') hatchDoorRound(K, offset(F, 0, 0, 0.06), rr);
       if (rs.door !== 'closed') {
         const L = rs.len + 0.5;
-        Z.cyl(pt(F, 0, 0, 0.25), pt(F, 0, 0, -L), rr);
+        Z.cyl(pt(F, 0, 0, 1.0), pt(F, 0, 0, -rs.len - 1.0), rr);
         Z.portal(rs.to, pt(F, 0, 0, -0.05), rr + 0.1);
       }
     }
@@ -596,7 +596,7 @@ function stowage(I) {
   hatchFrameCBM(K, Ft, null);
   for (const a of [0.5, 2.6, 4.7]) lightPanel(K, ff(V(-0.2, Math.cos(a) * (rr - 0.05), Math.sin(a) * (rr - 0.05)), V(0, -Math.cos(a), -Math.sin(a)), X), 0.5, 0.15);
   Z.cyl(V(-ue, 0, 0), V(ue - 0.05, 0, 0), 0.72);
-  Z.box(-ue - 0.3, 0, 0, 0.45, CBM.w / 2, CBM.w / 2);
+  Z.box(-ue, 0, 0, 1.0, CBM.w / 2, CBM.w / 2);
   Z.portal('node3', V(-ue - 0.1, 0, 0), 0.75);
   Z.light(0, 0, 0);
   Z.up.set(0, 1, 0);
@@ -655,11 +655,11 @@ function dockingHub(I, ports) {
       vestibuleRound(K, ff(V(ue, 0, 0), X, NZ), 0.4, rr + 0.03, { jumpers: false });
       hatchDoorRound(K, ff(V(ue + 0.38, 0, 0), NX, Zp), rr);
       Z.statusLamps = Z.statusLamps || []; Z.statusLamps.push({ port: 'H1', M: offset(F, rr + 0.3, 0.3, 0.03) });
-      Z.cyl(V(ue - 0.3, 0, 0), V(ue + 0.3, 0, 0), rr);
+      Z.cyl(V(ue - 1.0, 0, 0), V(ue + 0.3, 0, 0), rr);
     } else {
       const hinge = offset(F, rr + 0.08, 0, 0.12);
       hatchDoorRound(K, offset(rot(hinge, 'y', 1.9), -rr - 0.08, 0, 0), rr);
-      Z.cyl(V(-ue + 0.3, 0, 0), V(-ue - 0.6, 0, 0), rr);
+      Z.cyl(V(-ue + 1.0, 0, 0), V(-ue - 1.0, 0, 0), rr);
       Z.portal('svcTunnel', V(-ue - 0.05, 0, 0), rr + 0.1);
     }
     if (!I.lite) {
@@ -698,7 +698,7 @@ function serviceTunnel(I) {
   }
   lightPanel(K, ff(V(0, rr - 0.02, 0), NY, X), 0.6, 0.12);
   handrail(K, V(-0.5, -0.45, -0.28), V(0.5, -0.45, -0.28), V(0, 1, 0.6).normalize());
-  Z.cyl(V(-L / 2 - 0.4, 0, 0), V(L / 2 + 0.4, 0, 0), 0.45);
+  Z.cyl(V(-L / 2 - 1.0, 0, 0), V(L / 2 + 1.0, 0, 0), 0.45);
   Z.portal('service', V(-L / 2, 0, 0), 0.6);
   Z.portal('hub', V(L / 2, 0, 0), 0.6);
   Z.light(0, 0.2, 0);
@@ -770,9 +770,9 @@ function spineTunnel(I) {
   }
   sign(K, ff(V(sx, yBot + 0.8, -rr + 0.03), Zp, X), 'ТОННЕЛЬ К КОЛЬЦУ · RING ACCESS', 0.8, 0.08, { ph: 40, bg: '#e9e5d0' });
   // volumes
-  Z.cyl(V(sx, yBot - 0.3, 0), V(sx, jy0 + 0.3, 0), rr - 0.08);
+  Z.cyl(V(sx, yBot - 1.0, 0), V(sx, jy0 + 1.0, 0), rr - 0.08);
   Z.box(sx, yT, 0, 0.98, 0.98, 0.98);
-  Z.cyl(V(jx0 + 0.3, yT, 0), V(xEnd - 0.4, yT, 0), rr - 0.08);
+  Z.cyl(V(jx0 + 1.0, yT, 0), V(xEnd - 1.0, yT, 0), rr - 0.08);
   Z.portal('node2', V(sx, yBot, 0), 0.6);
   Z.portal('ringHub', V(xEnd, yT, 0), 0.6);
   Z.light(sx, -4, 0); Z.light(-10, yT, 0);
