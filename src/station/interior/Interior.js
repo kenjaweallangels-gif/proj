@@ -466,6 +466,6 @@ function makeViews() {
     'interior-spoke': { ring: true, phi: 0.0, rho: 18, x: 0.05, yaw: 0, pitch: -1.2, ladder: true },
     'interior-ring': { ring: true, phi: 0.42, rho: RING.FLOOR - 1.6, x: 0.1, yaw: 0, pitch: -0.05 },
     'interior-pod': { ring: true, phi: Math.PI * 2 / 3 + 0.075, rho: RING.FLOOR - 1.6, x: 0.3, yaw: Math.PI, pitch: 0.12 },
-    'interior-cabin': { ring: true, phi: 0.258, rho: RING.FLOOR - 1.6, x: 1.5, yaw: Math.PI / 2, pitch: -0.1 },
+    'interior-cabin': { ring: true, phi: 0.226, rho: RING.FLOOR - 1.6, x: 0.95, yaw: 0.85, pitch: -0.28 },
   };
 }

@@ -115,8 +115,14 @@ function rackModule(I, spec) {
       rack(K, F, type, slotW, across, { laptop: type.startsWith('exp') && Z.rnd() < 0.3, label: !ru && Z.rnd() < 0.4 ? `${spec.code || 'LAB'}${wall[0].toUpperCase()}${(i % 4) + 1}` : null });
       // backplane behind the rack gap
     }
-    // dark backplane behind all racks of this wall (seen through the gaps)
-    W.box('paint', wallFrame(wall, 0, h, -0.16), 2 * ue, across + 0.04, 0.01, 0x18191b, null, null, 16);
+    // dark backplane behind the racks of this wall (seen through the gaps); runs of rack slots, not the window alcoves
+    for (let i = 0; i < n;) {
+      if (used[wall][i]) { i++; continue; }
+      let j = i; while (j + 1 < n && !used[wall][j + 1]) j++;
+      const a0 = i === 0 ? -ue : u0 + i * slotW, a1 = j === n - 1 ? ue : u0 + (j + 1) * slotW;
+      W.box('paint', wallFrame(wall, (a0 + a1) / 2, h, -0.16), a1 - a0, across + 0.04, 0.01, 0x18191b, null, null, 16);
+      i = j + 1;
+    }
   }
   // rack-edge seat tracks along every wall edge
   if (!I.lite) for (const wall of walls) for (const sy of [-1, 1]) {
@@ -346,7 +352,8 @@ function nodeModule(I, spec) {
       const types = spec.side?.[wall] || { deck: ['locker', 'stow'], overhead: ['stow', 'drawers'], port: ['locker2', 'stow'], stbd: ['stow', 'locker'] }[wall];
       rack(K, wallFrame(wall, uu, h), types[sgn > 0 ? 1 : 0], sideW - 0.02, across, {});
     }
-    W.box('paint', wallFrame(wall, 0, h, -0.16), 2 * ue, across + 0.04, 0.01, 0x18191b, null, null, 16);
+    // dark backplate behind the side racks (not across the hatch opening)
+    for (const sgn of [-1, 1]) W.box('paint', wallFrame(wall, sgn * (panel / 2 + sideW / 2), h, -0.16), sideW + 0.02, across + 0.04, 0.01, 0x18191b, null, null, 16);
   }
   // corner standoffs
   const bw = c * Math.SQRT2;

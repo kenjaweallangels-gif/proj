@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Developer probe: loads the scene (shot mode, tiny viewport) and runs a JS snippet against window.__app.
- *   node tools/interior-debug.mjs --quality=lite --file=probe.js
+ *   node tools/interior-debug.mjs --quality=lite --file=probe.js [--shot=out.png] [--w=320 --h=180]
  * The file's contents are the body of an async function (app) => result; the result is printed as JSON.
  */
 import { chromium } from 'playwright';
@@ -23,4 +23,8 @@ await page.waitForFunction(() => window.__APP_READY__ === true, null, { timeout:
 const body = fs.readFileSync(args.file, 'utf8');
 const r = await page.evaluate(`(async (app) => { ${body} })(window.__app)`);
 console.log(JSON.stringify(r, null, 1));
+if (args.shot) {   // optional screenshot after the snippet ran (a few frames later)
+  await page.evaluate(() => new Promise((res) => { let n = 0; const f = () => (++n > 3 ? res() : requestAnimationFrame(f)); requestAnimationFrame(f); }));
+  await page.screenshot({ path: args.shot, timeout: 600000 });
+}
 await browser.close(); await server.close(); process.exit(0);

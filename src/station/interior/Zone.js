@@ -90,8 +90,8 @@ export class ZoneBuilder {
     const mq = new THREE.Quaternion(); M.decompose(_p, mq, _s);
     const toF = (p) => p.clone().applyMatrix4(M);
     const vols = this.volumes.map((v) => {
-      if (v.type === 'box') return { type: 'box', center: toF(v.center), half: v.half.clone(), quat: mq.clone().multiply(v.quat), gate: v.gate };
-      if (v.type === 'cyl') return { type: 'cyl', a: toF(v.a), b: toF(v.b), r: v.r, gate: v.gate };
+      if (v.type === 'box') return { type: 'box', center: toF(v.center), half: v.half.clone(), quat: mq.clone().multiply(v.quat), gate: v.gate, passage: !!v.passage };
+      if (v.type === 'cyl') return { type: 'cyl', a: toF(v.a), b: toF(v.b), r: v.r, gate: v.gate, passage: !!v.passage };
       return v;   // polar volumes are authored in ring-local coordinates already
     });
     for (const v of vols) if (v.type === 'box') v.qi = v.quat.clone().invert();
