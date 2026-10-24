@@ -275,9 +275,13 @@ try {
   const brake = await ev(() => {
     const a = window.__app, p = a.player, W = a.collision, h = 1 / 60;
     p.setView('interior-lab');
-    const D = new p.position.constructor(-1, 0, 0);          // along the lab toward its end bulkhead, head first
+    const V = p.position.constructor, hit = {};
+    // a solid wall 1.8..15 m away along one of the axes (not through an open hatch), head first
+    const dirs = [[-1, 0, 0], [1, 0, 0], [0, 0, 1], [0, 0, -1]].map((d) => new V(...d));
+    const D = dirs.find((d) => { const ok = W.raycast(p.position, d, 15, hit, { mask: 10 }); return ok && hit.distance > 1.8; }) || dirs[0];
+    window.__labDir = D.toArray();
     p.quaternion.copy(p.lookAlong(p.position, D));
-    const hit = {}; const wall = W.raycast(p.position, D, 20, hit, { mask: 10 }) ? hit.distance : null;
+    const wall = W.raycast(p.position, D, 20, hit, { mask: 10 }) ? hit.distance : null;
     if (wall) p.position.addScaledVector(D, wall - 1.7);
     p.velocity.copy(D).multiplyScalar(1.0);
     let vmin = 9, imp = 0;
@@ -287,8 +291,8 @@ try {
   const bev = await bodyEvents();
   check('auto-brake at a wall with the hands', bev.includes('brake') && brake.v < 0.25 && brake.clearance > 0.1, JSON.stringify(brake) + ' ' + [...new Set(bev)].join(','));
   // thrusting hard into the lab wall: no passing through
-  await ev(() => { const p = window.__app.player; p.setView('interior-lab'); p.quaternion.copy(p.lookAlong(p.position, new p.position.constructor(-1, 0, 0))); });
-  const labWall = await ram([-1, 0, 0], 4.0, 3.0, 10);
+  const labDir = await ev(() => { const p = window.__app.player; p.setView('interior-lab'); p.quaternion.copy(p.lookAlong(p.position, new p.position.constructor(...window.__labDir))); return window.__labDir; });
+  const labWall = await ram(labDir, 4.0, 3.0, 10);
   check('cannot pass through the lab wall at 4 m/s', labWall.wall !== null && labWall.maxAlong < labWall.wall - 0.1 && labWall.clearance > 0.1, JSON.stringify(labWall));
 
   // float from the lab through node 1 into the equipment lock

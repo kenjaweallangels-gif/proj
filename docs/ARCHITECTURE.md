@@ -361,7 +361,7 @@ from what it touches. The compartment volumes (`interior.volumesFor`) stay as a 
 
 **Mechanics (`src/player/Mechanics.js`, `player.mech`)** — the same in IVA (unsuited: lighter, faster), the airlock
 (suited) and EVA (suited, propulsion by SAFER): hand over hand (WASD intent: a free hand reaches the rail or wall
-within arm's reach ahead, grips and pulls with limited muscle force — unsuited 2.4 m/s², suited 1.0 m/s²; the
+within reach ahead — arm + a lean of the body: 1.0 m unsuited, 0.85 m suited — grips and pulls with limited muscle force — unsuited 2.4 m/s², suited 1.0 m/s²; the
 other hand reaches mid-stroke; off-centre pushes give a small damped rotation; without any grip only a weak swim
 acceleration), auto-brake (sphere cast along the velocity: the hands — the feet when moving feet-first — absorb
 the approach speed over the remaining reach), move-and-slide in substeps (≤ 0.45 × head radius per substep, a
@@ -406,10 +406,11 @@ collision.distance(point, maxDistance, opts?)                -> number
 collision.surfaceVelocity(body, worldPoint, out)             // ring spin / ship velocity of a contact's body
 ```
 Resolve calls do up to three push iterations; callers move in substeps of at most about half the radius (or sweep
-first with `sphereCast`) so nothing tunnels. The observer camera (`App.constrainObserver`) sweeps from its last
-valid position to where OrbitControls put it and stops at the first surface (radius 0.3 m), then pushes out any
-overlap; a free camera should do the same: `sphereCast(prev, next, r, hit)` → stop at `hit.t`, then
-`resolveSphere(pos, r)`.
+first with `sphereCast`) so nothing tunnels. The observer and free cameras (`src/core/CameraCollision.js`) use it as
+their backend: `sphereCast(prev, next, r, hit)` → stop at `hit.t` and slide, then `resolveSphere(pos, r)`.
+Bodies under an `userData.animated` pivot (the hatches) refresh their world matrix per query (they also move in
+sequences that are stepped without rendering); other anchors use the last `matrixWorld` (the IVA controller
+refreshes the ring group itself).
 
 ## Time (`ctx.time`, src/core/Time.js)
 
