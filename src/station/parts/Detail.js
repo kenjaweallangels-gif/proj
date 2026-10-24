@@ -253,7 +253,8 @@ export class DetailSet {
   update(camera) {
     camera.getWorldPosition(_cam);
     const k = this.ctx.quality?.detailScale ?? 1;
-    const df = this.dist.fine * k, dm = this.dist.mid * k;
+    // inside a compartment the exterior is seen only through windows: fasteners there are not worth their triangles
+    const df = this.interiorView ? -1e9 : this.dist.fine * k, dm = this.dist.mid * k;
     for (let i = 0, n = this.entries.length; i < n; i++) {
       const e = this.entries[i];
       _c.copy(e.center).applyMatrix4(e.mesh.parent.matrixWorld);

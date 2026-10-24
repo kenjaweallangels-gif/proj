@@ -383,6 +383,7 @@ export class StationInterior {
     const farMask = farOn ? this._farMask : 0;
     if (ctx.farCamera.layers.mask !== farMask) ctx.farCamera.layers.mask = farMask;
     if (ctx.sunLight) ctx.sunLight.shadow.autoUpdate = showExterior;
+    if (this.station.detail) this.station.detail.interiorView = !!zone;
     const glowOn = !zone;
     if (this.glowMeshes) for (const m of this.glowMeshes) if (m.visible !== glowOn) m.visible = glowOn;
     // ---- carving
@@ -402,6 +403,9 @@ export class StationInterior {
     const post = ctx.app?.renderer?.post;
     if (post?.grade) {
       const g = post.grade;
+      // AO is tuned for hull joints seen from metres away; at cabin scale its kernel smears dark halos
+      if (zone && !this._aoSaved) { this._aoSaved = [g.aoRadius, g.aoStrength]; g.aoRadius = 0.22; g.aoStrength = 0.5; }
+      else if (!zone && this._aoSaved) { [g.aoRadius, g.aoStrength] = this._aoSaved; this._aoSaved = null; }
       if (zone) {
         const target = (this.lite ? 0.95 : 0.78) * (zone.exposure ?? 1);
         if (g.autoExposure) { g.autoExposure = false; this._exposure = post.exposure?.value ?? target; this._restoreAuto = true; }
