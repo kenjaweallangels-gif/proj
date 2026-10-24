@@ -4,8 +4,9 @@ import { ZoneBuilder, ff, sstep } from './Zone.js';
 import {
   COL, pt, dir, handrail, sign, lightPanel, vent, cables, duct, curve, bungee, bag, clutter, display, extinguisher, pba,
   camera, egressSign, footLoops, velcro, rack, boxSolid, CBM, hatchFrameCBM, openDoorCBM, hatchFrameRound, hatchDoorRound,
-  spacesuit, laptop,
+  laptop,
 } from './Kit.js';
+import { buildMountSuit } from '../../player/suit/Mount.js';
 
 /**
  * Two-section airlock on node 1 (+Z):
@@ -80,21 +81,30 @@ export function buildAirlock(I, airlockPart) {
       handrail(K, pt(F, -0.62, -0.4, 0), pt(F, -0.62, 0.4, 0), dir(F, 0, 0, 1), COL.rail, 0.07);
       handrail(K, pt(F, 0.62, -0.4, 0), pt(F, 0.62, 0.4, 0), dir(F, 0, 0, 1), COL.rail, 0.07);
     }
-    // two spacesuits on the side walls (port / starboard), each in its own object (one disappears when worn)
+    // two Orlan-MKS suits on their mounts (port / starboard), each its own object (hidden while worn). The suits
+    // are full skinned figures (src/player/suit, the same model the player wears) in the mount pose with the
+    // backpack door open; they face the node-1 hatch, turned 35 deg toward the centre, so the open door points
+    // aft toward the crew-lock bulkhead where the crew member floats in from behind.
     const suits = [];
-    for (const [s, name] of [[1, 'ОРЛАН-МКС №6'], [-1, 'ОРЛАН-МКС №7']]) {
-      const SW = new MeshWriter(I.lite ? Math.min(I.detail, 0.5) : I.detail);
-      const SK = { ...K, W: SW, solids: null, rails: [] };
-      const Fs = ff(V(-1.55, -0.05, s * 1.2), V(0, 0, -s), V(-s, 0, 0));
-      spacesuit(SK, Fs, 'ru');
-      if (Z.bake) SW.shade(Z.bake);
-      suits.push({ geos: SW.build(), side: s, name, position: Z.toFrame(V(-1.55, 0.2, s * 0.6)) });
-      // mount frame (static)
-      W.box('metal', offset(Fs, 0, 0.3, -0.62), 0.5, 0.08, 0.08, COL.dark);
-      W.box('metal', offset(Fs, 0, -0.6, -0.55), 0.5, 0.06, 0.2, COL.dark);
+    for (const [s, name, variant] of [[1, 'ОРЛАН-МКС №6', 'blue'], [-1, 'ОРЛАН-МКС №7', 'red']]) {
+      const ang = 0.61;
+      const f = V(-Math.cos(ang), 0, -s * Math.sin(ang));
+      const O = V(-1.5, -1.07, s * 1.16);                                  // feet (body origin), zone frame
+      const local = ff(O, f, new THREE.Vector3().crossVectors(Y, f));
+      suits.push({
+        build: (o) => buildMountSuit({ ...o, variant }).group, local, side: s, name, variant,
+        position: Z.toFrame(V(-1.55, 0.2, s * 0.6)),
+      });
+      // mount: deck post with a cross arm clamping the waist ring on the suit's left side, foot plate
+      const Fw = offset(local, 0, 1.0, 0);                                 // waist level, suit frame (x left, z front)
+      W.box('metal', offset(Fw, 0.33, -0.02, 0.0), 0.16, 0.06, 0.08, COL.dark);
+      W.box('metal', offset(Fw, 0.27, -0.02, 0.0), 0.05, 0.1, 0.12, COL.dark);
+      W.cyl('metal', sub(Fw, 0.38, -0.5, 0.0, null), 0.03, 0.03, 0.98, 12, COL.dark);
+      W.box('metal', offset(local, 0, -0.03, 0.04), 0.42, 0.04, 0.4, COL.dark);
+      W.cyl('metal', sub(local, 0.38, -0.2, 0.0, null), 0.035, 0.035, 0.36, 12, COL.dark);
       sign(K, offset(ff(V(-1.55, 0.95, s * 1.45), V(0, -0.3, -s).normalize(), V(-s, 0, 0)), 0, 0, 0), name, 0.5, 0.06, { ph: 32 });
-      Z.solids.push(boxSolid(offset(Fs, 0, -0.1, -0.2), 0.3, 0.95, 0.3, 'suit'));
-      handrail(K, pt(Fs, -0.45, 0.1, -0.3), pt(Fs, -0.45, 0.7, -0.3), dir(Fs, 1, 0, 0).negate(), COL.rail, 0.04);
+      Z.solids.push(boxSolid(offset(local, 0, 1.05, -0.08), 0.36, 0.95, 0.36, 'suit'));
+      handrail(K, pt(local, -0.45, 1.1, 0.1), pt(local, -0.45, 1.7, 0.1), dir(local, 1, 0, 0), COL.rail, 0.04);
     }
     Z.suits = suits;
     // overhead: battery stowage & charger (BSA), tool lockers, lights; deck: gas tanks, lockers, foot restraints

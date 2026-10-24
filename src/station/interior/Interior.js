@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Atlas } from './Atlas.js';
-import { InteriorMaterials, INTERIOR_LAYER, carveUniforms, patchCarve, packCone, packBox, packTorus, MAX_CARVE } from './Materials.js';
+import { InteriorMaterials, INTERIOR_LAYER, carveUniforms, patchCarve, packCone, packBox, packTorus, MAX_CARVE, patchInterior } from './Materials.js';
 import { buildCore } from './Core.js';
 import { buildAirlock } from './AirlockInterior.js';
 import { buildRing, RING } from './RingInterior.js';
@@ -178,13 +178,19 @@ export class StationInterior {
         this.lamps.push({ mesh, port: L.port, on: false });
       }
     }
-    // spacesuits (individually hideable)
+    // spacesuits (individually hideable): prebuilt geometry or a builder (skinned figure, src/player/suit/Mount.js)
     if (rec.suits) {
       z.suitObjects = rec.suits.map((s) => {
         const g = new THREE.Group(); g.name = `suit:${s.name}`;
-        for (const m of this._meshes(s.geos, z.set, rec.M)) g.add(m);
+        if (s.geos) for (const m of this._meshes(s.geos, z.set, rec.M)) g.add(m);
+        if (s.build) {
+          const o = s.build({ ctx: this.ctx, set: z.set, patch: patchInterior, lite: this.lite, layer: INTERIOR_LAYER });
+          _m.multiplyMatrices(rec.M, s.local).decompose(o.position, o.quaternion, o.scale);
+          g.add(o);
+        }
+        g.userData.noBatch = true;
         z.group.add(g);
-        return { group: g, side: s.side, name: s.name, position: s.position };
+        return { group: g, side: s.side, name: s.name, position: s.position, variant: s.variant };
       });
     }
     // physics data

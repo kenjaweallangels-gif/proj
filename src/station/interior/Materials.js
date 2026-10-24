@@ -101,7 +101,7 @@ export function setWindows(U, windows) {
   U.uWinCount.value = i;
 }
 
-function patchInterior(mat, U) {
+export function patchInterior(mat, U) {
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, U);
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vIntW;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>' + WORLD_VARYING);

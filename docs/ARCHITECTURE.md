@@ -328,3 +328,52 @@ built once per variant (k mod 3) and shared by rotated meshes. Ring zones are ch
   URL `?start=inside|airlock` (menu: «НАЧАЛО»). The old `airlock` view = suited in the crew lock, inner hatch closed.
 * Player state additions: `suited`, `inside`, `compartment` (zone name for the HUD), `frame`, `gravity` (g),
   `onLadder`, `autoLevel`, `nearSuit`, `nearInnerHatch`; sequences `don`, `doff`, `innerClose`, `innerOpen`.
+
+## Astronaut body and spacesuit (src/player/suit, src/player/SuitModel.js)
+
+One skeleton layout (`Rig.js`, 51 bones: root, pelvis, spine, chest, neck, head, hatch, per side upperArm / forearm /
+hand / 15 finger bones / thigh / shin / foot / toes) carries two outfits, both full-body skinned meshes built
+procedurally in the bind pose (body space: +Y up, +Z forward, +X the body's left, origin on the floor):
+
+* **Orlan-MKS** (`Orlan.js`): rigid torso with the integrated helmet (main visor + top window, gold sun filter on
+  side pivots, two lamps), rear-entry backpack door (`hatch` bone, hinged on the right) with the closing lever,
+  chest control panel (toggles, knobs, LCD, connectors, regulator, hoses), soft arms (shoulder bearings, sizing
+  straps with buckles, pleated elbows, wrist bearing + anodised glove disconnect), gloves (`Hands.js`: rubber palm
+  and finger pads, fingertip caps, knuckle bar, strap), soft lower torso, pleated knees, boots with soles and
+  straps, belt with D-rings and two safety tethers with carabiners, flag / mission patch / name tag / serial plate /
+  suit number decals, blue (No 6) or red (No 7) identification stripes and anodising, baked grime (vertex colours).
+  The player's suits add the propulsion unit (nozzle towers on the backpack sides, matching
+  `EvaPhysics.NOZZLES`, and the hand controller on the chest).
+* **Crew** (`Crew.js`): 1.80 m adult male (eye height 1.685 m) in a navy pique polo (collar, placket, rib cuffs,
+  patches), cargo trousers (belt, loops, pockets with velcro, outseams, knee folds), rib socks, wristwatch; skin on
+  the head (face relief, ears, eyes with iris, brows, short hair), neck, forearms and hands (knuckles, nails).
+
+`SkinBuilder` (`Geo.js`) generates superellipse lofts, sweeps, lathes, rounded boxes, patches and wrapped decals with
+two-bone skin weights, metre UVs and linear vertex colours, one geometry per material key. `AstronautBody` (`Body.js`)
+builds LOD0/1/2 (detail 1.0 / 0.42 / 0.13, switched at 7 m / 30 m from the rendering camera; 'lite': 0.3 / 0.13) and
+static poses (`stand`, `mount`, `nbp` zero-g neutral posture, `eva`). `node tools/suit-stats.mjs` prints triangles
+and draw calls per level (Orlan LOD0 ~80k tris / 9 draws, LOD2 ~4k; crew LOD0 ~40k, LOD2 ~2.4k).
+
+Materials (`Assets.js`, one `SuitAssets` per App): tiling PBR sets baked by `tools/prepare_suit_textures.py` into
+`public/textures/suit/` (fabric weave with ripstop, seam tape, pebbled rubber, brushed metal, visor scratches, pique
+knit, twill, rib knit, skin pores / wrinkles, hair; albedo + normal + ORM, 2K / 1K / 512), a canvas decal atlas
+(`Decals.js`, 4K on high / ultra), vertex-colour tints (stripes, cloth colours, grime). Skin uses a wrapped,
+red-shifted diffuse (cheap subsurface look). 'lite' gets Lambert materials with the albedo only.
+
+**Player** (`SuitModel.js` + `Animator.js`): the worn figure (suit variant of `player._wornSuit`, or the crew
+outfit when unsuited) is placed every frame so its eyes are at the camera. The head turns within the neck range
+(suit: within the helmet, ±18° yaw, 38° down) and the torso follows with a lag (zero g: neutral posture; spin
+gravity: upright, yaw follows the gaze), so looking down shows the chest panel, body, legs and feet. Two-bone IK for
+arms and legs: hand targets from `player.body.handTargets` / `player.bodyTargets` when the movement code provides
+them (`{left,right:{position, normal, weight, grip}}`, world metres; feet likewise), otherwise the handrail being
+reached / held (palm toward the rail, grip curl), the hand controller while thrusting, idle poses with micro-motion,
+and a procedural gait when walking in the ring. All body meshes are on `LAYERS.FIRST_PERSON`, carry
+`userData.noCollide = true` and cast the astronaut's shadow; in first person the crew head collapses (bone scale)
+and the suit shows its dark helmet liner (`helmetIn`).
+
+**Airlock mounts**: `AirlockInterior` places two Orlans (`Mount.js`: interior-lit material clones, mount pose, door
+open 105°) on post-and-clamp mounts; `Interior._makeZone` builds them through the suit entry's `build()` callback.
+The worn one is hidden (`Player._setSuited`), the first-person figure uses the same variant (stripes / anodising).
+
+Debug: `?suitshow=1` adds a line-up 75 m above the station with views `lineup`, `suit-front|back|side|detail|hand|
+boot|mount|mount-front|lod1|lod2`, `crew-front|side|face|hand|nbp`.

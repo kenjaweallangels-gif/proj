@@ -138,7 +138,7 @@ export class Player {
     ctx.events?.on?.('mode', (m) => { if (m === 'play' && this.state.mode === 'observer') this.state.mode = this._modeBeforeObserver || 'eva'; });
   }
 
-  async load() {}
+  async load() { await this.suit?.load?.(); }
 
   // ---------------------------------------------------------------- activation / views
   setActive(a) {
