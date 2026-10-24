@@ -146,7 +146,7 @@ export function buildTruss(ctx, station, b, rails) {
   for (const x of [-72, -52, -8, 26, 56, 70]) {
     const c = V(x, h + 0.76, -1.0);
     if (D) { grappleFixture(b, D, new THREE.Matrix4().makeTranslation(c.x, c.y - 0.03, c.z), { size: 0.62 }); continue; }
-    b.add('metalBare', boxAt(V(c.x, c.y + 0.04, c.z), 0.8, 0.08, 0.8), false);
+    b.add('metalBare', bevelBoxAt(V(c.x, c.y + 0.04, c.z), 0.8, 0.08, 0.8), false);
     b.add('metalBare', tubeAt(V(c.x, c.y + 0.3, c.z), Y_AXIS, 0.07, 0.45, 8, { uv: false }), false);
     b.add('metalDark', torusAt(V(c.x, c.y + 0.5, c.z), Y_AXIS, 0.16, 0.035, 6, 16), false);
     b.add('hazard', boxAt(V(c.x, c.y + 0.045, c.z), 0.95, 0.07, 0.95, null, false), false);
@@ -158,8 +158,8 @@ export function buildTruss(ctx, station, b, rails) {
       const x = sx * (58 + i * 2.2);
       for (const sz of [-1, 1]) {
         if (!D) {
-          b.add('hullWhiteAged', boxAt(V(x, -0.2, sz * (h + 0.75)), 1.8, 1.9, 1.3));
-          b.add('metalDark', boxAt(V(x, -0.2, sz * (h + 1.42)), 1.5, 1.6, 0.06), false);
+          b.add('hullWhiteAged', bevelBoxAt(V(x, -0.2, sz * (h + 0.75)), 1.8, 1.9, 1.3));
+          b.add('metalDark', bevelBoxAt(V(x, -0.2, sz * (h + 1.42)), 1.5, 1.6, 0.06), false);
           continue;
         }
         b.add('hullWhiteAged', bevelBoxAt(V(x, -0.2, sz * (h + 0.75)), 1.8, 1.9, 1.3, null, 0.05));

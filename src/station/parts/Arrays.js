@@ -68,7 +68,7 @@ export class SolarArrays {
           scaleUV(back, half / 6.5, L / 6.5);
           b.add('solarBack', back);
           // fold hinge lines + edge frame
-          for (let k = 0; k <= 12; k++) b.add('metalDark', boxAt(V(cx, -0.03, z0 + sz * (k / 12) * L), half, 0.08, 0.05, null, false), false);
+          for (let k = 0; k <= 12; k++) b.add('metalDark', bevelBoxAt(V(cx, -0.03, z0 + sz * (k / 12) * L), half, 0.08, 0.05, null), false);
           for (const ex of [-1, 1]) b.add('metalDark', tubeAt(V(cx + ex * half / 2, -0.03, zc), Z_AXIS, 0.045, L, 6, { uv: false }), false);
           if (D) {
             // hinge knuckles along every panel fold line, tension springs at the blanket tip, edge grommets
@@ -78,7 +78,7 @@ export class SolarArrays {
             }
             for (let i = 0; i < 6; i++) D.rod('mid', 'metal', COL.steel, V(cx - half / 2 + 0.4 + i * (half - 0.8) / 5, -0.05, z1 - sz * 0.05), V(cx - half / 2 + 0.4 + i * (half - 0.8) / 5, -0.05, z1 - sz * 0.6), 0.012, 'cyl6');
           }
-          b.add('metalDark', boxAt(V(cx, -0.03, z1), half, 0.1, 0.12, null, false), false);
+          b.add('metalDark', bevelBoxAt(V(cx, -0.03, z1), half, 0.1, 0.12, null), false);
         }
         // deployment mast (lattice) down the middle, behind the blanket
         const my = -0.45, mw = 0.42;
@@ -91,9 +91,9 @@ export class SolarArrays {
         }
         // mast canister + beta-gimbal box at the root, tip box
         b.add('hullWhiteAged', tubeAt(V(0, my, z0 - sz * 1.6), Z_AXIS, 0.75, 2.4, 20));
-        b.add('metalDark', boxAt(V(0, -0.1, z0 - sz * 3.2), 2.2, 1.6, 1.4));
+        b.add('metalDark', bevelBoxAt(V(0, -0.1, z0 - sz * 3.2), 2.2, 1.6, 1.4));
         b.add('hazard', boxAt(V(0, -0.1, z0 - sz * 3.2), 2.25, 0.3, 1.45, null, false), false);
-        b.add('metalDark', boxAt(V(0, my, z1 + sz * 0.3), 1.2, 1.0, 0.6), false);
+        b.add('metalDark', bevelBoxAt(V(0, my, z1 + sz * 0.3), 1.2, 1.0, 0.6), false);
         if (D) {
           // batten corner fittings on the mast, gimbal box fins / connectors / bolts, canister rings
           for (let z = z0; sz * (z - z1) <= 0; z += sz * 1.5) for (const [dx, dy] of [[-mw, 0], [mw, 0], [0, -mw]]) D.part('mid', 'metal', COL.bare, 'bbox', new THREE.Matrix4(), dx, my + dy, z, 0.11, 0.11, 0.11);
@@ -155,7 +155,7 @@ export class Radiators {
       station.add(g);
       const b = new Builder(m);
       // static mount + yaw drum
-      bStatic.add('metalDark', boxAt(V(x, sy * (h + 0.35), 0), 1.6, 0.7, 1.0));
+      bStatic.add('metalDark', bevelBoxAt(V(x, sy * (h + 0.35), 0), 1.6, 0.7, 1.0));
       bStatic.add('metalBare', tubeAt(V(x, sy * (h + 0.75), 0), Y_AXIS, 0.6, 0.4, 24, { uv: false }), false);
       // mast and scissor truss, then the panel (DoubleSide radiator material) framed in tubes
       const mastEnd = sy * 3.0;
@@ -168,7 +168,7 @@ export class Radiators {
       for (const ex of [-1, 1]) b.add('metalDark', tubeAt(V(ex * W / 2, yc, 0), Y_AXIS, 0.07, L, 6, { uv: false }), false);
       b.add('metalDark', tubeAt(V(0, mastEnd + sy * L, 0), X_AXIS, 0.07, W, 6, { uv: false }), false);
       b.add('metalDark', tubeAt(V(0, mastEnd, 0), X_AXIS, 0.1, W + 0.2, 8, { uv: false }), false);
-      for (let k = 1; k < 8; k++) b.add('metalDark', boxAt(V(0, mastEnd + sy * (k / 8) * L, 0), W, 0.05, 0.06, null, false), false);
+      for (let k = 1; k < 8; k++) b.add('metalDark', bevelBoxAt(V(0, mastEnd + sy * (k / 8) * L, 0), W, 0.05, 0.06, null), false);
       b.add('copper', tubeAt(V(0, yc, 0.06), Y_AXIS, 0.04, L, 6, { uv: false }), false);
       b.add('copper', tubeAt(V(0, yc, -0.06), Y_AXIS, 0.04, L, 6, { uv: false }), false);
       if (D) {
@@ -178,7 +178,7 @@ export class Radiators {
           const y = mastEnd + sy * (k / 8) * L;
           for (let i = 0; i < 6; i++) { const x0 = -W / 2 + 0.5 + i * (W - 1) / 5; b.add('metalBare', tubeAB(V(x0 - 0.08, y, 0.0), V(x0 + 0.08, y, 0.0), 0.045, 8), false); }
         }
-        for (const ez of [-0.06, 0.06]) for (let k = 0; k < 8; k++) b.add('metalBare', boxAt(V(0, mastEnd + sy * (k + 0.5) * L / 8, ez), 0.14, 0.04, 0.1, null, false), false);
+        for (const ez of [-0.06, 0.06]) for (let k = 0; k < 8; k++) b.add('metalBare', bevelBoxAt(V(0, mastEnd + sy * (k + 0.5) * L / 8, ez), 0.14, 0.04, 0.1, null), false);
         for (const [ex, zz] of [[-0.6, 0.18], [0.6, -0.18]]) {
           const curve = new THREE.CatmullRomCurve3([V(ex * 0.4, sy * 2.2, zz), V(ex * 0.9, sy * 2.7, zz * 1.6), V(ex * 1.3, mastEnd + sy * 0.05, zz * 1.2), V(ex * 1.7, mastEnd + sy * 0.25, 0.0)]);
           b.add('metalBare', new THREE.TubeGeometry(curve, 16, 0.05, 6, false), false);

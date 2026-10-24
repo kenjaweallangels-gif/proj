@@ -200,10 +200,37 @@ def bake_hull(src, size, name, base, seam, seed, cells=6, aged=0.0, rivets=True,
         op = decode_normal(tile_to(load(src, 'Plastic013A', 'NormalGL', 2048, 'RGB'), S, 8))
     except FileNotFoundError:
         op = height_to_normal(noise(S, 220, seed + 6, 2), 0.6)
+    # ---- stencils: part numbers / handling marks near panel corners (DejaVu Sans Bold, dark grey or red)
+    sten = np.zeros((S, S), np.float32); stenRed = np.zeros((S, S), np.float32)
+    try:
+        from PIL import ImageDraw, ImageFont
+        font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', max(8, int(0.022 / px_m)))
+        small = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', max(6, int(0.013 / px_m)))
+        im = Image.new('L', (S, S), 0); imr = Image.new('L', (S, S), 0)
+        d = ImageDraw.Draw(im); dr = ImageDraw.Draw(imr)
+        words = ['SEG', 'P/N', 'S/N', 'GRD', 'LIFT', 'NO STEP', 'ОСТОРОЖНО', 'НЕ НАСТУПАТЬ', 'ЗАЗЕМЛ.', 'КРЕПЁЖ']
+        for j in range(cells):
+            for i in range(cells):
+                if rng.random() < 0.55:
+                    x = int(i * cs + 0.05 / px_m + rng.random() * cs * 0.4); y = int(j * cs + 0.05 / px_m + rng.random() * cs * 0.5)
+                    txt = f"{rng.choice(words[:3])} {rng.integers(100, 999)}-{rng.integers(10, 99)}"
+                    d.text((x, y), txt, fill=200, font=font)
+                    d.text((x, y + int(0.03 / px_m)), f"{rng.integers(1000, 9999)}-{rng.integers(1, 9)}", fill=160, font=small)
+                if rng.random() < 0.12:
+                    x = int(i * cs + cs * 0.55); y = int(j * cs + cs * 0.8)
+                    dr.text((x, y), str(rng.choice(words[5:])), fill=210, font=font)
+        sten = np.asarray(im, np.float32) / 255; stenRed = np.asarray(imr, np.float32) / 255
+    except Exception as e:
+        print('  (no stencils:', e, ')')
+    # ---- per-panel tint: most panels within ±2.5 %, a few replaced (brighter, cooler) or weathered (warmer)
+    kind = rng.random((cells, cells))
+    pan = np.where(kind < 0.12, 0.05, np.where(kind > 0.9, -0.05, 0.0)).astype(np.float32)[pj, pi]
+    warm = np.where(kind > 0.9, 1.0, 0.0).astype(np.float32)[pj, pi]
     # ---- compose albedo (linear-ish sRGB values; paint never pure white)
     base = to_lin(base); seamc = to_lin(seam)
     col = np.ones((S, S, 3), np.float32) * base
-    col *= (1 + 0.012 * tint)[..., None]
+    col *= (1 + 0.025 * np.clip(tint, -2, 2) + pan)[..., None]
+    col *= (1 - 0.03 * warm[..., None] * np.array([0.0, 0.3, 1.0], np.float32))
     col *= (1 - 0.06 * (g1 - 0.5))[..., None]
     yel = np.array([1.0, 0.975, 0.92], np.float32)
     col *= (1 - aged * 0.5 * grime[..., None] * (1 - yel)) * (1 - 0.18 * grime[..., None] * (0.4 + aged))
@@ -212,6 +239,12 @@ def bake_hull(src, size, name, base, seam, seed, cells=6, aged=0.0, rivets=True,
     metalc = np.array([0.62, 0.63, 0.64], np.float32)
     col = col * (1 - bare[..., None]) + metalc * bare[..., None]
     if rivets: col *= (1 - 0.08 * riv)[..., None]
+    # grime streaks running from fastener rows / seams along the tile's v axis (thermal cycling, outgassing)
+    st = blur(np.clip(noise(S, 30, seed + 9, 2) - 0.55, 0, 1) * 4 * (riv > 0.1), 1.0)
+    st = np.asarray(Image.fromarray(np.clip(st * 255, 0, 255).astype(np.uint8)).resize((S, S // 24), Image.BILINEAR).resize((S, S), Image.BICUBIC), np.float32) / 255
+    col *= (1 - (0.06 + 0.08 * aged) * np.clip(st * 3, 0, 1))[..., None] * np.array([1.0, 0.99, 0.97], np.float32)
+    col = col * (1 - 0.75 * sten[..., None]) + np.array([0.16, 0.17, 0.18], np.float32) * 0.75 * sten[..., None]
+    col = col * (1 - 0.8 * stenRed[..., None]) + np.array([0.55, 0.08, 0.06], np.float32) * 0.8 * stenRed[..., None]
     rough = 0.48 + 0.12 * grime + 0.05 * (g2 - 0.5) + 0.1 * seamMask - 0.18 * bare + 0.06 * blur(scr, 1) * (1 - bare)
     metal = 0.75 * bare
     n = blend_normals(height_to_normal(h, 2.2 * S / 4096), op, 0.35)

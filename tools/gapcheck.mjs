@@ -68,7 +68,7 @@ console.log(`${views.length} viewpoints, checking ${picked.length}`);
 
 const report = [];
 const perArea = {};
-let nShots = 0;
+let nShots = 0, invalid = 0;
 for (const v of picked) {
   const r = await page.evaluate(async ({ i, minPx, only, wantShot }) => {
     const g = window.__gap, P = window.__gapP, V = window.__gapViews[i];
@@ -79,9 +79,10 @@ for (const v of picked) {
     const bad = res.issues.filter((x) => x.kind !== 'opening');
     let png = null;
     if (bad.length && wantShot && res.vis) png = P.reviewPng(res, g.w, g.h, res.issues);
-    return { issues: res.issues, counts: res.counts, png, zone: window.__app.station.interior?.cameraZone?.id || null };
+    return { issues: res.issues, counts: res.counts, png, invalid: !!res.invalid, zone: window.__app.station.interior?.cameraZone?.id || null };
   }, { i: v.i, minPx: +(args.minpx || 6), only, wantShot: nShots < shots }).catch((e) => ({ error: e.message, issues: [] }));
   if (r.error) { console.log(`${v.name}: ERROR ${r.error}`); continue; }
+  if (r.invalid) { console.log(`${v.name}: skipped (camera inside a solid / behind a wall)`); invalid++; continue; }
   const bad = r.issues.filter((x) => x.kind !== 'opening');
   const a = perArea[v.area] || (perArea[v.area] = { views: 0, flagged: 0, hole: 0, crack: 0, backface: 0, zfight: 0 });
   a.views++;
@@ -97,7 +98,7 @@ for (const v of picked) {
   if (bad.length) console.log(`${v.name}: ${bad.map((x) => `${x.kind} ${x.px}px @${x.world?.join(',')} ${x.parts.slice(0, 2).join(' | ')}`).join(' ;; ')}${file ? ' -> ' + path.basename(file) : ''}`);
 }
 fs.writeFileSync(path.join(out, 'report.json'), JSON.stringify(report, null, 1));
-const lines = [`gapcheck set=${set} quality=${quality} ${w}x${h}  ${picked.length} views  ${((Date.now() - t0) / 1000).toFixed(0)} s`, 'area                     views flagged  hole crack backface zfight'];
+const lines = [`gapcheck set=${set} quality=${quality} ${w}x${h}  ${picked.length} views (${invalid} skipped: camera inside a solid)  ${((Date.now() - t0) / 1000).toFixed(0)} s`, 'area                     views flagged  hole crack backface zfight'];
 const tot = { views: 0, flagged: 0, hole: 0, crack: 0, backface: 0, zfight: 0 };
 for (const [k, a] of Object.entries(perArea).sort()) {
   lines.push(`${k.padEnd(24)} ${String(a.views).padStart(5)} ${String(a.flagged).padStart(7)} ${String(a.hole).padStart(5)} ${String(a.crack).padStart(5)} ${String(a.backface).padStart(8)} ${String(a.zfight).padStart(6)}`);

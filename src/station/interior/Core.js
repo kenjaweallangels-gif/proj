@@ -5,7 +5,7 @@ import {
   COL, pt, dir, handrail, seatTrack, sign, lightPanel, vent, cables, duct, curve, bungee, bag, clutter, laptop, display,
   extinguisher, pba, camera, egressSign, footLoops, velcro, rack, boxSolid, CBM, hatchFrameCBM, hatchDoorCBM, vestibuleCBM,
   openDoorCBM, hatchFrameRound, hatchDoorRound, vestibuleRound, inwardTube, sleepingBag, plant, growthChamber, treadmill,
-  ergometer, resistive, toilet, restraintTable, defibrillator, ultrasound, microscope,
+  ergometer, resistive, toilet, restraintTable, defibrillator, ultrasound, microscope, shellTube,
 } from './Kit.js';
 
 /**
@@ -63,6 +63,16 @@ function moduleBake(h, c, ue, lite, warm = 1) {
   };
 }
 
+/**
+ * Pressure-shell liner of a cylindrical compartment along zone-local X from x0 to x1 at radius rs, with holes
+ * for window wells / radial passages given as zone-local { p, d, r }.
+ */
+function shellX(Z, x0, x1, rs, holes = []) {
+  const M = ff(V(x0, 0, 0), X, Y), Mi = M.clone().invert();
+  const hl = holes.map((h) => ({ p: h.p.clone().applyMatrix4(Mi), d: h.d.clone().transformDirection(Mi), r: h.r }));
+  shellTube(Z.K, M, x1 - x0, rs, hl);
+}
+
 // ------------------------------------------------------------------------------------------------ rack module
 
 /**
@@ -101,6 +111,7 @@ function rackModule(I, spec) {
     if (i1 < 0) continue;
     for (let i = i0; i <= i1; i++) used[wall][i] = true;
     windowAlcove(Z, wall, u0 + i0 * slotW, u0 + (i1 + 1) * slotW, lc, w.r, h, c, r, ru);
+    (Z.shellHoles || (Z.shellHoles = [])).push({ p: lc.clone(), d: ln.clone().normalize(), r: w.r + 0.22 });
     Z.window({ type: 'disc', c: w.c, n: w.n, r: w.r });
   }
 
@@ -186,6 +197,8 @@ function rackModule(I, spec) {
     clutter(K, offset(wallFrame(wall, slotU(k), h), 0, (Z.rnd() - 0.5) * 0.6, 0.02), 0.7, 0.5, 2);
   }
 
+  // ---- pressure-shell liner behind racks and closeouts (closes every see-through seam)
+  shellX(Z, -len / 2 - 0.05, len / 2 + 0.05, r - 0.12, Z.shellHoles || []);
   // ---- containment volume, lights, bake
   Z.box(0, 0, 0, ue - 0.02, h, h);
   Z.light(-len / 4, 0.4, 0); Z.light(len / 4, 0.4, 0);
@@ -371,6 +384,9 @@ function nodeModule(I, spec) {
       vent(K, offset(B0, 0.7, 0, 0), 0.3, 0.16);
     }
   }
+  // pressure-shell liner (holes for the four radial hatch vestibules)
+  const wallN = { deck: NY, overhead: Y, port: NZ, stbd: Zp };
+  shellX(Z, -ue - 0.35, ue + 0.35, 2.32, walls.map((w) => ({ p: V(0, 0, 0), d: wallN[w], r: CBM.w / 2 + 0.35 })));
   // axial ends
   for (const [end, s] of [['a', -1], ['b', 1]]) endBulkhead(Z, spec.ends[end], s, ue, h, c, false, { signName: spec.signName });
   // bags strapped in the aisle corners, crew items

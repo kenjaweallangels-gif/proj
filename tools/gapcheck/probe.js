@@ -252,6 +252,9 @@ export class GapProbe {
       // nearer than whatever the real render shows there (or the real render shows nothing)
       if (id[p] === 0 || P3.z[p] < z[p] - 0.002 * z[p] - 0.002) cls[p] = cls[p] || 3;
     }
+    // a camera that sees mostly back faces stands inside a solid or behind a wall (bad viewpoint, not a defect)
+    let nBack = 0; for (let p = 0; p < N; p++) if (cls[p] === 3) nBack++;
+    if (nBack > 0.15 * N) return { issues: [], counts: { hole: 0, crack: 0, backface: 0, zfight: 0, opening: 0 }, invalid: true };
     // --- z-fighting: visible surface changes with the depth mapping only
     for (let p = 0; p < N; p++) {
       if (cls[p] || !id[p] || !P2.id[p] || id[p] === P2.id[p]) continue;

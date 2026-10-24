@@ -74,7 +74,7 @@ export class HabitatRing {
       const pod = nearPod(phi);
       if (!pod) {
         b.add('radiator', boxAt(radial(phi).multiplyScalar(R - r - 0.08), 2.4, 0.08, (R - r) * segLen - 0.12, q));
-        b.add('hullWhiteAged', boxAt(radial(phi).multiplyScalar(R + r + 0.03), 2.8, 0.06, (R + r) * segLen - 0.18, q));
+        b.add('hullWhiteAged', bevelBoxAt(radial(phi).multiplyScalar(R + r + 0.03), 2.8, 0.06, (R + r) * segLen - 0.18, q));
       }
       if (pod) continue;
       const chord = R * segLen - 0.16;
@@ -154,10 +154,10 @@ export class HabitatRing {
       // cable pair alongside the tube
       for (const s of [-1, 1]) b.add('cable', tubeAt(a.clone().lerp(c, 0.5).addScaledVector(s2, s * (spokeR + 0.1)), dir, 0.05, spokeOut - spokeIn, 6, { uv: false }), false);
       // elevator rail (+X side) and car on spoke 0, rail only on the others
-      b.add('metalBare', boxAt(dir.clone().multiplyScalar((t0 + t1) / 2).addScaledVector(s1, latR), 0.28, t1 - t0, 0.5, _q.setFromAxisAngle(X_AXIS, phi)), false);
+      b.add('metalBare', bevelBoxAt(dir.clone().multiplyScalar((t0 + t1) / 2).addScaledVector(s1, latR), 0.28, t1 - t0, 0.5, _q.setFromAxisAngle(X_AXIS, phi)), false);
       if (k === 0) {
         const cc = dir.clone().multiplyScalar(R * 0.55).addScaledVector(s1, latR + 0.75);
-        b.add('mliGold', boxAt(cc, 1.3, 2.6, 1.8, _q.setFromAxisAngle(X_AXIS, phi)));
+        b.add('mliGold', bevelBoxAt(cc, 1.3, 2.6, 1.8, _q.setFromAxisAngle(X_AXIS, phi)));
         b.add('windowGlow', boxAt(cc.clone().addScaledVector(s1, 0.66), 0.03, 0.5, 1.2, _q.setFromAxisAngle(X_AXIS, phi)), false);
         b.add('hazard', boxAt(cc.clone().addScaledVector(dir, 1.32), 1.32, 0.05, 1.82, _q.setFromAxisAngle(X_AXIS, phi), false), false);
       }
@@ -207,7 +207,7 @@ export class HabitatRing {
       // outer-face equipment on the pod: antenna stub, light mast, grapple fixture
       const top = pc.clone().addScaledVector(dir, PR);
       b.add('antennaWhite', tubeAt(top.clone().addScaledVector(dir, 0.6).addScaledVector(s2, 2.6), dir, 0.03, 1.2, 6, { uv: false }), false);
-      b.add('metalDark', boxAt(top.clone().addScaledVector(dir, 0.15).addScaledVector(s2, -2.6), 0.6, 0.3, 0.6, _q.setFromAxisAngle(X_AXIS, phi)), false);
+      b.add('metalDark', bevelBoxAt(top.clone().addScaledVector(dir, 0.15).addScaledVector(s2, -2.6), 0.6, 0.3, 0.6, _q.setFromAxisAngle(X_AXIS, phi)), false);
       if (D) {
         grappleFixture(b, D, new THREE.Matrix4().makeBasis(s2, dir, s2.clone().cross(dir)).setPosition(top.clone().addScaledVector(dir, 0.0).addScaledVector(s1, 2.0)));
         // pod end flanges: bolt circles, weld lands with fastener rows, vents on the outer face
@@ -235,10 +235,10 @@ export class HabitatRing {
       const dir = radial(phi);
       const c = dir.clone().multiplyScalar(R + r + 0.7);
       const q = _q.setFromAxisAngle(X_AXIS, phi);
-      b.add('mliBlack', boxAt(c, 2.6, 1.3, 2.6, q));
+      b.add('mliBlack', bevelBoxAt(c, 2.6, 1.3, 2.6, q));
       b.add('hazard', boxAt(dir.clone().multiplyScalar(R + r + 1.38), 2.7, 0.06, 2.7, q, false), false);
-      b.add('metalBare', boxAt(dir.clone().multiplyScalar(R + r + 0.05), 1.0, 0.12, 3.2, q), false);
-      for (const sx of [-1, 1]) b.add('metalDark', boxAt(c.clone().addScaledVector(X_AXIS, sx * 1.4), 0.2, 1.0, 2.0, q), false);
+      b.add('metalBare', bevelBoxAt(dir.clone().multiplyScalar(R + r + 0.05), 1.0, 0.12, 3.2, q), false);
+      for (const sx of [-1, 1]) b.add('metalDark', bevelBoxAt(c.clone().addScaledVector(X_AXIS, sx * 1.4), 0.2, 1.0, 2.0, q), false);
       this.dynamic.push({ col: Colliders.sphere(c, 1.9, 'counterweight', true) });
     }
     if (D) {
@@ -258,7 +258,7 @@ export class HabitatRing {
     b.add('metalBare', torusAt(V(2.05, 0, 0), X_AXIS, hubR + 0.6, 0.22, 8, 48), false);
     for (let k = 0; k < 24; k++) {
       const phi = (k / 24) * Math.PI * 2;
-      b.add('metalDark', boxAt(V(0, (hubR + 0.82) * Math.cos(phi), (hubR + 0.82) * Math.sin(phi)), 3.6, 0.12, 0.5, _q.setFromAxisAngle(X_AXIS, phi)), false);
+      b.add('metalDark', bevelBoxAt(V(0, (hubR + 0.82) * Math.cos(phi), (hubR + 0.82) * Math.sin(phi)), 3.6, 0.12, 0.5, _q.setFromAxisAngle(X_AXIS, phi)), false);
     }
     // name on both sides of the rim between sectors (four places)
     for (let k = 0; k < 4; k++) {
@@ -317,7 +317,7 @@ export class HabitatRing {
     // drive motors / bearing housings around the drum
     for (let k = 0; k < 8; k++) {
       const phi = (k / 8) * Math.PI * 2 + Math.PI / 8;
-      for (const sx of [-1, 1]) bStatic.add('metalDark', boxAt(V(X0 + sx * 3.6, (hubR + 0.3) * Math.cos(phi), (hubR + 0.3) * Math.sin(phi)), 1.6, 0.6, 0.9, _q.setFromAxisAngle(X_AXIS, phi)), false);
+      for (const sx of [-1, 1]) bStatic.add('metalDark', bevelBoxAt(V(X0 + sx * 3.6, (hubR + 0.3) * Math.cos(phi), (hubR + 0.3) * Math.sin(phi)), 1.6, 0.6, 0.9, _q.setFromAxisAngle(X_AXIS, phi)), false);
     }
     bStatic.labelAt('ВРАЩЕНИЕ · ROTATION', 2.8, 0.36, V(X0 + 3.6, 0.6, hubR + 0.03), V(0, 0, 1), { width: 1024, color: '#b01818' });
     bStatic.labelAt('ВРАЩЕНИЕ · ROTATION', 2.8, 0.36, V(X0 - 3.6, 0.6, -(hubR + 0.03)), V(0, 0, -1), { width: 1024, color: '#b01818' });

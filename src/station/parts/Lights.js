@@ -67,7 +67,7 @@ export class StationLights {
     // ring strobes (rotate with the ring)
     const br = new Builder(m);
     const ringMat = m.get('navWhite').clone(); ringMat.name = 'ringStrobe';
-    for (const p of ring.strobePositions) { br.add('navWhite', headGeo(p, 0.2), false, ringMat); br.add('metalDark', boxAt(p.clone().addScaledVector(p.clone().normalize(), -0.25), 0.4, 0.3, 0.4, null, false), false); }
+    for (const p of ring.strobePositions) { br.add('navWhite', headGeo(p, 0.2), false, ringMat); br.add('metalDark', bevelBoxAt(p.clone().addScaledVector(p.clone().normalize(), -0.25), 0.4, 0.3, 0.4, null), false); }
     br.build(ring.group, { name: 'ringLights' });
     this.ringHalos = new Halos(ctx.textures, ring.group, ring.strobePositions, 2.4);
     this.ringMat = ringMat;
@@ -95,8 +95,8 @@ export class StationLights {
       this.spots.push(spot);
       // head: hood box + emissive face, on a short bracket
       const q = new THREE.Quaternion().setFromUnitVectors(V(0, 0, 1), dir);
-      bf.add('metalDark', boxAt(f.pos.clone().addScaledVector(dir, -0.12), 0.5, 0.42, 0.34, q, false), false);
-      bf.add('floodLight', boxAt(f.pos.clone().addScaledVector(dir, 0.06), 0.4, 0.32, 0.03, q, false), false, this.floodMat);
+      bf.add('metalDark', bevelBoxAt(f.pos.clone().addScaledVector(dir, -0.12), 0.5, 0.42, 0.34, q), false);
+      bf.add('floodLight', bevelBoxAt(f.pos.clone().addScaledVector(dir, 0.06), 0.4, 0.32, 0.03, q), false, this.floodMat);
       bf.add('metalDark', tubeAt(f.pos.clone().addScaledVector(dir, -0.45), dir, 0.05, 0.4, 6, { uv: false }), false);
       const D = station.detail;
       if (D) {

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { LAYOUT } from './Layout.js';
 import { HullFrame, Instancer, boxAt, bevelBoxAt, tubeAt, torusAt, latheAt, plate, sphereAt, mat, scaleUV, Colliders, X_AXIS, Y_AXIS, Z_AXIS, TEX_M } from './Builder.js';
 import { COL, boltCircle, radialBolts, boltRow, wif, latch, connectorPanel, vent, pClamp } from './Detail.js';
-import { endProfile, endFlange, weldLand, mliBand, shieldPanels, windowBolts, hullWif, hullConnectors, hullVent } from './HullKit.js';
+import { endProfile, endFlange, weldLand, mliBand, shieldPanels, windowBolts, hullWif, hullConnectors, hullVent, conformSlab } from './HullKit.js';
 import { cameraAssembly, frameYZ } from './Hardware.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -192,14 +192,14 @@ export function buildModules(ctx, station, b, rails) {
     const d = _v.copy(lookDir).normalize();
     b.add('metalDark', tubeAt(base.clone().addScaledVector(d, 0.25), d, 0.05, 0.5, 6, { uv: false }), false);
     const c = base.clone().addScaledVector(d, 0.55);
-    b.add('rubberBlack', boxAt(c, 0.32, 0.26, 0.26, _q.setFromUnitVectors(X_AXIS, d), false), false);
+    b.add('rubberBlack', bevelBoxAt(c, 0.32, 0.26, 0.26, _q.setFromUnitVectors(X_AXIS, d)), false);
     b.add('metalBare', tubeAt(c.clone().addScaledVector(d, 0.22), d, 0.08, 0.14, 12, { uv: false }), false);
   }
 
   /** RCS thruster quad: base block + 4 nozzles pointing along the given directions. */
   function addRcsPod(center, mount, dirs) {
     const q = _q.setFromUnitVectors(Y_AXIS, mount);
-    b.add('mliBlack', boxAt(center, 0.9, 0.6, 0.9, q), false);
+    b.add('mliBlack', bevelBoxAt(center, 0.9, 0.6, 0.9, q), false);
     b.add('hazard', boxAt(center.clone().addScaledVector(mount, 0.31), 0.95, 0.04, 0.95, q, false), false);
     for (const d of dirs) {
       const dd = _v2.copy(d).normalize();
@@ -251,11 +251,13 @@ export function buildModules(ctx, station, b, rails) {
   // greenhouse long windows: three strips (zenith, +X, -X) with pink grow-light glow
   for (const dir of [Y_AXIS, X_AXIS, V(-1, 0, 0)]) {
     const th = green.thetaFor(dir);
-    const s = green.surface(0.4, th, green.r, new THREE.Matrix4());
-    b.add('metalDark', at(new THREE.BoxGeometry(0.9, 0.08, 9.2).translate(0, 0.02, 0), s), false);
-    b.add('windowGlow', at(new THREE.BoxGeometry(0.7, 0.06, 9.0).translate(0, -0.03, 0), s), false, growGlow);
-    b.add('glass', at(new THREE.BoxGeometry(0.72, 0.02, 9.0).translate(0, 0.07, 0), s), false);
-    for (let t = -4.0; t <= 4.0; t += 1.0) b.add('metalDark', at(new THREE.BoxGeometry(0.9, 0.1, 0.08).translate(0, 0.03, t), s), false);
+    // curved frame (rails, end bars, mullions) hugging the hull, recessed glow, pane 3 cm below the frame top
+    const G = green;
+    for (const sg of [-1, 1]) b.add('metalDark', conformSlab(G, 0.4, th + sg * 0.405 / G.r, 0.1, 9.2, -0.03, 0.08), false);
+    for (const sg of [-1, 1]) b.add('metalDark', conformSlab(G, 0.4 + sg * 4.55, th, 0.71, 0.1, -0.03, 0.08), false);
+    for (let t = -3.5; t <= 3.6; t += 1.0) b.add('metalDark', conformSlab(G, 0.4 + t, th, 0.71, 0.07, -0.02, 0.07), false);
+    b.add('windowGlow', conformSlab(G, 0.4, th, 0.72, 9.02, -0.09, -0.04), false, growGlow);
+    b.add('glass', conformSlab(G, 0.4, th, 0.72, 9.02, 0.036, 0.048), false);
   }
 
   // cupola on node-1 nadir: base drum (reaching up into the node hull), hexagonal frustum of six trapezoid

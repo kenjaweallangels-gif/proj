@@ -4,6 +4,7 @@ import { ZoneBuilder, ff, sstep } from './Zone.js';
 import {
   COL, pt, dir, handrail, sign, lightPanel, vent, cables, duct, curve, bag, clutter, laptop, display, extinguisher, pba,
   camera, egressSign, rack, boxSolid, hatchFrameRound, hatchDoorRound, inwardTube, plant, treadmill, ergometer, velcro,
+  shellTube,
 } from './Kit.js';
 
 /**
@@ -100,6 +101,8 @@ function buildHub(I) {
   };
   panelRing(W, xa, xc0 - 0.12, 3, 'panel');
   panelRing(W, xc1 + 0.12, xb, 3, 'panelB');
+  // pressure-shell liner behind the panels (static sections); the collar gets its own below
+  for (const [x0, x1] of [[xa - 0.05, xc0 - 0.02], [xc1 + 0.02, xb + 0.05]]) shellTube(K, ff(V(x0, 0, 0), X, V(0, 1, 0)), x1 - x0, r + 0.04);
   // end walls
   for (const s of [-1, 1]) {
     const F = s < 0 ? ff(V(xa, 0, 0), X, V(0, 0, -1)) : ff(V(xb, 0, 0), V(-1, 0, 0), V(0, 0, 1));
@@ -169,6 +172,13 @@ function buildHub(I) {
       if (spoke && j === 1) continue;
       RW.box('equip', offset(ff(V(xs, Math.cos(a) * apc, Math.sin(a) * apc), V(0, -Math.cos(a), -Math.sin(a)), X), 0, 0, -0.01), (xc1 - xc0) / 3 - 0.01, sidec + 0.01, 0.02, 0xffffff, T.rect(k % 2 ? 'panel' : 'panelB'), T.rect('grey'), 16);
     }
+  }
+  {
+    // collar liner with the six spoke openings (local frame of shellTube: z = X, x = +Y)
+    const Mc = ff(V(xc0 - 0.08, 0, 0), X, V(0, 1, 0)), Mci = Mc.clone().invert();
+    const holes = [];
+    for (let s = 0; s < 6; s++) holes.push({ p: V(0, 0, 0).applyMatrix4(Mci), d: radial(s * SECT).transformDirection(Mci), r: 0.86 });
+    shellTube(RK, Mc, xc1 - xc0 + 0.16, r + 0.04, holes);
   }
   for (let s = 0; s < 6; s++) {
     const phi = s * SECT;

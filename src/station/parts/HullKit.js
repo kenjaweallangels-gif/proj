@@ -167,6 +167,50 @@ export function conformLatheAt(H, t0, th0, profile, seg = 48) {
   return g;
 }
 
+/**
+ * Curved slab on a module hull: cylindrical shell sector centred at (t0, th0) spanning `w` metres around the hull
+ * and `len` metres along it, between heights h0 and h1 above the hull (h0 < 0 sinks it in). Closed solid (six
+ * faces) that hugs the curvature — rails, strips, curved covers.
+ */
+export function conformSlab(H, t0, th0, w, len, h0, h1, seg = 0) {
+  const n = seg || Math.max(2, Math.ceil(w / 0.15));
+  const pos = [], nor = [], uv = [], idx = [];
+  const quad = (a, b, c, d, nx) => { const i0 = pos.length / 3; for (const p of [a, b, c, d]) pos.push(p.x, p.y, p.z); for (let k = 0; k < 4; k++) nor.push(nx[k].x, nx[k].y, nx[k].z); uv.push(0, 0, 1, 0, 1, 1, 0, 1); idx.push(i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3); };
+  const P = (i, tt, rh) => H.point(t0 + tt, th0 + (i / n - 0.5) * w / H.r, H.r + rh, new THREE.Vector3());
+  const N = (i) => H.normal(th0 + (i / n - 0.5) * w / H.r, new THREE.Vector3());
+  const ax = H.dir.clone(), L2 = len / 2;
+  for (let i = 0; i < n; i++) {
+    // top (outward) and bottom (inward)
+    quad(P(i, -L2, h1), P(i + 1, -L2, h1), P(i + 1, L2, h1), P(i, L2, h1), [N(i), N(i + 1), N(i + 1), N(i)]);
+    quad(P(i, L2, h0), P(i + 1, L2, h0), P(i + 1, -L2, h0), P(i, -L2, h0), [N(i).negate(), N(i + 1).negate(), N(i + 1).negate(), N(i).negate()]);
+    // ends (along the axis)
+    const nb = ax.clone().negate(), nf = ax.clone();
+    quad(P(i, -L2, h0), P(i + 1, -L2, h0), P(i + 1, -L2, h1), P(i, -L2, h1), [nb, nb, nb, nb]);
+    quad(P(i + 1, L2, h0), P(i, L2, h0), P(i, L2, h1), P(i + 1, L2, h1), [nf, nf, nf, nf]);
+  }
+  // sides (tangential)
+  const tn = (i) => new THREE.Vector3().crossVectors(N(i), ax).normalize();
+  const s0 = tn(0), s1 = tn(n).negate();
+  quad(P(0, L2, h0), P(0, -L2, h0), P(0, -L2, h1), P(0, L2, h1), [s0, s0, s0, s0]);
+  quad(P(n, -L2, h0), P(n, L2, h0), P(n, L2, h1), P(n, -L2, h1), [s1, s1, s1, s1]);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  // fix the winding of every quad to agree with its normal (any orientation mistakes above become harmless)
+  const p = g.attributes.position, nn = g.attributes.normal, I = g.index;
+  const a = new THREE.Vector3(), b2 = new THREE.Vector3(), c = new THREE.Vector3(), fnorm = new THREE.Vector3();
+  for (let k = 0; k < I.count; k += 3) {
+    a.fromBufferAttribute(p, I.getX(k)); b2.fromBufferAttribute(p, I.getX(k + 1)); c.fromBufferAttribute(p, I.getX(k + 2));
+    fnorm.subVectors(b2, a).cross(c.clone().sub(a));
+    const vn = new THREE.Vector3().fromBufferAttribute(nn, I.getX(k));
+    if (fnorm.dot(vn) < 0) { const t = I.getX(k + 1); I.setX(k + 1, I.getX(k + 2)); I.setX(k + 2, t); }
+  }
+  g.computeBoundingSphere();
+  return g;
+}
+
 /** Bolted window frame ring (fasteners on the frame torus). */
 export function windowBolts(D, H, t, theta, wr) {
   if (!D) return;

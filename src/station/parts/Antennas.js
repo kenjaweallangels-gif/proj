@@ -27,7 +27,7 @@ class Dish {
     // yaw drum + yoke
     by.add('metalDark', tubeAt(V(0, 0.15, 0), Y_AXIS, 0.42, 0.3, 20, { uv: false }), false);
     by.add('hullWhiteAged', tubeAt(V(0, 0.5, 0), Y_AXIS, 0.3, 0.5, 16, { uv: false }), false);
-    for (const sx of [-1, 1]) by.add('antennaWhite', boxAt(V(sx * 0.5, 0.75, 0), 0.14, 0.7, 0.22, null, false), false);
+    for (const sx of [-1, 1]) by.add('antennaWhite', bevelBoxAt(V(sx * 0.5, 0.75, 0), 0.14, 0.7, 0.22, null), false);
     if (D) {
       // gimbal: motor housings on the yoke arms, cable wrap, bolt rings
       for (const sx of [-1, 1]) by.add('metalDark', tubeAt(V(sx * 0.62, 0.95, 0), X_AXIS, 0.13, 0.16, 14, { uv: false }), false);
@@ -102,7 +102,7 @@ export class Antennas {
     const ex = 54;
     b.add('metalDark', tubeAt(V(ex, 0, -(h + 2.6)), Z_AXIS, 0.2, 5.2, 10, { uv: false }));
     { const p0 = V(ex, -h, -h), p1 = V(ex, 0, -(h + 2.6)); b.add('metalDark', tubeAt(p0.clone().lerp(p1, 0.5), p1.clone().sub(p0).normalize(), 0.08, p0.distanceTo(p1), 6, { uv: false }), false); }
-    b.add('hullWhiteAged', boxAt(V(ex, 0, -(h + 5.0)), 1.2, 1.2, 1.0));
+    b.add('hullWhiteAged', bevelBoxAt(V(ex, 0, -(h + 5.0)), 1.2, 1.2, 1.0));
     this.colliders.push(Colliders.capsule(V(ex, 0, -h), V(ex, 0, -(h + 5.4)), 0.7, 'dishBoom'));
     const D = b.detail;
     this.earthDish = new Dish(m, station, V(ex, -0.6, -(h + 5.0)), V(0, -1, 0), 1.7, D);
@@ -134,16 +134,16 @@ export class Antennas {
       }
     }
     members.build(station);
-    b.add('metalDark', boxAt(V(rx, y0 + 0.1, 0), 1.3, 0.2, 1.3), false);
+    b.add('metalDark', bevelBoxAt(V(rx, y0 + 0.1, 0), 1.3, 0.2, 1.3), false);
     this.radar = new THREE.Group(); this.radar.position.set(rx, y0 + mh + 0.3, 0); station.add(this.radar);
     const br = new Builder(m);
     br.add('metalDark', tubeAt(V(0, 0, 0), Y_AXIS, 0.25, 0.5, 16, { uv: false }), false);
-    br.add('metalDark', boxAt(V(0, 0.45, 0), 2.8, 0.22, 0.16, null, false), false);
-    br.add('antennaWhite', boxAt(V(0, 0.62, 0), 2.6, 0.12, 0.5, null, false), false);
-    br.add('mliBlack', boxAt(V(0.9, 0.9, 0), 0.5, 0.4, 0.5, null, false), false);
+    br.add('metalDark', bevelBoxAt(V(0, 0.45, 0), 2.8, 0.22, 0.16, null), false);
+    br.add('antennaWhite', bevelBoxAt(V(0, 0.62, 0), 2.6, 0.12, 0.5, null), false);
+    br.add('mliBlack', bevelBoxAt(V(0.9, 0.9, 0), 0.5, 0.4, 0.5, null), false);
     br.build(this.radar, { name: 'radarBar' });
     b.add('mliBlack', new THREE.SphereGeometry(0.32, 16, 12).translate(rx + 0.9, y0 + mh - 0.6, 0.0), false);  // lidar dome
-    b.add('metalDark', boxAt(V(rx + 0.7, y0 + mh - 0.6, 0), 0.5, 0.12, 0.5, null, false), false);
+    b.add('metalDark', bevelBoxAt(V(rx + 0.7, y0 + mh - 0.6, 0), 0.5, 0.12, 0.5, null), false);
     this.colliders.push(Colliders.capsule(V(rx, y0, 0), V(rx, y0 + mh + 1.2, 0), 1.6, 'radarMast'));
     // whip antennas and patch antennas along the truss top near the cluster
     for (const [x, z] of [[-34, 1.9], [-34, -1.9], [44, 1.9], [44, -1.9]]) {
@@ -153,8 +153,8 @@ export class Antennas {
     // UHF crossed dipole and a star tracker pair on the hub top
     const ux = LAYOUT.hubX + 2.3, uy = LAYOUT.clusterY + 3.5;
     b.add('metalDark', tubeAt(V(ux, uy + 0.6, 1.8), Y_AXIS, 0.03, 1.2, 6, { uv: false }), false);
-    b.add('antennaWhite', boxAt(V(ux, uy + 1.2, 1.8), 1.2, 0.03, 0.03, null, false), false);
-    b.add('antennaWhite', boxAt(V(ux, uy + 1.2, 1.8), 0.03, 0.03, 1.2, null, false), false);
+    b.add('antennaWhite', bevelBoxAt(V(ux, uy + 1.2, 1.8), 1.2, 0.03, 0.03, null), false);
+    b.add('antennaWhite', bevelBoxAt(V(ux, uy + 1.2, 1.8), 0.03, 0.03, 1.2, null), false);
     for (const dz of [-1.0, -1.5]) b.add('mliBlack', tubeAt(V(ux - 1.0, uy + 0.4, dz), V(0.3, 1, dz * 0.3).normalize(), 0.12, 0.5, 10, { rTop: 0.16, uv: false }), false);
 
     // initial pointing

@@ -90,6 +90,7 @@ function dragonAuthor(k) {
   for (const z of [-4.08, -5.35, -6.62]) flange(k, b, z, 1.85, { h: 0.03, w: 0.06, surf: 'paintWhite', bolts: z === -5.35 ? 0 : 48 });
   if (!k.far) {
     lathe(k, b, 'hullGray', [[1.83, -4.1], [1.83, -6.66]], { seg: 64, bev: 0, shadow: false });   // inner wall (seen through the open aft end)
+    lathe(k, b, 'paintWhite', [[1.825, -6.66], [1.885, -6.66]], { seg: 64, bev: 0, shadow: false });   // aft rim closing the wall
     lathe(k, b, 'mliDark', [[1.82, -5.9], [0.0001, -5.9]], { seg: 48, bev: 0, shadow: false });
     for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; rod(k, b, 'metalBare', V(Math.cos(a) * 1.8, Math.sin(a) * 1.8, -6.6), V(Math.cos(a) * 0.4, Math.sin(a) * 0.4, -5.95), 0.03, { seg: 6 }); }
   }

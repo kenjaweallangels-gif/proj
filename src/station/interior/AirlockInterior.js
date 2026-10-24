@@ -5,6 +5,7 @@ import {
   COL, pt, dir, handrail, sign, lightPanel, vent, cables, duct, curve, bungee, bag, clutter, display, extinguisher, pba,
   camera, egressSign, footLoops, velcro, rack, boxSolid, CBM, hatchFrameCBM, openDoorCBM, hatchFrameRound, hatchDoorRound,
   spacesuit, laptop,
+  shellTube,
 } from './Kit.js';
 
 /**
@@ -34,6 +35,8 @@ function lining(Z, x0, x1, r, n, rows, tex, color = 0xffffff, skip = null) {
       W.box('equip', offset(ff(c, nrm, X), 0, 0, -0.01), L - 0.012, side + 0.004, 0.02, color, T.rect(tex), T.rect('grey'), 16);
     }
   }
+  // pressure-shell liner behind the panels: the seams between panel rows show it, not open space
+  shellTube(Z.K, ff(V(x0 - 0.02, 0, 0), X, Y), x1 - x0 + 0.04, r + 0.035);
 }
 
 export function buildAirlock(I, airlockPart) {

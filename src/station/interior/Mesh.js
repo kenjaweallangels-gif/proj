@@ -271,7 +271,7 @@ export class MeshWriter {
    * Tube swept along a polyline of zone-local points (cables, hoses, ducts). r may be a function of the
    * parameter 0..1 (ribbed ducts). Parallel-transport frames; open ends unless caps.
    */
-  tube(mat, pts, r, sides = 6, color = 0xffffff, caps = false, M = null) {
+  tube(mat, pts, r, sides = 6, color = 0xffffff, caps = true, M = null) {   // closed ends by default (no see-through tube ends)
     const b = this.bucket(mat), col = typeof color === 'number' ? lin(color) : color;
     const n = this.seg(sides, 3), m = pts.length;
     if (m < 2) return;
@@ -323,6 +323,9 @@ export class MeshWriter {
    * Used for hatch frames, seals, bulkheads with openings.
    */
   frame2D(mat, M, outer, inner, depth, color = 0xffffff, uv = null, { back = true, outerWall = true, innerWall = true } = {}) {
+    // closed solids only (geometry quality pass): a panel seen from behind or edge-on through an opening must show
+    // its back face and the opening's wall, never a culled shell. The flags are kept for the 'lite' builder.
+    if (this.detail > 0.5) { back = true; innerWall = true; outerWall = true; }
     const b = this.bucket(mat), col = typeof color === 'number' ? lin(color) : color;
     const n = outer.length, z0 = -depth / 2, z1 = depth / 2;
     const f = uv || ZERO_UV;

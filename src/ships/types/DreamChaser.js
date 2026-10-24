@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { lathe, flange, boltCircle, boltRow, seam, rod, block, handrail, thruster, lamp, beacon, grappleFixture, whip, axial, scaleUV, patch, connector, cable, vent, V, X_AXIS, Y_AXIS, Z_AXIS, LocalColliders as C } from '../Kit.js';
+import { lathe, flange, boltCircle, boltRow, seam, rod, block, handrail, thruster, lamp, beacon, grappleFixture, whip, axial, scaleUV, patch, connector, cable, vent, V, X_AXIS, Y_AXIS, Z_AXIS, LocalColliders as C, flipInside } from '../Kit.js';
 import { cbmPassive } from '../Mechanisms.js';
 import { accordionWings, wingFrame } from './Russian.js';
 
@@ -105,6 +105,8 @@ function dreamChaserAuthor(k) {
     const pts = []; for (let j = 0; j <= 48; j++) { const p = bodyPoint(0, (j / 48) * 2 * P); pts.push(new THREE.Vector2(p.x, p.y)); }
     const g = new THREE.ShapeGeometry(new THREE.Shape(pts), 1); g.rotateY(P); g.translate(0, 0, Z_AFT + 0.001);
     b.add('mliDark', g, false);
+    // and its other face (the bulkhead is seen from the adapter side too: a closed plate, not a one-sided shape)
+    b.add('mliDark', flipInside(g.clone()), false);
   }
   // body flap under the aft end, RCS ports
   block(k, b, 'tilesHS', V(0, -0.7, Z_AFT - 0.15), 2.0, 0.12, 0.8, null, { bev: 0.02, shadow: true });

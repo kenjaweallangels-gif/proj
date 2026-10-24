@@ -551,6 +551,38 @@ export function inwardTube(K, M, len, r, color, seg = 28, uv = null, mat = 'pain
   for (let i = 0; i < n; i++) { const k = base + i * 2; b.i.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
   W.tris += n * 2;
 }
+/**
+ * Pressure-shell liner behind a compartment's walls: inward-facing cylinder along +Z of M (radius r, length len)
+ * in ~0.25 m quads, leaving out the quads in front of `holes` ([{ p, d, r }] in M-local coordinates: hole axis
+ * through p along unit d, radius r — window wells, radial hatch vestibules). Anything seen through a seam or a
+ * gap between panels / racks shows this dark shell instead of open space.
+ */
+export function shellTube(K, M, len, r, holes = [], color = 0x34373a, mat = 'paint') {
+  const W = K.W, b = W.bucket(K.set + mat);
+  const nA = W.seg(56, 16), nL = Math.max(1, Math.ceil(len / 0.25)), col = linCol(color);
+  const c = new THREE.Vector3(), v = new THREE.Vector3();
+  let quads = 0;
+  for (let i = 0; i < nA; i++) {
+    const a0 = (i / nA) * Math.PI * 2, a1 = ((i + 1) / nA) * Math.PI * 2, am = (a0 + a1) / 2;
+    for (let j = 0; j < nL; j++) {
+      const z0 = (j / nL) * len, z1 = ((j + 1) / nL) * len;
+      c.set(Math.cos(am) * r, Math.sin(am) * r, (z0 + z1) / 2);
+      let skip = false;
+      for (const h of holes) {
+        v.subVectors(c, h.p);
+        const t = v.dot(h.d);
+        if (t > -0.3 && v.addScaledVector(h.d, -t).length() < h.r) { skip = true; break; }
+      }
+      if (skip) continue;
+      const base = b.count;
+      for (const [a, z] of [[a0, z0], [a0, z1], [a1, z0], [a1, z1]]) W._vert(b, M, Math.cos(a) * r, Math.sin(a) * r, z, -Math.cos(a), -Math.sin(a), 0, 0, 0, col);
+      b.i.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+      quads++;
+    }
+  }
+  W.tris += quads * 2;
+}
+
 const _lc = new THREE.Color();
 function linCol(c) { if (typeof c !== 'number') return c; _lc.set(c); return [_lc.r, _lc.g, _lc.b]; }
 
