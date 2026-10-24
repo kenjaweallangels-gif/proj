@@ -70,6 +70,7 @@ export class StationInterior {
   // ------------------------------------------------------------------------------------------ build
   async load() {
     const ctx = this.ctx, t0 = performance.now();
+    if (ctx.params?.get('interior') === '0') return;   // A/B switch for performance comparisons (no interiors at all)
     const yieldNow = () => new Promise((r) => setTimeout(r, 0));
     const size = this.lite ? 1024 : (ctx.quality?.textureScale || 1) >= 2 ? 2048 : 1024;
     const atlas = this.atlas = new Atlas(size);
@@ -123,8 +124,11 @@ export class StationInterior {
       const mat = S[kind] || S.paint;
       const mesh = new THREE.Mesh(g, mat);
       mesh.name = `int:${kind}`;
+      // via TRS (not mesh.matrix directly): static passes may call updateMatrix() on every object
+      M.decompose(mesh.position, mesh.quaternion, mesh.scale);
+      mesh.updateMatrix();
       mesh.matrixAutoUpdate = false;
-      mesh.matrix.copy(M);
+      mesh.userData.noBatch = true;     // lite StaticBatcher: interiors keep their own meshes (visibility per zone)
       mesh.layers.set(INTERIOR_LAYER);
       mesh.castShadow = false; mesh.receiveShadow = false;
       if (kind === 'glass') mesh.renderOrder = 12;
@@ -168,7 +172,7 @@ export class StationInterior {
       }
       for (const L of rec.statusLamps) {
         const mesh = new THREE.Mesh(this._lampGeo, this._lampMats[0]);
-        mesh.matrixAutoUpdate = false; mesh.matrix.multiplyMatrices(rec.M, L.M);
+        _m.multiplyMatrices(rec.M, L.M).decompose(mesh.position, mesh.quaternion, mesh.scale); mesh.updateMatrix(); mesh.matrixAutoUpdate = false;
         mesh.layers.set(INTERIOR_LAYER);
         z.group.add(mesh);
         this.lamps.push({ mesh, port: L.port, on: false });
@@ -199,7 +203,7 @@ export class StationInterior {
 
   /** App hook (after applyLite / splitMaterialVariants, before shader compilation): carve-patch exterior materials. */
   afterMaterials() {
-    if (this.lite) return;
+    if (this.lite || !this.ready) return;
     const done = new Set();
     let n = 0;
     const scene = this.ctx.nearScene;
