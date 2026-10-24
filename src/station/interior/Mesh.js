@@ -84,6 +84,8 @@ export class MeshWriter {
    * faces: bit mask of faces to emit (+X 1, -X 2, +Y 4, -Y 8, +Z 16, -Z 32), default all.
    */
   box(mat, M, sx, sy, sz, color = 0xffffff, uv = null, side = null, faces = 63) {
+    // GPU presets: panels keep their edges and backs (a front-only closeout panel shows no thickness edge-on)
+    if (this.detail > 0.5) faces = 63;
     const b = this.bucket(mat), col = typeof color === 'number' ? lin(color) : color;
     const x = sx / 2, y = sy / 2, z = sz / 2;
     const f = uv || ZERO_UV;
