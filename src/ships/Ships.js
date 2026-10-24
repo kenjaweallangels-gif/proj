@@ -16,7 +16,7 @@ import { makeAnim, animateShip } from './types/Common.js';
  *          port, colliders[], velocity, size, noseOffset (0: docking face on the port plane), rig, anim, lod, ... }
  *
  * Every type is built once as a three-level template (Kit.js) and cloned per ship. The level is picked from the
- * camera distance each frame: L0 (full detail) only within ~25 m + 5 × bounding radius, L1 to 500 m, L2 beyond;
+ * camera distance each frame: L0 (full detail) only within ~15 m + 3.5 × bounding radius, L1 to 500 m, L2 beyond;
  * 'lite' never uses L0: L1 within the L0 range, L2 (one draw call per ship) beyond it.
  *
  * Debug: `?shipshow=1` adds a row of one ship of each type 120 m above the station (outside the traffic), with
@@ -84,7 +84,7 @@ export class Ships {
       dyn: T.dyn, docks: T.docks, upAxis: D.upAxis.clone(), mainAxis: D.mainAxis.clone(),
       nozzles: tpl.nozzles, mainNozzles: tpl.mainNozzles.length ? tpl.mainNozzles : tpl.nozzles.filter((n) => n.direction.dot(D.mainAxis) < -0.9),
       noseOffset: 0, size: D.size, length: D.length, boundRadius: D.boundRadius,
-      nearDistance: 25 + 5 * D.boundRadius,
+      nearDistance: 15 + 3.5 * D.boundRadius,
       engineGlow: 0, burning: false, dockLightsOn: false, dockLightLevel: 0, petalOpen: 1, petalExtend: 1, panelDeploy: 1, doorOpen: 1,
       anim: makeAnim(),
     };

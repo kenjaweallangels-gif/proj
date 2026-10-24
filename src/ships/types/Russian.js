@@ -96,10 +96,10 @@ export function serviceModule(k, z0) {
   }
   flange(k, b, zT, 1.04, { h: 0.06, w: 0.05, bolts: 32 });
   // instrument compartment (ПрО): quilted blanket cylinder with a tie-down band and seams
-  lathe(k, b, 'blanketGreen', [[1.1, zI], [1.115, zI + 0.04], [1.115, zT - 0.04], [1.1, zT]], { seg: 64, uv: 1.8, relief: { depth: 0.013, sub: 4 } });
+  lathe(k, b, 'blanketGreen', [[1.1, zI], [1.115, zI + 0.04], [1.115, zT - 0.04], [1.1, zT]], { seg: 64, uv: 1.8, relief: { depth: 0.013, sub: 3 } });
   seam(k, b, (zI + zT) / 2, 1.118, { surf: 'metalBare', t: 0.008 });
   // flared skirt to the aggregate compartment and its radiator cylinder
-  lathe(k, b, 'blanketGreen', [[SM_R, zS], [SM_R - 0.02, zS + 0.03], [1.12, zI - 0.02], [1.1, zI]], { seg: 64, uv: 1.8, relief: { depth: 0.013, sub: 4 } });
+  lathe(k, b, 'blanketGreen', [[SM_R, zS], [SM_R - 0.02, zS + 0.03], [1.12, zI - 0.02], [1.1, zI]], { seg: 64, uv: 1.8, relief: { depth: 0.013, sub: 3 } });
   flange(k, b, zI, 1.1, { h: 0.04, w: 0.04, bolts: 36 });
   lathe(k, b, 'radiator', [[SM_R, zA + 0.06], [SM_R + 0.012, zA + 0.1], [SM_R + 0.012, zS - 0.04], [SM_R, zS]], { seg: 72, uv: 1.6 });
   for (const z of [zS - 0.02, zA + 0.38, zA + 0.04]) flange(k, b, z, SM_R, { h: 0.035, w: 0.05, bolts: z === zS - 0.02 ? 48 : 0 });

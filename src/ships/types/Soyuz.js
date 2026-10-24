@@ -34,7 +34,7 @@ function onShell(rAt, a, z, lift = 0) { const r = rAt(z) + lift; return V(Math.c
 /** Forward compartment shared look: blanket shell, binding seams, docking lights, camera, Kurs. */
 function forwardCompartment(k, prof) {
   const b = k.b;
-  lathe(k, b, 'blanketGreen', prof, { seg: 64, uv: 1.8, relief: { depth: 0.013, sub: 4 } });
+  lathe(k, b, 'blanketGreen', prof, { seg: 64, uv: 1.8, relief: { depth: 0.013, sub: 3 } });
   const rAt = profileRadius(prof);
   for (const z of [-0.45, prof[0][1] + 0.3]) seam(k, b, z, rAt(z) + 0.004, { surf: 'feltFlat', t: 0.012, tint: 0x6f7563 });
   // stitched gore seams along the shell
@@ -74,7 +74,7 @@ function soyuzAuthor(k) {
   flange(k, b, -2.98, 0.4, { h: 0.06, w: 0.05, bolts: 20 });
   // descent module ("headlight": spherical top, conical sides, heat shield at the base)
   const dm = [[1.09, -5.2], [1.088, -5.02], [1.06, -4.62], [1.0, -4.2], [0.9, -3.8], [0.77, -3.5], [0.6, -3.27], [0.44, -3.12]];
-  lathe(k, b, 'blanketGreen', dm, { seg: 64, uv: 1.8, relief: { depth: 0.013, sub: 4 } });
+  lathe(k, b, 'blanketGreen', dm, { seg: 64, uv: 1.8, relief: { depth: 0.013, sub: 3 } });
   const dAt = profileRadius(dm);
   seam(k, b, -3.3, dAt(-3.3) + 0.003, { surf: 'feltFlat', t: 0.012, tint: 0x6f7563 });
   seam(k, b, -5.0, dAt(-5.0) + 0.003, { surf: 'feltFlat', t: 0.012, tint: 0x6f7563 });
@@ -130,7 +130,7 @@ function progressAuthor(k) {
   const { rAt, ant } = forwardCompartment(k, go);
   // refuelling compartment (КДТ): cone + cylinder carrying the propellant tanks
   const kdt = [[1.04, -5.34], [1.04, -5.2], [1.01, -5.02], [1.0, -4.8], [1.0, -3.55], [0.8, -3.3], [0.45, -3.08]];
-  lathe(k, b, 'blanketGreen', kdt, { seg: 64, uv: 1.8, relief: { depth: 0.013, sub: 4 } });
+  lathe(k, b, 'blanketGreen', kdt, { seg: 64, uv: 1.8, relief: { depth: 0.013, sub: 3 } });
   const kAt = profileRadius(kdt);
   for (const z of [-3.5, -4.15, -4.8]) seam(k, b, z, 1.004, { surf: 'feltFlat', t: 0.012, tint: 0x6f7563 });
   flange(k, b, -3.07, 0.43, { h: 0.05, w: 0.05, bolts: 20 });

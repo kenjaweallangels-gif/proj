@@ -188,7 +188,7 @@ Types (fictional names, real analogues): `soyuz` «Сокол» (Soyuz MS), `pro
 `dreamchaser` «Стриж» (Dream Chaser + cargo module) — large ports (berthed vehicles dock with a passive CBM-class ring);
 `drone` «Шмель». Each type is authored once (`author(kit)` in `src/ships/types/*`) and built as a three-level template
 (`src/ships/Kit.js`): L0 full detail (relief-quilted blankets, bolts, handrails, thruster bells, latches) within
-~25 m + 5 × bounding radius, L1 to 500 m, L2 (one flat material) beyond; 'lite' uses L1 only close up, L2 otherwise.
+~15 m + 3.5 × bounding radius, L1 to 500 m, L2 (one flat material) beyond; 'lite' uses L1 only close up, L2 otherwise.
 Ships clone the template (shared geometry); hidden levels are detached from the scene graph after start-up.
 Part animation (`types/Common.js`) follows the traffic state: wings / fans / folding wings deploy at the start of an
 arrival, Kurs antennas deploy and track, probe extension / contact / retraction, IDSS soft-capture ring and hooks,

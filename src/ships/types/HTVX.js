@@ -18,8 +18,8 @@ function htvAuthor(k) {
   const b = k.b, tpl = k.tpl;
   cbmPassive(k, { depth: 0.62 });
   // forward bulkhead cone and the pressurised module
-  lathe(k, b, 'betaCloth', [[R, -1.35], [R - 0.02, -1.28], [1.6, -0.72], [1.49, -0.62]], { seg: 96, uv: 1.3, relief: { depth: 0.012, sub: 4 } });
-  lathe(k, b, 'betaCloth', [[R + 0.01, -4.95], [R + 0.025, -4.9], [R + 0.025, -1.4], [R + 0.01, -1.35]], { seg: 96, uv: 1.3, relief: { depth: 0.012, sub: 4 } });
+  lathe(k, b, 'betaCloth', [[R, -1.35], [R - 0.02, -1.28], [1.6, -0.72], [1.49, -0.62]], { seg: 96, uv: 1.3, relief: { depth: 0.012, sub: 3 } });
+  lathe(k, b, 'betaCloth', [[R + 0.01, -4.95], [R + 0.025, -4.9], [R + 0.025, -1.4], [R + 0.01, -1.35]], { seg: 96, uv: 1.3, relief: { depth: 0.012, sub: 3 } });
   for (const z of [-1.37, -2.55, -3.75, -4.93]) flange(k, b, z, R + 0.02, { h: 0.035, w: 0.07, surf: 'metalBare', bolts: k.near ? 80 : 0 });
   for (const z of [-1.96, -3.15, -4.34]) seam(k, b, z, R + 0.028, { surf: 'beta', t: 0.01, tint: 0xc9c6bb });
   grappleFixture(k, b, V(0, R + 0.03, -2.0), Y_AXIS);
