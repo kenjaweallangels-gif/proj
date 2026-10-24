@@ -27,6 +27,12 @@ float nzl(vec3 x, float l) { return textureLod(tNoise, x, l).r; }
 // Screen footprint (km per pixel) of the sample being shaded, for the explicit noise LODs below. The cloud shader
 // sets it per pixel; ground-shadow lookups leave it coarse.
 float gFpKm = 6.0;
+// Map cloud fraction before the sub-texel field (sets the optical thickness of the cloud elements).
+float gCloudMap = 0.0;
+
+// Opacity of cloud elements from the map fraction: broken / thin cloud is translucent (the surface shows through
+// thin cirrus and haze), overcast cores are nearly opaque. Area-average opacity = fraction * cloudOpacity.
+float cloudOpacity(float cMap) { return 0.45 + 0.5 * smoothstep(0.15, 0.8, cMap); }
 const mat3 ROT_A = mat3(0.6486, 0.6821, -0.3376, -0.5740, 0.7297, 0.3715, 0.4998, -0.0472, 0.8649);
 const mat3 ROT_B = mat3(0.3254, 0.0658, -0.9433, -0.8960, -0.2973, -0.3298, -0.3021, 0.9525, -0.0378);
 
@@ -230,18 +236,23 @@ float cloudCover(vec3 p, vec2 uv, vec2 dx, vec2 dy, float fpKm, out vec2 grad, o
   float c = advectedCloudsGrad(p, uv, dx, dy, mean, grad);
   c = clamp(c + uWx.x * growthDecay(pKm) * (0.35 + 0.65 * smoothstep(0.05, 0.4, mean)), 0.0, 1.0);
 #if DETAIL > 0
-  // texture below the 5 km texels where the screen resolves it: thin and broken cloud gets a soft fBm modulation
-  // (multiplicative, so the real structure of the map is kept); thick cores stay smooth
-  float f1 = 1.0 - smoothstep(0.8, 2.5, fpKm);
-  float edge = 4.0 * c * (1.0 - c);
-  if (f1 * edge > 0.0) {
+  // Sub-texel cloud field: a 5 km texel of the map is a FRACTION of cloudy area, not a uniform grey veil. Where
+  // the screen resolves it, the fraction becomes individual cloud elements with clear sky between them: a
+  // multi-scale noise (equalised to ~uniform) is thresholded at the local fraction, so the area average stays the
+  // map value at any distance (no change of overall cover, no popping) while broken cloud gets real gaps.
+  gCloudMap = c;
+  float f1 = 1.0 - smoothstep(1.2, 5.0, fpKm);
+  if (f1 > 0.0 && c > 0.005 && c < 0.995) {
     vec3 xd = pKm + vec3(0.0, 0.0, uFlow.w * 2.0e-4);
   #if DETAIL > 1
-    float n = mix(fbm2Km(xd, 6.0), fbmKm(xd, 6.0), 0.5);
+    float n = 0.5 * fbm2Km(xd, 14.0) + 0.32 * fbmKm(xd + 31.0, 4.5) + 0.18 * fbm2Km(xd + 57.0, 1.6);
   #else
-    float n = fbm2Km(xd, 6.0);
+    float n = 0.6 * fbm2Km(xd, 14.0) + 0.4 * fbm2Km(xd + 31.0, 4.5);
   #endif
-    c = clamp(c * (1.0 + uWx.y * f1 * edge * (n - 0.5) * 0.9), 0.0, 1.0);
+    n = smoothstep(0.22, 0.78, n);                              // ~uniform distribution
+    float soft = 0.06 + 0.1 * smoothstep(0.3, 3.0, fpKm);
+    float cover = smoothstep(n - soft, n + soft, c * (1.0 + 2.0 * soft) - soft);
+    c = mix(c, cover, f1 * uWx.y);
   }
   // tropical afternoon cumulus: soft puffs (~3-4 km, rounded: two octaves only, soft threshold, denser centres)
   // in clusters and streets whose extent grows with the potential
@@ -282,7 +293,8 @@ float cloudCoverLite(vec3 p, vec2 uv, vec2 dx, vec2 dy) {
   float storm, wall, wind, core;
   gFpKm = 6.0;
   float proc = max(cyclones(p, storm, wall, wind), stormCells(p, core));
-  return max(c * (1.0 - 0.85 * storm), min(proc, 1.0));
+  c = max(c * (1.0 - 0.85 * storm), min(proc, 1.0));
+  return c * cloudOpacity(c);                                 // shadowing opacity (area average)
 }
 
 // Sea-surface wind speed (m/s): trades, doldrums, westerlies (roaring forties), synoptic variability, cyclones.

@@ -354,3 +354,194 @@ if 'normals' in STEPS:
         l = np.sqrt(nx * nx + ny * ny + nz * nz)
         nrm = np.stack([nx / l, ny / l, nz / l], axis=-1) * 0.5 + 0.5
         save(Image.fromarray((nrm * 255).clip(0, 255).astype(np.uint8), 'RGB'), f'earth_normal_{W}.jpg', quality=92, optimize=True)
+
+
+# ================================================================ 500 m tiles and 1 km relief
+# 5-degree tiles, rows r = 3..32 (75N..75S), columns c = 0..71 (lon -180 + 5c). Tile file names: rRRcCC.
+#   tiles/day/rRRcCC.webp    1200 x 1200 Blue Marble NG October 2004 at 500 m (land / inland water only)
+#   tiles/night/rRRcCC.webp  1200 x 1200 Black Marble 2016 at 500 m, city lights only, grey (lit tiles only)
+#   tiles/relief/rRRcCC.webp  600 x 600 relief at ~1 km from the AWS Terrain Tiles (zoom 7): R, G = east / north
+#                            slope (0.5 + 0.5 sign(s) sqrt(|s| / 2)), B = sqrt(height / 9000 m)  (land tiles only)
+#   tiles/manifest.json      the tiles present per layer
+#   earth_relief_8192.webp / _2048.webp   the same relief encoding globally
+TILE_DEG, ROW0, ROW1 = 5, 3, 33
+SRC500 = {('A', 1): (-180, 90), ('B', 1): (-90, 90), ('C', 1): (0, 90), ('D', 1): (90, 90),
+          ('A', 2): (-180, 0), ('B', 2): (-90, 0), ('C', 2): (0, 0), ('D', 2): (90, 0)}
+MANIFEST = os.path.join(OUT, 'tiles', 'manifest.json')
+
+
+def manifest_update(layer, ids):
+    m = json.load(open(MANIFEST)) if os.path.exists(MANIFEST) else {}
+    m['tileDeg'] = TILE_DEG
+    m['rows'] = [ROW0, ROW1]
+    m[layer] = sorted(ids)
+    os.makedirs(os.path.dirname(MANIFEST), exist_ok=True)
+    json.dump(m, open(MANIFEST, 'w'), separators=(',', ':'))
+
+
+def tiles_in_source(key):
+    lon0, lat0 = SRC500[key]
+    for r in range(ROW0, ROW1):
+        lat_top = 90 - TILE_DEG * r
+        if not (lat0 - 90 < lat_top <= lat0):
+            continue
+        for c in range(72):
+            lon = -180 + TILE_DEG * c
+            if lon0 <= lon < lon0 + 90:
+                yield r, c, int((lon - lon0) * 240), int((lat0 - lat_top) * 240)
+
+
+def lights_only(rgb_u8):
+    """Black Marble = warm lights over a blue moonlit-terrain / ocean background (R ~ 0.6 B): keep the lights."""
+    n = rgb_u8.astype(np.float32) / 255.0
+    excess = n[..., 0] - 0.6 * n[..., 2]
+    t = np.clip((excess - 0.015) / 0.12, 0, 1)
+    return np.clip(np.maximum(n[..., 0], n[..., 1]) * t * t * (3 - 2 * t), 0, 1)
+
+
+if 'day500' in STEPS:
+    os.makedirs(os.path.join(OUT, 'tiles', 'day'), exist_ok=True)
+    water = np.asarray(Image.open(os.path.join(OUT, 'earth_water_8192.png')), dtype=np.float32) / 255.0
+    ids = []
+    for key in SRC500:
+        img = Image.open(src(f't500/world.200410.3x21600x21600.{key[0]}{key[1]}.jpg')).convert('RGB')
+        for r, c, x, y in tiles_in_source(key):
+            # any land or inland water in the tile (water fraction < 1)?
+            wr0 = int(TILE_DEG * r / 180 * 4096); wc0 = int(c * TILE_DEG / 360 * 8192)
+            blk = water[wr0:wr0 + 114, wc0:wc0 + 114]
+            if blk.size == 0 or blk.min() > 0.98:
+                continue
+            img.crop((x, y, x + 1200, y + 1200)).save(os.path.join(OUT, 'tiles', 'day', f'r{r:02d}c{c:02d}.webp'), quality=80, method=6)
+            ids.append(r * 100 + c)
+        print('day500', key, len(ids), flush=True)
+        del img
+    manifest_update('day', ids)
+
+if 'night500' in STEPS:
+    os.makedirs(os.path.join(OUT, 'tiles', 'night'), exist_ok=True)
+    glob8k = np.zeros((4096, 8192), np.float32)
+    ids = []
+    for key in SRC500:
+        img = Image.open(src(f't500/BlackMarble_2016_{key[0]}{key[1]}.jpg')).convert('RGB')
+        lon0, lat0 = SRC500[key]
+        lights = np.zeros((21600, 21600), np.uint8)
+        for y0 in range(0, 21600, 2700):
+            lights[y0:y0 + 2700] = (lights_only(np.asarray(img.crop((0, y0, 21600, y0 + 2700)))) * 255 + 0.5).astype(np.uint8)
+        del img
+        L = Image.fromarray(lights, 'L')
+        # global 8K: area average of the 500 m lights (display units, like the source)
+        g = np.asarray(L.resize((2048, 2048), Image.BOX), dtype=np.float32) / 255.0
+        gx0 = int((lon0 + 180) / 360 * 8192); gy0 = int((90 - lat0) / 180 * 4096)
+        glob8k[gy0:gy0 + 2048, gx0:gx0 + 2048] = g
+        for r, c, x, y in tiles_in_source(key):
+            t = lights[y:y + 1200, x:x + 1200]
+            if t.max() < 12:
+                continue
+            Image.fromarray(t, 'L').save(os.path.join(OUT, 'tiles', 'night', f'r{r:02d}c{c:02d}.webp'), quality=82, method=6)
+            ids.append(r * 100 + c)
+        print('night500', key, len(ids), flush=True)
+        del lights, L
+    manifest_update('night', ids)
+    G = Image.fromarray((np.clip(glob8k, 0, 1) * 255 + 0.5).astype(np.uint8), 'L')
+    save(G, 'earth_night_8192.jpg', quality=90, optimize=True, progressive=True)
+    save(G.resize((4096, 2048), Image.BOX), 'earth_night_4096.jpg', quality=90, optimize=True, progressive=True)
+
+
+def enc_slope(g):
+    return 0.5 + 0.5 * np.sign(g) * np.sqrt(np.minimum(np.abs(g), 2.0) / 2.0)
+
+
+def relief_rgb(h, dx, dy):
+    """h: heights (m) with a 1-texel margin; dx (per row, column vector) / dy: texel sizes in metres. -> uint8 RGB."""
+    gx = (h[1:-1, 2:] - h[1:-1, :-2]) / (2 * dx)
+    gy = (h[:-2, 1:-1] - h[2:, 1:-1]) / (2 * dy)               # +north
+    hb = np.sqrt(np.clip(h[1:-1, 1:-1], 0, 9000) / 9000.0)
+    return (np.stack([enc_slope(gx), enc_slope(gy), hb], -1) * 255 + 0.5).clip(0, 255).astype(np.uint8)
+
+
+if 'relief' in STEPS:
+    TZ = 7
+    NT = 1 << TZ
+    TD = src(f'terrarium{TZ}')
+    cache = {}
+
+    def terr(x, y):
+        k = (x % NT, y)
+        if k not in cache:
+            f = os.path.join(TD, f'{TZ}_{k[0]}_{k[1]}.png')
+            if os.path.exists(f) and os.path.getsize(f) > 0:
+                a = np.asarray(Image.open(f).convert('RGB'), dtype=np.float32)
+                cache[k] = a[..., 0] * 256 + a[..., 1] + a[..., 2] / 256 - 32768
+            else:
+                cache[k] = None
+            if len(cache) > 800:
+                cache.pop(next(iter(cache)))
+        return cache[k]
+
+    def sample_merc(lat, lon):
+        """Bilinear terrarium height (m) at arrays of lat / lon (deg); NaN where no tile."""
+        X = (lon + 180.0) / 360.0 * NT * 256 - 0.5
+        Y = (1 - np.arcsinh(np.tan(np.radians(lat))) / np.pi) / 2 * NT * 256 - 0.5
+        x0 = np.floor(X).astype(np.int64); y0 = np.floor(Y).astype(np.int64)
+        fx = (X - x0).astype(np.float32); fy = (Y - y0).astype(np.float32)
+
+        def at(xx, yy):
+            v = np.full(xx.shape, np.nan, np.float32)
+            tx, ty = (xx // 256) % NT, yy // 256
+            for a in np.unique(tx):
+                for b in np.unique(ty):
+                    t = terr(int(a), int(b))
+                    if t is None:
+                        continue
+                    m = (tx == a) & (ty == b)
+                    if m.any():
+                        v[m] = t[yy[m] % 256, xx[m] % 256]
+            return v
+        return (at(x0, y0) * (1 - fx) * (1 - fy) + at(x0 + 1, y0) * fx * (1 - fy)
+                + at(x0, y0 + 1) * (1 - fx) * fy + at(x0 + 1, y0 + 1) * fx * fy)
+
+    os.makedirs(os.path.join(OUT, 'tiles', 'relief'), exist_ok=True)
+    # global height at 24 px/deg (8640 x 4320); GEBCO_08 land elevation where no terrain tile exists
+    gH = np.asarray(Image.open(src('gebco_08_rev_elev_21600x10800.png')).convert('L').resize((8640, 4320), Image.BOX), dtype=np.float32) * (6400.0 / 255.0)
+    ids = []
+    P = 120 * TILE_DEG          # 600 px per tile (120 px/deg, ~0.93 km)
+    Rm = 6371000.0
+    dy = np.pi * Rm / (180 * 120)
+    for r in range(ROW0, ROW1):
+        lat_top = 90 - TILE_DEG * r
+        lat = lat_top - (np.arange(-1, P + 1) + 0.5) / 120.0
+        dx = (2 * np.pi * Rm / (360 * 120)) * np.maximum(np.cos(np.radians(lat[1:-1])), 0.02)[:, None]
+        for c in range(72):
+            lon0 = -180 + TILE_DEG * c
+            tf = os.path.join(OUT, 'tiles', 'relief', f'r{r:02d}c{c:02d}.webp')
+            if 'reuse' in STEPS and os.path.exists(tf):
+                # rebuild the global grid from an existing tile (height channel)
+                b = np.asarray(Image.open(tf).convert('RGB'), dtype=np.float32)[..., 2] / 255.0
+                ids.append(r * 100 + c)
+                gy0, gx0 = (90 - lat_top) * 24, (lon0 + 180) * 24
+                gH[gy0:gy0 + 120, gx0:gx0 + 120] = (b * b * 9000.0).reshape(120, 5, 120, 5).mean(axis=(1, 3))
+                continue
+            if 'reuse' in STEPS:
+                continue
+            lon = lon0 + (np.arange(-1, P + 1) + 0.5) / 120.0
+            LA, LO = np.meshgrid(lat, lon, indexing='ij')
+            h = sample_merc(LA, LO)
+            if np.isnan(h).all():
+                continue
+            h = np.where(np.isnan(h), 0.0, np.maximum(h, 0.0)).astype(np.float32)
+            if h.max() < 1.0:
+                continue
+            Image.fromarray(relief_rgb(h, dx, dy), 'RGB').save(os.path.join(OUT, 'tiles', 'relief', f'r{r:02d}c{c:02d}.webp'), quality=88, method=6)
+            ids.append(r * 100 + c)
+            hb = h[1:-1, 1:-1].reshape(120, 5, 120, 5).mean(axis=(1, 3))
+            gy0, gx0 = (90 - lat_top) * 24, (lon0 + 180) * 24
+            gH[gy0:gy0 + 120, gx0:gx0 + 120] = hb
+        print('relief row', r, len(ids), flush=True)
+    manifest_update('relief', ids)
+    for W in (8192, 2048):
+        Hg = np.asarray(Image.fromarray(gH).resize((W, W // 2), Image.BOX), dtype=np.float32)
+        Hp = np.pad(Hg, ((1, 1), (1, 1)), mode='edge')
+        Hp[1:-1, 0] = Hg[:, -1]; Hp[1:-1, -1] = Hg[:, 0]
+        latg = 90 - (np.arange(W // 2) + 0.5) * 360 / W
+        dxg = (2 * np.pi * Rm / W) * np.maximum(np.cos(np.radians(latg)), 0.02)[:, None]
+        save(Image.fromarray(relief_rgb(Hp, dxg, 2 * np.pi * Rm / W), 'RGB'), f'earth_relief_{W}.webp', quality=90, method=6)

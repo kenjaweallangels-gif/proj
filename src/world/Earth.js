@@ -5,7 +5,7 @@ import { SPHERE_VERTEX, groundFragment, CLOUD_FRAGMENT, SHELL_FRAGMENT } from '.
 import { AURORA_FRAGMENT } from './shaders/AuroraShaders.js';
 import { QUAD_VERTEX, SUN_DISC_FRAGMENT, SUN_CORONA_FRAGMENT, MOON_VERTEX, MOON_FRAGMENT } from './shaders/SunMoonShaders.js';
 import { loadSeasonalDay, createNoiseTexture, imageChannel, BASE_MONTH } from './EarthTextures.js';
-import { SurfaceDetail } from './SurfaceDetail.js';
+import { TileWindow, loadTileManifest } from './TileWindow.js';
 import { Weather, latLonToObj } from './Weather.js';
 
 /**
@@ -14,8 +14,8 @@ import { Weather, latLonToObj } from './Weather.js';
  * Orientation comes from ctx.orbit every frame; the Earth centre is ctx.orbit.earthCenterFar.
  *
  * Surface: Blue Marble NG monthly imagery blended for the sim date (EarthTextures), NSIDC sea ice, water fraction
- * with rivers and lakes, bathymetry, relief normals, Cox-Munk glint, Black Marble city lights; on 'ultra' 500 m
- * imagery streamed around the sub-station point (SurfaceDetail). Weather (Weather + WeatherChunk): advected and
+ * with rivers and lakes, bathymetry, terrain relief (slopes + horizon shadows), Cox-Munk glint, Black Marble city
+ * lights; 500 m day / night imagery and 1 km relief streamed around the sub-station point (TileWindow). Weather (Weather + WeatherChunk): advected and
  * evolving cloud cover, tropical cyclones, thunderstorm cells with lightning, cloud shadows. Night: city lights
  * diffused by clouds, moonlit clouds and moon glint, aurora ovals, airglow.
  */
@@ -40,14 +40,17 @@ const SAMPLES = { ultra: [24, 8, 6], high: [16, 6, 5], medium: [12, 5, 4], low: 
 
 /**
  * Feature set per preset. day: 'delta' = 8K base + seasonal 4K difference, 'blend' = two 4K months, 'nearest' = one
- * month file. detail = cloud erosion octaves; cyc / cells / flashes = uniform array sizes; arcs / auroraSamples = aurora.
+ * month file. relief = global relief texture size (GPU presets; 'lite' uses the old normal map); tiles = toroidal
+ * window sizes (in 5-degree tiles) of the 500 m day / night and 1 km relief layers (0 = off); shadows = terrain
+ * horizon shadows. detail = cloud texture octaves; cyc / cells / flashes = uniform array sizes; arcs / auroraSamples
+ * = aurora.
  */
 const FEATURES = {
-  ultra:  { day: 'delta', clouds: 8192, night: 8192, water: 8192, normal: 4096, window: true, detail: 3, cyc: 6, cells: 24, flashes: 8, arcs: 3, auroraSamples: 6 },
-  high:   { day: 'delta', clouds: 8192, night: 8192, water: 8192, normal: 4096, window: false, detail: 2, cyc: 6, cells: 20, flashes: 8, arcs: 2, auroraSamples: 4 },
-  medium: { day: 'blend', clouds: 4096, night: 4096, water: 4096, normal: 4096, window: false, detail: 1, cyc: 5, cells: 16, flashes: 6, arcs: 2, auroraSamples: 3 },
-  low:    { day: 'blend', clouds: 4096, night: 4096, water: 4096, normal: 2048, window: false, detail: 0, cyc: 5, cells: 12, flashes: 4, arcs: 1, auroraSamples: 2 },
-  lite:   { day: 'nearest', clouds: 4096, night: 4096, water: 4096, normal: 2048, window: false, detail: 0, cyc: 0, cells: 0, flashes: 0, arcs: 0, auroraSamples: 0 },
+  ultra:  { day: 'delta', clouds: 8192, night: 8192, water: 8192, relief: 8192, tiles: { day: 5, night: 5, relief: 8 }, shadows: true, detail: 3, cyc: 6, cells: 24, flashes: 8, arcs: 3, auroraSamples: 6 },
+  high:   { day: 'delta', clouds: 8192, night: 8192, water: 8192, relief: 8192, tiles: { day: 0, night: 4, relief: 6 }, shadows: true, detail: 2, cyc: 6, cells: 20, flashes: 8, arcs: 2, auroraSamples: 4 },
+  medium: { day: 'blend', clouds: 4096, night: 4096, water: 4096, relief: 2048, tiles: { day: 0, night: 0, relief: 0 }, shadows: true, detail: 1, cyc: 5, cells: 16, flashes: 6, arcs: 2, auroraSamples: 3 },
+  low:    { day: 'blend', clouds: 4096, night: 4096, water: 4096, relief: 2048, tiles: { day: 0, night: 0, relief: 0 }, shadows: false, detail: 0, cyc: 5, cells: 12, flashes: 4, arcs: 1, auroraSamples: 2 },
+  lite:   { day: 'nearest', clouds: 4096, night: 4096, water: 4096, normal: 2048, tiles: { day: 0, night: 0, relief: 0 }, shadows: false, detail: 0, cyc: 0, cells: 0, flashes: 0, arcs: 0, auroraSamples: 0 },
 };
 
 const _qInv = new THREE.Quaternion();
@@ -71,7 +74,8 @@ export class Earth {
     if (maxTex < 8192) {      // 8K textures and the 8K bake need the GPU's support
       f.clouds = Math.min(f.clouds, 4096); f.night = Math.min(f.night, 4096); f.water = Math.min(f.water, 4096);
       if (f.day === 'delta') f.day = 'blend';
-      f.window = false;
+      if (f.relief) f.relief = 2048;
+      f.tiles = { day: 0, night: 0, relief: 0 };
     }
     this.features = f;
     this.lite = lite;
@@ -97,11 +101,16 @@ export class Earth {
     this.tAux = { value: null };
     this.tClouds = { value: null };
     this.uFlow = { value: new THREE.Vector4() };
-    this.uWx = { value: new THREE.Vector4(0.22, 0.35, 1.0, 0) };   // growth/decay, detail erosion, tropical cumulus
+    this.uWx = { value: new THREE.Vector4(0.22, 1.0, 1.0, 0) };   // growth/decay, detail erosion, tropical cumulus
     this.uCyc = { value: this.weather ? this.weather.uCyc : [] };
     this.uCell = { value: this.weather ? this.weather.uCell : [] };
     this.uFlash = { value: this.weather ? this.weather.uFlash : [] };
-    this.detail = f.window ? new SurfaceDetail(ctx.renderer, (p) => ctx.assetUrl(p), Math.min(16, ctx.renderer.capabilities.getMaxAnisotropy())) : null;
+    // streamed tile windows (filled in load() once the manifest is known)
+    const tAniso = Math.min(16, ctx.renderer.capabilities.getMaxAnisotropy());
+    const mk = (name, n, tilePx, srgb, oneChannel) => (n > 0 && !lite
+      ? new TileWindow(ctx.renderer, (p) => ctx.assetUrl(p), { name, n, tilePx, srgb, oneChannel, anisotropy: tAniso, lead: n * 1.2 })
+      : null);
+    this.tiles = { day: mk('day', f.tiles.day, 1200, true, false), night: mk('night', f.tiles.night, 1200, false, true), relief: mk('relief', f.tiles.relief, 600, false, false) };
     this._prevSub = { lat: o.subLatDeg, lon: o.subLonDeg, dLat: 0, dLon: 1 };
 
     const weatherDefines = { MAX_CYC: Math.max(1, f.cyc), MAX_CELLS: Math.max(1, f.cells), DETAIL: f.detail, CLOUD_TEX_W: f.clouds.toFixed(1) };
@@ -112,18 +121,23 @@ export class Earth {
 
     // --- Ground ---
     const groundDefines = lite ? { SAMPLES: nGround, MODE: 0 } : { SAMPLES: nGround, MODE: 0, ...weatherDefines };
-    if (f.window) groundDefines.DETAIL_WINDOW = 1;
+    const tileUniforms = {};
+    if (this.tiles.day) { groundDefines.TILE_DAY = 1; tileUniforms.tDayT = this.tiles.day.uTex; tileUniforms.uDayT = this.tiles.day.uWin; }
+    if (this.tiles.night) { groundDefines.TILE_NIGHT = 1; tileUniforms.tNightT = this.tiles.night.uTex; tileUniforms.uNightT = this.tiles.night.uWin; }
+    if (this.tiles.relief) { groundDefines.TILE_RELIEF = 1; tileUniforms.tReliefT = this.tiles.relief.uTex; tileUniforms.uReliefT = this.tiles.relief.uWin; }
     this.groundMaterial = new THREE.ShaderMaterial({
       name: 'EarthGround',
       defines: groundDefines,
       uniforms: {
-        tDay: { value: null }, tNight: { value: null }, tWater: { value: null }, tNormal: { value: null },
+        tDay: { value: null }, tNight: { value: null }, tWater: { value: null }, tNormal: { value: null }, tRelief: { value: null },
         uSunDir: this.uSunDir, uSunDirObj: this.uSunDirObj, uSunColor: this.uSunColor, uEarthCenter: this.uEarthCenter,
         uSunIntensity: this.uSunIntensity, uCloudAngle: this.uCloudAngle, uMultiScatter: this.uMultiScatter,
         uMoonDir: this.uMoonDir, uMoonLight: this.uMoonLight, uNightIntensity: this.uNightIntensity,
         uGlint: { value: lite ? 2.0 : 1.6 }, uNormalStrength: { value: 0.5 },
+        // relief: slope exaggeration of the global (5 / 20 km) and the 1 km tile relief, terrain shadows on/off
+        uRelief: { value: new THREE.Vector3(f.relief >= 8192 ? 2.2 : 3.5, 1.35, f.shadows ? 1 : 0) },
         ...(lite ? { tClouds: this.tClouds } : weatherUniforms),
-        ...(this.detail ? this.detail.uniforms : {}),
+        ...tileUniforms,
       },
       vertexShader: SPHERE_VERTEX, fragmentShader: groundFragment(lite), toneMapped: false,
     });
@@ -260,6 +274,7 @@ export class Earth {
     const maxAniso = ctx.renderer.capabilities.getMaxAnisotropy();
     const aniso = Math.max(1, Math.min(ctx.quality.anisotropy || 4, maxAniso));
     const E = 'textures/earth/';
+    const manifest = this.lite ? null : loadTileManifest((p) => ctx.assetUrl(p));
     let total = 6 + (f.day === 'nearest' ? 1 : f.day === 'blend' ? 2 : 4) + (this.lite ? 0 : 1), done = 0;
     ctx.hud?.setProgress?.(0);
     // format: 'rgb' | 'r' (grey, one byte per texel) | 'rg' (normal map xy); noMips: bake sources sampled once
@@ -280,13 +295,18 @@ export class Earth {
       load(`${E}earth_night_${f.night}.jpg`, false, false, 'r'),
       load(`${E}earth_clouds_${f.clouds}.jpg`, false, false, 'r'),
       load(`${E}earth_water_${f.water}.png`, false, false, 'r'),
-      load(`${E}earth_normal_${f.normal}.jpg`, false, false, 'rg'),
+      this.lite ? load(`${E}earth_normal_${f.normal}.jpg`, false, false, 'rg') : load(`${E}earth_relief_${f.relief}.webp`, false, false, 'rgb'),
       load('textures/sky/moon_1024.jpg', true),
       this.lite ? Promise.resolve(null) : load(`${E}earth_aux_2048.png`, false, false, 'rgb'),
     ]);
     this.season = dayRes.season;
     const gu = this.groundMaterial.uniforms;
-    gu.tDay.value = dayRes.texture; gu.tNight.value = night; gu.tWater.value = water; gu.tNormal.value = normal;
+    gu.tDay.value = dayRes.texture; gu.tNight.value = night; gu.tWater.value = water;
+    if (this.lite) gu.tNormal.value = normal; else gu.tRelief.value = normal;
+    if (manifest) {
+      const m = await manifest;
+      for (const k of ['day', 'night', 'relief']) if (this.tiles[k]) this.tiles[k].setIds(m[k] || []);
+    }
     this.tClouds.value = clouds;
     this.moonMaterial.uniforms.tMoon.value = moon;
     this.dayTarget = dayRes.target;
@@ -344,14 +364,16 @@ export class Earth {
         this.aurora.quaternion.copy(o.earthQuat);
         this.uCamObj.value.copy(_camKm).sub(o.earthCenterFar).applyQuaternion(_qInv);
       }
-      if (this.detail) {
+      if (this.textures) {
         // ground-track direction (deg/frame, longitude wrapped) for the window lead
         const p = this._prevSub;
         let dLon = o.subLonDeg - p.lon; if (dLon > 180) dLon -= 360; if (dLon < -180) dLon += 360;
         const dLat = o.subLatDeg - p.lat;
-        if (Math.abs(dLat) + Math.abs(dLon) > 1e-6) { p.dLat = dLat; p.dLon = dLon * Math.cos(o.subLatDeg * Math.PI / 180); }
+        if (Math.abs(dLat) + Math.abs(dLon) > 1e-6) { p.dLat = dLat; p.dLon = dLon; }
         p.lat = o.subLatDeg; p.lon = o.subLonDeg;
-        this.detail.update(dtReal, o.subLatDeg, o.subLonDeg, p.dLat, p.dLon / Math.max(0.2, Math.cos(o.subLatDeg * Math.PI / 180)), scale);
+        // tiles follow up to x60 (one 5-degree tile per ~1.2 s); faster, the ground races by and the layers fade out
+        const active = scale <= 60;
+        for (const k of ['relief', 'day', 'night']) this.tiles[k]?.update(o.subLatDeg, o.subLonDeg, p.dLat, p.dLon, dtReal, active);
       }
     }
     // horizon culling from the viewpoint (km; the near camera sits within metres of the station)
@@ -379,6 +401,6 @@ export class Earth {
     this.group.traverse((obj) => { obj.geometry?.dispose(); obj.material?.dispose?.(); });
     if (this.textures) for (const t of Object.values(this.textures)) t?.dispose();
     this.dayTarget?.dispose();
-    this.detail?.dispose();
+    for (const t of Object.values(this.tiles)) t?.dispose();
   }
 }

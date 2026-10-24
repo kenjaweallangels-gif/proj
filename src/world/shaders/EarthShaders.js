@@ -59,10 +59,9 @@ vec3 cityTint(float lum, float region, float onWater) {
 }`;
 
 /**
- * Night-light sampling for the GPU presets: the Black Marble texels (~5 km) are magnified ~10x near nadir, where
- * bilinear filtering shows diamond blobs and a blurred mip shows blocks. Catmull-Rom (5 bilinear taps) when
- * magnified, cubic B-spline (4 taps) for the soft halo / glow through clouds, and a sub-texel city texture (street
- * grid in a district-rotated frame + scattered lamps) modulated by the light map where the screen resolves it.
+ * Night-light sampling for the GPU presets: the global Black Marble texels (~2.4 km) are magnified near nadir, where
+ * bilinear filtering shows diamond blobs and a blurred mip shows blocks: Catmull-Rom (5 bilinear taps) when
+ * magnified, cubic B-spline (4 taps) for the soft halo / glow through clouds. Near nadir the 500 m tiles take over.
  */
 const NIGHT_GLSL = /* glsl */`
 float nightCatmullRom(sampler2D tex, vec2 uv) {
@@ -102,27 +101,33 @@ float nightBSpline(sampler2D tex, vec2 uv, int lod) {
        + g1.y * (g0.x * textureLod(tex, vec2(h0.x, h1.y), l).r + g1.x * textureLod(tex, h1, l).r);
 }
 
-// Sub-texel city texture (mean ~1) at scales a 0.3-2 km pixel can show: arterial roads every 3.2 km (lines
-// antialiased by the footprint) in one of three fixed orientations per district (a continuously varying angle would
-// scramble the lines: s is ~10^4 km), a few bright clusters (junctions, malls, stadiums) and dark blocks (parks,
-// water, industry). s = surface coordinates in km.
-float streetLines(vec2 r, float w) {
-  vec2 d = abs(fract(r / 3.2) - 0.5) * 3.2;                 // km to the nearest arterial, per axis
-  return max(1.0 - smoothstep(0.0, w, d.x), 1.0 - smoothstep(0.0, w, d.y));
-}
-float cityTexture(vec2 s, float fpKm, float district) {
-  float w = max(fpKm * 0.9, 0.2);
-  float grid;
-  if (district < 0.45) grid = streetLines(s, w);
-  else if (district < 0.6) grid = streetLines(mat2(0.891, 0.454, -0.454, 0.891) * s, w);
-  else grid = streetLines(mat2(0.629, 0.777, -0.777, 0.629) * s, w);
-  // only some arterials stand out (lit strips, highways), in patches; the rest of the grid is faint
-  float lit = smoothstep(0.4, 0.75, fbm2Km(vec3(s, 5.0), 3.0));
-  grid *= min(1.0, 0.3 / w) * (0.2 + 0.8 * lit);
-  float pts = smoothstep(0.62, 0.9, fbmKm(vec3(s, 11.0), 2.2));
-  float blocks = fbm2Km(vec3(s, 37.0), 4.0);
-  return (0.6 + 0.7 * grid + 1.2 * pts) * (0.35 + 1.3 * blocks);
 }`;
+
+/**
+ * Toroidal 5-degree tile windows (TileWindow.js): weight (0 outside the window, fading over the outer third of a tile,
+ * times the layer fade) and the texture uv / gradients of a point. duvx / duvy are the screen derivatives of vUv.
+ */
+const TILE_GLSL = /* glsl */`
+float tileWindow(vec4 win, vec2 uv, vec2 duvx, vec2 duvy, out vec2 tuv, out vec2 tdx, out vec2 tdy) {
+  vec2 t = vec2(uv.x * 72.0, (1.0 - uv.y) * 36.0);
+  float N = win.z;
+  float rc = mod(t.x - win.x, 72.0), rr = t.y - win.y;
+  float edge = min(min(rc, N - rc), min(rr, N - rr));
+  vec2 q = t / N;
+  tuv = vec2(fract(q.x), 1.0 - fract(q.y));
+  tdx = vec2(duvx.x * 72.0, duvx.y * 36.0) / N;
+  tdy = vec2(duvy.x * 72.0, duvy.y * 36.0) / N;
+  return win.w * smoothstep(0.0, 0.35, edge);
+}
+// uv of a point offset from (tile-space) uv in the same window (for shadow rays): no fract discontinuity issues
+// because textureLod is used with the wrapped coordinate.
+vec2 tileUv(vec4 win, vec2 uv) {
+  vec2 q = vec2(uv.x * 72.0, (1.0 - uv.y) * 36.0) / win.z;
+  return vec2(fract(q.x), 1.0 - fract(q.y));
+}
+// relief texel: R, G = east / north slope (0.5 + 0.5 sign(s) sqrt(|s| / 2)), B = sqrt(height / 9000 m)
+vec2 decodeSlope(vec2 e) { vec2 d = e * 2.0 - 1.0; return sign(d) * d * d * 2.0; }
+float decodeHeight(float b) { return b * b * 9000.0; }`;
 
 const LIGHT_COMMON_UNIFORMS = /* glsl */`
 uniform vec3 uSunDir, uSunColor, uEarthCenter, uMoonDir;
@@ -200,24 +205,46 @@ void main() {
 }`;
 
 /**
- * Ground (GPU presets): seasonal day albedo (+ streamed 500 m high-pass detail near the sub-station point on ultra),
- * relief normal map, ocean colour from bathymetry, water fraction with rivers and lakes, Cox-Munk sun and moon glint
- * with a wind field (trades, westerlies, cyclones, calm slicks), shadows of the evolving cloud layer, city lights
- * with sodium/LED colour and a scattering halo, reddened direct sunlight near the terminator, aerial perspective.
+ * Ground (GPU presets): seasonal day albedo + streamed 500 m imagery near nadir (high-pass on ultra), relief from the
+ * 1 km / 5 km terrain (slopes and heights) with horizon shadows at low sun, crisp coasts from the 500 m imagery,
+ * ocean colour from bathymetry, water fraction with rivers and lakes, Cox-Munk sun and moon glint with a wind field,
+ * shadows of the evolving cloud layer, city lights (500 m Black Marble near nadir), reddened direct sunlight near
+ * the terminator, aerial perspective.
  */
 const GROUND_GPU = /* glsl */`
-uniform sampler2D tDay, tNight, tWater, tNormal;
-uniform float uGlint, uNormalStrength;
-#ifdef DETAIL_WINDOW
-uniform sampler2D tWin;
-uniform vec4 uWin;        // x, y: window origin (equirect uv); z, w: uv -> window scale
-uniform float uWinFade;
+uniform sampler2D tDay, tNight, tWater, tRelief;
+uniform float uGlint;
+uniform vec3 uRelief;     // x: slope exaggeration of the global relief, y: of the 1 km tiles, z: horizon shadows on/off
+#ifdef TILE_DAY
+uniform sampler2D tDayT;
+uniform vec4 uDayT;
+#endif
+#ifdef TILE_NIGHT
+uniform sampler2D tNightT;
+uniform vec4 uNightT;
+#endif
+#ifdef TILE_RELIEF
+uniform sampler2D tReliefT;
+uniform vec4 uReliefT;
 #endif
 ${LIGHT_COMMON_UNIFORMS}
 ${ATMOSPHERE_GLSL}
 ${WEATHER_GLSL}
 ${SURFACE_COMMON}
 ${NIGHT_GLSL}
+${TILE_GLSL}
+
+// terrain height (m) at uv: the 1 km tile where loaded, else the 5 km global relief; lod in tile texels
+float terrainHeight(vec2 uv, float dKm, float wT) {
+  float h = decodeHeight(textureLod(tRelief, uv, log2(max(dKm / 4.9, 1.0))).b);
+#ifdef TILE_RELIEF
+  if (wT > 0.5) {
+    vec4 r = textureLod(tReliefT, tileUv(uReliefT, uv), log2(max(dKm / 0.93, 1.0)));
+    h = mix(h, decodeHeight(r.b), r.a);
+  }
+#endif
+  return h;
+}
 
 void main() {
   vec3 N = normalize(vNormalW);
@@ -228,24 +255,29 @@ void main() {
   vec3 p = normalize(vObjPos);
   vec3 pKm = p * R_GROUND;
   vec2 duvx = dFdx(vUv), duvy = dFdy(vUv);
+  vec4 aux = texture2D(tAux, vUv);
+  float water = texture2D(tWater, vUv).r;
 
   vec3 albedo = texture2D(tDay, vUv).rgb;
-#ifdef DETAIL_WINDOW
-  // 500 m imagery around the sub-station point: add its high-pass (the part the 5 km texture lacks)
-  vec2 wuv = vec2(fract(vUv.x - uWin.x), vUv.y - uWin.y) * uWin.zw;
-  vec2 wdx = dFdx(wuv), wdy = dFdy(wuv);
-  vec2 wpx = max(abs(wdx), abs(wdy)) * vec2(textureSize(tWin, 0));
-  float wlod = log2(max(max(wpx.x, wpx.y), 1.0e-4));
-  float wedge = smoothstep(0.0, 0.07, min(min(wuv.x, 1.0 - wuv.x), min(wuv.y, 1.0 - wuv.y)));
-  float wgt = uWinFade * wedge * (1.0 - smoothstep(0.5, 1.4, wlod));
-  if (wgt > 0.0) {
-    vec3 fine = textureGrad(tWin, wuv, wdx, wdy).rgb;
-    vec3 coarse = textureLod(tWin, wuv, max(wlod, 1.4)).rgb;
-    albedo = max(albedo + (fine - coarse) * wgt, 0.0);
+#ifdef TILE_DAY
+  {
+    // 500 m imagery: add its high-pass (what the 5 km seasonal texture lacks); sharpen the coastline from it
+    vec2 tuv, tdx, tdy;
+    float w = tileWindow(uDayT, vUv, duvx, duvy, tuv, tdx, tdy);
+    if (w > 0.0) {
+      vec4 fine = textureGrad(tDayT, tuv, tdx, tdy);
+      float wl = log2(max(max(length(tdx), length(tdy)) * float(textureSize(tDayT, 0).x), 1.0e-4));
+      vec3 coarse = textureLod(tDayT, tuv, max(wl, 3.3)).rgb;
+      float wt = w * fine.a;
+      albedo = max(albedo + (fine.rgb - coarse) * wt, 0.0);
+      // coast: the 500 m colour decides water / land in the coastal band of the sea (not inland rivers and lakes)
+      float lumF = dot(fine.rgb, vec3(0.2126, 0.7152, 0.0722));
+      float wF = smoothstep(0.003, 0.02, fine.b - fine.r) * (1.0 - smoothstep(0.25, 0.45, lumF));
+      float coastal = smoothstep(0.98, 0.9, aux.r) * smoothstep(0.0, 0.03, water) * smoothstep(1.0, 0.97, water);
+      water = mix(water, wF, wt * coastal);
+    }
   }
 #endif
-  float water = texture2D(tWater, vUv).r;
-  vec4 aux = texture2D(tAux, vUv);
   float lum = dot(albedo, vec3(0.2126, 0.7152, 0.0722));
   float ice = smoothstep(0.12, 0.3, lum);                    // sea ice, frozen lakes, ice shelves: no glint
   float wOpen = water * (1.0 - ice);
@@ -257,10 +289,23 @@ void main() {
   deepCol *= 0.8 + 0.45 * nz(pKm * (1.0 / 1100.0));        // eddies and blooms (~140 km)
   albedo = mix(albedo, deepCol, deep);
   albedo = mix(albedo, vec3(0.010, 0.016, 0.020), wOpen * inland * 0.65);   // rivers / lakes thinner than a texel
-  vec3 nm = vec3(texture2D(tNormal, vUv).xy * 2.0 - 1.0, 0.0);      // RG texture: z from the unit length
-  nm.z = sqrt(max(1.0 - dot(nm.xy, nm.xy), 0.0));
-  nm.xy *= uNormalStrength * (1.0 - water);
-  vec3 Np = normalize(T * nm.x + B * nm.y + N * nm.z);
+
+  // relief: slopes (m/m) of the 5 km global terrain, the 1 km tiles near nadir
+  vec2 slope = decodeSlope(texture2D(tRelief, vUv).rg) * uRelief.x;
+  float wRel = 0.0;
+#ifdef TILE_RELIEF
+  {
+    vec2 tuv, tdx, tdy;
+    float w = tileWindow(uReliefT, vUv, duvx, duvy, tuv, tdx, tdy);
+    if (w > 0.0) {
+      vec4 r = textureGrad(tReliefT, tuv, tdx, tdy);
+      wRel = w * r.a;
+      slope = mix(slope, decodeSlope(r.rg) * uRelief.y, wRel);
+    }
+  }
+#endif
+  slope *= 1.0 - water;
+  vec3 Np = normalize(N - T * slope.x - B * slope.y);
 
   float ndl = dot(N, L);
   float ndlP = dot(Np, L);
@@ -268,17 +313,39 @@ void main() {
   vec3 Tsun = sunTransmittance(pE, L);
   vec3 S = uSunColor * uSunIntensity;
 
+  // Terrain (horizon) shadows at low sun: march the height field toward the Sun (12 steps, 0.6 .. 52 km), against
+  // the sun ray rising at the sun elevation and the Earth's curvature
+  float terr = 1.0;
+  if (uRelief.z > 0.5 && ndl > -0.02 && ndl < 0.6 && water < 0.6) {
+    float se = dot(L, T), sn = dot(L, B);
+    float lh = max(length(vec2(se, sn)), 1.0e-4);
+    float tanE = ndl / lh;
+    float cosLat = max(cos(asin(clamp(p.y, -1.0, 1.0))), 0.05);
+    vec2 duvKm = vec2(se / lh / (2.0 * PI * R_GROUND * cosLat), sn / lh / (PI * R_GROUND));
+    float h0 = terrainHeight(vUv, 0.5, wRel);
+    float occ = 0.0;
+    float d = 0.6;
+    for (int k = 0; k < 12; k++) {
+      float hs = terrainHeight(vUv + duvKm * d, d * 0.35, wRel);
+      float hray = h0 + d * 1000.0 * tanE - d * d * 1000.0 / (2.0 * R_GROUND);
+      occ = max(occ, smoothstep(0.0, 60.0 + d * 18.0, hs - hray));
+      d *= 1.5;
+    }
+    terr = 1.0 - 0.92 * occ;
+  }
+
   // Cloud shadow: the ground point projected along the Sun direction onto the cloud layer (R + 6 km)
   float pl = dot(vObjPos, uSunObj);
   float rc = R_GROUND + 6.0;
   float tc = -pl + sqrt(max(pl * pl + rc * rc - dot(vObjPos, vObjPos), 0.0));
   vec3 Q = normalize(vObjPos + uSunObj * tc);
   float cs = ndl > -0.15 ? cloudCoverLite(Q, equirectUv(Q), duvx, duvy) : 0.0;
-  float shadow = 1.0 - 0.66 * smoothstep(0.05, 0.7, cs);
+  float shadow = 1.0 - 0.85 * cs;                           // cs = cloud opacity along the sun ray
 
   vec3 amb = skyAmbient(ndl);
-  vec3 direct = albedo * S * Tsun * max(ndlP, 0.0) * shadow;
-  vec3 ambient = albedo * S * amb * 0.075 * (1.0 - 0.3 * smoothstep(0.1, 0.8, cs));
+  vec3 direct = albedo * S * Tsun * max(ndlP, 0.0) * shadow * terr;
+  // skylight: less on slopes facing away from the open sky, a little less in valleys
+  vec3 ambient = albedo * S * amb * 0.075 * (1.0 - 0.3 * smoothstep(0.1, 0.8, cs)) * (0.75 + 0.25 * dot(Np, N));
 
   // Sun glint (Cox-Munk): wind from the climatology + cyclones; sheltered inland water is nearly calm;
   // surfactant slicks and wind gusts streak the glint pattern
@@ -293,13 +360,13 @@ void main() {
   float Fv = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
   vec3 skyRefl = S * amb * 0.25 * Fv * wOpen;
 
-  // Moonlight (night-adapted exposure): cool Lambert + moon glint, scaled by the lunar phase
+  // Moonlight (night-adapted exposure): cool Lambert on the relief + moon glint, scaled by the lunar phase
   vec3 moonCol = vec3(0.72, 0.82, 1.0) * uMoonLight;
   vec3 moonlit = moonCol * (albedo * max(dot(Np, uMoonDir), 0.0) * (1.0 - 0.5 * (1.0 - shadow))
                + waterGlint(N, V, uMoonDir, s2) * wOpen * 0.8);
 
-  // City lights (Black Marble, grey): Catmull-Rom when magnified, a sub-texel street / lamp texture where the
-  // screen resolves it, colour by region and brightness, a faint B-spline halo (air glow around big cities).
+  // City lights (Black Marble, grey, display-encoded): 500 m tiles near nadir (towns, road lights), else the
+  // global map (Catmull-Rom when magnified); colour by region and brightness; a faint halo.
   // Clouds dim and diffuse them in the cloud layer (alpha), not here.
   float nightMask = smoothstep(0.1, -0.1, ndl);
   vec3 city = vec3(0.0);
@@ -307,20 +374,16 @@ void main() {
     vec2 nsz = vec2(textureSize(tNight, 0));
     float nl = log2(max(max(length(duvx * nsz), length(duvy * nsz)), 1.0e-4));
     float Ln = nl < 0.0 ? nightCatmullRom(tNight, vUv) : textureGrad(tNight, vUv, duvx, duvy).r;
-    float fpKm = max(length(dFdx(vObjPos)), length(dFdy(vObjPos)));    // km per pixel (longer axis)
-    float dFade = 1.0 - smoothstep(0.8, 3.0, fpKm);
-    // the Black Marble values are display-encoded: ~linear radiance = Ln^2.2, scaled so the brightest cores stay
-    // below white at the night exposure (warm, not blown-out blobs)
-    float core = pow(Ln, 2.2) * 0.36;
-    if (dFade > 0.0 && Ln > 0.01) {
-      gFpKm = fpKm;
-      float latR = asin(clamp(p.y, -1.0, 1.0));
-      vec2 sKm = vec2(vUv.x * 2.0 * PI * R_GROUND * cos(latR), vUv.y * PI * R_GROUND);
-      float district = fbm2Km(pKm, 25.0);
-      float tex = cityTexture(sKm, fpKm, district);
-      // dense cores stay bright and even; suburbs and towns break into streets and lamps
-      core *= mix(1.0, tex, dFade * (1.0 - 0.2 * smoothstep(0.55, 0.9, Ln)));
+#ifdef TILE_NIGHT
+    vec2 tuv, tdx, tdy;
+    float w = tileWindow(uNightT, vUv, duvx, duvy, tuv, tdx, tdy);
+    if (w > 0.0) {
+      vec2 t = textureGrad(tNightT, tuv, tdx, tdy).rg;
+      Ln = mix(Ln, t.r, w * t.g);
     }
+#endif
+    // ~linear radiance = Ln^2.2, scaled so the brightest cores stay below white at the night exposure
+    float core = pow(Ln, 2.2) * 0.36;
     float Lh = nightBSpline(tNight, vUv, 3);
     float region = nz(pKm * (1.0 / 4000.0) + 0.21);
     city = (core + 0.006 * Lh * Lh) * cityTint(Ln, region, smoothstep(0.5, 0.9, water) * (1.0 - inland)) * uNightIntensity * nightMask;
@@ -364,7 +427,8 @@ void main() {
   float proc, storm, wall, core, mean;
   vec2 g;
   float c = cloudCover(p, vUv, duvx, duvy, fpKm, g, proc, storm, wall, core, mean);
-  float alpha = clamp(pow(c, 0.85) * uCloudGain, 0.0, 1.0);
+  // opacity: element coverage x optical thickness (thin and broken cloud translucent); procedural storms opaque
+  float alpha = clamp(c * max(cloudOpacity(gCloudMap), smoothstep(0.3, 0.7, proc)) * uCloudGain, 0.0, 1.0);
 
   // lightning: diffuse glow of the flash scattered inside the cloud
   float flash = 0.0;
