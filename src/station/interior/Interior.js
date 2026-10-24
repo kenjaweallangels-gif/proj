@@ -398,7 +398,7 @@ export class StationInterior {
         l.intensity = (L.length === 1 && i === 1) ? 0 : 3.2;
       } else l.intensity = 0;
     }
-    this.mats.update(ctx.orbit.sunDir);
+    this.mats.update(ctx.orbit.local.sunDir);
     // ---- exposure: fixed interior exposure (the automatic one meters the Earth / Sun)
     const post = ctx.app?.renderer?.post;
     if (post?.grade) {

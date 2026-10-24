@@ -8,6 +8,9 @@ import { ParticleSystem } from './Particles.js';
 import { Input } from './Input.js';
 import { batchStatic, atlasDecals } from './StaticBatcher.js';
 import { QualityGovernor } from './QualityGovernor.js';
+import { SimClock } from './Time.js';
+import { Universe } from './Universe.js';
+import { FreeCamera } from './FreeCamera.js';
 import { QUALITY_PRESETS, LAYERS, SUN_LIGHT_INTENSITY, SUN_COLOR, NEAR_TO_FAR } from './constants.js';
 
 /**
@@ -60,12 +63,17 @@ export class App {
     this.autostart = p.get('autostart') === '1' || this.isShot;
     this.mode = p.get('observer') === '1' ? 'observer' : 'play';
     this.viewName = p.get('view') || null;
-    this.time = { sim: parseFloat(p.get('t') || '0') || 0, dt: 0, scale: parseFloat(p.get('timescale') || '1') || 1, elapsed: 0, real: 0 };
+    // simulation clock (ctx.time): ?t=<sim seconds> start time, ?timescale=<rate>, ?utc=<ISO date> start date
+    this.time = new SimClock({ sim: parseFloat(p.get('t') || '0') || 0, rate: parseFloat(p.get('timescale') || '1') || 1 });
+    if (p.get('utc')) { const ms = Date.parse(p.get('utc')); if (Number.isFinite(ms)) this.time.sim = (ms - this.time.epochMs) / 1000; }
     this.frameCount = 0;
     this._frameWaiters = [];
     this.ready = false;
-    this.paused = false;
   }
+
+  /** User / menu pause (= ctx.time.paused). */
+  get paused() { return this.time.paused; }
+  set paused(v) { this.time.setPaused(v); }
 
   /** True when WebGL runs on a CPU rasteriser (no GPU): SwiftShader, llvmpipe, Microsoft Basic Render… */
   static isSoftwareRenderer() {
@@ -130,10 +138,14 @@ export class App {
 
     this.orbit = new Orbit();
     this.orbit.update(this.time.sim);
-    this.particles = new ParticleSystem(this.nearScene, { max: q.particles });
+    this.events = new Emitter();
+    this.time.events = this.events;
+    // render frame, bodies, gravity (src/core/Universe.js); everything in station coordinates hangs off stationRoot
+    this.universe = new Universe(this);
+    this.nearScene.add(this.universe.stationRoot);
+    this.particles = new ParticleSystem(this.universe.stationRoot, { max: q.particles });
     // ?nolock=1: mouse look without pointer lock (kiosk / remote / headless sessions, where the lock is unavailable or slow)
     this.input = new Input(gl.domElement, { pointerLock: !this.isShot && this.params.get('nolock') !== '1' });
-    this.events = new Emitter();
 
     // Environment map (reflections of Earth/Sun/stars on the station) from the far scene
     this.cubeRT = new THREE.WebGLCubeRenderTarget(q.envMapSize, { type: THREE.HalfFloatType, generateMipmaps: false });
@@ -146,7 +158,9 @@ export class App {
       orbit: this.orbit, materials: this.materials, textures: this.textures, particles: this.particles, input: this.input,
       quality: q, time: this.time, sunLight: this.sunLight, hemiLight: this.hemiLight, farSunLight: this.farSunLight, events: this.events,
       assetUrl: (p) => this.assetUrl(p), isShot: this.isShot, get mode() { return this.app.mode; }, uiRoot: this.uiRoot, params: this.params,
+      universe: this.universe, stationRoot: this.universe.stationRoot,
     };
+    this.freeCam = ctx.freeCam = new FreeCamera(this);
 
     // Modules (order matters: later modules may use earlier ones through ctx)
     const [Earth, Sky, Station, Ships, Player, Hud, Audio] = await Promise.all(['Earth', 'Sky', 'Station', 'Ships', 'Player', 'Hud', 'Audio'].map(loadModuleClass));
@@ -163,6 +177,10 @@ export class App {
     this.audio = ctx.audio = new Audio(ctx);
     this.modules = [this.earth, this.sky, this.station, this.ships, this.player, this.hud, this.audio];
     globalThis.__THREE_DETAIL = 1;
+    // the station, its ships, the astronaut's body / tether: station coordinates -> under the station root
+    // (identity in the default frame); the camera and the lights stay in the render frame
+    const keepInScene = new Set([this.camera, this.sunLight, this.sunLight.target, this.hemiLight, this.ambientLight, this.universe.stationRoot]);
+    for (const c of [...this.nearScene.children]) if (!keepInScene.has(c)) this.universe.stationRoot.add(c);
 
     this.hud.showLoading?.('Загрузка…');
     await Promise.all(this.modules.map((m) => m.load ? m.load().catch((e) => console.error(`load failed in ${m.constructor.name}`, e)) : null));
@@ -428,18 +446,21 @@ export class App {
     this.farCamera.aspect = a; this.farCamera.updateProjectionMatrix();
   }
 
+  /** 'play' (astronaut) | 'observer' (orbit camera around the station) | 'free' (free camera, FreeCamera.js). */
   setMode(mode) {
     if (this._dyn && mode !== this.mode) this._dyn.skip = true;   // ignore the switch hitch in the next fps window
     if (mode !== this.mode) this.governor?.skipWindow();
+    if (this.mode === 'free' && mode !== 'free' && this.freeCam?.active) this.freeCam.exit();
     this.mode = mode;
     const observer = mode === 'observer';
     this.orbitControls.enabled = observer;
     if (observer) { this.input.exitPointerLock(); }
-    this.player.setActive?.(!observer);
+    this.player.setActive?.(mode === 'play');
     this.events.emit('mode', mode);
   }
 
   toggleMode() {
+    if (this.mode === 'free') { this.leaveFreeCamera('observer'); return; }
     const toObserver = this.mode !== 'observer';
     if (toObserver) {
       // free camera starts exactly where the astronaut looks: orbit pivot 15 m ahead (no swing toward the origin)
@@ -450,8 +471,42 @@ export class App {
     if (toObserver) this.orbitControls.update();
   }
 
+  /** Free camera on (from the current view) / off (back to the previous mode). */
+  toggleFreeCamera() {
+    if (this.mode === 'free') { this.leaveFreeCamera(); return; }
+    const prev = this.mode;
+    this.freeCam.enter(prev);
+    this.setMode('free');
+    this.viewName = 'free';
+  }
+
+  /** Leave the free camera to `to` ('play' | 'observer'; default: the mode it was entered from). */
+  leaveFreeCamera(to) {
+    if (this.mode !== 'free') return;
+    const target = to || this.freeCam.prevMode || 'play';
+    const far = this.freeCam.anchor !== 'station' || this.freeCam.offset.length() > 1400;
+    this.freeCam.exit();
+    if (target === 'observer') {
+      if (far) { this.setView('overview'); return; }
+      this.camera.updateMatrixWorld();
+      this.orbitControls.target.copy(this.camera.position).add(this.camera.getWorldDirection(_camPos).multiplyScalar(30));
+      this.setMode('observer');
+      this.orbitControls.update();
+    } else this.setMode('play');
+  }
+
   /** Named camera views (observer) or player poses (play). Used by tools/screenshot.mjs and the menu. */
   setView(name) {
+    // free camera poses: 'free' (from the current view), 'free-station' | 'free-earth' | 'free-moon' (jumps)
+    if (name === 'free' || name.startsWith('free-')) {
+      if (this.mode !== 'free') this.toggleFreeCamera();
+      if (name !== 'free') this.freeCam.jumpTo(name.slice(5));
+      this.viewName = name;
+      if (this._dyn) this._dyn.skip = true;
+      this.governor?.skipWindow();
+      this.events.emit('view', name);
+      return;
+    }
     const vp = this.station.viewpoints?.[name];
     // Sun-facing views: look along orbit.sunDir so the Sun/limb is in frame (sunrise ~t=3200, sunset ~t=1165)
     const s = this.orbit.sunDir;
@@ -468,6 +523,7 @@ export class App {
     const playerViews = ['airlock', 'eva', 'eva-far'];
     if (vp || observerViews[name]) {
       const v = vp || observerViews[name];
+      if (this.mode === 'free') this.setMode('observer');
       this.mode = 'observer';
       this.camera.position.fromArray(v.position instanceof THREE.Vector3 ? v.position.toArray() : v.position);
       this.orbitControls.target.fromArray(v.target instanceof THREE.Vector3 ? v.target.toArray() : v.target);
@@ -507,29 +563,37 @@ export class App {
     this.nearScene.environmentIntensity = 1.0;
   }
 
+  /** Central hotkeys: F observer, C free camera, P pause, T rate presets, [ / ] slower / faster, Backslash rate x1. */
+  _hotkeys() {
+    const inp = this.input, t = this.time;
+    if (inp.wasPressed('KeyF')) this.toggleMode();
+    if (inp.wasPressed('KeyC')) this.toggleFreeCamera();
+    if (inp.wasPressed('KeyT')) { const steps = [1, 10, 60, 600, 3600]; const i = steps.indexOf(t.rate); t.setRate(steps[(i + 1) % steps.length]); }
+    if (inp.wasPressed('BracketRight')) t.faster();
+    if (inp.wasPressed('BracketLeft')) t.slower();
+    if (inp.wasPressed('Backslash') || inp.wasPressed('IntlBackslash')) t.resetRate();
+    if (inp.wasPressed('KeyP')) t.togglePause();
+  }
+
   _loop() {
     requestAnimationFrame(this._loop);
     const gl = this.renderer.renderer;
     this.timer.update();
     const realDt = this.timer.getDelta();
-    if (this.quality.dynamicResolution && !this.isShot) this.updateDynamicResolution(realDt);
-    if (this.governor && !this.paused) this.governor.update(realDt);
-    let dt = this.isShot ? 1 / 60 : Math.min(realDt, 1 / 20);
-    if (this.paused) dt = 0;
     const t = this.time;
-    t.real += realDt;
-    t.dt = dt * t.scale;
-    t.sim += t.dt;
-    t.elapsed += dt;
+    if (this.quality.dynamicResolution && !this.isShot) { if (t.hitch && this._dyn) this._dyn.skip = true; this.updateDynamicResolution(realDt); }
+    if (this.governor && !this.paused) { if (t.hitch) this.governor.skipWindow(); this.governor.update(realDt); }
+    const frameDt = this.isShot ? 1 / 60 : Math.min(realDt, 1 / 20);
+    t.advance(frameDt, realDt);
+    const dt = t.paused ? 0 : frameDt;          // unpaused real step (post effects, environment refresh)
     this._envTimer += dt;
 
-    // hotkeys handled centrally
-    const inp = this.input;
-    if (inp.wasPressed('KeyF')) this.toggleMode();
-    if (inp.wasPressed('KeyT')) { const steps = [1, 10, 60, 300]; t.scale = steps[(steps.indexOf(t.scale) + 1) % steps.length]; this.events.emit('timescale', t.scale); }
-    if (inp.wasPressed('KeyP')) this.paused = !this.paused;
+    this._hotkeys();
 
     this.orbit.update(t.sim);
+    // free camera (real time) picks the render frame; then the frame outputs / station root / bodies
+    if (this.mode === 'free') this.freeCam.update(frameDt);
+    this.universe.update();
     const o = this.orbit;
     // Sun light follows the orbit; dims in the penumbra and reddens through the limb
     if (this.quality.shadows !== false && !this.quality.lite) this.fitShadow(o.sunDir);
@@ -540,8 +604,9 @@ export class App {
     //  at sunset/sunrise; zero intensity in the umbra costs nothing)
     this.farSunLight.position.copy(o.sunDir).multiplyScalar(1e5);
     this.farSunLight.target.position.set(0, 0, 0);
-    // Earthshine: blue-white light from below, proportional to the sunlit fraction of the Earth under us
-    this.hemiLight.intensity = 0.55 * o.earthLit;
+    // Earthshine: blue-white light from the Earth, proportional to its sunlit fraction (and its solid angle away from LEO)
+    this.hemiLight.intensity = 0.55 * o.earthLit * o.earthshine;
+    this.hemiLight.position.copy(o.earthCenterFar).negate().normalize();
     this.hemiLight.groundColor.setRGB(0.42, 0.56, 0.78).multiplyScalar(0.7 + 0.3 * o.earthLit);
     // 'lite' has no floodlights or helmet lamp: stand in for them with ambient light in the eclipse
     if (this.quality.lite) {
@@ -552,13 +617,16 @@ export class App {
 
     for (const m of this.modules) { try { m.update?.(t.dt, this.ctx); } catch (e) { if (!m._errored) { console.error(`update failed in ${m.constructor.name}`, e); m._errored = true; } } }
     if (this.mode === 'observer') this.orbitControls.update();
-    this.particles.update(t.dt, this.renderer.renderer, this.camera);
+    // particles live in sim time, but at most x10 visually (RCS puffs stay visible at high rates)
+    this.particles.update(Math.min(t.dt, frameDt * 10), this.renderer.renderer, this.camera);
 
     // far camera mirrors the near camera
     this.camera.updateMatrixWorld();
-    this.farCamera.position.copy(this.camera.getWorldPosition(new THREE.Vector3())).multiplyScalar(NEAR_TO_FAR);
-    this.farCamera.quaternion.copy(this.camera.getWorldQuaternion(new THREE.Quaternion()));
+    this.farCamera.position.copy(this.camera.getWorldPosition(_camPos)).multiplyScalar(NEAR_TO_FAR);
+    this.farCamera.quaternion.copy(this.camera.getWorldQuaternion(_shQ));
     if (this.farCamera.fov !== this.camera.fov) { this.farCamera.fov = this.camera.fov; this.farCamera.updateProjectionMatrix(); }
+    // observer readouts, station root visibility, adaptive depth planes (free camera / other frames)
+    this.universe.updateCameras(this.camera, this.farCamera);
 
     if (this._detailBatches) this.cullDetails();
     this.updateEnvironment();

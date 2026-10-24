@@ -23,6 +23,9 @@ const _oc = new THREE.Vector3();
 const _n = new THREE.Vector3();
 const _toStation = new THREE.Vector3();
 const _originKm = new THREE.Vector3();
+const _om = new THREE.Vector3();
+const _origin0 = new THREE.Vector3();
+const MOON_RADIUS_KM = 1737.4;
 
 export function smoothstep(e0, e1, x) {
   const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
@@ -61,6 +64,7 @@ export class AutoExposure {
     /** Scene radiance guesses (HDR units before exposure; a white Lambert surface in full sun is ~1.0-1.45). */
     this.earthRadiance = 0.85;      // average sunlit Earth (ocean + land + clouds)
     this.earthNightRadiance = 0.02; // night side (city lights, airglow)
+    this.moonRadiance = 0.35;       // sunlit lunar surface (albedo ~0.12), counted when the Moon is large in view
     this.stationRadiance = 0.30;    // average sunlit station (white hull, MLI, shadowed parts)
     this.stationNightRadiance = 0.03;
     this.sunWeight = 1.5;           // extra brightness when the Sun disc is in the frame
@@ -114,6 +118,11 @@ export class AutoExposure {
     _originKm.copy(_camPos).multiplyScalar(NEAR_TO_FAR);
     _oc.copy(_originKm).sub(C);
     const cc = _oc.lengthSq() - R * R;
+    // the Moon counts once it is more than ~1 degree across (free camera far from the Earth)
+    const M = o.moonPosFar;
+    _om.copy(_originKm).sub(M || _originKm);
+    const moonOn = !!M && MOON_RADIUS_KM / Math.max(_om.length(), 1) > 0.017;
+    const cm = _om.lengthSq() - MOON_RADIUS_KM * MOON_RADIUS_KM;
     let sum = 0, wsum = 0, hits = 0, total = 0;
     const nx = this.samplesX, ny = this.samplesY;
     for (let j = 0; j < ny; j++) {
@@ -126,13 +135,25 @@ export class AutoExposure {
         const disc = b * b - cc;
         let lum = 0;
         total++;
+        let tE = Infinity;
         if (disc > 0) {
           const t = -b - Math.sqrt(disc);
           if (t > 0) {
+            tE = t;
             hits++;
             _n.copy(_originKm).addScaledVector(_dir, t).sub(C).normalize();
             const lit = smoothstep(-0.12, 0.3, _n.dot(o.sunDir));
             lum = this.earthNightRadiance + (this.earthRadiance - this.earthNightRadiance) * lit;
+          }
+        }
+        if (moonOn) {
+          const bm = _om.dot(_dir), dm = bm * bm - cm;
+          if (dm > 0) {
+            const t = -bm - Math.sqrt(dm);
+            if (t > 0 && t < tE) {
+              _n.copy(_originKm).addScaledVector(_dir, t).sub(M).normalize();
+              lum = this.moonRadiance * smoothstep(-0.05, 0.25, _n.dot(o.sunDir));
+            }
           }
         }
         sum += w * lum; wsum += w;
@@ -142,11 +163,14 @@ export class AutoExposure {
     this.earthFrac = total > 0 ? hits / total : 0;
 
     // ---- station cover (crude: distance to the station origin and whether we look at it) ----
-    const d = _camPos.length();
+    const u = ctx.universe;
+    const sp = u ? u.stationRoot.position : _origin0;      // station origin in the render frame (m)
+    _toStation.copy(sp).sub(_camPos);
+    const d = _toStation.length();
     _fwd.set(0, 0, -1).applyQuaternion(_camQuat);
-    _toStation.copy(_camPos).negate().normalize();
+    _toStation.normalize();
     const facing = d < 40 ? 1 : smoothstep(-0.1, 0.5, _fwd.dot(_toStation));
-    this.stationCover = Math.min(1, 45 / Math.max(d, 5)) * facing;
+    this.stationCover = u && !u.station.visible ? 0 : Math.min(1, 45 / Math.max(d, 5)) * facing;
     const stationLum = this.stationCover * (this.stationRadiance * sv + this.stationNightRadiance);
 
     // ---- Sun in the frustum ----

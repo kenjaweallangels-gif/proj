@@ -114,6 +114,30 @@
 .obs-grid button.on { border-color: var(--cyan2); background: rgba(79, 184, 234, 0.2); color: #fff; }
 .obs-foot { display: flex; gap: 4px; margin-top: 7px; }
 .obs-foot .btn-s { flex: 1; }
+.hud[data-mode="free"] .nt { bottom: 20px; left: auto; right: 20px; width: 300px; }
+.obs { max-height: calc(100% - 40px); overflow-y: auto; }
+
+/* ---------------------------------------------------------------- time controls (observer / free camera / pause menu) */
+.tc { margin-top: 8px; padding-top: 7px; border-top: 1px solid rgba(120, 190, 240, 0.14); pointer-events: auto; }
+.tc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.tc-title { font-size: 10px; letter-spacing: 0.16em; color: var(--cyan); white-space: nowrap; }
+.tc-rate { font-family: var(--mono); font-size: 11px; color: #eaf6ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tc-rate.warn { color: var(--amber); }
+.tc-utc { font-family: var(--mono); font-size: 11.5px; color: #d2e7f5; margin: 2px 0 5px; font-variant-numeric: tabular-nums; }
+.tc button { padding: 4px 2px; font-size: 11px; background: rgba(12, 24, 40, 0.75); border: 1px solid var(--line); border-radius: 2px; color: #d2e7f5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tc button:hover { border-color: var(--cyan2); color: #fff; }
+.tc button.on { border-color: var(--cyan2); background: rgba(79, 184, 234, 0.2); color: #fff; }
+.tc-row { display: grid; grid-template-columns: 1.2fr 1fr 1fr 1fr; gap: 4px; }
+.tc-row button { font-size: 12px; }
+.tc-presets { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; margin-top: 4px; }
+.tc-presets button { font-size: 10px; padding: 3px 0; font-family: var(--mono); }
+.tc-jumps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; margin-top: 4px; }
+.tc-goto { display: flex; gap: 4px; margin-top: 4px; }
+.tc-goto .tc-date { flex: 1 1 auto; min-width: 0; font: inherit; font-size: 11px; color: #d2e7f5; background: rgba(12, 24, 40, 0.75); border: 1px solid var(--line); border-radius: 2px; padding: 2px 4px; color-scheme: dark; }
+.tc-goto button { flex: 0 0 auto; padding: 4px 8px; }
+.tc-note { font-size: 10.5px; line-height: 1.35; color: var(--amber); margin-top: 5px; }
+.menu .tc { margin-top: 0; border-top: none; padding-top: 0; }
+.warn-item.info { border-color: rgba(147, 219, 255, 0.6); color: var(--cyan); background: rgba(4, 18, 30, 0.6); animation: none; }
 
 /* ---------------------------------------------------------------- fps */
 .fps { position: absolute; right: 10px; top: 6px; font-family: var(--mono); font-size: 10px; color: rgba(170, 215, 245, 0.5); text-shadow: 0 0 3px #000; }
@@ -166,7 +190,7 @@ table.ctl td.key { font-family: var(--mono); font-size: 11px; color: var(--cyan)
   .hp .sec { display: none; }
   .ecg { width: 110px; height: 36px; } .ecg-bpm { font-size: 18px; }
   .nt { width: 220px; bottom: calc(var(--inset-y) + 150px); }
-  .obs { width: 250px; left: 12px; top: 12px; }
+  .obs { width: 250px; left: 12px; top: 12px; max-height: calc(100% - 24px); }
   .prompt { font-size: 12px; }
 }
 @media (max-width: 760px) {

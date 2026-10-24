@@ -15,6 +15,14 @@
  *
  * Sky convention: star positions are plain ECI unit vectors (cos d cos a, cos d sin a, sin d)
  * placed in a Group whose quaternion is `orbit.skyQuat`.
+ *
+ * Render frame (see src/core/Universe.js): the top-level outputs (sunDir, moonDir, moonPosFar, earthCenterFar,
+ * skyQuat, earthQuat, sunVisible, sunReddening, sunColor, earthLit, earthshine, subLatDeg/subLonDeg,
+ * observerAltitudeKm) describe the CURRENT render frame and its observer. update() computes them for the
+ * station (default frame: origin = station, axes = station LVLH); the universe then calls applyFrame() when the
+ * scene is rendered around another observer. `orbit.local` always holds the station's own values (station LVLH,
+ * the station's eclipse state) for modules that work in station coordinates (solar arrays, antennas, floodlights,
+ * interiors, ships, the astronaut).
  */
 import * as THREE from 'three';
 import { DEG, EARTH_RADIUS_KM, STATION_ALTITUDE_KM, STATION_INCLINATION_DEG, EPOCH_UTC_MS } from './constants.js';
@@ -30,6 +38,13 @@ const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
 const _q2 = new THREE.Quaternion();
 const _qRx90 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+const _Z = new THREE.Vector3();
+const _moonRel = new THREE.Vector3();
+const _zAxis = new THREE.Vector3(0, 0, 1);
+const _o = new THREE.Vector3();
+const _sunPos = new THREE.Vector3();
+const SUN_ANGULAR_RADIUS = 0.00465;   // rad
+const MOON_RADIUS_KM = 1737.4;
 
 function smoothstep(e0, e1, x) {
   const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
@@ -106,10 +121,22 @@ export class Orbit {
     this.sunColor = new THREE.Color(1, 1, 1);
     this.earthLit = 1;          // 0..1 how sunlit the Earth below the station is (for earthshine)
     this.subLatDeg = 0; this.subLonDeg = 0;
+    this.earthshine = 1;        // earthshine scale relative to the station's view of the Earth (solid angle)
+    this.observerAltitudeKm = this.altitudeKm;   // altitude of the render-frame observer above the mean sphere
+    this.frameName = 'station';
     this.gmst = 0;
     this.daysSinceJ2000 = 0;
     this.orbitNumber = 0;
     this.phaseAngle = 0;        // radians along the orbit from the ascending node
+    this.moonEci = new THREE.Vector3();            // Moon position, ECI km (geocentric)
+    /** Optional ephemeris { sunPositionEci(t, out), moonPositionEci(t, out) } (sim seconds, km); null = built-in formulas. */
+    this.ephemeris = null;
+    /** The station's own outputs (station LVLH frame), whatever the render frame is. */
+    this.local = {
+      sunDir: new THREE.Vector3(0, 1, 0), moonDir: new THREE.Vector3(0, 0, 1), moonPosFar: new THREE.Vector3(),
+      earthCenterFar: new THREE.Vector3(0, -this.a, 0), skyQuat: new THREE.Quaternion(), earthQuat: new THREE.Quaternion(),
+      sunVisible: 1, sunReddening: 0, sunColor: new THREE.Color(1, 1, 1), earthLit: 1, subLatDeg: 0, subLonDeg: 0,
+    };
     this.update(0);
   }
 
@@ -129,7 +156,7 @@ export class Orbit {
     r.set(a * (cO * ct - sO * ci * st), a * (sO * ct + cO * ci * st), a * (si * st));
     const vm = this.speedKms;
     v.set(vm * (-cO * st - sO * ci * ct), vm * (-sO * st + cO * ci * ct), vm * (si * ct));
-    sunDirectionEci(n, s);
+    if (this.ephemeris) this.ephemeris.sunPositionEci(t, s).normalize(); else sunDirectionEci(n, s);
     out.n = n; out.theta = theta; out.raan = raan;
     // eclipse geometry
     const along = r.dot(s);
@@ -156,7 +183,7 @@ export class Orbit {
     const X = _v2.copy(st.v).normalize();
     // orthogonalise X against Y (circular orbit => already orthogonal, but be safe)
     X.addScaledVector(Y, -X.dot(Y)).normalize();
-    const Z = new THREE.Vector3().crossVectors(X, Y);
+    const Z = _Z.crossVectors(X, Y);
     this.lvlhToEci.makeBasis(X, Y, Z);
     // ECI -> LVLH is the transpose
     _m.copy(this.lvlhToEci).transpose();
@@ -164,14 +191,14 @@ export class Orbit {
 
     // Sun / Moon in LVLH
     this.sunDir.copy(st.s).applyMatrix4(_m).normalize();
-    const moonEci = moonPositionEci(st.n, new THREE.Vector3());
-    this.moonDistanceKm = moonEci.length();
-    moonEci.sub(st.r);                       // relative to station
+    if (this.ephemeris) this.ephemeris.moonPositionEci(simTime, this.moonEci); else moonPositionEci(st.n, this.moonEci);
+    this.moonDistanceKm = this.moonEci.length();
+    const moonEci = _moonRel.copy(this.moonEci).sub(st.r);   // relative to station
     this.moonPosFar.copy(moonEci).applyMatrix4(_m);
     this.moonDir.copy(this.moonPosFar).normalize();
 
     // Earth mesh orientation: local -> ECEF (Rx90) -> ECI (Rz gmst) -> LVLH
-    _q.setFromAxisAngle(new THREE.Vector3(0, 0, 1), this.gmst);
+    _q.setFromAxisAngle(_zAxis, this.gmst);
     this.earthQuat.copy(this.skyQuat).multiply(_q).multiply(_qRx90);
 
     // sub-satellite point
@@ -185,6 +212,69 @@ export class Orbit {
     this.earthLit = st.earthLit;
     // reddening through the limb: warm orange-red at the deepest point
     this.sunColor.setRGB(1, 1 - 0.55 * this.sunReddening, 1 - 0.85 * this.sunReddening);
+    this.earthCenterFar.set(0, -this.a, 0);
+    this.earthshine = 1;
+    this.observerAltitudeKm = this.altitudeKm;
+    this.frameName = 'station';
+    // the station's own copy
+    const L = this.local;
+    L.sunDir.copy(this.sunDir); L.moonDir.copy(this.moonDir); L.moonPosFar.copy(this.moonPosFar); L.earthCenterFar.copy(this.earthCenterFar);
+    L.skyQuat.copy(this.skyQuat); L.earthQuat.copy(this.earthQuat);
+    L.sunVisible = this.sunVisible; L.sunReddening = this.sunReddening; L.sunColor.copy(this.sunColor); L.earthLit = this.earthLit;
+    L.subLatDeg = this.subLatDeg; L.subLonDeg = this.subLonDeg;
+  }
+
+  /**
+   * Recompute the top-level outputs for a render frame around another observer: `originEci` (km) is the
+   * observer / render origin, `eciToRender` (Matrix4, rotation only) and `quat` (the same rotation as a
+   * quaternion) map ECI directions into render axes. Called by the universe after update() each frame.
+   */
+  applyFrame(originEci, eciToRender, quat, name = 'free') {
+    this.frameName = name;
+    const s = this.sunDirEci;
+    this.skyQuat.copy(quat);
+    this.earthCenterFar.copy(originEci).negate().applyMatrix4(eciToRender);
+    _q.setFromAxisAngle(_zAxis, this.gmst);
+    this.earthQuat.copy(quat).multiply(_q).multiply(_qRx90);
+    this.sunDir.copy(s).applyMatrix4(eciToRender).normalize();
+    this.moonPosFar.copy(this.moonEci).sub(originEci).applyMatrix4(eciToRender);
+    this.moonDir.copy(this.moonPosFar).normalize();
+    // observer above the Earth
+    const rn = originEci.length();
+    this.observerAltitudeKm = rn - EARTH_RADIUS_KM;
+    const cg = Math.cos(this.gmst), sg = Math.sin(this.gmst);
+    const xe = cg * originEci.x + sg * originEci.y, ye = -sg * originEci.x + cg * originEci.y;
+    this.subLatDeg = Math.asin(THREE.MathUtils.clamp(originEci.z / Math.max(rn, 1e-9), -1, 1)) / DEG;
+    this.subLonDeg = Math.atan2(ye, xe) / DEG;
+    // eclipse: Earth umbra / penumbra cones (widths grow with the distance behind the Earth), then the Moon's disc
+    const along = originEci.dot(s);
+    const perp = Math.sqrt(Math.max(0, rn * rn - along * along));
+    let vis = 1, red = 0;
+    if (along < 0) {
+      const back = -along;
+      const umbra = EARTH_RADIUS_KM - Math.max(32, 0.0046 * back), pen = EARTH_RADIUS_KM + Math.max(32, 0.0047 * back);
+      vis = smoothstep(umbra, pen, perp);
+      red = 1 - smoothstep(EARTH_RADIUS_KM - 40, EARTH_RADIUS_KM + 220 + 0.0047 * back, perp);
+      if (umbra <= 0) vis = Math.max(vis, 1 - (EARTH_RADIUS_KM / Math.max(1, 0.0047 * back)) ** 2);   // beyond the umbra tip
+    }
+    _o.copy(this.moonEci).sub(originEci);
+    const dm = _o.length();
+    if (dm > MOON_RADIUS_KM) {
+      const am = Math.asin(MOON_RADIUS_KM / dm);
+      const sep = Math.acos(THREE.MathUtils.clamp(_o.dot(s) / dm, -1, 1));
+      if (sep < am + SUN_ANGULAR_RADIUS) {
+        const covered = am >= SUN_ANGULAR_RADIUS ? 1 : (am / SUN_ANGULAR_RADIUS) ** 2;
+        vis *= 1 - covered * (1 - smoothstep(Math.abs(am - SUN_ANGULAR_RADIUS), am + SUN_ANGULAR_RADIUS, sep));
+      }
+    }
+    this.sunVisible = vis;
+    this.sunReddening = red * (1 - smoothstep(20000, 60000, rn));
+    this.sunColor.setRGB(1, 1 - 0.55 * this.sunReddening, 1 - 0.85 * this.sunReddening);
+    // lit fraction of the visible Earth disc and the earthshine scale (solid angle relative to the station's view)
+    const cosPhase = along / Math.max(rn, 1e-9);
+    this.earthLit = rn < this.a * 1.5 ? smoothstep(-0.28, 0.25, cosPhase) : 0.5 * (1 + cosPhase);
+    const solid = (d) => 1 - Math.sqrt(Math.max(0, 1 - (EARTH_RADIUS_KM / Math.max(d, EARTH_RADIUS_KM)) ** 2));
+    this.earthshine = solid(rn) / solid(this.a);
   }
 
   /** Seconds until the next sunrise/sunset (from the station's point of view). */

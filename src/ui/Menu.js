@@ -1,5 +1,6 @@
 import { el, add, setText, show, setClass } from './dom.js';
 import { loadControls, controlsTable, FALLBACK_CONTROLS } from './Controls.js';
+import { TimeControls } from './TimeControls.js';
 
 const QUALITIES = [['ultra', 'Ультра'], ['high', 'Высокое'], ['medium', 'Среднее'], ['low', 'Низкое']];
 const VOLUME_KEY = 'hud.volume';
@@ -35,8 +36,17 @@ export class Menu {
     this.startBtn.addEventListener('click', () => this.hud.startFromMenu());
     this.observerBtn = el('button', 'btn', 'КАМЕРА ОБЗОРА'); this.observerBtn.type = 'button';
     this.observerBtn.addEventListener('click', () => { this.hud.hideMenu(); try { ctx.app?.setMode?.('observer'); } catch (e) { console.warn(e); } });
-    add(actions, this.startBtn, this.observerBtn);
+    this.freeBtn = el('button', 'btn', 'СВОБОДНАЯ КАМЕРА'); this.freeBtn.type = 'button';
+    this.freeBtn.title = 'Полёт куда угодно: вокруг станции, над Землёй, к Луне (C)';
+    this.freeBtn.addEventListener('click', () => { this.hud.hideMenu(); try { if (ctx.mode !== 'free') ctx.app?.toggleFreeCamera?.(); } catch (e) { console.warn(e); } });
+    add(actions, this.startBtn, this.observerBtn, this.freeBtn);
     left.append(actions);
+
+    // time controls (pause menu: the clock itself is paused by the menu; the chosen rate applies on return)
+    this.timeField = el('div', 'menu-field');
+    this.timeCtl = new TimeControls(ctx, { title: 'ХОД ВРЕМЕНИ', compact: true });
+    this.timeField.append(this.timeCtl.el);
+    left.append(this.timeField);
 
     // quality
     const qf = el('div', 'menu-field');
@@ -83,7 +93,7 @@ export class Menu {
     this._applyVolume(v0, false);
     this._renderMute();
 
-    this.note = el('div', 'menu-note', 'Esc — меню · H — помощь · F — камера обзора · T — ускорение времени · P — пауза');
+    this.note = el('div', 'menu-note', 'Esc — меню · H — помощь · F — камера обзора · C — свободная камера · T, [ ] — ход времени · P — пауза');
     left.append(this.note);
 
     // right column: controls
@@ -133,6 +143,9 @@ export class Menu {
   }
 
   hide() { show(this.el, false); this.visible = false; }
+
+  /** ~10 Hz while the menu is open. */
+  updateText() { if (this.visible) this.timeCtl.update(); }
 
   get helpVisible() { return !this.help.classList.contains('hidden'); }
   showHelp(on) { show(this.help, on); }
