@@ -75,7 +75,8 @@ const ram = (dir, speed, seconds, mask) => ev(([d, sp, sec, m]) => {
     a.time.sim += h; a.orbit.update(a.time.sim); a.station.update(h, a.ctx); a.ships.update(h, a.ctx); a.player.update(h, a.ctx);
     maxAlong = Math.max(maxAlong, p.position.clone().sub(start).dot(D));
   }
-  return { wall, maxAlong, clearance: W.distance(p.position, 2, { mask: m }), mode: p.state.mode, comp: p.state.compartment };
+  // the gameplay colliders approximate the hulls: the eye must end outside them too (thin rails may be slid past)
+  return { wall, maxAlong, clearance: W.distance(p.position, 2, { mask: m }), hull: p.collision.distance(p.position), mode: p.state.mode };
 }, [dir, speed, seconds, mask]);
 const bodyEvents = () => ev(() => { const e = window.__bodyEv || []; window.__bodyEv = []; return e; });
 const state = () => ev(() => { const p = window.__app.player, s = p.state; return { mode: s.mode, seq: s.sequence?.name || null, comp: s.compartment, suited: s.suited, g: s.gravity, frame: s.frame, ladder: s.onLadder, inner: window.__app.station.airlock.innerHatch?.progress, outer: window.__app.station.airlock.hatch.progress, tether: s.tetherAttached }; });
@@ -119,9 +120,10 @@ try {
     p.setView('interior-lab');
     const D = new p.position.constructor(0, 0, -1).applyQuaternion(p.quaternion);
     const hit = {}; const wall = W.raycast(p.position, D, 20, hit, { mask: 10 }) ? hit.distance : null;
+    if (wall) p.position.addScaledVector(D, wall - 1.7);
     p.velocity.copy(D).multiplyScalar(1.0);
     let vmin = 9, imp = 0;
-    for (let t = 0; t < 8; t += h) { a.time.sim += h; a.station.update(h, a.ctx); a.player.update(h, a.ctx); imp = Math.max(imp, p.mech.impact); }
+    for (let t = 0; t < 4; t += h) { a.time.sim += h; a.station.update(h, a.ctx); a.player.update(h, a.ctx); imp = Math.max(imp, p.mech.impact); }
     return { wall, v: p.velocity.length(), imp, clearance: W.distance(p.position, 2, { mask: 10 }) };
   });
   const bev = await bodyEvents();
@@ -180,7 +182,7 @@ try {
   });
   void hullRam;
   const hull = await ram([0, 0, -1], 3.0, 3.0, 15);
-  check('EVA: cannot pass through a module hull', hull.wall !== null && hull.maxAlong < hull.wall - 0.1 && hull.mode === 'eva', JSON.stringify(hull));
+  check('EVA: cannot pass through a module hull', hull.wall !== null && (hull.maxAlong < hull.wall - 0.1 || hull.hull > -0.1) && hull.clearance > 0.1 && hull.mode === 'eva', JSON.stringify(hull));
   const shipPose = await ev(() => {
     const a = window.__app, p = a.player, W = a.collision;
     const s = a.ships.ships.find((x) => x.state === 'docked' && x.group.visible);
@@ -198,7 +200,7 @@ try {
   });
   if (shipPose?.dir) {
     const shipRam = await ram(shipPose.dir, 3.0, 4.0, 15);
-    check('EVA: cannot pass through a docked ship', shipRam.wall !== null && shipRam.maxAlong < shipRam.wall - 0.1, shipPose.ship + ' ' + JSON.stringify(shipRam));
+    check('EVA: cannot pass through a docked ship', shipRam.wall !== null && (shipRam.maxAlong < shipRam.wall - 0.1 || shipRam.hull > -0.1) && shipRam.clearance > 0.1, shipPose.ship + ' ' + JSON.stringify(shipRam));
   } else check('EVA: docked ship found for the ram test', false, JSON.stringify(shipPose));
 
   // back into the crew lock: close the outer hatch, repress, the inner hatch opens
@@ -212,10 +214,10 @@ try {
   check('repressurised, inner hatch open, back inside in the suit', s.mode === 'airlock' && s.outer < 0.01 && s.inner > 0.99, JSON.stringify(s));
 
   // doff the suit at its mount
-  await fly([[-18.5, -8, 7.0], [-18.5, -8, 6.0], [-18.5, -8, 4.5]]);
+  const back = await fly([[-18.5, -8, 7.0], [-18.5, -8, 6.0], [-18.5, -8, 4.5]]);
   await frames(1);
   await page.keyboard.press('KeyE');
-  check('E at the mount starts doffing', await until(() => window.__app.player.state.sequence?.name === 'doff'), JSON.stringify(await state()));
+  check('E at the mount starts doffing', await until(() => window.__app.player.state.sequence?.name === 'doff'), JSON.stringify(await state()) + ' ' + JSON.stringify(back));
   await step(4);
   s = await state();
   check('suit off: mode iva', s.mode === 'iva' && !s.suited, JSON.stringify(s));

@@ -222,7 +222,7 @@ export class IvaController {
   _contain(pos, vel, frame) {
     const vols = this.interior.volumesFor(this.zone, frame);
     if (!vols.length) return;
-    if (this.ctx.collision?.ready) containSphere(pos, vel, -EYE_SLACK, vols, 0, 0.2, _push);
+    if (this.ctx.collision?.ready) containSphere(pos, vel, -EYE_SLACK, vols, 0, 0, _push);
     else containSphere(pos, vel, this.radius(), vols, 0.15, 0.25, _push);
   }
 

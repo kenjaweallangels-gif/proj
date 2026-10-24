@@ -367,7 +367,9 @@ export class BodyMechanics {
     }
     // compliant body: swings away from what it touches, pushes the head only partly
     _neck.copy(pos).addScaledVector(_up, -dims.neck).addScaledVector(_back, dims.axisBack);
-    const L = dims.eyeHeight - dims.neck;
+    // neutral body posture at rest (knees and hips bent: ~72 % of the neck-to-soles length), stretched out when gliding
+    const L = (dims.eyeHeight - dims.neck) * (0.72 + 0.28 * smooth(0.15, 0.8, vel.length()));
+    this.bodyLength = L;
     for (let it = 0; it < 3; it++) {
       _a.copy(_neck).addScaledVector(this.axis, dims.radius * 0.7);
       _b.copy(_neck).addScaledVector(this.axis, L - dims.radius);
@@ -396,8 +398,10 @@ export class BodyMechanics {
       const vn = _vr.dot(c.normal);
       if (vn < 0) {
         _vr.addScaledVector(c.normal, -(1 + e) * vn * share);
+        // Coulomb friction: the tangential change is limited by mu times the normal impulse
         _v3.copy(_vr).addScaledVector(c.normal, -_vr.dot(c.normal));
-        _vr.addScaledVector(_v3, -f * share);
+        const vt = _v3.length(), dvt = Math.min(vt, f * (1 + e) * -vn * share * 2);
+        if (vt > 1e-6) _vr.addScaledVector(_v3, -dvt / vt);
         vel.addVectors(_vr, _vs);
         if (-vn > this.impact) this.impact = -vn;
       }
@@ -584,7 +588,7 @@ export class BodyMechanics {
       hd.normal.copy(_fwd);
     }
     for (const f of this.feet) if (f.phase === 'free') {
-      _v.copy(pos).addScaledVector(_up, -0.2).addScaledVector(this.axis, 1.4).addScaledVector(_right, f.sign * 0.12);
+      _v.copy(pos).addScaledVector(_up, -0.2).addScaledVector(this.axis, this.bodyLength || 1.4).addScaledVector(_right, f.sign * 0.12);
       f.pos.copy(_v); f.normal.copy(this.axis).negate();
       f.weight = Math.max(0, f.weight - h / 0.3);
     }
