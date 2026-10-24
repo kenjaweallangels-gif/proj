@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { LAYOUT } from './Layout.js';
-import { Builder, HullFrame, boxAt, tubeAt, torusAt, flipInside, scaleUV, mat, Colliders, X_AXIS, Y_AXIS, Z_AXIS, TEX_M } from './Builder.js';
+import { Builder, HullFrame, boxAt, bevelBoxAt, tubeAt, torusAt, latheAt, flipInside, scaleUV, mat, Colliders, X_AXIS, Y_AXIS, Z_AXIS, TEX_M } from './Builder.js';
+import { COL, boltCircle, radialBolts, boltRow } from './Detail.js';
+import { mliBand, weldLand } from './HullKit.js';
+import { evaLamp, toolBox } from './Hardware.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const CY = LAYOUT.clusterY;
@@ -27,37 +30,63 @@ export class AirlockModule {
     const colliders = [];
 
     // ---------- exterior ----------
+    const D = b.detail;
     b.add('hullWhite', tubeAt(H.center, Z_AXIS, r, len, 48, { open: true }));
     b.add('mliSilver', tubeAt(V(AX, CY, z0 + 1.2), Z_AXIS, r + 0.05, 1.6, 48));
     b.add('mliGold', tubeAt(V(AX, CY, z0 + 4.2), Z_AXIS, r + 0.05, 1.2, 48));
-    for (const z of [z0 + 2.2, z0 + 3.5, z0 + 5.0, zEnd - 0.5]) b.add('metalDark', torusAt(V(AX, CY, z), Z_AXIS, r + 0.015, 0.04, 5, 48), false);
-    // end cap: annulus with a thick rim, hatch tunnel, hazard ring
-    b.add('hullWhite', new THREE.RingGeometry(0.76, r + 0.02, 48, 1).translate(AX, CY, zEnd));
-    b.add('metalDark', torusAt(V(AX, CY, zEnd - 0.06), Z_AXIS, r + 0.02, 0.12, 8, 48), false);
-    b.add('metalBare', flipInside(new THREE.CylinderGeometry(0.76, 0.76, 0.4, 32, 1, true).rotateX(Math.PI / 2).translate(AX, CY, zEnd - 0.15)), false);
-    b.add('hazard', new THREE.RingGeometry(0.78, 0.98, 48, 1).translate(AX, CY, zEnd + 0.01), false);
-    b.add('metalDark', torusAt(V(AX, CY, zEnd + 0.02), Z_AXIS, 0.78, 0.035, 5, 48), false);
-    // hinge brackets, EVA lights, tether anchor, foot restraint, toolbox
-    for (const sx of [-1, 1]) {
-      b.add('metalDark', boxAt(V(AX + sx * 0.32, CY + 0.86, zEnd + 0.06), 0.12, 0.2, 0.16, null, false), false);
-      b.add('metalDark', boxAt(V(AX + sx * 1.25, CY + 1.0, zEnd + 0.12), 0.26, 0.26, 0.26, null, false), false);
-      b.add('dockLight', boxAt(V(AX + sx * 1.25, CY + 1.0, zEnd + 0.26), 0.2, 0.2, 0.03, null, false), false);
+    if (D) {
+      // blanket edges and weld lands with fasteners (GPU presets)
+      mliBand(b, D, H, z0 + 0.4 - (z0 + len / 2), z0 + 2.0 - (z0 + len / 2), 'mliSilver', { rho: r + 0.05, seamTheta: H.thetaFor(V(0, -1, 0)) + 0.6 });
+      mliBand(b, D, H, z0 + 3.6 - (z0 + len / 2), z0 + 4.8 - (z0 + len / 2), 'mliGold', { rho: r + 0.05, seamTheta: H.thetaFor(V(0, -1, 0)) - 0.6 });
+      for (const z of [z0 + 2.2, z0 + 3.5, z0 + 5.0, zEnd - 0.5]) weldLand(b, D, H, z - (z0 + len / 2));
+    } else for (const z of [z0 + 2.2, z0 + 3.5, z0 + 5.0, zEnd - 0.5]) b.add('metalDark', torusAt(V(AX, CY, z), Z_AXIS, r + 0.015, 0.04, 5, 48), false);
+    // end bulkhead: a closed solid ring (outer rim flange, gently coned face, raised hatch frame, inner bore) —
+    // real wall thickness everywhere an edge shows; the hazard band is a raised strip on the face
+    const EC = V(AX, CY, zEnd);
+    b.add('hullWhite', latheAt(EC, Z_AXIS, [[0.8, -0.16], [0.84, -0.16], [0.84, -0.1], [r - 0.02, -0.1], [r + 0.03, -0.07], [r + 0.03, 0.0], [r - 0.03, 0.05], [1.12, 0.09], [1.0, 0.12], [0.8, 0.12], [0.8, -0.16]], 64));
+    b.add('metalBare', latheAt(EC, Z_AXIS, [[0.8, 0.12], [1.0, 0.12], [1.0, 0.2], [0.97, 0.225], [0.85, 0.225], [0.8, 0.19], [0.8, 0.12]], 64));
+    b.add('hazard', scaleUV(latheAt(EC, Z_AXIS, [[1.32, 0.0786], [1.5, 0.0701], [1.5, 0.0761], [1.32, 0.0846], [1.32, 0.0786]], 64), 14, 14), false);
+    b.add('rubberBlack', latheAt(EC, Z_AXIS, [[0.87, 0.224], [0.95, 0.224], [0.95, 0.232], [0.87, 0.232], [0.87, 0.224]], 64), false);
+    // bore liner (seen from the crew lock through the open hatch)
+    b.add('metalBare', flipInside(new THREE.CylinderGeometry(0.795, 0.795, 0.5, 40, 1, true).rotateX(Math.PI / 2).translate(AX, CY, zEnd - 0.07)), false);
+    // rim flange where the bulkhead meets the cylinder
+    b.add('hullWhiteAged', latheAt(EC, Z_AXIS, [[r - 0.01, -0.3], [r + 0.075, -0.28], [r + 0.095, -0.25], [r + 0.095, -0.1], [r + 0.04, -0.07], [r + 0.03, -0.07]], 64));
+    if (D) {
+      radialBolts(D, new THREE.Matrix4().compose(V(AX, CY, zEnd - 0.17), new THREE.Quaternion().setFromUnitVectors(Y_AXIS, Z_AXIS), V(1, 1, 1)), r + 0.095, 64, 0, 0.014, 0.01);
+      const Mf = new THREE.Matrix4().compose(V(AX, CY, zEnd + 0.2), new THREE.Quaternion().setFromUnitVectors(Y_AXIS, Z_AXIS), V(1, 1, 1));
+      boltCircle(D, Mf, 0.985, 32, 0, 0.011, 0.008);
+      boltCircle(D, new THREE.Matrix4().compose(V(AX, CY, zEnd + 0.07), new THREE.Quaternion().setFromUnitVectors(Y_AXIS, Z_AXIS), V(1, 1, 1)), 1.62, 40, 0, 0.012, 0.009, COL.bare, 'fine', 0.04);
     }
-    this.tetherAnchor = V(AX, CY + 1.5, zEnd + 0.16);
-    b.add('metalBare', boxAt(V(AX, CY + 1.5, zEnd + 0.04), 0.3, 0.3, 0.08, null, false), false);
-    b.add('metalBare', torusAt(this.tetherAnchor, Y_AXIS, 0.1, 0.025, 6, 16), false);
-    b.add('hullWhiteAged', boxAt(V(AX, CY - 1.45, zEnd + 0.12), 0.5, 0.06, 0.24, null, false), false);
-    b.add('hullWhiteAged', boxAt(V(AX + 1.3, CY - 1.0, zEnd + 0.18), 0.6, 0.34, 0.36), false);
-    b.add('hazard', boxAt(V(AX + 1.3, CY - 1.0, zEnd + 0.37), 0.62, 0.36, 0.02, null, false), false);
+    // hinge brackets (fixed half of the hinge): bolted base plates + knuckles
+    for (const sx of [-1, 1]) {
+      b.add('metalDark', bevelBoxAt(V(AX + sx * 0.36, CY + 1.0, zEnd + 0.12), 0.16, 0.16, 0.06, null, 0.015), false);
+      b.add('metalDark', bevelBoxAt(V(AX + sx * 0.36, CY + 0.96, zEnd + 0.24), 0.1, 0.1, 0.2, null, 0.02), false);
+      b.add('metalBare', tubeAt(V(AX + sx * 0.36, CY + 0.94, zEnd + 0.33), X_AXIS, 0.04, 0.1, 14, { uv: false }), false);
+    }
+    // EVA flood lights: bolted bracket, finned housing, recessed lens under a hood
+    for (const sx of [-1, 1]) evaLamp(b, D, V(AX + sx * 1.3, CY + 1.0, zEnd + 0.07), sx);
+    // tether anchor: bolted plate with a forged eye
+    this.tetherAnchor = V(AX, CY + 1.42, zEnd + 0.2);
+    b.add('metalBare', bevelBoxAt(V(AX, CY + 1.42, zEnd + 0.07), 0.3, 0.24, 0.05, null, 0.012), false);
+    b.add('metalBare', latheAt(V(AX, CY + 1.42, zEnd + 0.095), Z_AXIS, [[0.07, 0], [0.06, 0.05], [0.035, 0.07], [0.0, 0.07]], 16), false);
+    b.add('metalBare', torusAt(V(AX, CY + 1.42, zEnd + 0.15), Y_AXIS, 0.055, 0.016, 8, 20), false);
+    // foot restraint socket (WIF) below the hatch, tool box with lid, latches and handles
+    b.add('hullWhiteAged', bevelBoxAt(V(AX, CY - 1.38, zEnd + 0.09), 0.5, 0.08, 0.2, null, 0.02), false);
+    b.add('metalBare', bevelBoxAt(V(AX, CY - 1.38, zEnd + 0.16), 0.12, 0.12, 0.1, null, 0.015), false);
+    toolBox(b, D, V(AX + 1.3, CY - 1.0, zEnd + 0.07), 0.6, 0.34, 0.36);
+    if (D) {
+      boltRow(D, new THREE.Matrix4().makeRotationX(Math.PI / 2).setPosition(AX, CY + 1.42, zEnd + 0.095), -0.12, -0.09, 0.12, -0.09, 2, 0, 0.011, 0.008);
+      boltRow(D, new THREE.Matrix4().makeRotationX(Math.PI / 2).setPosition(AX, CY + 1.42, zEnd + 0.095), -0.12, 0.09, 0.12, 0.09, 2, 0, 0.011, 0.008);
+    }
     // labels
-    b.labelAt('ВЫХОД · EVA-1', 1.6, 0.2, V(AX, CY + 1.3, zEnd + 0.02), Z_AXIS, { width: 1024 });
-    b.labelAt('ШЛЮЗ', 2.6, 0.5, V(AX + r + 0.05, CY + 0.2, z0 + len / 2), X_AXIS, { width: 512 });
-    b.labelAt('AIRLOCK', 2.6, 0.4, V(AX - r - 0.05, CY + 0.2, z0 + len / 2), V(-1, 0, 0), { width: 512 });
+    b.labelAt('ВЫХОД · EVA-1', 1.3, 0.16, V(AX, CY + 1.27, zEnd + 0.098), Z_AXIS, { width: 1024 });
+    b.labelAt('ШЛЮЗ', 2.6, 0.5, V(AX + r + 0.056, CY + 0.2, z0 + len / 2), X_AXIS, { width: 512 });
+    b.labelAt('AIRLOCK', 2.6, 0.4, V(AX - r - 0.056, CY + 0.2, z0 + len / 2), V(-1, 0, 0), { width: 512 });
     // exterior handrails: four lines along the module, a ring near the cap, bars on the cap face
-    for (const th of [H.thetaFor(Y_AXIS), H.thetaFor(X_AXIS), H.thetaFor(V(-1, 0, 0)), H.thetaFor(V(0, -1, 0))]) rails.addAlongHull(H, th, -len / 2 + 0.8, len / 2 - 0.9, 1.1, 0.3);
+    for (const th of [H.thetaFor(Y_AXIS), H.thetaFor(X_AXIS), H.thetaFor(V(-1, 0, 0)), H.thetaFor(V(0, -1, 0))]) rails.addAlongHull(H, th, -len / 2 + 0.8, len / 2 - 0.9, 1.1, 0.3, r + 0.05);
     rails.addAroundHull(H, len / 2 - 0.7, 8, 0.9, 0.4);
-    for (const sx of [-1, 1]) rails.addRail(V(AX + sx * 1.1, CY - 0.5, zEnd), V(AX + sx * 1.1, CY + 0.5, zEnd), Z_AXIS);
-    rails.addRail(V(AX - 0.5, CY - 1.1, zEnd), V(AX + 0.5, CY - 1.1, zEnd), Z_AXIS);
+    for (const sx of [-1, 1]) rails.addRail(V(AX + sx * 1.1, CY - 0.5, zEnd + 0.09), V(AX + sx * 1.1, CY + 0.5, zEnd + 0.09), Z_AXIS);
+    rails.addRail(V(AX - 0.5, CY - 1.1, zEnd + 0.09), V(AX + 0.5, CY - 1.1, zEnd + 0.09), Z_AXIS);
 
     // ---------- interior ----------
     // The equipment lock / crew lock interiors are built by src/station/interior (AirlockInterior.js); this part
@@ -70,29 +99,50 @@ export class AirlockModule {
     this.innerDoorGeos = null;      // filled by the interior builder
 
     // ---------- outer hatch (hinged at the top, swings outward) ----------
+    // solid door: lathe body with a chamfered rim, slightly domed outer skin and a recessed inner face; sealing
+    // land on the frame; centre viewport with a two-pane window in a bolted frame; handle on stand-offs; eight
+    // latch dogs on the rim; hinge arms with knuckles around the pin
     this.pivot = new THREE.Group();
     this.pivot.userData.animated = true;   // moves only on open()/close(): keep out of static batching
-    this.pivot.position.set(AX, CY + 0.8, zEnd + 0.08);
+    this.pivot.position.set(AX, CY + 0.94, zEnd + 0.33);
     station.add(this.pivot);
     const bh = new Builder(m);
-    const d = V(0, -0.8, 0.05);
-    bh.add('hullWhite', new THREE.CylinderGeometry(0.73, 0.73, 0.12, 32).rotateX(Math.PI / 2).translate(d.x, d.y, d.z));
-    bh.add('metalDark', new THREE.CylinderGeometry(0.66, 0.66, 0.02, 32).rotateX(Math.PI / 2).translate(d.x, d.y, d.z - 0.065), false);
-    bh.add('hazard', new THREE.RingGeometry(0.6, 0.72, 32, 1).translate(d.x, d.y, d.z + 0.065), false);
-    bh.add('metalDark', torusAt(V(d.x, d.y, d.z + 0.065), Z_AXIS, 0.17, 0.03, 5, 20), false);
-    bh.add('windowGlow', new THREE.CylinderGeometry(0.13, 0.13, 0.03, 20).rotateX(Math.PI / 2).translate(d.x, d.y, d.z - 0.02), false);
-    bh.add('glass', new THREE.CylinderGeometry(0.14, 0.14, 0.02, 20).rotateX(Math.PI / 2).translate(d.x, d.y, d.z + 0.07), false);
-    for (let k = 0; k < 8; k++) {
-      const a = (k / 8) * Math.PI * 2;
-      bh.add('metalBare', new THREE.BoxGeometry(0.12, 0.1, 0.1).translate(0, 0.64, d.z - 0.08).applyMatrix4(new THREE.Matrix4().makeRotationZ(a)).translate(d.x, d.y, 0), false);
+    bh.detail = null;
+    const d = V(0, -0.94, -0.098);          // door centre (rim seal plane) relative to the hinge pin
+    const DC = d.clone();
+    // profiles are closed and counter-clockwise in (radius, axial) so every face points out of the solid
+    bh.add('hullWhite', latheAt(DC, Z_AXIS, [[0.87, 0.0], [0.9, 0.025], [0.9, 0.07], [0.84, 0.1], [0.5, 0.125], [0.2, 0.13]], 48));
+    bh.add('metalDark', latheAt(DC, Z_AXIS, [[0.2, 0.13], [0.2, -0.03], [0.78, -0.03], [0.87, 0.0]], 48));
+    bh.add('hazard', scaleUV(latheAt(DC, Z_AXIS, [[0.7, 0.11], [0.82, 0.1012], [0.82, 0.1072], [0.7, 0.116], [0.7, 0.11]], 48), 14, 14), false);
+    // viewport: frame ring (solid, lipped), outer and inner panes seated in it
+    bh.add('metalBare', latheAt(DC, Z_AXIS, [[0.145, -0.04], [0.2, -0.04], [0.2, 0.18], [0.188, 0.195], [0.13, 0.195], [0.13, 0.175], [0.145, 0.165], [0.145, -0.04]], 32));
+    bh.add('glass', new THREE.CylinderGeometry(0.162, 0.162, 0.016, 32).rotateX(Math.PI / 2).translate(d.x, d.y, d.z + 0.15), false);
+    bh.add('glass', new THREE.CylinderGeometry(0.162, 0.162, 0.012, 32).rotateX(Math.PI / 2).translate(d.x, d.y, d.z + 0.0), false);
+    // handle: bar on two stand-offs with feet
+    bh.add('metalBare', tubeAt(V(d.x, d.y - 0.42, d.z + 0.26), X_AXIS, 0.022, 0.46, 12, { uv: false }), false);
+    for (const sx of [-1, 1]) {
+      bh.add('metalBare', tubeAt(V(d.x + sx * 0.2, d.y - 0.42, d.z + 0.19), Z_AXIS, 0.018, 0.14, 10, { uv: false }), false);
+      bh.add('metalBare', latheAt(V(d.x + sx * 0.2, d.y - 0.42, d.z + 0.115), Z_AXIS, [[0.045, 0.0], [0.045, 0.012], [0.025, 0.03], [0.0, 0.03]], 12), false);
+      bh.add('metalBare', new THREE.SphereGeometry(0.024, 10, 8).translate(d.x + sx * 0.23, d.y - 0.42, d.z + 0.26), false);
     }
-    bh.add('metalBare', boxAt(V(d.x, d.y - 0.3, d.z + 0.16), 0.5, 0.04, 0.04, null, false), false);
-    for (const sx of [-1, 1]) bh.add('metalBare', boxAt(V(d.x + sx * 0.23, d.y - 0.3, d.z + 0.1), 0.04, 0.04, 0.12, null, false), false);
-    for (const sx of [-1, 1]) bh.add('metalDark', boxAt(V(sx * 0.32, -0.38, 0.1), 0.08, 0.8, 0.08, null, false), false);
-    bh.add('metalDark', tubeAt(V(0, 0, 0), X_AXIS, 0.05, 0.9, 10, { uv: false }), false);
+    // latch dogs around the rim (bevelled blocks with a pivot boss), clamping onto the frame
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2 + Math.PI / 8;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      const qd = new THREE.Quaternion().setFromAxisAngle(Z_AXIS, a);
+      bh.add('metalDark', bevelBoxAt(V(d.x + 0.86 * ca, d.y + 0.86 * sa, d.z + 0.07), 0.14, 0.09, 0.07, qd, 0.015), false);
+      bh.add('metalBare', tubeAt(V(d.x + 0.8 * ca, d.y + 0.8 * sa, d.z + 0.115), Z_AXIS, 0.03, 0.03, 12, { uv: false }), false);
+    }
+    // hinge arms from the door skin up to the knuckles on the pin
+    for (const sx of [-1, 1]) {
+      bh.add('metalDark', bevelBoxAt(V(sx * 0.22, -0.4, 0.056), 0.07, 0.75, 0.07, null, 0.015), false);
+      bh.add('metalDark', bevelBoxAt(V(sx * 0.22, -0.06, 0.02), 0.08, 0.14, 0.1, null, 0.02), false);
+      bh.add('metalBare', tubeAt(V(sx * 0.2, 0, 0), X_AXIS, 0.045, 0.16, 14, { uv: false }), false);
+    }
+    bh.add('metalBare', tubeAt(V(0, 0, 0), X_AXIS, 0.022, 0.86, 10, { uv: false }), false);
     bh.build(this.pivot, { name: 'hatch' });
-    this.anchor = new THREE.Object3D(); this.anchor.position.copy(d); this.pivot.add(this.anchor);
-    this.hatchCollider = Colliders.box(V(AX, CY, zEnd + 0.13), V(0.73, 0.73, 0.07), null, 'hatch', true);
+    this.anchor = new THREE.Object3D(); this.anchor.position.copy(d).add(V(0, 0, 0.05)); this.pivot.add(this.anchor);
+    this.hatchCollider = Colliders.box(V(AX, CY, zEnd + 0.36), V(0.8, 0.8, 0.07), null, 'hatch', true);
 
     // ---------- colliders (EVA physics): crew-lock wall slabs, cap ring around the hatch, inner bulkhead ----------
     const rc = 1.15, zc0 = 6.45, zc1 = zEnd - 0.12;

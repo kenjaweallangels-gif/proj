@@ -113,3 +113,58 @@ export function grappleFixture(b, D, M, { size = 0.8 } = {}) {
 
 /** Rows of standoff feet (handrail / equipment attach points) — re-exported for parts that only need feet. */
 export { standoffFoot };
+
+/**
+ * EVA flood light on a flat surface (mount normal +Z through p; `sx` tilts it a little toward the centre line):
+ * bolted base plate, yoke, finned housing, recessed lens behind a four-sided hood. Reusable kit part (station,
+ * airlocks, vehicles): every piece is a closed, chamfered solid.
+ */
+export function evaLamp(b, D, p, sx = 1, { n = new THREE.Vector3(0, 0, 1), up = new THREE.Vector3(0, 1, 0) } = {}) {
+  const N = n.clone().normalize();
+  const side = new THREE.Vector3().crossVectors(up, N).normalize();
+  const look = N.clone().addScaledVector(side, -0.25 * sx).addScaledVector(up, -0.15).normalize();
+  const Mb = frameYZ(p, N, up);
+  const qb = new THREE.Quaternion().setFromRotationMatrix(Mb);
+  b.add('metalDark', bevelBoxAt(p.clone().addScaledVector(N, 0.015), 0.22, 0.03, 0.2, qb, 0.008), false);
+  for (const s of [-1, 1]) b.add('metalDark', bevelBoxAt(p.clone().addScaledVector(N, 0.1).addScaledVector(side, s * 0.13), 0.03, 0.15, 0.08, qb, 0.008), false);
+  const c = p.clone().addScaledVector(N, 0.17);
+  const Mh = frameYZ(c, up.clone().addScaledVector(look, -look.dot(up)).normalize(), look);
+  const qh = new THREE.Quaternion().setFromRotationMatrix(Mh);
+  const U = new THREE.Vector3().setFromMatrixColumn(Mh, 1), Lk = new THREE.Vector3().setFromMatrixColumn(Mh, 2), S = new THREE.Vector3().setFromMatrixColumn(Mh, 0);
+  b.add('paintGray', bevelBoxAt(c, 0.22, 0.16, 0.18, qh, 0.02), false);
+  for (let k = 0; k < 5; k++) b.add('metalDark', bevelBoxAt(c.clone().addScaledVector(U, 0.092).addScaledVector(Lk, -0.07 + k * 0.035), 0.2, 0.03, 0.012, qh, 0.003), false);
+  b.add('dockLight', bevelBoxAt(c.clone().addScaledVector(Lk, 0.085), 0.17, 0.11, 0.012, qh, 0.004), false);
+  for (const s of [-1, 1]) {
+    b.add('metalDark', bevelBoxAt(c.clone().addScaledVector(Lk, 0.13).addScaledVector(U, s * 0.074), 0.22, 0.012, 0.1, qh, 0.003), false);
+    b.add('metalDark', bevelBoxAt(c.clone().addScaledVector(Lk, 0.13).addScaledVector(S, s * 0.104), 0.012, 0.16, 0.1, qh, 0.003), false);
+  }
+  for (const s of [-1, 1]) b.add('metalBare', tubeAt(c.clone().addScaledVector(side, s * 0.125), side, 0.025, 0.03, 12, { uv: false }), false);
+  if (!D) return;
+  for (const [x, z] of [[-0.085, -0.075], [0.085, -0.075], [-0.085, 0.075], [0.085, 0.075]]) { _m.makeTranslation(x, 0.03, z); D.bolt(_m2.copy(Mb).multiply(_m), 0.009, 0.007); }
+  const cA = p.clone().addScaledVector(N, 0.03).addScaledVector(up, -0.09), cB = c.clone().addScaledVector(Lk, -0.09).addScaledVector(U, -0.04);
+  D.rod('mid', 'paint', COL.black, cA, cB, 0.01, 'cyl6');
+}
+
+/**
+ * Tool / equipment box on a surface (mount normal +Z through p, `up` = +Y): bolted feet, chamfered body with a
+ * lid seam, hinge barrel, two latches, a grab handle on stand-offs, hazard tape. Reusable kit part.
+ */
+export function toolBox(b, D, p, w, h, d, { n = new THREE.Vector3(0, 0, 1), up = new THREE.Vector3(0, 1, 0), mat = 'hullWhiteAged' } = {}) {
+  const N = n.clone().normalize();
+  const M = frameYZ(p, N, up);
+  const q = new THREE.Quaternion().setFromRotationMatrix(M);
+  const X = new THREE.Vector3().setFromMatrixColumn(M, 0), Z = new THREE.Vector3().setFromMatrixColumn(M, 2);
+  for (const s of [-1, 1]) b.add('metalDark', bevelBoxAt(p.clone().addScaledVector(N, 0.012).addScaledVector(X, s * (w / 2 - 0.05)), 0.06, 0.024, h + 0.04, q, 0.006), false);
+  const c = p.clone().addScaledVector(N, 0.024 + (d - 0.05) / 2);
+  b.add(mat, bevelBoxAt(c, w, d - 0.05, h, q, 0.025));
+  b.add(mat, bevelBoxAt(p.clone().addScaledVector(N, 0.024 + d - 0.035), w + 0.012, 0.045, h + 0.012, q, 0.015));
+  b.add('metalDark', bevelBoxAt(p.clone().addScaledVector(N, 0.024 + d - 0.058), w - 0.01, 0.008, h - 0.01, q, 0.002), false);
+  b.add('metalBare', tubeAt(p.clone().addScaledVector(N, 0.024 + d - 0.04).addScaledVector(Z, h / 2 + 0.01), X, 0.012, w * 0.8, 10, { uv: false }), false);
+  for (const s of [-1, 1]) b.add('metalBare', bevelBoxAt(p.clone().addScaledVector(N, 0.024 + d - 0.07).addScaledVector(X, s * w * 0.28).addScaledVector(Z, -h / 2 - 0.01), 0.06, 0.07, 0.024, q, 0.006), false);
+  const top = p.clone().addScaledVector(N, 0.024 + d - 0.012);
+  b.add('paintYellow', tubeAt(top.clone().addScaledVector(N, 0.06), X, 0.016, w * 0.5, 10, { uv: false }), false);
+  for (const s of [-1, 1]) b.add('paintYellow', tubeAt(top.clone().addScaledVector(N, 0.03).addScaledVector(X, s * w * 0.25), N, 0.014, 0.06, 8, { uv: false }), false);
+  b.add('hazard', bevelBoxAt(p.clone().addScaledVector(N, 0.024 + (d - 0.05) / 2).addScaledVector(Z, -h / 2 - 0.003), w * 0.7, 0.06, 0.006, q, 0.002), false);
+  if (!D) return;
+  for (const s of [-1, 1]) for (const t of [-1, 1]) { _m.makeTranslation(s * (w / 2 - 0.05), 0.024, t * (h / 2 - 0.02)); D.bolt(_m2.copy(M).multiply(_m), 0.009, 0.007); }
+}

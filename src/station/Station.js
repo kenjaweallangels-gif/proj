@@ -33,6 +33,12 @@ export class Station extends THREE.Group {
     this.handrails = [];
     this.dockingPorts = [];
     const t0 = performance.now();
+    ctx.materials.lite = !!ctx.quality?.lite;   // material variants ('lite': cheap glass, procedural textures)
+    // baked PBR texture sets (public/textures/station, tools/bake_station_textures.py): 4K on ultra, 2K otherwise
+    if (!ctx.quality?.lite && ctx.textures && !ctx.textures.pbrBase) {
+      ctx.textures.pbrBase = ctx.assetUrl ? ctx.assetUrl('textures/station/') : 'textures/station/';
+      ctx.textures.pbrHi = ctx.quality?.preset === 'ultra';
+    }
 
     // docking / EVA work lights share one material so Lights can dim them in daylight
     if (!ctx.materials.factories.dockLight) ctx.materials.register('dockLight', () => { const m = ctx.materials.get('floodLight').clone(); m.emissiveIntensity = 2; return m; });
@@ -95,7 +101,10 @@ export class Station extends THREE.Group {
     if (ms > 2000) console.warn(`[Station] build took ${ms.toFixed(0)} ms`);
   }
 
-  async load() { await this.interior?.load(); }
+  async load() {
+    await this.ctx.textures?.ready?.();   // baked texture sets (before the App compiles shaders)
+    await this.interior?.load();
+  }
 
   update(dt, ctx) {
     this.ringPart.update(dt);

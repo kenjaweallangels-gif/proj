@@ -13,6 +13,47 @@ export class Textures {
     this.anisotropy = renderer ? Math.max(1, Math.min(maxAnisotropy, renderer.capabilities.getMaxAnisotropy())) : 1;
   }
 
+  /**
+   * Baked PBR texture set (tools/bake_station_textures.py): public/textures/station/<name>_{albedo,normal,orm}.jpg
+   * (4K, `pbrHi`) or the *_2k.jpg variants. The textures are returned at once and filled when the images
+   * arrive; `ready()` resolves once every pending set has loaded (Station.load awaits it, before the App
+   * compiles shaders). ORM packing: R ambient occlusion, G roughness, B metalness (three's channel use).
+   * Returns null when `pbrBase` is unset (no baked sets: callers keep their procedural maps).
+   */
+  pbr(name, { repeat = 1, ormHalf = false } = {}) {
+    if (!this.pbrBase) return null;
+    return this._cached(`pbr:${name}:${repeat}:${this.pbrHi}`, () => {
+      const loader = this._loader || (this._loader = new THREE.TextureLoader());
+      const set = {};
+      for (const [key, file, color] of [['map', 'albedo', true], ['normalMap', 'normal', false], ['ormMap', 'orm', false]]) {
+        // VRAM: the 4K hull sets keep their ORM map at 2K even on ultra (ormHalf)
+        const suffix = this.pbrHi && !(ormHalf && file === 'orm') ? '' : '_2k';
+        const t = new THREE.Texture();
+        t.colorSpace = color ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        t.repeat.set(repeat, repeat);
+        t.anisotropy = this.anisotropy;
+        t.name = `${name}_${file}`;
+        const p = new Promise((res) => {
+          loader.load(`${this.pbrBase}${name}_${file}${suffix}.jpg`, (tex) => { t.image = tex.image; t.needsUpdate = true; res(true); },
+            undefined, () => {
+              // neutral 1×1 stand-in (white albedo, flat normal, AO 1 / roughness 0.5 / metalness 0)
+              console.warn(`[Textures] missing ${name}_${file}${suffix}.jpg`);
+              const [c, g] = this._canvas(1, 1);
+              g.fillStyle = color ? '#ffffff' : file === 'normal' ? 'rgb(128,128,255)' : 'rgb(255,128,0)'; g.fillRect(0, 0, 1, 1);
+              t.image = c; t.needsUpdate = true; set.failed = true; res(false);
+            });
+        });
+        (this.pending || (this.pending = [])).push(p);
+        set[key] = t;
+      }
+      return set;
+    });
+  }
+
+  /** Resolves when every pbr() image requested so far has loaded (or failed). */
+  async ready() { while (this.pending?.length) { const p = this.pending.splice(0); await Promise.all(p); } }
+
   _canvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; }
 
   _tex(canvas, { color = true, repeat = [1, 1], wrap = THREE.RepeatWrapping } = {}) {
@@ -233,6 +274,34 @@ export class Textures {
       g.putImageData(img, 0, 0);
       const t = this._tex(c, { color: false, wrap: THREE.ClampToEdgeWrapping });
       return t;
+    });
+  }
+
+  /**
+   * Window-pane roughness (linear, used with material.roughness = 1): polished glass (~0.035) with a few faint
+   * hairline scratches and dust specks (rougher), which only show inside the Sun's highlight.
+   */
+  glassScratches({ size = 1024, seed = 7 } = {}) {
+    return this._cached(`glassScr:${size}:${seed}`, () => {
+      const [c, g] = this._canvas(size, size);
+      g.fillStyle = 'rgb(9,9,9)'; g.fillRect(0, 0, size, size);
+      let s = seed >>> 0;
+      const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+      g.lineCap = 'round';
+      for (let i = 0; i < 70; i++) {
+        const v = 30 + rnd() * 50;
+        g.strokeStyle = `rgb(${v},${v},${v})`; g.lineWidth = 0.6 + rnd() * 0.8;
+        const x = rnd() * size, y = rnd() * size, a = rnd() * Math.PI * 2, l = size * (0.02 + rnd() * 0.12), bend = (rnd() - 0.5) * 0.6;
+        g.beginPath(); g.moveTo(x, y);
+        g.quadraticCurveTo(x + Math.cos(a + bend) * l * 0.5, y + Math.sin(a + bend) * l * 0.5, x + Math.cos(a) * l, y + Math.sin(a) * l);
+        g.stroke();
+      }
+      for (let i = 0; i < 900; i++) {
+        const v = 25 + rnd() * 45;
+        g.fillStyle = `rgb(${v},${v},${v})`;
+        g.beginPath(); g.arc(rnd() * size, rnd() * size, 0.5 + rnd() * 1.3, 0, Math.PI * 2); g.fill();
+      }
+      return this._tex(c, { color: false });
     });
   }
 

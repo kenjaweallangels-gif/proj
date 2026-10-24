@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { clearGlass } from '../../core/Materials.js';
 
 /**
  * Interior materials and shader patches.
@@ -19,6 +20,7 @@ import * as THREE from 'three';
  */
 
 export const MAX_WINDOWS = 6;
+const ctxTex = (ctx) => ctx.textures?.glassScratches?.() || null;
 export const MAX_CARVE = 12;
 export const INTERIOR_LAYER = 4;
 
@@ -171,7 +173,8 @@ export class InteriorMaterials {
       paint: std('paint', { roughness: 0.62, metalness: 0.05 }),
       metal: std('metal', { roughness: 0.34, metalness: 0.85, envMapIntensity: 1.3 }),
       plant: std('plant', { roughness: 0.7, metalness: 0.0, side: THREE.DoubleSide }),
-      glass: new THREE.MeshStandardMaterial({ name: 'int:glass', color: 0x9db6c8, roughness: 0.04, metalness: 0.0, transparent: true, opacity: 0.18, depthWrite: false, envMap: env, envMapIntensity: 1.6, side: THREE.DoubleSide }),
+      // optically clear panes (reflection + Fresnel only, no haze): see core/Materials.js clearGlass
+      glass: clearGlass({ name: 'int:glass', roughnessMap: ctxTex(this.ctx), absorb: 0.03, tint: 0x0a110f, envMap: env, envMapIntensity: 1.0 }),
       glow: this.glow,
     };
     set.glass.forceSinglePass = true;

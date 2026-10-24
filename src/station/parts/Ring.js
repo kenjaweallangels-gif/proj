@@ -80,18 +80,22 @@ export class HabitatRing {
       const chord = R * segLen - 0.16;
       for (const sx of [-1, 1]) {
         const c = radial(phi).multiplyScalar(R).setX(sx * (r + 0.02));
-        b.add('metalDark', boxAt(c, 0.1, 0.78, chord, q), false);
-        b.add('windowGlow', boxAt(V(sx * (r - 0.01), c.y, c.z), 0.08, 0.56, chord - 0.22, q), false);
-        b.add('glass', boxAt(V(sx * (r + 0.06), c.y, c.z), 0.02, 0.56, chord - 0.22, q), false);
+        // window frame: two chamfered rails and end mullions around a recessed pane (glass 3 cm below the frame
+        // face, interior glow behind it) — a closed frame, no coplanar faces
+        for (const sy of [-1, 1]) b.add('metalDark', bevelBoxAt(c.clone().addScaledVector(radial(phi), sy * 0.33), 0.1, 0.12, chord, q, 0.02), false);
+        for (const sz of [-1, 1]) b.add('metalDark', bevelBoxAt(c.clone().addScaledVector(tangent(phi), sz * (chord / 2 - 0.05)), 0.1, 0.56, 0.1, q, 0.02), false);
+        b.add('windowGlow', boxAt(V(sx * (r - 0.02), c.y, c.z), 0.06, 0.56, chord - 0.1, q), false);
+        b.add('glass', boxAt(V(sx * (r + 0.035), c.y, c.z), 0.012, 0.56, chord - 0.1, q), false);
         // small equipment / vent boxes above the window line every other segment
-        if (k % 2 === 0) b.add('paintGray', boxAt(V(sx * (r - 0.35), c.y, c.z).addScaledVector(radial(phi), 1.3), 0.4, 0.28, 0.6, q), false);
+        if (k % 2 === 0) b.add('paintGray', bevelBoxAt(V(sx * (r - 0.35), c.y, c.z).addScaledVector(radial(phi), 1.3), 0.4, 0.28, 0.6, q, 0.03), false);
       }
       // skylights on the inner face flanking the radiator band (every third segment)
       if (k % 3 === 1) for (const sx of [-1, 1]) {
         const c = radial(phi).multiplyScalar(R - r + 0.25).setX(sx * 1.95);
-        b.add('metalDark', boxAt(c, 0.7, 0.1, 1.1, q), false);
-        b.add('windowGlow', boxAt(c.clone().addScaledVector(radial(phi), 0.03), 0.5, 0.06, 0.9, q), false);
-        b.add('glass', boxAt(c.clone().addScaledVector(radial(phi), -0.04), 0.5, 0.02, 0.9, q), false);
+        for (const sa of [-1, 1]) b.add('metalDark', bevelBoxAt(c.clone().setX(c.x + sa * 0.3), 0.1, 0.1, 1.1, q, 0.02), false);
+        for (const sz of [-1, 1]) b.add('metalDark', bevelBoxAt(c.clone().addScaledVector(tangent(phi), sz * 0.5), 0.5, 0.1, 0.1, q, 0.02), false);
+        b.add('windowGlow', boxAt(c.clone().addScaledVector(radial(phi), 0.03), 0.52, 0.04, 0.92, q), false);
+        b.add('glass', boxAt(c.clone().addScaledVector(radial(phi), -0.02), 0.52, 0.012, 0.92, q), false);
       }
     }
 

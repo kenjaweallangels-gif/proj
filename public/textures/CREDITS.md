@@ -33,3 +33,11 @@ All Earth files are built by `tools/prepare_earth_textures.py` from the sources 
 
 Weather (cloud evolution, tropical cyclones, thunderstorms and lightning), aurora and everything else in the scene
 (station, ships, suit, HUD, materials) is procedural and generated at runtime.
+
+## Station and ship surfaces (`station/`)
+
+Built by `tools/bake_station_textures.py` (procedural panel layout, seams, rivets, stencils, wear and grime) from
+CC0 material scans fetched by `tools/fetch_station_textures.py` from ambientCG (https://ambientcg.com, Creative
+Commons CC0 1.0 Universal): Foil002, Foil001 (MLI crinkle), Fabric060 (beta cloth weave), Plastic013A (paint
+orange-peel micro normal), Scratches001-004 (paint wear masks), Metal009, Metal032 (brushed / machined aluminium).
+`<set>_{albedo,normal,orm}.jpg` are 4K (hull) or 2K, `*_2k.jpg` half size. ORM = AO / roughness / metalness.
