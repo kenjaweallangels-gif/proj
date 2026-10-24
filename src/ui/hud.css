@@ -102,7 +102,7 @@
 
 /* observer mode: the helmet panels are hidden, so the stack moves to the bottom-left corner,
    clear of the observer panel even in short windows */
-.hud[data-mode="observer"] .nt { bottom: 20px; left: 20px; width: 300px; }
+.hud[data-mode="observer"] .nt { bottom: 20px; left: auto; right: 20px; width: 300px; }
 
 /* ---------------------------------------------------------------- observer panel */
 .obs { position: absolute; left: 20px; top: 20px; width: 300px; pointer-events: auto; padding: 9px 11px 10px; background: rgba(5, 11, 20, 0.66); border: 1px solid var(--line); border-radius: 3px; }
@@ -129,8 +129,8 @@
 .tc button.on { border-color: var(--cyan2); background: rgba(79, 184, 234, 0.2); color: #fff; }
 .tc-row { display: grid; grid-template-columns: 1.2fr 1fr 1fr 1fr; gap: 4px; }
 .tc-row button { font-size: 12px; }
-.tc-presets { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; margin-top: 4px; }
-.tc-presets button { font-size: 10px; padding: 3px 0; font-family: var(--mono); }
+.tc-presets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; margin-top: 4px; }
+.tc-presets button { font-size: 10.5px; padding: 3px 0; font-family: var(--mono); }
 .tc-jumps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; margin-top: 4px; }
 .tc-goto { display: flex; gap: 4px; margin-top: 4px; }
 .tc-goto .tc-date { flex: 1 1 auto; min-width: 0; font: inherit; font-size: 11px; color: #d2e7f5; background: rgba(12, 24, 40, 0.75); border: 1px solid var(--line); border-radius: 2px; padding: 2px 4px; color-scheme: dark; }

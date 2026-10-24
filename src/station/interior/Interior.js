@@ -310,13 +310,16 @@ export class StationInterior {
     const cam = ctx.camera;
     this._ringUpdate();
     cam.updateMatrixWorld();
-    const cp = _p.setFromMatrixPosition(cam.matrixWorld);
+    // camera in the station frame (the render frame may be elsewhere: free camera far from the station)
+    const u = ctx.universe, remote = !!u && !u.isStationFrame;
+    const cp = remote ? u.cameraInStation(_p, cam) : _p.setFromMatrixPosition(cam.matrixWorld);
     const zone = this.locate(cp, this.cameraZone, 0.25);
     this.cameraZone = zone;
     this.inside = !!zone;
     const vis = this.visible;
     vis.clear();
     _pm.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    if (remote) { u.stationRoot.updateMatrixWorld(); _pm.multiply(u.stationRoot.matrixWorld); }
     _frustum.setFromProjectionMatrix(_pm);
     if (zone) {
       // portal walk (depth 4) with frustum tests

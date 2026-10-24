@@ -30,7 +30,7 @@ const MOUSE = 0.0022;          // rad per pixel
 const ROLL_RATE = 1.1;         // rad/s
 const SMOOTH = 0.18;           // s, velocity response
 
-const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _c = new THREE.Vector3();
+const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _c = new THREE.Vector3();
 const _q = new THREE.Quaternion(), _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion();
 const _m = new THREE.Matrix4(), _m2 = new THREE.Matrix4();
 const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
@@ -115,7 +115,9 @@ export class FreeCamera {
     this.app.universe.useStationFrame();
   }
 
-  /** Jump to a named place: 'station' (overview pose), 'earth' (dayside, 30 000 km), 'moon' (lit side, 12 000 km). */
+  /** Jump to a named place: 'station' (overview pose), 'earth' (dayside, 30 000 km), 'moon' (lit side, 12 000 km),
+   *  'moon-orbit' (100 km above the Moon, the Earth on the horizon), 'station-high' (3 km above the station),
+   *  'earth-low' (2000 km above the Earth, looking along the station's track). */
   jumpTo(where) {
     const o = this.app.orbit;
     this.vel.set(0, 0, 0);
@@ -136,6 +138,32 @@ export class FreeCamera {
       this.offset.copy(o.sunDirEci).multiplyScalar(1.0).addScaledVector(_v, 0.8).addScaledVector(Z, 0.15).normalize().multiplyScalar(12000);
       this._lookAt(_v.set(0, 0, 0), Z);
       this.speedExp = Math.max(this.speedExp, 5);
+    } else if (where === 'station-high') {
+      this.anchor = 'station';
+      this.offset.set(400, 2600, 900);
+      this._lookAt(_v.set(0, 0, 0), _v2.set(1, 0, 0));
+      this.speedExp = 2.5;
+    } else if (where === 'earth-low') {
+      // 2000 km above the sub-station point, looking down at the horizon ahead
+      this.anchor = 'earth';
+      this.offset.copy(o.positionEci).setLength(EARTH_RADIUS_KM + 2000);
+      _v.copy(o.velocityEci).normalize().multiplyScalar(3000).add(_v2.copy(this.offset).setLength(EARTH_RADIUS_KM));
+      this._lookAt(_v, _v2.copy(this.offset).normalize());
+      this.speedExp = 4;
+    } else if (where === 'moon-orbit') {
+      // 100 km above the Moon, the Earth on the lunar horizon ("Earthrise"), the ground below sunlit when possible
+      this.anchor = 'moon';
+      const e = _v2.copy(o.moonEci).negate().normalize();                 // Moon -> Earth
+      const up = _c.copy(o.sunDirEci).addScaledVector(e, -o.sunDirEci.dot(e));
+      if (up.lengthSq() < 1e-6) up.crossVectors(e, Z);
+      up.normalize();
+      this.offset.copy(up).multiplyScalar(R_MOON + 100);
+      this._anchorAxes(this.anchor, this.offset, _m);
+      _m2.copy(_m).transpose();
+      const fwd = _v.copy(e).addScaledVector(up, -0.12).normalize().applyMatrix4(_m2);
+      _m.lookAt(_v3.set(0, 0, 0), fwd, up.applyMatrix4(_m2));
+      this.q.setFromRotationMatrix(_m);
+      this.speedExp = Math.min(Math.max(this.speedExp, 3), 4);
     }
     // a cut: the exposure and the lens flare snap instead of adapting
     const post = this.app.renderer?.post;

@@ -67,6 +67,7 @@ export class AutoExposure {
     this.moonRadiance = 0.35;       // sunlit lunar surface (albedo ~0.12), counted when the Moon is large in view
     this.stationRadiance = 0.30;    // average sunlit station (white hull, MLI, shadowed parts)
     this.stationNightRadiance = 0.03;
+    this.moonLum = 0; this.earthSpot = 0;
     this.sunWeight = 1.5;           // extra brightness when the Sun disc is in the frame
     this.airlockBrightness = 0.5;   // interior lighting (keeps the exposure <= ~0.8 inside)
 
@@ -92,6 +93,21 @@ export class AutoExposure {
     this._first = true;
     this._lastPos = new THREE.Vector3();
     this._lastQuat = new THREE.Quaternion();
+  }
+
+  /** Spot brightness of a sphere (render km) seen from _originKm: radiance x lit fraction x screen coverage ramp. */
+  _spot(center, radius, radiance, sunDir, th, aspect) {
+    _dir.copy(center).sub(_originKm);
+    const dm = _dir.length();
+    if (dm <= radius) return 0;
+    _dir.multiplyScalar(1 / dm);
+    _n.copy(_dir).applyQuaternion(_invQuat.copy(_camQuat).invert());
+    if (_n.z >= 0) return 0;
+    const ta = Math.tan(Math.asin(radius / dm));
+    if (Math.abs(_n.x / -_n.z) > th * aspect + ta || Math.abs(_n.y / -_n.z) > th + ta) return 0;
+    const frac = Math.min(1, (Math.PI * ta * ta) / (4 * th * th * aspect));
+    const lit = 0.5 * (1 - _dir.dot(sunDir));
+    return radiance * lit * smoothstep(0.002, 0.08, frac);
   }
 
   /** Measures the view and advances the adaptation. `sunUnoccluded` is the fraction of the Sun not hidden by the station (0..1). */
@@ -160,7 +176,10 @@ export class AutoExposure {
       }
     }
     this.earthLum = wsum > 0 ? sum / wsum : 0;
-    this.earthFrac = total > 0 ? hits / total : 0;
+    // a large Moon / a distant whole Earth in the frame (free camera) meter like a spot: the grid average of a
+    // small bright disc on black would blow it out
+    this.moonLum = moonOn ? this._spot(M, MOON_RADIUS_KM, this.moonRadiance * 0.9 / 0.35, o.sunDir, th, aspect) : 0;
+    this.earthSpot = _oc.length() > EARTH_RADIUS_KM + 3000 ? this._spot(C, EARTH_RADIUS_KM, this.earthRadiance, o.sunDir, th, aspect) : 0;
 
     // ---- station cover (crude: distance to the station origin and whether we look at it) ----
     const u = ctx.universe;
@@ -186,7 +205,7 @@ export class AutoExposure {
     this.glare = this.sunInView * centre * sunUnoccluded;
 
     // ---- combine ----
-    let B = this.earthLum + stationLum + sunLum;
+    let B = Math.max(this.earthLum, this.moonLum, this.earthSpot) + stationLum + sunLum;
     if (ctx.player?.state?.mode === 'airlock') B = Math.max(B, this.airlockBrightness);
     this.brightness = B;
     let target = this.key / (B + this.key / this.max);
