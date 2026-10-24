@@ -120,7 +120,7 @@ export function shieldPanelGeo(rIn, rOut, arc, len, n = 6) {
 /** Rows of curved shield panels (staggered) with edge rivets and two attach bolts each. */
 export function shieldPanels(b, D, H, rows, from, { ph = 1.7, gapT = 0.12, rOut = H.r + 0.115, rIn = H.r + 0.03 } = {}) {
   const around = Math.round((2 * Math.PI * H.r) / 1.05);
-  const arcFull = (2 * Math.PI) / around, gapArc = 0.06 / H.r, arc = arcFull - gapArc;
+  const arcFull = (2 * Math.PI) / around, gapArc = 0.04 / H.r, arc = arcFull - gapArc;
   const tplGeo = shieldPanelGeo(rIn, rOut, arc, ph, 6);
   const rot = new THREE.Matrix4();
   for (let row = 0; row < rows; row++) {
